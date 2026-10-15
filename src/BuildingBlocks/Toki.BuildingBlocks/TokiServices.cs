@@ -29,14 +29,12 @@ public static class TokiServices
         services.AddScoped<IAuditoria, Auditoria>();
 
         services.Scan(s => s.FromAssemblies(modulos)
-            .AddClasses(c => c.AssignableTo(typeof(ICommandHandler<,>)), publicOnly: false).AsImplementedInterfaces().WithScopedLifetime()
-            .AddClasses(c => c.AssignableTo(typeof(IQueryHandler<,>)), publicOnly: false).AsImplementedInterfaces().WithScopedLifetime());
+            .AddClasses(c => c.AssignableTo(typeof(ICommandHandler<,>)), publicOnly: false).AsImplementedInterfaces().WithScopedLifetime());
         services.AddValidatorsFromAssemblies(modulos, includeInternalTypes: true);
 
         services.TryDecorate(typeof(ICommandHandler<,>), typeof(AutorizacionDecorator<,>));
         services.TryDecorate(typeof(ICommandHandler<,>), typeof(TransaccionDecorator<,>));
         services.TryDecorate(typeof(ICommandHandler<,>), typeof(ValidacionDecorator<,>));
-        services.TryDecorate(typeof(IQueryHandler<,>), typeof(ValidacionQueryDecorator<,>));
         return services;
     }
 

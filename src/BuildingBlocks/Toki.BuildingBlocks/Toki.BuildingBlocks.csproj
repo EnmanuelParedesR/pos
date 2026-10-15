@@ -11,4 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Toki.SharedKernel\Toki.SharedKernel.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Toki.IntegrationTests" />
+  </ItemGroup>
 </Project>

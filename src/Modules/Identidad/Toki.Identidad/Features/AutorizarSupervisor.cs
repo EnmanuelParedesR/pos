@@ -37,7 +37,7 @@ internal static class AutorizarSupervisor
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             if (yo.DispositivoId is not { } dispositivoId) return IdentidadErrors.DispositivoNoEmparejado;
-            var supervisor = await db.Usuarios.FirstOrDefaultAsync(u => u.Codigo == c.Codigo.Trim(), ct);
+            var supervisor = await db.Usuarios.FirstOrDefaultAsync(u => u.Codigo == Usuario.NormalizarCodigo(c.Codigo), ct);
             if (supervisor is null) return IdentidadErrors.CredencialesInvalidas;
 
             var ahora = reloj.GetUtcNow().UtcDateTime;

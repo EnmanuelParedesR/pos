@@ -2,7 +2,8 @@ using Toki.SharedKernel;
 
 namespace Toki.BuildingBlocks.Security;
 
-/// <summary>A command that the caller may run with its own permission or with a one-time supervisor authorization.</summary>
+/// <summary>A command that the caller may run with its own permission or with a one-time supervisor authorization.
+/// Its endpoint must not require <see cref="Permiso"/> itself (use RequireAuthorization or a lower permission), or the supervisor path is unreachable.</summary>
 public interface IRequiereAutorizacion
 {
     string Permiso { get; }

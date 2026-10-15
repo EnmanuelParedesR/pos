@@ -28,14 +28,15 @@ internal static class CrearUsuario
         }
     }
 
-    internal sealed class Handler(IdentidadDbContext db, IAuditoria auditoria) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentidadDbContext db, IAuditoria auditoria, IUserContext yo) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             if (!await db.Roles.AnyAsync(r => r.Id == c.RolId, ct)) return IdentidadErrors.RolNoEncontrado;
-            if (await db.Usuarios.AnyAsync(u => u.Codigo == c.Codigo.Trim(), ct)) return IdentidadErrors.CodigoDuplicado;
+            if (c.RolId == Rol.AdministradorId && !await db.EsAdministradorAsync(yo.UsuarioId, ct)) return IdentidadErrors.SoloAdministrador;
+            if (await db.Usuarios.AnyAsync(u => u.Codigo == Usuario.NormalizarCodigo(c.Codigo), ct)) return IdentidadErrors.CodigoDuplicado;
 
-            var usuario = new Usuario { Id = Guid.CreateVersion7(), Nombre = c.Nombre.Trim(), Codigo = c.Codigo.Trim(), RolId = c.RolId };
+            var usuario = new Usuario { Id = Guid.CreateVersion7(), Nombre = c.Nombre.Trim(), Codigo = Usuario.NormalizarCodigo(c.Codigo), RolId = c.RolId };
             usuario.CambiarPin(c.Pin);
             db.Usuarios.Add(usuario);
             await auditoria.RegistrarAsync("identidad.crear-usuario", "Usuario", usuario.Id, new { usuario.Nombre, usuario.Codigo, usuario.RolId }, ct);
@@ -75,12 +76,14 @@ internal static class ActualizarUsuario
             if (!await db.Roles.AnyAsync(r => r.Id == c.RolId, ct)) return IdentidadErrors.RolNoEncontrado;
             if (usuario.Id == yo.UsuarioId && (!c.Activo || c.RolId != usuario.RolId))
                 return Error.Validation("Identidad.NoAutoBloqueo", "No puede desactivarse ni cambiarse el rol a sí mismo.");
+            if ((c.RolId == Rol.AdministradorId || usuario.RolId == Rol.AdministradorId) && !await db.EsAdministradorAsync(yo.UsuarioId, ct))
+                return IdentidadErrors.SoloAdministrador;
 
             usuario.Nombre = c.Nombre.Trim();
             usuario.RolId = c.RolId;
             usuario.Activo = c.Activo;
             if (c.Pin is not null) usuario.CambiarPin(c.Pin);
-            if (!c.Activo)
+            if (!c.Activo || c.Pin is not null)
             {
                 var ahora = reloj.GetUtcNow().UtcDateTime;
                 await db.Sesiones.Where(s => s.UsuarioId == c.Id && s.CerradaUtc == null).ExecuteUpdateAsync(s => s.SetProperty(x => x.CerradaUtc, ahora), ct);

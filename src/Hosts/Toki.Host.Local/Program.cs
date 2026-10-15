@@ -37,9 +37,12 @@ app.UseSerilogRequestLogging();
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapOpenApi();
-app.MapScalarApiReference();
-app.MapHealthChecks("/health");
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi().AllowAnonymous();
+    app.MapScalarApiReference().AllowAnonymous();
+}
+app.MapHealthChecks("/health").AllowAnonymous();
 app.MapEndpoints(modulos);
 
 if (app.Configuration.GetValue<bool>("Database:CrearAlIniciar")) await TokiServices.CrearBaseDeDatosAsync(app.Services);

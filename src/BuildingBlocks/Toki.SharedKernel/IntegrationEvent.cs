@@ -5,12 +5,13 @@ namespace Toki.SharedKernel;
 public interface IIntegrationEvent
 {
     Guid EventId { get; }
-    DateTime OcurridoUtc { get; }
+    /// <summary>Set by the outbox from the application clock when the event is saved.</summary>
+    DateTime OcurridoUtc { get; set; }
     Guid AgregadoId { get; }
 }
 
 public abstract record IntegrationEvent(Guid AgregadoId) : IIntegrationEvent
 {
     public Guid EventId { get; init; } = Guid.CreateVersion7();
-    public DateTime OcurridoUtc { get; init; } = DateTime.UtcNow;
+    public DateTime OcurridoUtc { get; set; }
 }

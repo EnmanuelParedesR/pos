@@ -38,8 +38,10 @@ internal sealed class Usuario
 
     public Guid Id { get; set; }
     public string Nombre { get; set; } = "";
-    /// <summary>Short code typed or picked at the register (for example "01").</summary>
+    /// <summary>Short code typed or picked at the register (for example "01"). Stored upper-case so both databases compare it the same way.</summary>
     public string Codigo { get; set; } = "";
+
+    public static string NormalizarCodigo(string codigo) => codigo.Trim().ToUpperInvariant();
     public string PinHash { get; set; } = "";
     public Guid RolId { get; set; }
     public bool Activo { get; set; } = true;
@@ -153,4 +155,5 @@ internal static class IdentidadErrors
     public static readonly Error SupervisorSinPermiso = Error.Forbidden("Identidad.SupervisorSinPermiso", "Ese usuario no puede autorizar esta acción.");
     public static readonly Error AutorizacionInvalida = Error.Forbidden("Identidad.AutorizacionInvalida", "La autorización del supervisor no es válida, ya se usó o venció.");
     public static readonly Error PermisoDesconocido = Error.Validation("Identidad.PermisoDesconocido", "Uno de los permisos no existe.");
+    public static readonly Error SoloAdministrador = Error.Forbidden("Identidad.SoloAdministrador", "Solo un administrador puede dar o quitar el rol Administrador.");
 }

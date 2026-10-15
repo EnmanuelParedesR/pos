@@ -18,6 +18,7 @@ public interface IUserContext
     Guid UsuarioId { get; }
     string Nombre { get; }
     Guid? DispositivoId { get; }
+    Guid? SesionId { get; }
     bool Tiene(string permiso);
 
     /// <summary>Supervisor who authorized the current command, if any. Recorded in the audit trail.</summary>
@@ -31,6 +32,7 @@ internal sealed class HttpUserContext(IHttpContextAccessor accessor) : IUserCont
     public Guid UsuarioId => Guid.TryParse(User.FindFirstValue(TokiClaims.Usuario), out var id) ? id : Guid.Empty;
     public string Nombre => User.FindFirstValue(TokiClaims.Nombre) ?? "sistema";
     public Guid? DispositivoId => Guid.TryParse(User.FindFirstValue(TokiClaims.Dispositivo), out var id) ? id : null;
+    public Guid? SesionId => Guid.TryParse(User.FindFirstValue(TokiClaims.Sesion), out var id) ? id : null;
     public bool Tiene(string permiso) => User.HasClaim(TokiClaims.Permiso, permiso);
     public Guid? SupervisorId { get; set; }
 }

@@ -2,7 +2,9 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Testcontainers.MsSql;
 using Toki.BuildingBlocks.Persistence;
 
@@ -65,7 +67,15 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         builder.UseSetting("Database:ConnectionString", _connectionString);
         builder.UseSetting("Database:CrearAlIniciar", "true");
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
+        builder.ConfigureTestServices(s =>
+        {
+            s.AddSingleton<TimeProvider>(Reloj);
+            ComandosDePrueba.Registrar(s);
+        });
     }
+
+    /// <summary>The application clock. Starts at the real time and only moves when a test advances it.</summary>
+    public FakeTimeProvider Reloj { get; } = new(DateTimeOffset.UtcNow);
 
     public HttpClient Anonimo(string? dispositivo = null)
     {

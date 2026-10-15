@@ -19,6 +19,8 @@ public sealed class SharedKernelTests
         DiaNegocio.De(new DateTime(2026, 10, 16, 2, 30, 0, DateTimeKind.Utc)).ShouldBe(new DateOnly(2026, 10, 15));
         var (desde, hasta) = DiaNegocio.RangoUtc(new DateOnly(2026, 10, 15), new DateOnly(2026, 10, 15));
         desde.ShouldBe(new DateTime(2026, 10, 15, 4, 0, 0));
+        desde.Kind.ShouldBe(DateTimeKind.Utc);
+        hasta.Kind.ShouldBe(DateTimeKind.Utc);
         hasta.ShouldBe(new DateTime(2026, 10, 16, 4, 0, 0));
     }
 

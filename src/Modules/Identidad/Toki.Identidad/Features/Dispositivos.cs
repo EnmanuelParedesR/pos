@@ -56,16 +56,23 @@ internal static class EmparejarDispositivo
     public sealed record Command(string Codigo) : ICommand<Response>;
     public sealed record Response(Guid DispositivoId, string Nombre, string Token);
 
+    internal sealed class Validator : AbstractValidator<Command>
+    {
+        public Validator() => RuleFor(c => c.Codigo).NotEmpty().MaximumLength(20);
+    }
+
     internal sealed class Handler(IdentidadDbContext db, IAuditoria auditoria, TimeProvider reloj) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             var ahora = reloj.GetUtcNow().UtcDateTime;
             var hash = Token.Hash(c.Codigo.Trim());
-            var codigo = await db.CodigosEmparejamiento.FirstOrDefaultAsync(x => x.CodigoHash == hash && x.UsadoUtc == null && x.ExpiraUtc > ahora, ct);
-            if (codigo is null) return IdentidadErrors.CodigoEmparejamientoInvalido;
+            var vigente = db.CodigosEmparejamiento.Where(x => x.CodigoHash == hash && x.UsadoUtc == null && x.ExpiraUtc > ahora);
+            var codigo = await vigente.AsNoTracking().FirstOrDefaultAsync(ct);
+            // Claim it with a conditional update: two registers racing with the same code cannot both pair.
+            if (codigo is null || await vigente.ExecuteUpdateAsync(s => s.SetProperty(x => x.UsadoUtc, ahora), ct) == 0)
+                return IdentidadErrors.CodigoEmparejamientoInvalido;
 
-            codigo.UsadoUtc = ahora;
             var token = Token.Nuevo();
             var dispositivo = new Dispositivo { Id = Guid.CreateVersion7(), Nombre = codigo.NombreDispositivo, TokenHash = Token.Hash(token), CreadoUtc = ahora };
             db.Dispositivos.Add(dispositivo);

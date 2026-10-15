@@ -26,7 +26,8 @@ public abstract class ModuleDbContext(DbContextOptions options) : DbContext(opti
         configurationBuilder.Properties<string>().HaveMaxLength(200);
     }
 
+    // Unspecified means UTC (it comes from our own UTC math or a client without "Z"); only Local is converted.
     private sealed class UtcConverter() : ValueConverter<DateTime, DateTime>(
-        v => v.Kind == DateTimeKind.Utc ? v : v.ToUniversalTime(),
+        v => v.Kind == DateTimeKind.Local ? v.ToUniversalTime() : DateTime.SpecifyKind(v, DateTimeKind.Utc),
         v => DateTime.SpecifyKind(v, DateTimeKind.Utc));
 }

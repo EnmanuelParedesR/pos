@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -24,7 +25,8 @@ public static class IdentidadModule
         services.AddModuleDbContext<IdentidadDbContext>();
         services.AddScoped<IAutorizacionesSupervisor, AutorizacionesSupervisor>();
         services.AddAuthentication(Esquema).AddScheme<AuthenticationSchemeOptions, SesionAuthenticationHandler>(Esquema, null);
-        services.AddAuthorization();
+        // Secure by default: an endpoint that forgets its authorization call still requires a session.
+        services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
         return services;
     }
 }
@@ -53,9 +55,11 @@ internal sealed class SesionAuthenticationHandler(
             join r in db.Roles on u.RolId equals r.Id
             where s.TokenHash == tokenHash && s.CerradaUtc == null && s.ExpiraUtc > ahora
                   && d.TokenHash == dispositivoHash && !d.Revocado && u.Activo
-            select new { SesionId = s.Id, UsuarioId = u.Id, u.Nombre, DispositivoId = d.Id, r.Permisos })
+            select new { SesionId = s.Id, UsuarioId = u.Id, u.Nombre, DispositivoId = d.Id, u.RolId, r.Permisos })
             .AsNoTracking().FirstOrDefaultAsync(Context.RequestAborted);
         if (datos is null) return AuthenticateResult.Fail("Sesión inválida o vencida.");
+        // The administrator always has every permission, including ones added after the database was created.
+        var permisos = datos.RolId == Rol.AdministradorId ? Permisos.Todos : datos.Permisos;
 
         List<Claim> claims =
         [
@@ -63,7 +67,7 @@ internal sealed class SesionAuthenticationHandler(
             new(TokiClaims.Nombre, datos.Nombre),
             new(TokiClaims.Dispositivo, datos.DispositivoId.ToString()),
             new(TokiClaims.Sesion, datos.SesionId.ToString()),
-            .. datos.Permisos.Select(p => new Claim(TokiClaims.Permiso, p)),
+            .. permisos.Select(p => new Claim(TokiClaims.Permiso, p)),
         ];
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)), Scheme.Name));
     }

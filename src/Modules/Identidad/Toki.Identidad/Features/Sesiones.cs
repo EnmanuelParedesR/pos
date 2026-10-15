@@ -42,7 +42,7 @@ internal static class IniciarSesion
             var dispositivo = await db.Dispositivos.AsNoTracking().FirstOrDefaultAsync(d => d.TokenHash == dispositivoHash && !d.Revocado, ct);
             if (dispositivo is null) return IdentidadErrors.DispositivoNoEmparejado;
 
-            var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Codigo == c.Codigo.Trim(), ct);
+            var usuario = await db.Usuarios.FirstOrDefaultAsync(u => u.Codigo == Usuario.NormalizarCodigo(c.Codigo), ct);
             if (usuario is null) return IdentidadErrors.CredencialesInvalidas;
 
             var ahora = reloj.GetUtcNow().UtcDateTime;
@@ -122,16 +122,24 @@ internal static class CambiarMiPin
 
     internal sealed class Validator : AbstractValidator<Command>
     {
-        public Validator() => RuleFor(c => c.PinNuevo).Must(Domain.Pin.EsValido).WithMessage("El PIN debe tener de 4 a 8 dígitos.");
+        public Validator()
+        {
+            RuleFor(c => c.PinActual).NotEmpty().MaximumLength(8);
+            RuleFor(c => c.PinNuevo).Must(Domain.Pin.EsValido).WithMessage("El PIN debe tener de 4 a 8 dígitos.");
+        }
     }
 
-    internal sealed class Handler(IdentidadDbContext db, IUserContext yo, IAuditoria auditoria) : ICommandHandler<Command, Ok>
+    internal sealed class Handler(IdentidadDbContext db, IUserContext yo, IAuditoria auditoria, TimeProvider reloj) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
             var usuario = await db.Usuarios.FirstAsync(u => u.Id == yo.UsuarioId, ct);
             if (!Domain.Pin.Verificar(usuario.PinHash, c.PinActual)) return IdentidadErrors.CredencialesInvalidas;
             usuario.CambiarPin(c.PinNuevo);
+            // A new PIN ends every other session of this user (someone else may have been using it).
+            var ahora = reloj.GetUtcNow().UtcDateTime;
+            await db.Sesiones.Where(s => s.UsuarioId == usuario.Id && s.CerradaUtc == null && s.Id != yo.SesionId)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.CerradaUtc, ahora), ct);
             await auditoria.RegistrarAsync("identidad.cambiar-pin", "Usuario", usuario.Id, new { }, ct);
             return Ok.Valor;
         }

@@ -19,24 +19,31 @@ public interface IAuditoria
     Task RegistrarAsync(string accion, string recursoTipo, Guid recursoId, object datos, CancellationToken ct);
 }
 
-internal sealed class Outbox(InfraDbContext db, IUserContext usuario) : IOutbox
+internal sealed class Outbox(InfraDbContext db, IUserContext usuario, TimeProvider reloj) : IOutbox
 {
-    public void Agregar(IIntegrationEvent evento) => db.Outbox.Add(new OutboxMensaje
+    public void Agregar(IIntegrationEvent evento)
     {
-        Id = evento.EventId,
-        Tipo = evento.GetType().FullName!,
-        AgregadoId = evento.AgregadoId,
-        Payload = JsonSerializer.Serialize(evento, evento.GetType(), Json.Opciones),
-        OcurridoUtc = evento.OcurridoUtc,
-        UsuarioId = usuario.UsuarioId == Guid.Empty ? null : usuario.UsuarioId,
-        DispositivoId = usuario.DispositivoId,
-    });
+        evento.OcurridoUtc = reloj.GetUtcNow().UtcDateTime;
+        db.Outbox.Add(new OutboxMensaje
+        {
+            Id = evento.EventId,
+            Tipo = evento.GetType().FullName!,
+            AgregadoId = evento.AgregadoId,
+            Payload = JsonSerializer.Serialize(evento, evento.GetType(), Json.Opciones),
+            OcurridoUtc = evento.OcurridoUtc,
+            UsuarioId = usuario.UsuarioId == Guid.Empty ? null : usuario.UsuarioId,
+            DispositivoId = usuario.DispositivoId,
+        });
+    }
 }
 
-internal sealed class Auditoria(InfraDbContext db, IUserContext usuario, TimeProvider reloj) : IAuditoria
+internal sealed class Auditoria(InfraDbContext db, UnitOfWork uow, IUserContext usuario, TimeProvider reloj) : IAuditoria
 {
     public async Task RegistrarAsync(string accion, string recursoTipo, Guid recursoId, object datos, CancellationToken ct)
     {
+        // Outside a transaction the head update would commit alone and the record would be lost, breaking the chain.
+        if (uow.Transaction is null) throw new InvalidOperationException("La auditoría solo se escribe dentro de un comando.");
+
         // Bumping the head first takes its write lock, so concurrent commands cannot fork the chain.
         await db.CabezaAuditoria.Where(c => c.Id == 1)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.Secuencia, c => c.Secuencia + 1), ct);

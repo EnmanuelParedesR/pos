@@ -16,5 +16,7 @@ public static class DiaNegocio
 
     /// <summary>UTC range [desde, hasta) that covers the given local business days.</summary>
     public static (DateTime Desde, DateTime Hasta) RangoUtc(DateOnly desde, DateOnly hasta) =>
-        (desde.ToDateTime(TimeOnly.MinValue) - Desfase, hasta.AddDays(1).ToDateTime(TimeOnly.MinValue) - Desfase);
+        (Utc(desde.ToDateTime(TimeOnly.MinValue) - Desfase), Utc(hasta.AddDays(1).ToDateTime(TimeOnly.MinValue) - Desfase));
+
+    private static DateTime Utc(DateTime v) => DateTime.SpecifyKind(v, DateTimeKind.Utc);
 }

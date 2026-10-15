@@ -35,9 +35,11 @@ internal static class Instalar
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
+            // Touching the Administrador role row first takes its write lock, so two installs cannot both see "no users".
+            await db.Roles.Where(r => r.Id == Rol.AdministradorId).ExecuteUpdateAsync(s => s.SetProperty(r => r.Nombre, r => r.Nombre), ct);
             if (await db.Usuarios.AnyAsync(ct)) return IdentidadErrors.YaInstalado;
 
-            var admin = new Usuario { Id = Guid.CreateVersion7(), Nombre = c.NombreAdministrador.Trim(), Codigo = c.CodigoAdministrador.Trim(), RolId = Rol.AdministradorId };
+            var admin = new Usuario { Id = Guid.CreateVersion7(), Nombre = c.NombreAdministrador.Trim(), Codigo = Usuario.NormalizarCodigo(c.CodigoAdministrador), RolId = Rol.AdministradorId };
             admin.CambiarPin(c.Pin);
             var token = Token.Nuevo();
             var dispositivo = new Dispositivo

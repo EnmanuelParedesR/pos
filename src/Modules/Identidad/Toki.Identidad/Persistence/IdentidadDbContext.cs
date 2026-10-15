@@ -16,6 +16,9 @@ internal sealed class IdentidadDbContext(DbContextOptions<IdentidadDbContext> op
     public DbSet<CodigoEmparejamiento> CodigosEmparejamiento => Set<CodigoEmparejamiento>();
     public DbSet<Sesion> Sesiones => Set<Sesion>();
     public DbSet<AutorizacionSupervisor> Autorizaciones => Set<AutorizacionSupervisor>();
+
+    public Task<bool> EsAdministradorAsync(Guid usuarioId, CancellationToken ct) =>
+        Usuarios.AnyAsync(u => u.Id == usuarioId && u.RolId == Rol.AdministradorId, ct);
 }
 
 internal sealed class IdentidadConfiguration :
@@ -26,6 +29,8 @@ internal sealed class IdentidadConfiguration :
     {
         b.HasIndex(u => u.Codigo).IsUnique();
         b.Property(u => u.Codigo).HasMaxLength(20);
+        // Parallel wrong PINs must not overwrite each other's count (lockout bypass on SQL Server).
+        b.Property(u => u.IntentosFallidos).IsConcurrencyToken();
         b.Property(u => u.PinHash).HasMaxLength(500);
     }
 

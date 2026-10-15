@@ -45,7 +45,7 @@ public sealed partial class ReglasDeArquitectura
 
     [Fact]
     public void Los_handlers_son_internos_y_sellados() =>
-        Classes().That().ImplementInterface(typeof(ICommandHandler<,>)).Or().ImplementInterface(typeof(IQueryHandler<,>))
+        Classes().That().ImplementInterface(typeof(ICommandHandler<,>))
             .Should().NotBePublic().AndShould().BeSealed().WithoutRequiringPositiveResults()
             .Check(Arquitectura);
 

@@ -33,13 +33,20 @@ public sealed class UnitOfWork(DatabaseOptions options) : IAsyncDisposable
         return Transaction;
     }
 
-    public async Task EndAsync(bool commit, CancellationToken ct)
+    /// <summary>Commits or rolls back. Never cancellable: a dropped client must not leave the outcome ambiguous.</summary>
+    public async Task EndAsync(bool commit)
     {
-        if (Transaction is null) return;
-        if (commit) await Transaction.CommitAsync(ct);
-        else await Transaction.RollbackAsync(CancellationToken.None);
-        await Transaction.DisposeAsync();
-        Transaction = null;
+        if (Transaction is not { } tx) return;
+        try
+        {
+            if (commit) await tx.CommitAsync(CancellationToken.None);
+            else await tx.RollbackAsync(CancellationToken.None);
+        }
+        finally
+        {
+            Transaction = null;
+            await tx.DisposeAsync();
+        }
     }
 
     public async ValueTask DisposeAsync()
