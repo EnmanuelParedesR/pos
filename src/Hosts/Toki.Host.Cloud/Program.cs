@@ -12,6 +12,7 @@ using Toki.Host.Cloud.Ingest;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Panel;
 using Toki.Host.Cloud.Persistence;
+using Toki.Host.Cloud.Platform;
 using Toki.Host.Cloud.Relay;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -33,7 +34,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, NodeAuthenticationHandler>(CloudAuth.NodeScheme, null);
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(CloudAuth.NodePolicy, p => p.AddAuthenticationSchemes(CloudAuth.NodeScheme).RequireAuthenticatedUser())
-    .AddPolicy(CloudAuth.PanelPolicy, p => p.RequireAuthenticatedUser().RequireClaim(TenantClaims.TenantId));
+    .AddPolicy(CloudAuth.PanelPolicy, p => p.RequireAuthenticatedUser().RequireClaim(TenantClaims.TenantId).RequireAssertion(ActiveTenant.IsActiveAsync))
+    .AddPolicy(PlatformAuth.Policy, p => p.RequireAuthenticatedUser().RequireClaim(PlatformAuth.RoleClaim, PlatformAuth.Admin));
 builder.Services.AddIdentityApiEndpoints<CloudUser>(o =>
     {
         o.User.RequireUniqueEmail = true;
@@ -41,7 +43,8 @@ builder.Services.AddIdentityApiEndpoints<CloudUser>(o =>
         o.Password.RequireNonAlphanumeric = false;
     })
     .AddEntityFrameworkStores<CloudDbContext>()
-    .AddClaimsPrincipalFactory<CloudClaimsFactory>();
+    .AddClaimsPrincipalFactory<CloudClaimsFactory>()
+    .AddSignInManager<CloudSignInManager>();
 builder.Services.AddScoped<IUserStore<CloudUser>, CloudUserStore>();
 
 // Guessing an 8-digit code is the only way in without an account.
@@ -57,6 +60,7 @@ builder.Services.AddSingleton<InboxSignal>();
 builder.Services.AddSingleton<InboxApplier>();
 builder.Services.AddHostedService<InboxApplierWorker>();
 builder.Services.AddScoped<PanelQueries>();
+builder.Services.AddScoped<PlatformQueries>();
 builder.Services.AddSingleton<ICloudEcfProvider, SimulatedCloudEcfProvider>();
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
@@ -75,6 +79,13 @@ builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tags: ["ready"]);
 
 var app = builder.Build();
+
+// Toki staff only (TK-189), never self-service: dotnet run --project src/Hosts/Toki.Host.Cloud -- grant-platform-admin <email>
+if (args is [PlatformCli.Grant or PlatformCli.Revoke, var email])
+{
+    Environment.ExitCode = await PlatformCli.RunAsync(app.Services, args[0], email);
+    return;
+}
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
@@ -100,6 +111,7 @@ app.MapIngest();
 app.MapPanel();
 app.MapAssistant();
 app.MapEcfRelay();
+app.MapPlatform();
 
 await app.RunAsync();
 

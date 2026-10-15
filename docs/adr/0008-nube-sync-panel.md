@@ -54,6 +54,7 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 | `Toki.Purchasing.Contracts.PurchasePostedV1` / `PurchaseVoidedV1` | `Purchases`, `PurchaseVoids` | |
 | `Toki.Customers.Contracts.OnAccountChargeRecordedV1` | `CustomerCharges` | Uno por venta. |
 | `Toki.Customers.Contracts.CustomerPaymentRecordedV1` | `CustomerPayments` | |
+| `Toki.Sync.Contracts.NodeHeartbeatV1` | `NodeHeartbeats`, `DailyUsage` | El latido del nodo (TK-190): el más reciente por nodo y por tienda y día. Ver abajo. |
 
 - Los nombres (usuarios y cajas) se quedan con el evento más reciente según `occurredUtc`: uno viejo que llegue tarde no deshace un cambio.
 - **Foto inicial**: al conectar la tienda (`/api/sync/connect`), en la misma transacción, Identity y CashRegister escriben en el outbox un `UserProfileChangedV1` por cada usuario y un `RegisterChangedV1` por cada caja (`ICloudSnapshot` en `Toki.Sync.Contracts`). Así una tienda que se conecta tarde también manda los nombres que ya existían. Se repite en cada conexión; no hace daño.
@@ -62,6 +63,18 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 **Panel**: ASP.NET Core Identity con *bearer tokens* (`MapIdentityApi`) para los usuarios del panel. Cada usuario pertenece a un tenant, y todas las consultas filtran por el tenant del token.
 - Nombres: `GET /api/panel/sales/by-cashier` trae `cashierName`; `GET /api/panel/shifts` trae `registerName` y `cashierName`; los avisos de `GET /api/panel/summary` (`issues`) de tipo `ShiftDifference` traen `cashierName` y `registerName`, y el mensaje incluye el nombre del cajero. Son `null` mientras la tienda no haya mandado el nombre.
 - `GET /api/panel/receivables?storeId=&limit=10` → `{ total, customerCount, topDebtors: [{ customerId, storeId, debt }] }`: el fiado de hoy (cargos de ventas no anuladas, menos devoluciones a la cuenta de esas ventas, menos abonos). `shortcut:` un abono anulado no manda evento, así que después de uno la deuda sale más baja; los clientes salen por id (no hay evento con su nombre).
+
+**Latido del nodo (TK-190)**
+- Al arrancar y cada hora (`Sync:HeartbeatMinutes`), mientras la tienda está conectada, Sync escribe en el outbox un `NodeHeartbeatV1`: versión, sistema operativo, minutos encendido, cajas con turnos en 30 días, turnos abiertos, eventos por subir, tipo del último error al subir (`http_503`, `unreachable`, `other`), funciones (fiado, proveedor e-CF; balanza e impresora quedan `null` porque las conoce la caja), puesta en marcha (nombre y RNC guardados como sí/no, productos activos) y los totales de ayer y hoy (facturas, monto, cajeros, anulaciones, devuelto).
+- Sube con los demás eventos, así que sin internet llega después. Los datos los lee de los reportes de los otros módulos (`ISalesReports`, `ICashRegisterReports`, `ICustomerReports`, `IInventoryReports`, `ISettingsQueries`).
+- **Nunca** lleva nombres, PIN, códigos, clientes, RNC ni productos. Las definiciones de las métricas y las notas de privacidad están en `docs/metricas-producto.md`.
+
+**Plataforma: consola del equipo de Toki (TK-189)**
+- Rol de plataforma `PlatformAdmin`: un *claim* `platform_role=admin` en el token. Sale de la lista de correos `Platform:Admins` en la configuración de la nube, o se guarda en la cuenta con el comando de consola `dotnet run --project src/Hosts/Toki.Host.Cloud -- grant-platform-admin <correo>` (y `revoke-platform-admin`). La cuenta debe existir (registrada en el panel) y el cambio cuenta desde su siguiente entrada. Nunca se pide desde el panel.
+- `/api/platform/*` exige la política `PlatformAdmin` y lee todos los tenants. Cada llamada (también las que fallan) deja una fila en `cloud.PlatformAudit` con quién, ruta y consulta y cuándo; el comando de consola también.
+- Clientes: `GET /tenants?search=` (correo, tienda, caja o id), `GET /tenants/{id}` (tiendas, nodos con versión, último envío, pendientes y fallidos, cajas, usuarios, códigos de conexión sin el código, avisos de sincronización y faltantes de 7 días), `GET /stores/{id}` (lista de puesta en marcha, funciones, nodos y los últimos 14 días). Métricas en `/metrics/*` (`docs/metricas-producto.md`).
+- Solo lectura, salvo: `POST /tenants/{id}/disable` y `/enable` (`Tenants.DisabledUtc`), y `POST /nodes/{id}/revoke` (`Nodes.RevokedUtc`). Un tenant desactivado no puede subir (la autenticación del nodo falla con 401 y la tienda guarda sus eventos y reintenta), sus usuarios no pueden entrar (el login responde 401 `NotAllowed`) y un token emitido antes recibe 403 en el panel. Un nodo revocado recibe 401; la tienda se conecta de nuevo con un código.
+- El panel muestra el área **Plataforma** solo si `GET /api/me` trae `isPlatformAdmin: true`; la API vuelve a comprobar el rol en cada llamada.
 
 **Asistente**: `POST /api/assistant/ask { question, history }`. El modelo recibe herramientas de solo lectura (ventas por día, productos más vendidos, cuadres de turnos, ventas por cajero, mezcla de pagos, estado de la sincronización y cuentas por cobrar), cada una con un rango de fechas máximo. Las respuestas de las herramientas traen los nombres de cajeros y cajas, así que el asistente dice "Yudelka" y no un id. Contesta en español con cifras en RD$. Sin datos personales en los logs.
 

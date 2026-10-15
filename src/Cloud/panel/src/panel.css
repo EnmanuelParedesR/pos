@@ -10,3 +10,35 @@ html, body { background: #F6F5F2; }
 .store__name { font-size: var(--t-20); font-weight: 700; letter-spacing: -0.01em; }
 .nodes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .nodes li { display: flex; align-items: center; gap: 12px; min-height: 52px; border-top: 1px solid var(--line); }
+
+/* Plataforma (Toki staff, TK-189 / TK-190) */
+.esc-admin .esc-pill--brand { background: var(--brand-50); color: var(--brand-700); }
+.esc-admin .esc-pill--brand::before { background: var(--brand-500); }
+.platform-stats .esc-stat { border-top: 1px solid var(--line); }
+.platform-stats:not(.platform-stats--4) .esc-stat:nth-child(3n + 1) { border-left: 0; }
+.platform-stats--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 600px) {
+  .platform-stats.esc-stats { grid-template-columns: 1fr 1fr; }
+  .platform-stats .esc-stat:nth-child(3) { grid-column: auto; border-top: 1px solid var(--line); }
+  .platform-stats .esc-stat:nth-child(odd) { border-left: 0; }
+  .platform-stats .esc-stat:nth-child(even) { border-left: 1px solid var(--line); }
+}
+.platform-stats .esc-stat__note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.platform-kv { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.platform-kv li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; border-top: 1px solid var(--line); }
+.platform-kv li:first-child { border-top: 0; }
+.platform-kv b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.platform-warn { color: var(--warning); }
+.platform-subtitle { font-size: var(--t-13); font-weight: 600; color: var(--text-2); margin: 20px 0 8px; }
+.platform-cohorts td.platform-cohort { font-weight: 600; }
+.platform-checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.platform-check { display: flex; align-items: flex-start; gap: 10px; min-height: 40px; padding-top: 8px; }
+.platform-check__mark { width: 24px; height: 24px; border-radius: 999px; display: grid; place-items: center; flex: none; }
+.platform-check--ok .platform-check__mark { background: var(--success-bg); color: var(--success); }
+.platform-check--missing .platform-check__mark { background: var(--warning-bg); color: var(--warning); }
+.platform-check--unknown .platform-check__mark { background: var(--surface-2); color: var(--text-3); }
+.platform-meter { height: 4px; border-radius: 999px; background: var(--surface-2); margin-top: 4px; max-width: 160px; }
+.platform-meter > div { height: 100%; border-radius: 999px; background: var(--data-1); }
+.esc-admin .platform-wrap td:first-child { white-space: normal; overflow-wrap: anywhere; }
+.platform-stats--4 .esc-stat:first-child .esc-stat__value { white-space: normal; }
+.esc-admin .esc-page-head h1 { overflow-wrap: anywhere; }

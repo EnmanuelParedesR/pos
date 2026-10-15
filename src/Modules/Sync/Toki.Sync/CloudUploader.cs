@@ -42,7 +42,7 @@ internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, Clou
                 if (batch.Count == 0) break;
 
                 using var response = await cloud.SendAsync(connection, IngestPath, Gzip(batch), ct);
-                if (!response.IsSuccessStatusCode) throw new CloudRefused($"La nube respondió {(int)response.StatusCode} al subir los datos.");
+                if (!response.IsSuccessStatusCode) throw new CloudRefused($"{RefusedPrefix}{(int)response.StatusCode} al subir los datos.");
                 var confirmed = (await response.Content.ReadFromJsonAsync<IngestResponse>(ct))?.Accepted ?? [];
                 var ids = batch.Select(m => m.Id).Intersect(confirmed).ToList();
                 var now = clock.GetUtcNow().UtcDateTime;
@@ -59,7 +59,7 @@ internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, Clou
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            var error = ex is CloudRefused or InvalidOperationException ? ex.Message : $"No se pudo conectar con la nube: {ex.Message}";
+            var error = ex is CloudRefused or InvalidOperationException ? ex.Message : $"{UnreachablePrefix}: {ex.Message}";
             if (error.Length > 2000) error = error[..2000];
             log.LogWarning(ex, "Could not upload events to the cloud");
             await db.Connections.ExecuteUpdateAsync(s => s.SetProperty(c => c.LastError, error), ct);
@@ -73,6 +73,18 @@ internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, Clou
         var seconds = Math.Min(900, Math.Pow(2, Math.Clamp(failures, 1, 11) - 1));
         return TimeSpan.FromSeconds(seconds * (500 + RandomNumberGenerator.GetInt32(501)) / 1000);
     }
+
+    /// <summary>The kind of a saved <c>LastError</c> for the heartbeat ("http_503", "unreachable", "other"): never its text, which can carry a URL.</summary>
+    public static string? ErrorCode(string? error) => error switch
+    {
+        null => null,
+        _ when error.StartsWith(RefusedPrefix, StringComparison.Ordinal) => "http_" + new string([.. error[RefusedPrefix.Length..].TakeWhile(char.IsAsciiDigit)]),
+        _ when error.StartsWith(UnreachablePrefix, StringComparison.Ordinal) => "unreachable",
+        _ => "other",
+    };
+
+    private const string RefusedPrefix = "La nube respondió ";
+    private const string UnreachablePrefix = "No se pudo conectar con la nube";
 
     // { events: [{ id, type, aggregateId, occurredUtc, payload }] }; the payload goes as the event's own JSON, not as a string.
     private static ByteArrayContent Gzip(List<OutboxMessage> batch)

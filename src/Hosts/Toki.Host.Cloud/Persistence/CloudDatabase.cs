@@ -11,13 +11,18 @@ internal sealed class CreateCloudDatabaseOnStartup(IServiceProvider services, IC
     {
         if (!config.GetValue("Database:CreateOnStartup", true)) return;
         await using var scope = services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<CloudDbContext>();
+        await PrepareAsync(scope.ServiceProvider.GetRequiredService<CloudDbContext>(), cancellationToken);
+    }
+
+    /// <summary>Also used by the console commands (grant-platform-admin), which run without starting the host.</summary>
+    public static async Task PrepareAsync(CloudDbContext db, CancellationToken ct)
+    {
         if (db.Database.IsSqlServer())
         {
             db.Database.SetCommandTimeout(TimeSpan.FromMinutes(5)); // a paused serverless database takes up to a minute to resume
-            await db.Database.MigrateAsync(cancellationToken);
+            await db.Database.MigrateAsync(ct);
         }
-        else await db.Database.EnsureCreatedAsync(cancellationToken);
+        else await db.Database.EnsureCreatedAsync(ct);
     }
 
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;

@@ -391,6 +391,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<DateTime?>("RevokedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<byte[]>("SecretHash")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -407,6 +410,47 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.HasIndex("TenantId", "StoreId");
 
                     b.ToTable("Nodes", "cloud");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Persistence.PlatformAuditRecord", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("Path")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AtUtc");
+
+                    b.ToTable("PlatformAudit", "cloud");
                 });
 
             modelBuilder.Entity("Toki.Host.Cloud.Persistence.ReplicaCashMovement", b =>
@@ -548,6 +592,42 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("CustomerPayments", "replica");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Persistence.ReplicaDailyUsage", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<int>("ActiveCashiers")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("Returns")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<int>("Sales")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("SalesAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<DateTime>("SentUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Voids")
+                        .HasColumnType("int");
+
+                    b.HasKey("TenantId", "StoreId", "Day");
+
+                    b.ToTable("DailyUsage", "replica");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Persistence.ReplicaFiscalDocument", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -588,6 +668,74 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.HasIndex("TenantId", "IssuedUtc");
 
                     b.ToTable("FiscalDocuments", "replica");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Persistence.ReplicaNodeHeartbeat", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ActiveProducts")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ActiveRegisters")
+                        .HasColumnType("int");
+
+                    b.Property<string>("AppVersion")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("BusinessNameSet")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("FiscalProvider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<bool>("OnAccount")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("OpenShifts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Os")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("OutboxBacklog")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("PrinterConfigured")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("RncSet")
+                        .HasColumnType("bit");
+
+                    b.Property<bool?>("ScaleConfigured")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("SentUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("UptimeMinutes")
+                        .HasColumnType("int");
+
+                    b.HasKey("TenantId", "NodeId");
+
+                    b.ToTable("NodeHeartbeats", "replica");
                 });
 
             modelBuilder.Entity("Toki.Host.Cloud.Persistence.ReplicaOpenedShift", b =>
@@ -1098,6 +1246,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DisabledUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("Name")

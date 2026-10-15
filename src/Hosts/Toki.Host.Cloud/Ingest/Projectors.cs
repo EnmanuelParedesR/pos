@@ -9,6 +9,7 @@ using Toki.Identity.Contracts;
 using Toki.Inventory.Contracts;
 using Toki.Purchasing.Contracts;
 using Toki.Sales.Contracts;
+using Toki.Sync.Contracts;
 
 namespace Toki.Host.Cloud.Ingest;
 
@@ -170,7 +171,30 @@ internal static class Projectors
                 ReferenceId = m.ReferenceId, OccurredUtc = e.OccurredUtc,
             });
         },
+        // TK-190: the newest heartbeat per node and per store day wins; one arriving late (it waited offline) never undoes a newer one.
+        [Name<NodeHeartbeatV1>()] = async (db, e, ct) =>
+        {
+            var h = Read<NodeHeartbeatV1>(e);
+            var node = await db.NodeHeartbeats.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.NodeId == e.NodeId, ct);
+            if (node is null) db.NodeHeartbeats.Add(node = new ReplicaNodeHeartbeat { TenantId = e.TenantId, NodeId = e.NodeId });
+            if (node.SentUtc <= e.OccurredUtc)
+            {
+                (node.StoreId, node.SentUtc, node.AppVersion, node.Os, node.UptimeMinutes) = (e.StoreId, e.OccurredUtc, Cut(h.AppVersion, 50), Cut(h.Os, 200), h.UptimeMinutes);
+                (node.ActiveRegisters, node.OpenShifts, node.OutboxBacklog, node.LastErrorCode) = (h.ActiveRegisters, h.OpenShifts, h.OutboxBacklog, h.LastErrorCode is null ? null : Cut(h.LastErrorCode, 30));
+                (node.OnAccount, node.ScaleConfigured, node.PrinterConfigured, node.FiscalProvider) = (h.Features.OnAccount, h.Features.ScaleConfigured, h.Features.PrinterConfigured, Cut(h.Features.FiscalProvider, 30));
+                (node.BusinessNameSet, node.RncSet, node.ActiveProducts) = (h.Setup.BusinessNameSet, h.Setup.RncSet, h.Setup.ActiveProducts);
+            }
+            foreach (var d in h.Days)
+            {
+                var day = await db.DailyUsage.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.StoreId == e.StoreId && x.Day == d.Day, ct);
+                if (day is null) db.DailyUsage.Add(day = new ReplicaDailyUsage { TenantId = e.TenantId, StoreId = e.StoreId, Day = d.Day });
+                else if (day.SentUtc > e.OccurredUtc) continue;
+                (day.SentUtc, day.Sales, day.SalesAmount, day.ActiveCashiers, day.Voids, day.Returns) = (e.OccurredUtc, d.Sales, d.SalesAmount, d.ActiveCashiers, d.Voids, d.Returns);
+            }
+        },
     };
+
+    private static string Cut(string value, int max) => value.Length > max ? value[..max] : value;
 
     private static async Task Return(CloudDbContext db, InboxEvent e, ReturnRecordedV2 r, CancellationToken ct)
     {

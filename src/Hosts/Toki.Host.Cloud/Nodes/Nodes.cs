@@ -72,6 +72,9 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
         var node = await db.Nodes.AsNoTracking().SingleOrDefaultAsync(n => n.Id == nodeId, Context.RequestAborted);
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value[(dot + 1)..]));
         if (node is null || !CryptographicOperations.FixedTimeEquals(hash, node.SecretHash)) return AuthenticateResult.Fail("Invalid node credentials.");
+        // TK-189: Toki staff revoked the node or disabled the tenant. The node keeps its events and retries; nothing is lost.
+        if (node.RevokedUtc is not null) return AuthenticateResult.Fail("Revoked node.");
+        if (await db.Tenants.AnyAsync(t => t.Id == node.TenantId && t.DisabledUtc != null, Context.RequestAborted)) return AuthenticateResult.Fail("Disabled tenant.");
 
         var identity = new ClaimsIdentity(
         [

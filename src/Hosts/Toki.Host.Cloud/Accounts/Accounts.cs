@@ -1,5 +1,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -7,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Persistence;
+using Toki.Host.Cloud.Platform;
 using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Accounts;
@@ -37,22 +40,49 @@ internal sealed class CloudUserStore(CloudDbContext db, TimeProvider clock, Iden
     }
 }
 
-/// <summary>Puts the tenant in the bearer token.</summary>
-internal sealed class CloudClaimsFactory(UserManager<CloudUser> users, IOptions<IdentityOptions> options)
+/// <summary>Puts the tenant in the bearer token, and the platform role (TK-189) for the e-mails in <c>Platform:Admins</c>.
+/// Accounts granted with the CLI carry it as a stored user claim, which the base factory already adds.</summary>
+internal sealed class CloudClaimsFactory(UserManager<CloudUser> users, IOptions<IdentityOptions> options, IConfiguration config)
     : UserClaimsPrincipalFactory<CloudUser>(users, options)
 {
     protected override async Task<ClaimsIdentity> GenerateClaimsAsync(CloudUser user)
     {
         var identity = await base.GenerateClaimsAsync(user);
         identity.AddClaim(new Claim(TenantClaims.TenantId, user.TenantId.ToString()));
+        var admins = config.GetSection("Platform:Admins").Get<string[]>() ?? [];
+        if (!identity.HasClaim(PlatformAuth.RoleClaim, PlatformAuth.Admin) && admins.Contains(user.Email, StringComparer.OrdinalIgnoreCase))
+            identity.AddClaim(new Claim(PlatformAuth.RoleClaim, PlatformAuth.Admin));
         return identity;
+    }
+}
+
+/// <summary>A disabled tenant's users cannot sign in (TK-189); the login answers 401 "NotAllowed".</summary>
+internal sealed class CloudSignInManager(UserManager<CloudUser> users, IHttpContextAccessor http, IUserClaimsPrincipalFactory<CloudUser> claims,
+    IOptions<IdentityOptions> options, ILogger<SignInManager<CloudUser>> logger, IAuthenticationSchemeProvider schemes, IUserConfirmation<CloudUser> confirmation,
+    CloudDbContext db)
+    : SignInManager<CloudUser>(users, http, claims, options, logger, schemes, confirmation)
+{
+    public override async Task<bool> CanSignInAsync(CloudUser user) =>
+        await base.CanSignInAsync(user) && !await db.Tenants.AnyAsync(t => t.Id == user.TenantId && t.DisabledUtc != null);
+}
+
+/// <summary>Part of the panel policy: a token issued before the tenant was disabled stops working too (403).</summary>
+internal static class ActiveTenant
+{
+    public static async Task<bool> IsActiveAsync(AuthorizationHandlerContext context)
+    {
+        if (context.Resource is not HttpContext http || context.User.FindFirstValue(TenantClaims.TenantId) is not { } value || !Guid.TryParse(value, out var tenantId))
+            return false;
+        var db = http.RequestServices.GetRequiredService<CloudDbContext>();
+        return !await db.Tenants.AnyAsync(t => t.Id == tenantId && t.DisabledUtc != null, http.RequestAborted);
     }
 }
 
 public sealed record CreateStoreRequest(string? Name);
 public sealed record StoreResponse(Guid Id, string Name, DateTime CreatedUtc, DateTime? LastEventUtc, DateTime? LastSyncUtc, int Nodes);
 public sealed record ConnectionCodeResponse(string Code, DateTime ExpiresUtc);
-public sealed record MeResponse(string? Email, Guid TenantId, string TenantName);
+/// <param name="IsPlatformAdmin">Toki staff (TK-189): the panel shows the "Plataforma" area.</param>
+public sealed record MeResponse(string? Email, Guid TenantId, string TenantName, bool IsPlatformAdmin);
 
 internal static class StoreEndpoints
 {
@@ -66,7 +96,7 @@ internal static class StoreEndpoints
         {
             var tenantId = user.GetTenantId();
             var tenant = await db.Tenants.AsNoTracking().SingleAsync(t => t.Id == tenantId, ct);
-            return Results.Ok(new MeResponse(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, tenant.Id, tenant.Name));
+            return Results.Ok(new MeResponse(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, tenant.Id, tenant.Name, user.IsPlatformAdmin()));
         });
 
         api.MapGet("/stores", async (ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>

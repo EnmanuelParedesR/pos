@@ -8,6 +8,7 @@ import { SalesPage } from "./pages/SalesPage";
 import { ShiftsPage } from "./pages/ShiftsPage";
 import { StoresPage } from "./pages/StoresPage";
 import { AssistantPage } from "./pages/AssistantPage";
+import { PlatformMetricsPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
 
 /** What every screen gets from the frame: the tenant's stores and the selected one ("" = all). */
 export interface PanelContext {
@@ -45,6 +46,15 @@ export function App() {
         <Route path="shifts" element={<ShiftsPage />} />
         <Route path="stores" element={<StoresPage />} />
         <Route path="assistant" element={<AssistantPage />} />
+        {/* Toki staff only (TK-189); the API checks the role on every call anyway. */}
+        {me.isPlatformAdmin && (
+          <>
+            <Route path="platform" element={<PlatformMetricsPage />} />
+            <Route path="platform/tenants" element={<PlatformTenantsPage />} />
+            <Route path="platform/tenants/:tenantId" element={<PlatformTenantPage />} />
+            <Route path="platform/stores/:storeId" element={<PlatformStorePage />} />
+          </>
+        )}
         <Route path="*" element={<SummaryPage />} />
       </Route>
     </Routes>
@@ -58,6 +68,8 @@ const sections: { to: string; label: string; icon: IconName }[] = [
   { to: "/stores", label: "Tiendas", icon: "store" },
   { to: "/assistant", label: "Asistente", icon: "sparkles" },
 ];
+
+const platformSection = { to: "/platform", label: "Plataforma", icon: "shield" as IconName };
 
 const collapsedKey = "toki.menuCollapsed";
 
@@ -76,6 +88,8 @@ function Shell({ me }: { me: Me }) {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const { pathname } = useLocation();
   const context: PanelContext = { stores: stores.data ?? [], reloadStores: stores.reload, storeId, setStoreId };
+  const nav = me.isPlatformAdmin ? [...sections, platformSection] : sections;
+  const onPlatform = pathname.startsWith("/platform");
 
   const toggle = () => {
     setCollapsed(!collapsed);
@@ -97,10 +111,10 @@ function Shell({ me }: { me: Me }) {
           </button>
         </div>
         <div className="esc-side__store">
-          <b>{me.tenantName}</b>Panel del dueño
+          <b>{me.tenantName}</b>{me.isPlatformAdmin ? "Panel y plataforma" : "Panel del dueño"}
         </div>
         <nav className="esc-side__nav" aria-label="Secciones">
-          {sections.map((s) => (
+          {nav.map((s) => (
             <NavLink key={s.to} to={s.to} end={s.to === "/"} title={s.label}>
               <Icon name={s.icon} />
               <span className="esc-side__label">{s.label}</span>
@@ -113,7 +127,8 @@ function Shell({ me }: { me: Me }) {
               {(me.email ?? me.tenantName).slice(0, 1).toUpperCase()}
             </span>
             <div>
-              <b>{me.email ?? me.tenantName}</b>Dueño
+              <b>{me.email ?? me.tenantName}</b>
+              {me.isPlatformAdmin ? "Equipo de Toki" : "Dueño"}
             </div>
           </div>
           <button type="button" className="esc-side__item" title="Salir" onClick={signOut}>
@@ -133,13 +148,13 @@ function Shell({ me }: { me: Me }) {
 
       <main className="esc-main">
         <div className="esc-page">
-          {pathname !== "/assistant" && <AskBar />}
+          {pathname !== "/assistant" && !onPlatform && <AskBar />}
           <Outlet context={context} />
         </div>
       </main>
 
       <nav className="esc-tabbar" aria-label="Secciones">
-        {sections.map((s) => (
+        {nav.map((s) => (
           <NavLink key={s.to} to={s.to} end={s.to === "/"}>
             <Icon name={s.icon} size={22} />
             {s.label}

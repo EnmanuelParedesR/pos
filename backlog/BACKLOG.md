@@ -184,8 +184,8 @@ Decisión: ADR-0008. Despliegue: `docs/despliegue-azure.md`.
 | TK-138 | Caja: Configuración → Nube (conectar con el código del panel, estado, desconectar) | ✅ Probado de punta a punta: caja → API local → nube → panel |
 | TK-139 | Desplegar en Azure (Bicep, base, API nube, panel, modelo del asistente) y probar el asistente con el modelo real | ⬜ Necesita Azure CLI y `az login` del dueño |
 | TK-188 | Análisis de la competencia: Poszy (poszy.com) frente a Toki; brechas y tickets nuevos | 🔨 |
-| TK-189 | Consola de superadministrador (equipo de Toki): todos los clientes, tiendas, cajas, equipos, licencias, versión y estado de sincronización, con acceso de solo lectura y auditado | 🔨 |
-| TK-190 | Métricas de producto: activación, uso, retención y salud por tienda (latido del nodo, eventos de uso agregados, sin datos personales) en la consola | 🔨 |
+| TK-189 | Consola de superadministrador (equipo de Toki): todos los clientes, tiendas, cajas, equipos, licencias, versión y estado de sincronización, con acceso de solo lectura y auditado. Hecho: rol `PlatformAdmin` (config `Platform:Admins` o `grant-platform-admin`), `/api/platform/*` auditado, desactivar cliente y revocar caja, área Plataforma en el panel. Pendiente: plan/licencia (la nube no la conoce) | 🟡 |
+| TK-190 | Métricas de producto: activación, uso, retención y salud por tienda (latido del nodo, eventos de uso agregados, sin datos personales) en la consola. Hecho: `NodeHeartbeatV1`, `/api/platform/metrics/*`, tablero y `docs/metricas-producto.md`. Pendiente: balanza e impresora configuradas (las conoce la caja, no el servidor) | 🟡 |
 
 ## M13 · e-CF propio con la DGII
 
