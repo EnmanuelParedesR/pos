@@ -1,0 +1,86 @@
+# Permisos: cómo están y cómo segmentarlos
+
+Pedido del dueño (15 de octubre de 2026): el dueño maneja sus propios usuarios y les da permisos dentro de la plataforma (abrir caja, cerrar caja, etc.). Este documento revisa los 27 permisos de hoy y propone la segmentación. Tickets: TK-212 a TK-217.
+
+## Lo que ya funciona
+
+- **Roles, no permisos sueltos por persona.** Cada usuario tiene un rol; el dueño crea y edita roles en Configuración → Roles, con casillas por permiso agrupadas en cuatro bloques. Administrador no se edita y siempre tiene todo.
+- **El servidor decide.** Cada endpoint pide su permiso (`RequirePermission`); la pantalla solo esconde.
+- **Autorización de supervisor.** Si el cajero no tiene el permiso, un supervisor que sí lo tiene lo autoriza con su PIN. Desde TK-210 la tienda decide qué acciones lo piden.
+- **Protecciones.** Solo un Administrador crea o cambia administradores; nadie se desactiva ni se cambia el rol a sí mismo.
+
+## Problemas encontrados
+
+| # | Problema | Ejemplo real |
+|---|---|---|
+| 1 | `register.operate` junta abrir turno, cerrar turno, entradas de efectivo y cobrar abonos de fiado. | No se puede tener un cajero que venda pero no abra ni cierre la caja (la abre el encargado en la mañana). |
+| 2 | Cerrar el turno siempre pide `register.approve-close`, que además deja ver y cerrar turnos de otras cajas. | El cajero que hace su propio cierre ciego necesita al supervisor aunque no haya diferencia. |
+| 3 | `settings.manage` junta datos del negocio, cajas, respaldos, auditoría, licencia, nube y la política de autorizaciones. | Para dejar que el encargado haga respaldos hay que darle también la licencia y la nube. |
+| 4 | `purchasing.manage` junta compras, suplidores, gastos y pagos a suplidores (que sacan dinero). | El que recibe mercancía puede también pagar facturas. |
+| 5 | `reports.view` junta reportes de ventas, Turnos y cuadres (Z de otros) y reportes de la DGII. | El contador ve los 606/607 pero también los cuadres de cada cajero; o al revés. |
+| 6 | **Escalada de privilegios:** quien tiene `users.manage` puede crear un rol con cualquier permiso y dárselo a un usuario nuevo. | Un supervisor con `users.manage` se fabrica un usuario con `costs.view` y `settings.manage`. |
+| 7 | Solo hay tres roles sembrados (Administrador, Supervisor, Cajero). | No hay punto de partida para "Inventario" o "Contador". |
+| 8 | El panel en la nube tiene una sola cuenta por negocio (el dueño). | El contador o un socio no pueden ver el panel sin la clave del dueño. |
+
+## Propuesta
+
+### Caja (TK-212)
+
+| Permiso | Qué deja hacer | Reemplaza |
+|---|---|---|
+| `register.open` | Abrir turno con fondo inicial | parte de `register.operate` |
+| `register.close` | Cerrar **su propio** turno con conteo ciego. Si hay diferencia y la política lo pide, el supervisor autoriza | parte de `register.operate` y de `register.approve-close` |
+| `register.cash-in` | Entradas de efectivo | parte de `register.operate` |
+| `register.withdraw` | Retiros y gastos de caja | igual |
+| `register.open-drawer` | Abrir la gaveta sin venta | igual |
+| `register.approve-close` | Autorizar cierres con diferencia y cerrar turnos de otras cajas | se queda, más estrecho |
+| `credit.collect` | Cobrar abonos de fiado en la caja | parte de `register.operate` |
+
+`sales.create` sigue siendo "vender". La política de autorizaciones (TK-210) gana una entrada "Cerrar turno con diferencia" en lugar de "Cerrar turno".
+
+### Administración (TK-213)
+
+| Permiso | Qué deja hacer |
+|---|---|
+| `settings.manage` | Datos del negocio, recibo, política de autorizaciones, nube, licencia |
+| `registers.manage` | Crear, renombrar cajas y asignarles equipo |
+| `backups.manage` | Hacer y restaurar respaldos |
+| `audit.view` | Ver la auditoría |
+| `shifts.view` | Ver Turnos y cuadres (Z de todas las cajas) |
+| `reports.view` | Reportes de ventas e inventario |
+| `fiscal.reports` | Reportes de la DGII (606, 607, 608) sin tocar certificado ni secuencias |
+| `fiscal.manage` | Certificado, secuencias, anulaciones, padrón |
+
+### Compras (TK-214)
+
+| Permiso | Qué deja hacer |
+|---|---|
+| `purchasing.manage` | Suplidores, compras, pedido sugerido, recibir mercancía |
+| `payables.pay` | Pagar a suplidores y registrar gastos con NCF |
+
+### Reglas (TK-215)
+
+- Nadie da un permiso que no tiene: al guardar un rol o asignarlo, el servidor rechaza cualquier permiso que el usuario que guarda no tenga (Administrador tiene todos).
+- Un rol en uso no se borra; siempre queda al menos un Administrador activo.
+- Cada cambio de rol o de usuario queda en la auditoría con el antes y el después.
+
+### Roles de partida (TK-216)
+
+Plantillas que el dueño puede usar tal cual o copiar y ajustar:
+
+| Rol | Permisos |
+|---|---|
+| Cajero | vender, cerrar su turno, entradas de efectivo, cobrar abonos |
+| Cajero con apertura | lo de Cajero + abrir turno |
+| Supervisor | todo lo de caja y ventas, autorizar cierres, clientes y fiado, ver inventario, Turnos y cuadres, reportes |
+| Inventario | productos, existencias, ajustes, conteos, transferencias, compras (sin pagar) |
+| Contador | reportes, reportes de la DGII, costos, Turnos y cuadres; solo lectura |
+| Administrador | todo (no se edita) |
+
+### Migración sin sorpresas
+
+Los roles que el dueño ya editó conservan exactamente lo que podían hacer: quien tenía `register.operate` recibe `register.open`, `register.close`, `register.cash-in` y `credit.collect`; quien tenía `settings.manage` recibe `registers.manage`, `backups.manage` y `audit.view`; quien tenía `reports.view` recibe `shifts.view` y `fiscal.reports`; quien tenía `purchasing.manage` recibe `payables.pay`. Se hace con SQL a mano en la migración de Identity, como en TK-210.
+
+### Panel en la nube (TK-217)
+
+Miembros del negocio en el panel con dos roles: **Dueño** (todo, incluye conectar cajas e invitar) y **Solo lectura** (resumen, ventas, cuadres, asistente). Invitación por correo con enlace de un solo uso. Es independiente de los usuarios de la tienda (que entran con PIN en la caja).

@@ -268,6 +268,19 @@ Origen: `docs/competencia-poszy.md` (TK-188). Alcance y criterios de aceptación
 | TK-203 | Revisar el plan de entrada frente a Poszy (colmado de una caja) (S, decisión del dueño) | ⬜ |
 | TK-210 | Autorizaciones de supervisor opcionales por tienda (issue #179): Configuración → Cajas → "Pedir autorización de supervisor para…", un interruptor por acción (`/api/settings/approvals`, `IApprovalPolicy` en el decorador y en la venta). Por defecto las de hoy encendidas; "Quitar líneas o anular la venta en curso" (`sales.remove-line`, nueva) apagada. Cada autorización concedida queda en la auditoría (`approval.granted`). Probado también en SQL Express | ✅ |
 
+## M16 · Permisos segmentados
+
+Origen: pedido del dueño (15/10/2026): cada negocio maneja sus usuarios y les da permisos finos (abrir caja, cerrar caja, etc.). Análisis: `docs/permisos.md`.
+
+| Ticket | Descripción | Estado |
+|---|---|---|
+| TK-212 | Permisos de caja separados: `register.open`, `register.close` (su propio turno), `register.cash-in`, `credit.collect`; `register.approve-close` solo para diferencias y turnos de otros | 🔨 |
+| TK-213 | Separar `settings.manage` y `reports.view`: `registers.manage`, `backups.manage`, `audit.view`, `shifts.view`, `fiscal.reports` | 🔨 |
+| TK-214 | Separar compras de pagos: `payables.pay` (pagos a suplidores y gastos con NCF) | 🔨 |
+| TK-215 | Nadie da un permiso que no tiene; siempre un Administrador activo; cambios de rol y usuario en la auditoría con antes y después | 🔨 |
+| TK-216 | Roles de partida: Cajero con apertura, Inventario, Contador | 🔨 |
+| TK-217 | Panel en la nube: miembros del negocio (Dueño, Solo lectura) con invitación por correo | ⬜ |
+
 ## Revisiones
 
 | Revisión | Hito | Estado |
