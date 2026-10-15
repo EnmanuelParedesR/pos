@@ -23,11 +23,14 @@ src/
                     Toki.BuildingBlocks (comandos, decoradores, unidad de trabajo, outbox, auditoría, permisos)
   Modules/          un proyecto por módulo; cada caso de uso en un archivo de Features/
   Hosts/            Toki.Host.Local (API de la tienda)
+  Client/           Toki.Escuadra (sistema de diseño), Toki.Client.UI (pantallas),
+                    Toki.Client.Wpf (app de la tienda), Toki.Client.Web (pantallas en el navegador, desarrollo)
 tests/
   Toki.UnitTests            reglas de dominio
   Toki.IntegrationTests     la API real en memoria, por HTTP, sobre una base nueva
   Toki.ArchitectureTests    dependencias entre módulos, sin SP/triggers, sin paquetes comerciales
   Toki.E2ETests             el proceso real de la API y un día completo de tienda (3 cajas, reinicio, cierres)
+  Toki.Client.UI.Tests      pantallas con bUnit sobre una API falsa
 ```
 
 ## Correr
@@ -42,11 +45,13 @@ dotnet test
 dotnet run --project src/Hosts/Toki.Host.Local
 ```
 
-En desarrollo usa SQLite (`toki.dev.db`); la documentación de la API queda en `/scalar`. Para SQL Server, cambie `Database` en `appsettings.json`. Para correr las pruebas contra SQL Server en contenedor: `TOKI_TEST_DB=sqlserver dotnet test` (necesita Docker).
+En desarrollo usa SQLite (`toki.dev.db`); la documentación de la API queda en `/scalar`. Con SQL Server Express instalado: `dotnet run --project src/Hosts/Toki.Host.Local --launch-profile SqlExpress`. Para correr las pruebas contra SQL Server: `TOKI_TEST_DB=sqlserver dotnet test`, con `TOKI_TEST_SQLSERVER="Server=.\SQLEXPRESS;Trusted_Connection=True;TrustServerCertificate=True"` para usar el SQL Express local o, sin esa variable, un contenedor (necesita Docker).
+
+Pantallas: con la API corriendo en `http://localhost:5000`, `dotnet run --project src/Client/Toki.Client.Web` y abra `http://localhost:5280` (la primera vez pide instalar la tienda o unir el equipo con un código). La app de la tienda es `src/Client/Toki.Client.Wpf` (Windows; la URL de la API está en su `appsettings.json`). Ver docs/adr/0007-frontend-blazor-hybrid.md.
 
 Contra SQL Server la API aplica sola las migraciones de cada módulo al arrancar. Para crear una migración nueva vea docs/adr/0005-migraciones-por-modulo.md (`dotnet tool restore` instala `dotnet-ef`).
 
-En producción (ppsettings.Production.json) escucha solo HTTPS en el puerto 5443 con un certificado propio de la PC principal, y escribe logs diarios en C:\ProgramData\Toki\logs.
+En producción (`appsettings.Production.json`) escucha solo HTTPS en el puerto 5443 con un certificado propio de la PC principal, y escribe logs diarios en C:\ProgramData\Toki\logs.
 
 Respaldos: el dueño define una frase (PUT /api/respaldos/frase); cada noche a las 23:30 la API respalda la base, la cifra con esa frase (AES-256-GCM) y guarda los 14 más nuevos en C:\ProgramData\Toki\respaldos (y una copia en Respaldo:CopiaEn, si se configura, por ejemplo una memoria USB o una carpeta de red). Para abrir un respaldo en cualquier PC: `Toki.Host.Local descifrar-respaldo <archivo> <salida>` con la frase.
 
