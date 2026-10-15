@@ -147,11 +147,15 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-114 | App de la tienda: WPF + BlazorWebView, token del equipo cifrado con DPAPI (escritura atómica), WebView2 cerrado (sin recargar, zoom, deslizar ni menú), errores no manejados al registro | 🟡 Compila; falta abrirla una vez en una PC de caja (y en la VM limpia) y comprobar a mano que Ctrl+R y deslizar no hacen nada (R7 #11) |
 | TK-115 | Host web de desarrollo (`Toki.Client.Web`) para ver y probar las pantallas en el navegador | ✅ |
 | TK-116 | Pruebas bUnit: carrito, cobro con total corregido, supervisor, PIN equivocado, F7; y de R7: sesión vencida, cobro incierto, devolución y cierre reintentados, conteo sin salir del campo, presentación, doble confirmación, F3, pantalla que falla | ✅ |
-| TK-117 | Balanza (`IScale`) por marca; hoy el peso se escribe | ⬜ |
-| TK-118 | Impresora térmica ESC/POS y gaveta; hoy la factura es una vista previa | ⬜ |
-| TK-119 | Incluir IBM Plex Sans (OFL) en `wwwroot/fuentes`; hoy usa la instalada o Segoe UI | ⬜ |
-| TK-120 | Administración que falta: inventario (ajustes, conteo, transferencias), compras, suplidores y gastos, clientes y abonos, facturas, reportes descargables, roles | ⬜ |
-| TK-121 | Abono de un cliente desde la caja | ⬜ |
+| TK-117 | Balanza (`IScale`) por marca; hoy el peso se escribe | 🔨 |
+| TK-118 | Impresora térmica ESC/POS y gaveta; hoy la factura es una vista previa | 🔨 |
+| TK-119 | Incluir IBM Plex Sans (OFL) en `wwwroot/fuentes`; hoy usa la instalada o Segoe UI | 🔨 |
+| TK-120 | Administración que falta (dividido en TK-184..187) | ↪ Reemplazado por TK-184, TK-185, TK-186 y TK-187 |
+| TK-184 | Administración: inventario (existencias, ajustes, conteo físico, transferencias, kardex por producto) | 🔨 |
+| TK-185 | Administración: compras, suplidores, gastos con NCF y pagos a suplidores | 🔨 |
+| TK-186 | Administración: clientes, fiado (estado de cuenta, abonos, anular abono) y roles y permisos | 🔨 |
+| TK-187 | Administración: facturas (buscar, ver, reimprimir) y reportes descargables (CSV/Excel, 606/607) | 🔨 |
+| TK-121 | Abono de un cliente desde la caja | 🔨 |
 | TK-122 | Fijar el certificado del nodo en el cliente al emparejar (con TK-091) | ⬜ |
 | TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real; incluye las de R7 #5 (escaneo ignorado en efectivo/PIN) y #8 (el foco nunca se pierde) | ⬜ |
 | TK-124 | Prueba de contratos en `Toki.IntegrationTests`: llamar a los endpoints reales y deserializar cada respuesta con `TokiApi.Json` en los records de `Contracts.cs` (R7 #13b) | ✅ `ClientContractTests`: el flujo de la caja de punta a punta con los records del cliente; falla si llega un campo no anulable vacío (también en registros anidados) |
@@ -190,13 +194,13 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-141 | Acceso a TesteCF, certificado de prueba y ADR-0009 | ⬜ |
 | TK-142 | Firma XMLDSig con el certificado del almacén de Windows (`CertStoreEcfSigner`) e importación del `.p12` | ✅ `CertificateEcfSigner` (`Fiscal:Signer` = `Certificate`); pendiente la pantalla de importación del `.p12` y el aviso de vencimiento (`docs/ecf-propio.md` §10.8) |
 | TK-143 | XML de e-CF 31/32/33/34 según el formato oficial, validado contra el XSD | ✅ `EcfXml` y XSD oficiales en `Toki.Fiscal/Schemas`; falta la prueba en TesteCF (TK-141) (`docs/ecf-propio.md` §10.8) |
-| TK-144 | Cliente DGII en el nodo (semilla → token, recepción, RFCE, resultados, TrackIds, anulación, directorio) | ⬜ |
-| TK-145 | Resumen de factura de consumo (RFCE) y umbral de RD$250,000 | ⬜ |
-| TK-146 | Cola de envío directo a la DGII (TrackId → resultado) y relevo convertido en archivo | ⬜ |
-| TK-147 | Rechazos de la DGII: e-CF de reemplazo, no nota de crédito | ⬜ |
-| TK-148 | Representación impresa y QR por tipo y ambiente, leyenda de contingencia, PDF para certificación | ⬜ |
-| TK-149 | Secuencias por ambiente y vencimiento opcional (32/34) | ⬜ |
-| TK-150 | Anulación de e-NCF (ANECF) | ⬜ |
+| TK-144 | Cliente DGII en el nodo (semilla → token, recepción, RFCE, resultados, TrackIds, anulación, directorio) | 🔨 |
+| TK-145 | Resumen de factura de consumo (RFCE) y umbral de RD$250,000 | 🔨 |
+| TK-146 | Cola de envío directo a la DGII (TrackId → resultado) y relevo convertido en archivo | 🔨 |
+| TK-147 | Rechazos de la DGII: e-CF de reemplazo, no nota de crédito | 🔨 |
+| TK-148 | Representación impresa y QR por tipo y ambiente, leyenda de contingencia, PDF para certificación | 🔨 |
+| TK-149 | Secuencias por ambiente y vencimiento opcional (32/34) | 🔨 |
+| TK-150 | Anulación de e-NCF (ANECF) | 🔨 |
 | TK-151 | Copia del certificado en Key Vault con consentimiento y firmador de nube restringido | ⬜ |
 | TK-152 | Servicios de receptor en la nube: Recepción (acuse firmado) y Aprobación Comercial | ⬜ |
 | TK-153 | Entrega de la 31 al comprador electrónico | ⬜ |
@@ -217,16 +221,16 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-161 | Que un contador revise un mes de 606/607 (R5 #3) | ⬜ |
 | TK-162 | Importar el padrón en segundo plano o con `SqlBulkCopy` si con el archivo real tarda más de un minuto (R5 #10) | ⬜ |
 | TK-163 | Fijar la imagen de SQL Server de CI con etiqueta fechada (R1) | ⬜ |
-| TK-164 | Reembolso en efectivo con centavos (R3) | ⬜ |
+| TK-164 | Reembolso en efectivo con centavos (R3) | 🔨 |
 | TK-165 | Nombres de cajeros y cajas en la nube (evento desde la tienda) para el panel y el asistente | ✅ `UserProfileChangedV1` y `RegisterChangedV1`, foto inicial al conectar; `cashierName`/`registerName` en el panel y el asistente |
 | TK-166 | Devoluciones con líneas en `ReturnRecordedV1` para restarlas en los más vendidos | ✅ `ReturnRecordedV2` con líneas (V1 se sigue proyectando) |
 | TK-167 | Proyectar en la réplica compras, clientes, apertura de turno y movimientos de caja | ✅ Más `GET /api/panel/receivables` y la herramienta `receivables` del asistente. Pendiente: abonos anulados y nombres de clientes no tienen evento |
-| TK-168 | Precio mayorista en la caja (R7 #16) | ⬜ |
-| TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | ⬜ |
+| TK-168 | Precio mayorista en la caja (R7 #16) | 🔨 |
+| TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | 🔨 |
 | TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ✅ Vitest 3, jsdom 30, Tiendas se refresca al conectar una caja |
 | TK-174 | Nube: evento de saldo de clientes (incluye anulación de abonos) y nombres de clientes, para que "Te deben" sea exacto y diga nombres | ⬜ |
-| TK-175 | Renombrar cajas desde Configuración (y enviar `RegisterChangedV1`) | ⬜ |
-| TK-178 | Bug: `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 | ⬜ |
+| TK-175 | Renombrar cajas desde Configuración (y enviar `RegisterChangedV1`) | 🔨 |
+| TK-178 | Bug: `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 | 🔨 |
 | TK-179 | Reportes en la tienda: mezcla de medios de pago y ventas por hora (hoy el Resumen suma los Z y no compara a la misma hora) | ⬜ |
 | TK-180 | Nube: unidad (lb/unidad) en más vendidos | ⬜ |
 | TK-181 | Panel: subir Vitest a 5 (aviso de npm audit en tinypool, solo desarrollo) | ⬜ |
