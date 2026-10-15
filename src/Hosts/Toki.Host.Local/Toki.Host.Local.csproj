@@ -14,6 +14,8 @@
     <ProjectReference Include="..\..\Modules\Configuracion\Toki.Configuracion\Toki.Configuracion.csproj" />
     <ProjectReference Include="..\..\Modules\Inventario\Toki.Inventario\Toki.Inventario.csproj" />
     <ProjectReference Include="..\..\Modules\Caja\Toki.Caja\Toki.Caja.csproj" />
+    <ProjectReference Include="..\..\Modules\Fiscal\Toki.Fiscal\Toki.Fiscal.csproj" />
+    <ProjectReference Include="..\..\Modules\Ventas\Toki.Ventas\Toki.Ventas.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.IntegrationTests" />

@@ -6,6 +6,8 @@ using Toki.BuildingBlocks;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Caja;
 using Toki.Configuracion;
+using Toki.Fiscal;
+using Toki.Ventas;
 using Toki.Identidad;
 using Toki.Inventario;
 
@@ -19,6 +21,8 @@ Assembly[] modulos =
     typeof(ConfiguracionModule).Assembly,
     typeof(InventarioModule).Assembly,
     typeof(CajaModule).Assembly,
+    typeof(FiscalModule).Assembly,
+    typeof(VentasModule).Assembly,
 ];
 
 builder.Services.AddToki(builder.Configuration, modulos);
@@ -26,6 +30,8 @@ builder.Services.AddIdentidadModule();
 builder.Services.AddConfiguracionModule();
 builder.Services.AddInventarioModule();
 builder.Services.AddCajaModule();
+builder.Services.AddFiscalModule();
+builder.Services.AddVentasModule();
 
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();

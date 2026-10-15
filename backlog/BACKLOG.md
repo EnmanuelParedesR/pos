@@ -55,22 +55,22 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 
 | Ticket | Qué | Estado |
 |---|---|---|
-| TK-040 | Motor de totales: ITBIS 18/16/0/exento con precios con ITBIS incluido, descuentos por línea y globales (% o monto), redondeo único | ⬜ |
-| TK-041 | Registrar venta en una sola transacción (venta, inventario, caja, e-CF, outbox, auditoría); idempotente por `VentaId` | ⬜ |
-| TK-042 | Pagos: efectivo, tarjeta, transferencia y fiado; mixto; solo el efectivo da devuelta | ⬜ |
-| TK-043 | Ventas en espera (varias por caja) | ⬜ |
-| TK-044 | Modelo de comprobante para imprimir y reimpresión | ⬜ |
-| TK-045 | Anular venta dentro del turno con supervisor y motivo (repone inventario, saca el dinero del turno) | ⬜ |
-| TK-046 | Devolución parcial contra la factura: por línea, repone inventario, devuelve efectivo o deja saldo a favor, emite nota de crédito | ⬜ |
-| TK-047 | Notas por línea (predefinidas por categoría o libres) | ⬜ |
+| TK-040 | Motor de totales: ITBIS 18/16/0/exento con precios con ITBIS incluido, descuentos por línea y globales (% o monto), redondeo único | ✅ |
+| TK-041 | Registrar venta en una sola transacción (venta, inventario, caja, e-CF, outbox, auditoría); idempotente por `VentaId` | ✅ |
+| TK-042 | Pagos: efectivo, tarjeta, transferencia y fiado; mixto; solo el efectivo da devuelta | ✅ (fiado y saldo a favor llegan con TK-071) |
+| TK-043 | Ventas en espera (varias por caja) | ✅ |
+| TK-044 | Modelo de comprobante para imprimir y reimpresión | ✅ |
+| TK-045 | Anular venta dentro del turno con supervisor y motivo (repone inventario, saca el dinero del turno) | ✅ |
+| TK-046 | Devolución parcial contra la factura: por línea, repone inventario, devuelve efectivo o deja saldo a favor, emite nota de crédito | ✅ |
+| TK-047 | Notas por línea (predefinidas por categoría o libres) | ✅ |
 
 ## M5 · Fiscal (e-CF simulado, ver `pos-ecf-deferred`)
 
 | Ticket | Qué | Estado |
 |---|---|---|
-| TK-050 | Secuencias e-NCF por tipo: cargar rango, asignar sin huecos dentro de la venta, alertas al 80 % y por vencimiento | ⬜ |
+| TK-050 | Secuencias e-NCF por tipo: cargar rango, asignar sin huecos dentro de la venta, alertas al 80 % y por vencimiento | ✅ |
 | TK-051 | Documento e-CF, firmador y proveedor simulados (`IEcfProvider`), cola de contingencia de 72 h con trabajador en segundo plano | ⬜ |
-| TK-052 | Nota de crédito e-CF 34 | ⬜ |
+| TK-052 | Nota de crédito e-CF 34 | ✅ |
 | TK-053 | Consulta de razón social por RNC (padrón importado) | ⬜ |
 | TK-054 | Reportes 606 y 607 | ⬜ |
 | TK-055 | Proveedor e-CF real y certificación DGII | ⏸ decisión del dueño |
