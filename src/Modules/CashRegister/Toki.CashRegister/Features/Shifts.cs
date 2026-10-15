@@ -52,10 +52,36 @@ internal static class Registers
                                       select new Item(r.Id, r.Name, r.IsActive, s == null ? null : s.Id, s == null ? null : s.CashierName))
                         .AsNoTracking().ToListAsync(ct)))
                 .RequireAuthorization().WithTags("CashRegister");
+            app.MapPut("/api/cash/registers/{id:guid}", async (Guid id, RenameBody b, ICommandHandler<Rename, Response> h, CancellationToken ct) =>
+                    (await h.Handle(new Rename(id, b.Name), ct)).ToHttp(_ => Results.NoContent()))
+                .RequirePermission(Permissions.SettingsManage).WithTags("CashRegister");
             // Moves the register to another device (replaced PC); null frees it so the next shift binds it again.
             app.MapPut("/api/cash/registers/{id:guid}/device", async (Guid id, AssignDevice body, ICommandHandler<AssignDevice, Response> h, CancellationToken ct) =>
                     (await h.Handle(body with { RegisterId = id }, ct)).ToHttp(Results.Ok))
                 .RequirePermission(Permissions.SettingsManage).WithTags("CashRegister");
+        }
+    }
+
+    /// <summary>TK-175: a new name for a register. The cloud panel gets it through RegisterChangedV1, in the same transaction.</summary>
+    public sealed record Rename(Guid RegisterId, string Name) : ICommand<Response>;
+    internal sealed record RenameBody(string Name);
+
+    internal sealed class RenameValidator : AbstractValidator<Rename>
+    {
+        public RenameValidator() => RuleFor(c => c.Name).NotEmpty().MaximumLength(60);
+    }
+
+    internal sealed class RenameHandler(CashRegisterDbContext db, IOutbox outbox, IAuditLog audit) : ICommandHandler<Rename, Response>
+    {
+        public async Task<Result<Response>> Handle(Rename c, CancellationToken ct)
+        {
+            var register = await db.Registers.FirstOrDefaultAsync(x => x.Id == c.RegisterId, ct);
+            if (register is null) return CashRegisterErrors.RegisterNotFound;
+            var before = register.Name;
+            register.Name = c.Name.Trim();
+            outbox.Add(new RegisterChangedV1(register.Id, register.Name));
+            await audit.RecordAsync("cash.rename-register", "Register", register.Id, new { before, after = register.Name }, ct);
+            return new Response(register.Id);
         }
     }
 

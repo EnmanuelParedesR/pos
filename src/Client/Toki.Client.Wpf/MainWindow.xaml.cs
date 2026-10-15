@@ -24,7 +24,33 @@ public partial class MainWindow
         services.AddBlazorWebViewDeveloperTools();
 #endif
         WebView.Services = services.BuildServiceProvider();
-        WebView.BlazorWebViewInitialized += (_, e) => LockDown(e.WebView.CoreWebView2.Settings);
+        WebView.BlazorWebViewInitialized += (_, e) =>
+        {
+            LockDown(e.WebView.CoreWebView2.Settings);
+            e.WebView.CoreWebView2.DownloadStarting += AskWhereToSave;
+        };
+    }
+
+    /// <summary>A report download (escuadra.download): the owner picks the folder, like in any Windows program, instead of a silent save to Downloads.</summary>
+    private void AskWhereToSave(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2DownloadStartingEventArgs e)
+    {
+        var deferral = e.GetDeferral();
+        Dispatcher.BeginInvoke(() =>
+        {
+            using (deferral)
+            {
+                var dialog = new Microsoft.Win32.SaveFileDialog { FileName = Path.GetFileName(e.ResultFilePath), Title = "Guardar reporte" };
+                if (dialog.ShowDialog(this) == true)
+                {
+                    e.ResultFilePath = dialog.FileName;
+                    e.Handled = true; // no download bubble: the file is where the owner chose
+                }
+                else
+                {
+                    e.Cancel = true;
+                }
+            }
+        });
     }
 
     /// <summary>The register is an app, not a browser: a reload (Ctrl+R, F5, swipe back) would start a new DI scope and lose the

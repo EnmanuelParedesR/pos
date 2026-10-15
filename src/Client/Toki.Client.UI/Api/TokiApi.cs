@@ -76,6 +76,12 @@ public sealed class TokiApi(HttpClient http, Session session)
         {
             if (r.IsSuccessStatusCode)
             {
+                if (typeof(T) == typeof(FileDownload))
+                {
+                    var name = r.Content.Headers.ContentDisposition?.FileNameStar ?? r.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "reporte";
+                    object file = new FileDownload(await r.Content.ReadAsByteArrayAsync(), name, r.Content.Headers.ContentType?.MediaType ?? "application/octet-stream");
+                    return new((T)file, null);
+                }
                 if (r.StatusCode == HttpStatusCode.NoContent || typeof(T) == typeof(Empty) || r.Content.Headers.ContentLength == 0) return new(default, null);
                 return new(await r.Content.ReadFromJsonAsync<T>(Json), null);
             }

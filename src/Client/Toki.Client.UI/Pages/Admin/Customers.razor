@@ -1,0 +1,490 @@
+@page "/admin/customers"
+@inject TokiApi Api
+@inject Session Session
+@inject Approver Approver
+
+<Admin Title="Clientes" Subtitle="Quién le debe, cuánto y desde cuándo. Toque un cliente para ver su cuenta.">
+    <Actions>
+        <Button Variant="Button.Variants.Primary" OnClick="New"><Icon Name="plus" /> Nuevo cliente</Button>
+    </Actions>
+    <ChildContent>
+        @if (_aging is { } aging)
+        {
+            var owing = aging.Values.Where(a => a.Total > 0).ToList();
+            var over = owing.Where(a => a.Total > a.CreditLimit).OrderByDescending(a => a.Total - a.CreditLimit).ToList();
+            var old = owing.Sum(a => a.Days31To60 + a.Days61To90 + a.Over90);
+            <div class="esc-card esc-stats">
+                <div class="esc-stat">
+                    <span class="esc-stat__label"><Icon Name="wallet" Size="16" /> Le deben</span>
+                    <span class="esc-stat__value">@Format.WithCurrency(owing.Sum(a => a.Total))</span>
+                    <span class="esc-stat__note">@(owing.Count == 1 ? "1 cliente" : $"{owing.Count} clientes")</span>
+                </div>
+                <div class="esc-stat">
+                    <span class="esc-stat__label"><Icon Name="clock" Size="16" /> Con más de 30 días</span>
+                    <span class="esc-stat__value" style="@(old > 0 ? "color:var(--warning)" : "")">@Format.WithCurrency(old)</span>
+                    <span class="esc-stat__note">@(owing.Sum(a => a.Over90) is var o90 && o90 > 0 ? $"{Format.WithCurrency(o90)} con más de 90 días" : "Nada con más de 90 días")</span>
+                </div>
+                <div class="esc-stat">
+                    <span class="esc-stat__label"><Icon Name="alert" Size="16" /> Pasados del límite</span>
+                    <span class="esc-stat__value" style="@(over.Count > 0 ? "color:var(--error)" : "")">@over.Count</span>
+                    <span class="esc-stat__note">@(over.Count == 0 ? "Todos dentro de su límite" : string.Join(", ", over.Take(2).Select(a => a.Customer)) + (over.Count > 2 ? "…" : ""))</span>
+                </div>
+            </div>
+        }
+
+        <form class="esc-row" style="gap:12px" @onsubmit="LoadAsync">
+            <label class="esc-search">
+                <Icon Name="search" Size="18" />
+                <input placeholder="Buscar por nombre, RNC, cédula o teléfono" aria-label="Buscar cliente" @bind="_search" @bind:event="oninput" @bind:after="SearchAsync" />
+            </label>
+            <button type="button" class="esc-chip" aria-pressed="@(_onlyOwing ? "true" : "false")" @onclick="() => _onlyOwing = !_onlyOwing">Solo los que deben</button>
+        </form>
+
+        <div class="esc-card esc-table-wrap esc-table-wrap--tall">
+            <table class="esc-table esc-table--wide">
+                <thead><tr><th>Cliente</th><th class="esc-hide-sm">RNC o cédula</th><th class="esc-hide-sm">Teléfono</th><th class="esc-hide-sm">Precio</th><th class="esc-num esc-hide-sm">Límite</th><th class="esc-num">Debe</th><th class="esc-table__chev esc-hide-sm"><span class="esc-visually-hidden">Abrir</span></th></tr></thead>
+                <tbody>
+                    @if (_loading)
+                    {
+                        @for (var i = 0; i < 6; i++)
+                        {
+                            <tr><td><Skeleton Width="160px" /></td><td class="esc-hide-sm"><Skeleton Width="100px" /></td><td class="esc-hide-sm"><Skeleton Width="100px" /></td><td class="esc-hide-sm"><Skeleton Width="70px" /></td><td class="esc-hide-sm"><Skeleton /></td><td><Skeleton /></td><td class="esc-hide-sm"></td></tr>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var c in Visible)
+                        {
+                            var a = Aging(c.Id);
+                            <tr class="selectable" tabindex="0" @onclick="() => OpenAsync(c.Id)" @onkeydown='e => e.Key == "Enter" ? OpenAsync(c.Id) : Task.CompletedTask'>
+                                <td>
+                                    <span style="font-weight:600">@c.Name</span>
+                                    @if (!c.IsActive) { <span class="esc-pill esc-pill--neutral" style="margin-left:6px">Inactivo</span> }
+                                    <span class="esc-table__sub esc-only-sm">@(string.Join(" · ", new[] { c.TaxId, c.Phone }.Where(x => x is not null)))</span>
+                                </td>
+                                <td class="esc-hide-sm esc-muted">@(c.TaxId ?? "—")</td>
+                                <td class="esc-hide-sm esc-muted">@(c.Phone ?? "—")</td>
+                                <td class="esc-hide-sm">@PriceName(c.PriceLevel)</td>
+                                <td class="esc-num esc-hide-sm">@(c.CreditLimit > 0 ? Format.Amount(c.CreditLimit) : "Sin crédito")</td>
+                                <td class="esc-num" style="white-space:nowrap">
+                                    @if (a is { Total: > 0 } d && d.Total > c.CreditLimit)
+                                    {
+                                        <span class="esc-pill esc-pill--error" title="Pasó su límite">@Format.Amount(d.Total)</span>
+                                    }
+                                    else if (a is { Total: > 0 } owes)
+                                    {
+                                        <span style="font-weight:600">@Format.Amount(owes.Total)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="esc-muted">@(_aging is null ? "—" : "0.00")</span>
+                                    }
+                                    @if (a is { Over90: > 0 } late)
+                                    {
+                                        <span class="esc-table__sub" style="color:var(--error)">@Format.Amount(late.Over90) con +90 días</span>
+                                    }
+                                </td>
+                                <td class="esc-table__chev esc-hide-sm"><Icon Name="chevron-right" Size="18" /></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            @if (!_loading && !Visible.Any())
+            {
+                <EmptyState Icon="users" Title="@(_onlyOwing ? "Nadie le debe" : string.IsNullOrWhiteSpace(_search) ? "Todavía no hay clientes" : $"Nada coincide con “{_search}”")">
+                    @(_message ?? (_onlyOwing ? "Cuando alguien compre fiado aparece aquí." : string.IsNullOrWhiteSpace(_search) ? "Cree el primero con “Nuevo cliente” o desde la caja (F6)." : "Pruebe con otra palabra, el RNC o el teléfono."))
+                </EmptyState>
+            }
+            @if (_customers.Count >= 50)
+            {
+                <div class="esc-table-foot">Se muestran los primeros 50. Busque por nombre, RNC o teléfono para encontrar los demás.</div>
+            }
+        </div>
+
+        @switch (_view)
+        {
+            case View.Account when _account is { } s:
+                var row = _customers.Find(c => c.Id == s.CustomerId);
+                var ageing = Aging(s.CustomerId);
+                <Dialog Title="@s.Name" Subtitle="@(row is null ? null : string.Join(" · ", new[] { row.TaxId ?? "Sin RNC ni cédula", row.Phone, PriceName(row.PriceLevel) }.Where(x => x is not null)))" Wide="true" OnClose="Close">
+                    <ChildContent>
+                        @if (_notice is not null) { <Notice Kind="_noticeKind" Title="@_notice" /> }
+                        @if (s.Debt > s.CreditLimit && s.Debt > 0)
+                        {
+                            <Notice Kind="Notice.Kinds.Error" Title="@($"Pasó su límite por {Format.WithCurrency(s.Debt - s.CreditLimit)}")">Para fiarle más hace falta un supervisor en la caja.</Notice>
+                        }
+                        @if (_voiding is { } v)
+                        {
+                            <form class="esc-card esc-card--padded esc-col" style="gap:12px;background:var(--error-bg);box-shadow:none" @onsubmit="VoidAsync">
+                                <div style="font-weight:600">¿Anular el abono de @Format.WithCurrency(v.Amount)? El dinero sale de la caja donde se cobró y la deuda vuelve a subir.</div>
+                                <Field Label="Motivo" Error="@Err("reason")">
+                                    <input @ref="_voidInput" class="esc-input" maxlength="200" placeholder="Se escribió mal el monto" @bind="_voidReason" @bind:after='() => Clear("reason")' aria-invalid="@Invalid("reason")" autofocus />
+                                </Field>
+                                <div class="esc-form-actions">
+                                    <Button Type="submit" Variant="Button.Variants.Danger" Disabled="_sending">@(_sending ? "Anulando…" : "Anular abono")</Button>
+                                    <Button OnClick="() => _voiding = null">No anular</Button>
+                                </div>
+                            </form>
+                        }
+                        <div class="kpis">
+                            <div class="kpi"><span class="esc-label">Debe</span><span class="kpi__value" style="@(s.Debt > 0 ? "" : "color:var(--text-3)")">@Format.WithCurrency(s.Debt)</span></div>
+                            <div class="kpi"><span class="esc-label">Límite de crédito</span><span class="kpi__value">@(s.CreditLimit > 0 ? Format.WithCurrency(s.CreditLimit) : "Sin crédito")</span></div>
+                            <div class="kpi"><span class="esc-label">Disponible</span><span class="kpi__value">@Format.WithCurrency(Math.Max(0, s.CreditLimit - s.Debt))</span></div>
+                            @if (s.CreditBalance > 0)
+                            {
+                                <div class="kpi"><span class="esc-label">A favor</span><span class="kpi__value" style="color:var(--success)">@Format.WithCurrency(s.CreditBalance)</span></div>
+                            }
+                        </div>
+                        @if (ageing is { Total: > 0 } recent && recent.Days0To30 == recent.Total)
+                        {
+                            <div class="esc-all-good"><Icon Name="check" Size="18" /> Todo lo que debe es de los últimos 30 días.</div>
+                        }
+                        else if (ageing is { Total: > 0 } ag)
+                        {
+                            <div>
+                                <h3 class="esc-section-title" style="margin-bottom:12px">Antigüedad de la deuda</h3>
+                                <ul class="esc-barlist">
+                                    @foreach (var (label, amount, color) in new[] { ("De 0 a 30 días", ag.Days0To30, "var(--data-1)"), ("De 31 a 60 días", ag.Days31To60, "var(--data-3)"), ("De 61 a 90 días", ag.Days61To90, "var(--warning-dot)"), ("Más de 90 días", ag.Over90, "var(--error-dot)") }.Where(b => b.Item2 > 0))
+                                    {
+                                        <li>
+                                            <div class="esc-barlist__row"><span class="esc-barlist__name">@label</span><span class="esc-barlist__value">@Format.WithCurrency(amount)</span></div>
+                                            <div class="esc-barlist__track"><div style="width:@Share(amount, ag.Total);background:@color;@(amount == 0 ? "min-width:0" : "")"></div></div>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        <h3 class="esc-section-title">Estado de cuenta</h3>
+                        <div class="esc-table-wrap" style="max-height:360px">
+                            <table class="esc-table">
+                                <thead><tr><th class="esc-hide-sm">Fecha</th><th>Movimiento</th><th class="esc-num esc-hide-sm">Cargo</th><th class="esc-num esc-hide-sm">Abono</th><th class="esc-num">Balance</th><th><span class="esc-visually-hidden">Acción</span></th></tr></thead>
+                                <tbody>
+                                    @foreach (var l in Enumerable.Reverse(s.Lines))
+                                    {
+                                        <tr>
+                                            <td class="esc-hide-sm" style="white-space:nowrap">@Format.ShortDate(l.DateUtc)<span class="esc-table__sub esc-muted">@Format.Time(l.DateUtc)</span></td>
+                                            <td>
+                                                <span style="font-weight:600">@l.Type</span>
+                                                @if (l.Document is not null) { <span class="esc-table__sub esc-muted">@l.Document</span> }
+                                                <span class="esc-table__sub esc-only-sm">@Format.ShortDate(l.DateUtc) · @(l.Charge > 0 ? $"+{Format.Amount(l.Charge)}" : $"−{Format.Amount(l.Payment)}")</span>
+                                            </td>
+                                            <td class="esc-num esc-hide-sm">@(l.Charge > 0 ? Format.Amount(l.Charge) : "")</td>
+                                            <td class="esc-num esc-hide-sm" style="color:var(--success)">@(l.Payment > 0 ? Format.Amount(l.Payment) : "")</td>
+                                            <td class="esc-num" style="font-weight:600">@Format.Amount(l.Debt)</td>
+                                            <td class="esc-num">
+                                                @if (l.PaymentId is { } pid)
+                                                {
+                                                    <Button Variant="Button.Variants.Ghost" class="esc-button esc-button--ghost esc-button--small" OnClick="() => StartVoid(pid, l.Payment)">Anular</Button>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            @if (s.Lines.Length == 0)
+                            {
+                                <EmptyState Icon="receipt" Title="Sin movimientos">Las compras fiadas y los abonos aparecen aquí.</EmptyState>
+                            }
+                        </div>
+                    </ChildContent>
+                    <Footer>
+                        <Button OnClick="Close" Shortcut="Esc">Cerrar</Button>
+                        @if (row is not null)
+                        {
+                            <Button OnClick="() => Edit(row)">Editar datos</Button>
+                        }
+                        @if (s.Debt > 0 && Session.Can("register.operate"))
+                        {
+                            <Button Variant="Button.Variants.Primary" OnClick="StartPaymentAsync"><Icon Name="cash" /> Registrar abono</Button>
+                        }
+                    </Footer>
+                </Dialog>
+                break;
+
+            case View.Edit when _form is { } f:
+                <Dialog Title="@(f.Id is null ? "Nuevo cliente" : f.Name)" Subtitle="@(f.Id is null ? "Los campos con * son obligatorios." : "Editar cliente")" Wide="true" OnClose="CloseForm">
+                    <ChildContent>
+                        <div class="esc-form-grid">
+                            <Field Label="Nombre *" Wide="true" Error="@Err("name")">
+                                <input class="esc-input" maxlength="150" @bind="f.Name" @bind:after='() => Clear("name")' aria-invalid="@Invalid("name")" autofocus />
+                            </Field>
+                            <Field Label="RNC o cédula" Error="@Err("taxId")" Hint="9 u 11 números, sin guiones.">
+                                <input class="esc-input" inputmode="numeric" maxlength="13" @bind="f.TaxId" @bind:after='() => Clear("taxId")' aria-invalid="@Invalid("taxId")" />
+                            </Field>
+                            <Field Label="Teléfono">
+                                <input class="esc-input" inputmode="tel" maxlength="30" @bind="f.Phone" />
+                            </Field>
+                            <Field Label="Dirección" Wide="true">
+                                <input class="esc-input" maxlength="200" @bind="f.Address" />
+                            </Field>
+                            <Field Label="Límite de crédito RD$" Error="@Err("limit")" Hint="@(CanCredit ? "Lo máximo que puede deber. 0 = no se le fía." : "Solo lo cambia quien tiene el permiso de fiado.")">
+                                <input class="esc-input esc-num" inputmode="decimal" disabled="@(!CanCredit)" @bind="f.CreditLimit" @bind:after='() => Clear("limit")' aria-invalid="@Invalid("limit")" />
+                            </Field>
+                            <Field Label="Precio" Hint="@(CanCredit ? "Mayorista usa el precio mayorista de cada producto." : "Solo lo cambia quien tiene el permiso de fiado.")">
+                                <select class="esc-select" disabled="@(!CanCredit)" @bind="f.PriceLevel">
+                                    <option value="@PriceLevel.Retail">Detalle</option>
+                                    <option value="@PriceLevel.Wholesale">Mayorista</option>
+                                </select>
+                            </Field>
+                        </div>
+                        <div class="esc-col" style="gap:0">
+                            <label class="esc-check"><input type="checkbox" @bind="f.FiscalCredit" @bind:after='() => Clear("taxId")' /> Pide factura de crédito fiscal (E31)</label>
+                            @if (f.Id is not null)
+                            {
+                                <label class="esc-check"><input type="checkbox" @bind="f.IsActive" disabled="@(!f.WasActive && !CanCredit)" /> Activo (se le puede vender y fiar)</label>
+                            }
+                        </div>
+                        @if (_error is not null) { <Notice Title="@_error" /> }
+                    </ChildContent>
+                    <Footer>
+                        <Button OnClick="CloseForm" Shortcut="Esc">Cancelar</Button>
+                        <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SaveAsync">@(_sending ? "Guardando…" : "Guardar")</Button>
+                    </Footer>
+                </Dialog>
+                break;
+
+            case View.Payment when _account is { } s:
+                <Dialog Title="Registrar abono" Subtitle="@($"{s.Name} · debe {Format.WithCurrency(s.Debt)}")" OnClose="() => _view = View.Account">
+                    <ChildContent>
+                        @if (_openShifts.Count == 0)
+                        {
+                            <Notice Kind="Notice.Kinds.Warning" Title="No hay ninguna caja abierta.">El abono entra al efectivo de una caja y sale en su cuadre. Abra un turno en una caja y vuelva aquí.</Notice>
+                        }
+                        else
+                        {
+                            <Field Label="Caja que recibe el dinero" Hint="Sale en el cuadre de esa caja.">
+                                <select class="esc-select" @bind="_payShift">
+                                    @foreach (var r in _openShifts) { <option value="@r.OpenShiftId">@r.Name · @r.Cashier</option> }
+                                </select>
+                            </Field>
+                            <Segmented Label="Forma de pago" Options="PayMethods" Value="@_payMethod.ToString()" ValueChanged="m => (_payMethod, _errors) = (Enum.Parse<PaymentMethod>(m), [])" />
+                            <Field Label="Monto RD$" Error="@Err("amount")" Hint="@(_payMethod == PaymentMethod.Cash ? "El efectivo se recibe en pesos enteros." : null)">
+                                <div class="esc-row" style="flex-wrap:nowrap">
+                                    <input class="esc-input esc-num" style="flex:1 1 auto" inputmode="decimal" @bind="_payAmount" @bind:after='() => Clear("amount")' aria-invalid="@Invalid("amount")" autofocus />
+                                    <Button OnClick="PayAll">Todo: @Format.Amount(AllOf(s.Debt))</Button>
+                                </div>
+                            </Field>
+                            @if (_payMethod != PaymentMethod.Cash)
+                            {
+                                <Field Label="Referencia" Hint="Opcional.">
+                                    <input class="esc-input" maxlength="60" placeholder="@(_payMethod == PaymentMethod.Card ? "Aprobación del verifone" : "Número de la transferencia")" @bind="_payReference" />
+                                </Field>
+                            }
+                        }
+                        @if (_error is not null) { <Notice Kind="_errorKind" Title="@_error" /> }
+                    </ChildContent>
+                    <Footer>
+                        <Button OnClick="() => _view = View.Account" Shortcut="Esc">Volver</Button>
+                        <Button Variant="Button.Variants.Primary" Disabled="@(_sending || _openShifts.Count == 0)" OnClick="PayAsync">@(_sending ? "Guardando…" : "Registrar abono")</Button>
+                    </Footer>
+                </Dialog>
+                break;
+        }
+    </ChildContent>
+</Admin>
+
+@code {
+    private enum View { None, Account, Edit, Payment }
+    private sealed class CustomerForm
+    {
+        public Guid? Id; public string Name = ""; public string? TaxId, Phone, Address, CreditLimit = "0";
+        public PriceLevel PriceLevel; public bool FiscalCredit, IsActive = true, WasActive = true;
+    }
+    private sealed record Voiding(Guid PaymentId, decimal Amount);
+
+    private static readonly IReadOnlyList<(string, string)> PayMethods =
+        [(nameof(PaymentMethod.Cash), "Efectivo"), (nameof(PaymentMethod.Card), "Tarjeta"), (nameof(PaymentMethod.Transfer), "Transferencia")];
+
+    /// <summary>Opens a customer's account from a link (the Resumen's "Te deben").</summary>
+    [SupplyParameterFromQuery(Name = "customer")] public Guid? Requested { get; set; }
+
+    private List<CustomerRow> _customers = [];
+    private Dictionary<Guid, ReceivableAging>? _aging;
+    private CustomerStatement? _account;
+    private CustomerForm? _form;
+    private View _view;
+    private string? _search, _message, _error, _notice, _voidReason, _payAmount, _payReference;
+    private Notice.Kinds _errorKind = Notice.Kinds.Error, _noticeKind = Notice.Kinds.Success;
+    private bool _loading = true, _sending, _onlyOwing;
+    private Voiding? _voiding;
+    private ElementReference _voidInput;
+    private bool _focusVoid;
+    private List<RegisterInfo> _openShifts = [];
+    private Guid? _payShift;
+    private PaymentMethod _payMethod = PaymentMethod.Cash;
+    /// <summary>The payment's idempotency key: made when the form opens, kept across retries until the server records it.</summary>
+    private Guid _paymentId;
+    private Dictionary<string, string> _errors = [];
+    private CancellationTokenSource? _typing;
+
+    private bool CanCredit => Session.Can("credit.manage");
+    private IEnumerable<CustomerRow> Visible => _onlyOwing ? _customers.Where(c => Aging(c.Id) is { Total: > 0 }) : _customers;
+    private ReceivableAging? Aging(Guid id) => _aging?.GetValueOrDefault(id);
+    private string? Err(string field) => _errors.GetValueOrDefault(field);
+    private string Invalid(string field) => _errors.ContainsKey(field) ? "true" : "false";
+    private void Clear(string field) => _errors.Remove(field);
+    private static string PriceName(PriceLevel level) => level == PriceLevel.Wholesale ? "Mayorista" : "Detalle";
+    private static string Share(decimal part, decimal total) => (total == 0 ? 0 : part / total * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "%";
+    /// <summary>Cash is whole pesos: the debt rounded up (the centavos stay in the drawer as rounding).</summary>
+    private decimal AllOf(decimal debt) => _payMethod == PaymentMethod.Cash ? Math.Ceiling(debt) : debt;
+
+    /// <summary>The void confirmation opens at the top of the account with the cursor in its reason.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusVoid || _voiding is null) return;
+        _focusVoid = false;
+        await _voidInput.FocusAsync();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(LoadAsync(), LoadAgingAsync());
+        if (Requested is { } id) await OpenAsync(id);
+    }
+
+    private async Task SearchAsync()
+    {
+        _typing?.Cancel();
+        _typing = new CancellationTokenSource();
+        try { await Task.Delay(250, _typing.Token); } catch (TaskCanceledException) { return; }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var r = await Api.GetAsync<List<CustomerRow>>($"/api/customers?includeInactive=true&search={Uri.EscapeDataString(_search ?? "")}");
+        (_customers, _message, _loading) = (r.Value ?? [], r.Problem?.Message, false);
+    }
+
+    /// <summary>Debts come from the receivables report (reports.view); without it the list still works, without the Debe column.</summary>
+    private async Task LoadAgingAsync() =>
+        _aging = (await Api.GetAsync<List<ReceivableAging>>("/api/reports/receivables")).Value?.ToDictionary(a => a.CustomerId);
+
+    private async Task OpenAsync(Guid id)
+    {
+        var r = await Api.GetAsync<CustomerStatement>($"/api/customers/{id}/statement");
+        if (r.Value is null) { _message = r.Problem?.Message; return; }
+        (_account, _view, _notice, _voiding, _error) = (r.Value, View.Account, null, null, null);
+    }
+
+    private void Close() => (_view, _account, _voiding) = (View.None, null, null);
+
+    private void New()
+    {
+        _errors = [];
+        (_form, _view, _error, _account) = (new CustomerForm(), View.Edit, null, null);
+    }
+
+    private void Edit(CustomerRow c)
+    {
+        _errors = [];
+        (_form, _view, _error) = (new CustomerForm
+        {
+            Id = c.Id, Name = c.Name, TaxId = c.TaxId, Phone = c.Phone, Address = c.Address, PriceLevel = c.PriceLevel, FiscalCredit = c.FiscalCredit,
+            CreditLimit = c.CreditLimit.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture), IsActive = c.IsActive, WasActive = c.IsActive,
+        }, View.Edit, null);
+    }
+
+    private void CloseForm() => (_view, _form) = (_account is null ? View.None : View.Account, null);
+
+    private async Task SaveAsync()
+    {
+        if (_form is not { } f || _sending) return;
+        string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        var taxId = Clean(f.TaxId)?.Replace("-", "");
+        _errors = [];
+        _error = null;
+        if (string.IsNullOrWhiteSpace(f.Name)) _errors["name"] = "Escriba el nombre.";
+        if (taxId is not null && (taxId.Length is not (9 or 11) || !taxId.All(char.IsAsciiDigit))) _errors["taxId"] = "El RNC tiene 9 números y la cédula 11.";
+        else if (taxId is null && f.FiscalCredit) _errors["taxId"] = "Para crédito fiscal hace falta el RNC o la cédula.";
+        if (Format.ParseNumber(f.CreditLimit ?? "0") is not >= 0) _errors["limit"] = "Escriba un número (0 si no se le fía).";
+        if (_errors.Count > 0) return;
+        var body = new SaveCustomer(f.Name.Trim(), taxId, Clean(f.Phone), Clean(f.Address), f.FiscalCredit, f.PriceLevel,
+            Math.Round(Format.ParseNumber(f.CreditLimit ?? "0") ?? 0, 2), f.IsActive);
+        _sending = true;
+        var p = f.Id is { } id ? (await Api.PutAsync<Empty>($"/api/customers/{id}", body)).Problem : (await Api.PostAsync<Created>("/api/customers", body)).Problem;
+        _sending = false;
+        switch (p?.Code)
+        {
+            case null:
+                var reopen = _account?.CustomerId;
+                _form = null;
+                await LoadAsync();
+                if (reopen is { } again) await OpenAsync(again);
+                else _view = View.None;
+                break;
+            case "Customers.DuplicateTaxId": _errors["taxId"] = "Ya hay un cliente con ese RNC o cédula."; break;
+            case "Customers.CreditPermissionRequired": _error = "Cambiar el límite, el precio mayorista o reactivar un cliente necesita el permiso de fiado."; break;
+            default: _error = p.Message; break;
+        }
+    }
+
+    private async Task StartPaymentAsync()
+    {
+        _openShifts = [.. ((await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers")).Value ?? []).Where(r => r.OpenShiftId is not null)];
+        _payShift = _openShifts.Find(r => r.OpenShiftId == Session.Shift?.ShiftId)?.OpenShiftId ?? _openShifts.FirstOrDefault()?.OpenShiftId;
+        _errors = [];
+        (_view, _payMethod, _payAmount, _payReference, _error, _paymentId) = (View.Payment, PaymentMethod.Cash, null, null, null, Guid.CreateVersion7());
+    }
+
+    private void PayAll() => (_payAmount, _errors) = (AllOf(_account!.Debt).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture), []);
+
+    private async Task PayAsync()
+    {
+        if (_account is not { } s || _payShift is not { } shift || _sending) return;
+        _error = null;
+        var amount = Format.ParseNumber(_payAmount);
+        if (amount is not > 0) { _errors["amount"] = "Escriba el monto."; return; }
+        if (_payMethod == PaymentMethod.Cash && amount != Math.Truncate(amount.Value)) { _errors["amount"] = "El efectivo se recibe en pesos enteros."; return; }
+        if (amount > AllOf(s.Debt)) { _errors["amount"] = $"Es más de lo que debe ({Format.WithCurrency(s.Debt)})."; return; }
+        _sending = true;
+        var r = await Api.PostAsync<CustomerPaymentRecorded>($"/api/customers/{s.CustomerId}/payments",
+            new RecordCustomerPayment(_paymentId, shift, Math.Round(amount.Value, 2), _payMethod, _payMethod == PaymentMethod.Cash || string.IsNullOrWhiteSpace(_payReference) ? null : _payReference.Trim()));
+        _sending = false;
+        if (r.Value is { } done)
+        {
+            await Task.WhenAll(OpenAsync(s.CustomerId), LoadAgingAsync());
+            (_noticeKind, _notice) = (Notice.Kinds.Success, $"Abono de {Format.WithCurrency(done.Applied)} registrado. {(done.RemainingDebt > 0 ? $"Queda debiendo {Format.WithCurrency(done.RemainingDebt)}." : "Ya no debe nada.")}");
+            return;
+        }
+        (_errorKind, _error) = (r.Problem!.Kind, r.Problem.IsUncertain
+            ? "No se sabe si se registró. Toque Registrar abono de nuevo cuando vuelva la conexión: no se registra dos veces."
+            : r.Problem.Code switch
+            {
+                "CashRegister.ShiftClosed" => "Esa caja cerró su turno. Elija otra o abra un turno.",
+                "Customers.PaymentExceedsDebt" => "El abono es mayor que la deuda.",
+                _ => r.Problem.Message,
+            });
+    }
+
+    private void StartVoid(Guid paymentId, decimal amount)
+    {
+        _errors = [];
+        (_voiding, _voidReason, _notice, _focusVoid) = (new Voiding(paymentId, amount), null, null, true);
+    }
+
+    private async Task VoidAsync()
+    {
+        if (_voiding is not { } v || _account is not { } s || _sending) return;
+        if (string.IsNullOrWhiteSpace(_voidReason)) { _errors["reason"] = "Escriba por qué se anula."; return; }
+        _sending = true;
+        var reason = _voidReason.Trim();
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/customers/payments/{v.PaymentId}/void", new { Reason = reason, SupervisorApprovalId = id }),
+            v.PaymentId, $"Anular el abono de {Format.WithCurrency(v.Amount)} de {s.Name}");
+        _sending = false;
+        if (r.Ok)
+        {
+            await Task.WhenAll(OpenAsync(s.CustomerId), LoadAgingAsync());
+            (_noticeKind, _notice) = (Notice.Kinds.Success, $"Abono de {Format.WithCurrency(v.Amount)} anulado.");
+            return;
+        }
+        (_noticeKind, _notice) = (r.Problem!.Kind, r.Problem.Code switch
+        {
+            "CashRegister.ShiftClosed" => "Ese abono se cobró en un turno que ya cerró; ya no se puede anular. Corríjalo con un nuevo movimiento.",
+            "Cancelled" => "No se anuló: falta la autorización de un supervisor.",
+            _ => r.Problem.Message,
+        });
+        _voiding = null;
+    }
+}

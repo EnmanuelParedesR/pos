@@ -22,6 +22,7 @@ All OpenAPI tags `"Caja"` → `"CashRegister"`. Permissions are the new strings 
 |---|---|---|
 | `POST /api/caja/cajas` (→ `201 Location: /api/caja/cajas/{id}`) | `POST /api/cash/registers` (→ `201 Location: /api/cash/registers/{id}`) | `settings.manage` |
 | `GET /api/caja/cajas` | `GET /api/cash/registers` | authenticated |
+| — (nuevo, TK-175) | `PUT /api/cash/registers/{id}` (body `{ name }` → `204`; envía `RegisterChangedV1`) | `settings.manage` |
 | `PUT /api/caja/cajas/{id}/dispositivo` | `PUT /api/cash/registers/{id}/device` | `settings.manage` |
 | `POST /api/caja/turnos` (→ `201 Location: /api/caja/turnos/{turnoId}`) | `POST /api/cash/shifts` (→ `201 Location: /api/cash/shifts/{shiftId}`) | `register.operate` |
 | `GET /api/caja/turnos/actual` | `GET /api/cash/shifts/current` | `register.operate` |

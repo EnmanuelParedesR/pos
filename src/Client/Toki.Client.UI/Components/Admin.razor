@@ -69,16 +69,33 @@
         </div>
     </main>
 
+    @* A phone fits five tabs: past that, the fifth is "Más" with the rest. *@
     <nav class="esc-tabbar" aria-label="Secciones">
-        @foreach (var s in Sections)
+        @{ var sections = Sections.ToList(); var tabs = sections.Count > 5 ? 4 : sections.Count; }
+        @foreach (var s in sections.Take(tabs))
         {
             <NavLink href="@s.Href" Match="@(s.Href == "admin" ? NavLinkMatch.All : NavLinkMatch.Prefix)"><Icon Name="@s.Icon" Size="22" />@s.Short</NavLink>
+        }
+        @if (sections.Count > tabs)
+        {
+            var current = sections.Skip(tabs).Any(s => Nav.Uri.Contains("/" + s.Href, StringComparison.Ordinal));
+            <button type="button" class="esc-tabbar__more @(current ? "active" : "")" aria-expanded="@(_more ? "true" : "false")" @onclick="() => _more = !_more"><Icon Name="dashboard" Size="22" />Más</button>
+            @if (_more)
+            {
+                <div class="esc-tabbar__sheet" role="menu" @onclick="() => _more = false">
+                    @foreach (var s in sections.Skip(tabs))
+                    {
+                        <NavLink href="@s.Href" Match="NavLinkMatch.Prefix" role="menuitem"><Icon Name="@s.Icon" />@s.Label</NavLink>
+                    }
+                </div>
+            }
         }
     </nav>
 </div>
 
 @code {
     private sealed record SectionLink(string Href, string Label, string Short, string Icon);
+    private bool _more;
 
     [Parameter, EditorRequired] public string Title { get; set; } = "";
     [Parameter] public string? Subtitle { get; set; }
@@ -92,6 +109,9 @@
             yield return new("admin", "Resumen", "Resumen", "dashboard");
             yield return new("admin/products", "Productos", "Productos", "package");
             yield return new("admin/shifts", "Turnos y cuadres", "Cuadres", "wallet");
+            if (Session.Can("customers.manage")) yield return new("admin/customers", "Clientes", "Clientes", "users");
+            yield return new("admin/invoices", "Facturas", "Facturas", "receipt");
+            yield return new("admin/reports", "Reportes", "Reportes", "chart");
             if (Session.Can("settings.manage") || Session.Can("users.manage")) yield return new("admin/settings", "Configuración", "Ajustes", "settings");
         }
     }
