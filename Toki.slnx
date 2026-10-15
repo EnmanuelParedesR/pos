@@ -21,6 +21,7 @@
     <Project Path="src/Modules/Identidad/Toki.Identidad/Toki.Identidad.csproj" />
     <Project Path="src/Modules/Inventario/Toki.Inventario.Contracts/Toki.Inventario.Contracts.csproj" />
     <Project Path="src/Modules/Inventario/Toki.Inventario/Toki.Inventario.csproj" />
+    <Project Path="src/Modules/Reportes/Toki.Reportes/Toki.Reportes.csproj" />
     <Project Path="src/Modules/Ventas/Toki.Ventas.Contracts/Toki.Ventas.Contracts.csproj" />
     <Project Path="src/Modules/Ventas/Toki.Ventas/Toki.Ventas.csproj" />
   </Folder>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Toki.BuildingBlocks\Toki.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\..\Ventas\Toki.Ventas.Contracts\Toki.Ventas.Contracts.csproj" />
+    <ProjectReference Include="..\..\Caja\Toki.Caja.Contracts\Toki.Caja.Contracts.csproj" />
+    <ProjectReference Include="..\..\Inventario\Toki.Inventario.Contracts\Toki.Inventario.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Toki.UnitTests" />
+    <InternalsVisibleTo Include="Toki.IntegrationTests" />
+  </ItemGroup>
+</Project>

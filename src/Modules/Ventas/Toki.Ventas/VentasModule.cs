@@ -8,6 +8,7 @@ public static class VentasModule
     public static IServiceCollection AddVentasModule(this IServiceCollection services)
     {
         services.AddModuleDbContext<VentasDbContext>();
+        services.AddScoped<Contracts.IVentasReportes, VentasReportes>();
         return services;
     }
 }

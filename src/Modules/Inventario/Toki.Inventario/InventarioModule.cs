@@ -16,6 +16,7 @@ public static class InventarioModule
     {
         services.AddModuleDbContext<InventarioDbContext>();
         services.AddScoped<ICatalogoConsultas, CatalogoConsultas>();
+        services.AddScoped<IInventarioReportes, InventarioReportes>();
         services.AddScoped<MovimientosInventario>();
         services.AddScoped<IMovimientosInventario>(sp => sp.GetRequiredService<MovimientosInventario>());
         return services;

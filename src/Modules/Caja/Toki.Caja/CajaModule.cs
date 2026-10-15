@@ -17,7 +17,22 @@ public static class CajaModule
         services.AddModuleDbContext<CajaDbContext>();
         services.AddScoped<CajaOperaciones>();
         services.AddScoped<ICajaOperaciones>(sp => sp.GetRequiredService<CajaOperaciones>());
+        services.AddScoped<ICajaReportes, CajaReportes>();
         return services;
+    }
+}
+
+internal sealed class CajaReportes(CajaDbContext db) : ICajaReportes
+{
+    public async Task<IReadOnlyList<ResumenTurno>> TurnosAsync(DateOnly desde, DateOnly hasta, CancellationToken ct)
+    {
+        var (d, h) = DiaNegocio.RangoUtc(desde, hasta);
+        return await (from t in db.Turnos
+                      join c in db.Cajas on t.CajaId equals c.Id
+                      where t.AbiertoUtc >= d && t.AbiertoUtc < h
+                      orderby t.AbiertoUtc
+                      select new ResumenTurno(t.Id, c.Nombre, t.CajeroNombre, t.AbiertoUtc, t.CerradoUtc, t.NumeroZ, t.FondoInicial,
+                          t.EfectivoEsperado, t.EfectivoContado, t.Diferencia)).AsNoTracking().ToListAsync(ct);
     }
 }
 

@@ -12,6 +12,7 @@ using Toki.Fiscal;
 using Toki.Ventas;
 using Toki.Identidad;
 using Toki.Inventario;
+using Toki.Reportes;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(o => o.ServiceName = "Toki");
@@ -27,6 +28,7 @@ Assembly[] modulos =
     typeof(VentasModule).Assembly,
     typeof(ComprasModule).Assembly,
     typeof(ClientesModule).Assembly,
+    typeof(ReportesModule).Assembly,
 ];
 
 builder.Services.AddToki(builder.Configuration, modulos);

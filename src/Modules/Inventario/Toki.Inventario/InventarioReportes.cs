@@ -1,0 +1,28 @@
+using Microsoft.EntityFrameworkCore;
+using Toki.Inventario.Contracts;
+using Toki.Inventario.Persistence;
+using Toki.SharedKernel;
+
+namespace Toki.Inventario;
+
+internal sealed class InventarioReportes(InventarioDbContext db) : IInventarioReportes
+{
+    public async Task<IReadOnlyList<ValorInventario>> ValorAsync(CancellationToken ct)
+    {
+        var existencias = await db.Existencias.GroupBy(e => e.ProductoId).Select(g => new { g.Key, Cantidad = g.Sum(e => e.Cantidad) })
+            .ToDictionaryAsync(x => x.Key, x => x.Cantidad, ct);
+        var productos = await (from p in db.Productos
+                               join c in db.Categorias on p.CategoriaId equals c.Id
+                               where p.Activo
+                               select new { p.Id, p.Nombre, p.CategoriaId, Categoria = c.Nombre, p.Unidad, p.Costo, p.Precio }).AsNoTracking().ToListAsync(ct);
+        return productos.Select(p =>
+        {
+            var existencia = existencias.GetValueOrDefault(p.Id);
+            return new ValorInventario(p.Id, p.Nombre, p.CategoriaId, p.Categoria, p.Unidad, existencia, p.Costo,
+                Dinero.Redondear(existencia * p.Costo), p.Precio, Dinero.Redondear(existencia * p.Precio));
+        }).OrderByDescending(v => v.ValorCosto).ThenBy(v => v.Producto, StringComparer.CurrentCulture).ToList();
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, string>> CategoriasAsync(CancellationToken ct) =>
+        await db.Categorias.AsNoTracking().ToDictionaryAsync(c => c.Id, c => c.Nombre, ct);
+}
