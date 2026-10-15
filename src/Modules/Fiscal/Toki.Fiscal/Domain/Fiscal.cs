@@ -29,8 +29,9 @@ internal sealed class NcfSequence
 }
 
 /// <summary>Pending → (e-CF) Sent with a TrackId → Accepted / AcceptedConditional / Rejected; (RFCE) straight to the final state.
-/// Simulated: signed by the stand-in signer or queued with the simulated provider; never sent to the DGII.</summary>
-internal enum SubmissionStatus { Pending, Sent, Accepted, AcceptedConditional, Rejected, Simulated }
+/// Simulated: signed by the stand-in signer or queued with the simulated provider; never sent to the DGII.
+/// Voided (TK-205): signed but never sent, and voided with an ANECF instead; the queue never sends it.</summary>
+internal enum SubmissionStatus { Pending, Sent, Accepted, AcceptedConditional, Rejected, Simulated, Voided }
 
 /// <summary>How the DGII receives it: the whole e-CF (reception + TrackId) or, for a 32 under RD$250,000, the signed summary (RFCE).</summary>
 internal enum EcfChannel { Ecf, Rfce }
@@ -128,7 +129,17 @@ internal static class FiscalErrors
     public static readonly Error MissingIssuerAddress = Error.Conflict("Fiscal.MissingIssuerAddress", "Configure la dirección del negocio antes de emitir comprobantes electrónicos.");
     public static readonly Error ExpiryRequired = Error.Validation("Fiscal.ExpiryRequired", "Las secuencias de crédito fiscal (31) y nota de débito (33) necesitan fecha de vencimiento.");
     public static readonly Error NotFound = Error.NotFound("Fiscal.NotFound", "El comprobante no existe.");
-    public static readonly Error NotRejected = Error.Conflict("Fiscal.NotRejected", "Solo se reemplaza un comprobante rechazado por la DGII.");
+    public static readonly Error NotRejected = Error.Conflict("Fiscal.NotRejected", "Solo se reemplaza un comprobante rechazado por la DGII o anulado sin enviar.");
+    public static readonly Error AlreadySent = Error.Conflict("Fiscal.AlreadySent",
+        "Ese comprobante ya salió hacia la DGII: no se anula con un ANECF. Corríjalo con una nota de crédito.");
+    public static readonly Error HasNotes = Error.Conflict("Fiscal.HasNotes", "Ese comprobante tiene notas de crédito o débito: anúlelas o corríjalas primero.");
+    public static readonly Error DgiiUnreachable = Error.Conflict("Fiscal.DgiiUnreachable",
+        "Un envío anterior pudo haber llegado y la DGII no responde para confirmarlo. Intente cuando haya conexión.");
+    public static readonly Error CertificateUnreadable = Error.Validation("Fiscal.CertificateUnreadable",
+        "No se pudo abrir el certificado. Revise que sea el archivo .p12 o .pfx y que la contraseña sea la correcta.");
+    public static readonly Error CertificateWithoutKey = Error.Validation("Fiscal.CertificateWithoutKey",
+        "Ese archivo no trae la llave privada (o no es RSA): pida a la entidad certificadora el .p12 completo.");
+    public static readonly Error CertificateExpired = Error.Validation("Fiscal.CertificateExpired", "Ese certificado ya venció. Renuévelo con la entidad certificadora.");
     public static readonly Error AlreadyReplaced = Error.Conflict("Fiscal.AlreadyReplaced", "Ese comprobante ya tiene un reemplazo.");
     public static readonly Error SequenceNotFound = Error.NotFound("Fiscal.SequenceNotFound", "La secuencia no existe en el ambiente actual.");
     public static readonly Error NothingToVoid = Error.Conflict("Fiscal.NothingToVoid", "Esa secuencia no tiene números sin usar para anular.");

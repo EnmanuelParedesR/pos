@@ -1,0 +1,239 @@
+@page "/admin/ecf"
+@inject TokiApi Api
+
+@* TK-204/205: the e-CF on their way to the DGII, the rejected ones with their replacement, and the ANECF of unused numbers.
+   Irreversible actions (replace, void) ask with a second tap, as revoking a device does. Amber while waiting, red only when the DGII said no. *@
+<Admin Title="Comprobantes electrónicos" Subtitle="Lo que la tienda envía a la DGII, lo que la DGII rechazó y los números que sobran.">
+    <Actions>
+        @if (_queue is { } env)
+        {
+            <span class="esc-pill @(env.Environment == "eCF" ? "esc-pill--success" : "esc-pill--neutral")" title="Ambiente de la DGII">@Names.FiscalEnvironment(env.Environment)</span>
+        }
+    </Actions>
+    <ChildContent>
+        @if (_message is not null)
+        {
+            <Notice Kind="_messageKind" Title="@_message" />
+        }
+        @if (_queue is { Environment: not "eCF" } q)
+        {
+            <Notice Kind="Notice.Kinds.Info" Title="@($"Ambiente: {Names.FiscalEnvironment(q.Environment)}")">
+                @(q.Environment == "Simulated"
+                    ? "Los comprobantes se firman en esta PC y no salen de la tienda: no tienen valor fiscal. Se pasa a la DGII cuando la tienda tenga su certificado y su acceso."
+                    : "Los comprobantes van a un ambiente de prueba de la DGII: no tienen valor fiscal y no salen en el 607.")
+            </Notice>
+        }
+
+        <section class="esc-card" aria-label="Cola de envío">
+            <div class="esc-stats">
+                <div class="esc-stat">
+                    <span class="esc-stat__label"><Icon Name="send" Size="16" /> Por enviar</span>
+                    <span class="esc-stat__value">@((_queue?.Pending ?? 0) + (_queue?.Sent ?? 0))</span>
+                    <span class="esc-stat__note">@(_queue is { Sent: > 0 } s ? $"{s.Sent} esperando la respuesta de la DGII" : "Salen solos; hay 72 horas de plazo")</span>
+                </div>
+                <div class="esc-stat">
+                    <span class="esc-stat__label"><Icon Name="clock" Size="16" /> Fuera de plazo</span>
+                    <span class="esc-stat__value">@(_queue?.Overdue ?? 0)</span>
+                    <span class="esc-stat__note">@(_queue?.NextDeadlineUtc is { } next ? $"El próximo vence el {Format.Date(next)}" : "Ninguno pendiente")</span>
+                </div>
+                <div class="esc-stat">
+                    <span class="esc-stat__label"><Icon Name="alert" Size="16" /> Rechazados sin reemplazo</span>
+                    <span class="esc-stat__value">@_rejected.Count</span>
+                    <span class="esc-stat__note">@(_rejected.Count == 0 ? "Todo lo enviado fue aceptado" : "Reemplácelos abajo")</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="esc-card esc-card--padded" aria-labelledby="rejected-title">
+            <div class="esc-card__head">
+                <h2 id="rejected-title" class="esc-card__title">Rechazados por la DGII</h2>
+                <span class="esc-card__aside">Se reemplazan con un e-CF nuevo con los mismos datos; la venta pasa al número nuevo</span>
+            </div>
+            @if (_rejected.Count == 0)
+            {
+                <EmptyState Icon="check" Title="Ningún comprobante rechazado">Si la DGII rechaza uno, aparece aquí con su motivo.</EmptyState>
+            }
+            else
+            {
+                <div class="esc-table-wrap">
+                    <table class="esc-table">
+                        <thead><tr><th>e-NCF</th><th class="esc-hide-sm">Firmado</th><th>Motivo de la DGII</th><th class="esc-num">Total</th><th><span class="esc-visually-hidden">Acción</span></th></tr></thead>
+                        <tbody>
+                            @foreach (var d in _rejected)
+                            {
+                                <tr><td><span style="font-weight:600;font-variant-numeric:tabular-nums">@d.ENcf</span><span class="esc-table__sub esc-muted">@Names.DocumentType(d.Type)</span></td>
+                                    <td class="esc-hide-sm">@Format.Date(d.SignedUtc)</td>
+                                    <td>@(d.DgiiMessages ?? "Sin mensaje")@if (d.SequenceUsed == false) { <span class="esc-table__sub esc-muted">La DGII no consumió el número: puede anularlo abajo.</span> }</td>
+                                    <td class="esc-num">@Format.Amount(d.Total)</td>
+                                    <td class="esc-num"><Button Variant="Button.Variants.Primary" class="esc-button esc-button--primary esc-button--small" Disabled="_sending" OnClick="() => ReplaceAsync(d)">@(_confirming == d.Id ? "¿Reemplazar? Toque otra vez" : "Reemplazar")</Button></td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="esc-card esc-card--padded" aria-labelledby="recent-title">
+            <div class="esc-card__head">
+                <h2 id="recent-title" class="esc-card__title">Últimos comprobantes</h2>
+                <span class="esc-card__aside">Uno firmado que nunca salió se puede anular (ANECF)</span>
+            </div>
+            <div class="esc-table-wrap">
+                <table class="esc-table">
+                    <thead><tr><th>e-NCF</th><th class="esc-hide-sm">Firmado</th><th>Estado</th><th class="esc-num">Total</th><th><span class="esc-visually-hidden">Acción</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var d in _recent)
+                        {
+                            var (text, pill) = Names.EcfStatus(d.Status);
+                            <tr><td><span style="font-weight:600;font-variant-numeric:tabular-nums">@d.ENcf</span><span class="esc-table__sub esc-muted">@Names.DocumentType(d.Type)@(d.ReplacesENcf is { } r ? $" · reemplaza {r}" : "")</span></td>
+                                <td class="esc-hide-sm">@Format.Date(d.SignedUtc)</td>
+                                <td><span class="esc-pill esc-pill--@pill">@text</span>
+                                    @if (d.ReplacedByENcf is { } by) { <span class="esc-table__sub esc-muted">Reemplazado por @by</span> }
+                                    else if ((d.LastError ?? d.DgiiMessages) is { } why) { <span class="esc-table__sub esc-muted">@why</span> }</td>
+                                <td class="esc-num">@Format.Amount(d.Total)</td>
+                                <td class="esc-num">
+                                    @if (d.Status is "Pending" or "Simulated")
+                                    {
+                                        <Button Variant="Button.Variants.Danger" class="esc-button esc-button--danger esc-button--small" Disabled="_sending" OnClick="() => VoidAsync(d)">@(_confirming == d.Id ? "¿Anular? Toque otra vez" : "Anular")</Button>
+                                    }
+                                    else if (d.Status == "Voided" && d.ReplacedByENcf is null)
+                                    {
+                                        <Button class="esc-button esc-button--small" Disabled="_sending" OnClick="() => ReplaceAsync(d)">@(_confirming == d.Id ? "¿Reemplazar? Toque otra vez" : "Reemplazar")</Button>
+                                    }
+                                </td></tr>
+                        }
+                    </tbody>
+                </table>
+                @if (_recent.Count == 0)
+                {
+                    <EmptyState Icon="receipt" Title="Todavía no hay comprobantes">Cada venta firma el suyo y aparece aquí.</EmptyState>
+                }
+            </div>
+        </section>
+
+        <form class="esc-card esc-setting" @onsubmit="VoidRangeAsync" novalidate>
+            <div class="esc-setting__about"><h2>Anular números sin usar</h2><p>Los números que sobran de una secuencia vencida o que ya no va a usar se anulan ante la DGII (ANECF). Un número anulado no se vuelve a usar.</p></div>
+            <div class="esc-setting__body">
+                @if (Voidable.Count == 0)
+                {
+                    <EmptyState Icon="receipt" Title="No hay números para anular">Las secuencias del ambiente actual ya están usadas o anuladas.</EmptyState>
+                }
+                else
+                {
+                    <div class="esc-form-grid">
+                        <Field Label="Secuencia">
+                            <select class="esc-select" @bind="_rangeId" @bind:after="ClearConfirm">
+                                @foreach (var s in Voidable)
+                                {
+                                    <option value="@s.Id">@Names.DocumentType(s.Type) · @s.Next – @s.To (@s.Available)</option>
+                                }
+                            </select>
+                        </Field>
+                        <Field Label="Hasta (número)" Error="@_toError" Hint="Vacío: hasta el final de la secuencia.">
+                            <input class="esc-input esc-num" inputmode="numeric" @bind="_rangeTo" @bind:after="ClearConfirm" aria-invalid="@(_toError is null ? "false" : "true")" />
+                        </Field>
+                    </div>
+                    @if (Preview is { } p)
+                    {
+                        <p class="esc-muted" role="status">Se anularán <b>@p.Count</b> @(p.Count == 1 ? "número" : "números"): @p.From a @p.To.</p>
+                    }
+                    <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Danger" Disabled="_sending">@(_confirmingRange ? "¿Anular estos números? Toque otra vez" : "Anular números")</Button></div>
+                }
+                @if (_voids.Count > 0)
+                {
+                    <div class="esc-table-wrap">
+                        <table class="esc-table">
+                            <thead><tr><th>Números</th><th class="esc-hide-sm">Fecha</th><th class="esc-num">Cantidad</th><th>Estado</th></tr></thead>
+                            <tbody>
+                                @foreach (var v in _voids)
+                                {
+                                    <tr><td><span style="font-variant-numeric:tabular-nums">@(v.From == v.To ? v.From : $"{v.From} – {v.To}")</span>@if (v.Message is { } m) { <span class="esc-table__sub esc-muted">@m</span> }</td>
+                                        <td class="esc-hide-sm">@Format.Date(v.CreatedUtc)</td><td class="esc-num">@v.Count</td>
+                                        <td><span class="esc-pill esc-pill--@(Names.EcfStatus(v.Status).Pill)">@(v.Status == "Pending" ? "Por enviar" : Names.EcfStatus(v.Status).Text)</span></td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </form>
+    </ChildContent>
+</Admin>
+
+@code {
+    private EcfQueue? _queue;
+    private List<EcfDocument> _rejected = [], _recent = [];
+    private List<EcfSequence> _sequences = [];
+    private List<EcfVoidRow> _voids = [];
+    private string? _message, _rangeTo, _toError;
+    private Notice.Kinds _messageKind;
+    private Guid? _confirming;
+    private Guid _rangeId;
+    private bool _confirmingRange, _sending;
+
+    private List<EcfSequence> Voidable => [.. _sequences.Where(s => s.Current && s.Available > 0)];
+
+    /// <summary>What the void would cover: from the next unused number to "hasta" (or the end), as the server does it.</summary>
+    private (long Count, string From, string To)? Preview
+    {
+        get
+        {
+            if (Voidable.Find(s => s.Id == _rangeId) is not { } s) return null;
+            var (next, end) = (Number(s.Next), Number(s.To));
+            var to = string.IsNullOrWhiteSpace(_rangeTo) ? end : long.TryParse(_rangeTo, out var t) ? t : 0;
+            return to < next || to > end ? null : (to - next + 1, s.Next, $"{s.Next[..3]}{to:D10}");
+        }
+    }
+
+    private static long Number(string encf) => long.Parse(encf[3..], System.Globalization.CultureInfo.InvariantCulture);
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _queue = (await Api.GetAsync<EcfQueue>("/api/fiscal/queue")).Value;
+        _rejected = (await Api.GetAsync<List<EcfDocument>>("/api/fiscal/documents?rejectedOnly=true")).Value ?? [];
+        _recent = (await Api.GetAsync<List<EcfDocument>>("/api/fiscal/documents?last=50")).Value ?? [];
+        _sequences = (await Api.GetAsync<List<EcfSequence>>("/api/fiscal/sequences")).Value ?? [];
+        _voids = (await Api.GetAsync<List<EcfVoidRow>>("/api/fiscal/voids")).Value ?? [];
+        if (!Voidable.Exists(s => s.Id == _rangeId)) _rangeId = Voidable.FirstOrDefault()?.Id ?? Guid.Empty;
+    }
+
+    private void ClearConfirm() => (_confirmingRange, _toError) = (false, null);
+
+    private void Show(Problem? p, string success) => (_messageKind, _message) = p is null ? (Notice.Kinds.Success, success) : (p.Kind, p.Message);
+
+    /// <summary>A rejected (or voided) e-CF: a new one with the same data and a new e-NCF; the sale, its receipt and the customer's account follow it.</summary>
+    private async Task ReplaceAsync(EcfDocument d)
+    {
+        if (_confirming != d.Id) { (_confirming, _message) = (d.Id, null); return; }
+        (_confirming, _sending) = (null, true);
+        var r = await Api.PostAsync<EcfIssued>($"/api/fiscal/documents/{d.Id}/replace");
+        _sending = false;
+        await LoadAsync();
+        Show(r.Problem, $"Se emitió {r.Value?.ENcf} en reemplazo de {d.ENcf}. La venta ya muestra el número nuevo.");
+    }
+
+    /// <summary>TK-205: an e-CF signed but never sent is voided with an ANECF of its number.</summary>
+    private async Task VoidAsync(EcfDocument d)
+    {
+        if (_confirming != d.Id) { (_confirming, _message) = (d.Id, null); return; }
+        (_confirming, _sending) = (null, true);
+        var r = await Api.PostAsync<EcfVoided>($"/api/fiscal/documents/{d.Id}/void");
+        _sending = false;
+        await LoadAsync();
+        Show(r.Problem, $"{d.ENcf} quedó anulado: no se envía y la anulación sale hacia la DGII. Si la venta sigue en pie, reemplácelo.");
+    }
+
+    private async Task VoidRangeAsync()
+    {
+        if (Preview is not { } p) { _toError = "Escriba un número entre el próximo sin usar y el final de la secuencia."; return; }
+        if (!_confirmingRange) { (_confirmingRange, _message) = (true, null); return; }
+        (_confirmingRange, _sending) = (false, true);
+        var r = await Api.PostAsync<EcfVoided>($"/api/fiscal/sequences/{_rangeId}/void", new { To = Number(p.To) });
+        _sending = false;
+        _rangeTo = null;
+        await LoadAsync();
+        Show(r.Problem, $"Se anularon {r.Value?.Count} números ({r.Value?.From} a {r.Value?.To}). La anulación sale hacia la DGII con la cola.");
+    }
+}

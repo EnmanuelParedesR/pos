@@ -110,15 +110,16 @@ internal static class SequenceAlerts
 }
 
 /// <summary>The send queue at a glance: waiting, sent and waiting for the DGII result, past the 72-hour deadline (an infraction),
-/// rejected without a replacement yet (TK-147) and simulated.</summary>
+/// rejected without a replacement yet (TK-147) and simulated; and when the certificate expires (TK-176: the register warns 30 days before).</summary>
 internal static class QueueStatus
 {
-    public sealed record Response(FiscalEnvironment Environment, int Pending, int Sent, int Overdue, DateTime? NextDeadlineUtc, int Rejected, int Simulated);
+    public sealed record Response(FiscalEnvironment Environment, int Pending, int Sent, int Overdue, DateTime? NextDeadlineUtc, int Rejected, int Simulated,
+        DateTime? CertificateExpiresUtc);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/fiscal/queue", async (FiscalDbContext db, FiscalDocuments documents, TimeProvider clock, CancellationToken ct) =>
+            app.MapGet("/api/fiscal/queue", async (FiscalDbContext db, FiscalDocuments documents, EcfCertificate certificate, TimeProvider clock, CancellationToken ct) =>
                 {
                     var now = clock.GetUtcNow().UtcDateTime;
                     var byStatus = await db.Documents.GroupBy(d => d.Status).Select(g => new { g.Key, Count = g.Count() })
@@ -129,7 +130,7 @@ internal static class QueueStatus
                         await pending.CountAsync(d => d.SubmitDeadlineUtc < now, ct),
                         await pending.MinAsync(d => (DateTime?)d.SubmitDeadlineUtc, ct),
                         await db.Documents.CountAsync(d => d.Status == SubmissionStatus.Rejected && d.ReplacedByENcf == null, ct),
-                        byStatus.GetValueOrDefault(SubmissionStatus.Simulated)));
+                        byStatus.GetValueOrDefault(SubmissionStatus.Simulated), certificate.Describe()?.NotAfterUtc));
                 })
                 .RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");
     }

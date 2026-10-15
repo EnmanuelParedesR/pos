@@ -121,6 +121,7 @@
             if (Session.Can("customers.manage")) yield return new("admin/customers", "Clientes", "Clientes", "users");
             yield return new("admin/invoices", "Facturas", "Facturas", "receipt");
             yield return new("admin/reports", "Reportes", "Reportes", "chart");
+            if (Session.Can("fiscal.manage")) yield return new("admin/ecf", "Comprobantes electrónicos", "e-CF", "send"); // TK-204
             if (Session.Can("settings.manage") || Session.Can("users.manage")) yield return new("admin/settings", "Configuración", "Ajustes", "settings");
         }
     }

@@ -9,8 +9,31 @@ public static class Names
     {
         "FiscalCredit31" => "Crédito fiscal (E31)",
         "Consumer32" => "Consumo (E32)",
+        "DebitNote33" => "Nota de débito (E33)",
         "CreditNote34" => "Nota de crédito (E34)",
         _ => type,
+    };
+
+    /// <summary>Where the store's e-CF go (docs/ecf-propio.md §2.1).</summary>
+    public static string FiscalEnvironment(string environment) => environment switch
+    {
+        "Simulated" => "Simulado",
+        "TesteCF" => "Pre-certificación (TesteCF)",
+        "CerteCF" => "Certificación (CerteCF)",
+        "eCF" => "Producción",
+        _ => environment,
+    };
+
+    /// <summary>An e-CF's way to the DGII, and the pill it wears: amber while it waits, red only when the DGII said no.</summary>
+    public static (string Text, string Pill) EcfStatus(string status) => status switch
+    {
+        "Pending" => ("Por enviar", "warning"),
+        "Sent" => ("Esperando a la DGII", "warning"),
+        "Accepted" => ("Aceptado", "success"),
+        "AcceptedConditional" => ("Aceptado condicional", "success"),
+        "Rejected" => ("Rechazado", "error"),
+        "Voided" => ("Anulado sin enviar", "neutral"),
+        _ => ("Simulado", "neutral"),
     };
 
     public static string Itbis(string rate) => rate switch

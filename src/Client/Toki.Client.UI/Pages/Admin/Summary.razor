@@ -333,6 +333,18 @@
             _alerts.Add(new("warning", "receipt", $"Quedan <b>{a.Available}</b> comprobantes de {System.Net.WebUtility.HtmlEncode(Names.DocumentType(a.Type))}",
                 a.ExpiresOn is { } v ? $"Vencen el {v.ToString("d 'de' MMMM", Es)}. Sin comprobantes la caja no puede facturar." : "Sin comprobantes la caja no puede facturar.",
                 "Cargar secuencia", "admin/settings?section=fiscal"));
+        // e-CF (TK-176, TK-204): only for whoever may manage them (the endpoint needs fiscal.manage; anyone else gets nothing here).
+        if ((await Api.GetAsync<FiscalQueue>("/api/fiscal/queue")).Value is { } ecf)
+        {
+            if (ecf.Rejected > 0)
+                _alerts.Add(new("error", "alert", $"La DGII rechazó <b>{ecf.Rejected}</b> {(ecf.Rejected == 1 ? "comprobante" : "comprobantes")}",
+                    "Hay que reemplazarlos por uno nuevo con los mismos datos; la venta pasa al número nuevo.", "Ver rechazados", "admin/ecf"));
+            if (ecf.CertificateExpiresUtc is { } expires && (int)Math.Floor((expires - DateTime.UtcNow).TotalDays) is var days && days <= 30)
+                _alerts.Add(new("warning", "shield", days < 0 ? "El certificado digital <b>venció</b>"
+                        : $"El certificado digital vence en <b>{days} {(days == 1 ? "día" : "días")}</b>",
+                    $"Vence el {Format.StoreTime(expires).ToString("d 'de' MMMM", Es)}. Sin certificado vigente no se pueden firmar comprobantes: renuévelo e impórtelo.",
+                    "Importar certificado", "admin/settings?section=fiscal"));
+        }
         _loading = false;
     }
 

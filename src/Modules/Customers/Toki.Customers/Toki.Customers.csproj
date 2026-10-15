@@ -3,6 +3,7 @@
     <ProjectReference Include="..\..\..\BuildingBlocks\Toki.BuildingBlocks\Toki.BuildingBlocks.csproj" />
     <ProjectReference Include="..\Toki.Customers.Contracts\Toki.Customers.Contracts.csproj" />
     <ProjectReference Include="..\..\CashRegister\Toki.CashRegister.Contracts\Toki.CashRegister.Contracts.csproj" />
+    <ProjectReference Include="..\..\Fiscal\Toki.Fiscal.Contracts\Toki.Fiscal.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.UnitTests" />
