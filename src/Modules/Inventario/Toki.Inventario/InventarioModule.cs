@@ -54,6 +54,17 @@ internal sealed class CatalogoConsultas(InventarioDbContext db) : ICatalogoConsu
         }
         return resultado;
     }
+
+    public async Task<Result<EtiquetaLeida>> LeerEtiquetaAsync(string codigo, CancellationToken ct)
+    {
+        var lectura = EtiquetaBalanza.Leer(codigo.Trim(), await db.FormatosEtiqueta.AsNoTracking().ToListAsync(ct));
+        if (lectura is null) return Error.Validation("Inventario.NoEsEtiqueta", "Ese código no es una etiqueta de balanza.");
+        if (lectura.IsFailure) return lectura.Error!;
+        var plu = Producto.NormalizarPlu(lectura.Value.Plu);
+        var productoId = await db.Productos.AsNoTracking().Where(p => p.Plu == plu).Select(p => (Guid?)p.Id).FirstOrDefaultAsync(ct);
+        if (productoId is null) return InventarioErrors.CodigoNoEncontrado;
+        return new EtiquetaLeida(productoId.Value, lectura.Value.Peso, lectura.Value.Precio);
+    }
 }
 
 /// <summary>Every stock change goes through here: atomic relative updates on the stock row plus a kardex row.

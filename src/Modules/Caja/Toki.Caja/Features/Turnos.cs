@@ -51,6 +51,24 @@ internal static class Cajas
                                       select new Item(c.Id, c.Nombre, c.Activa, t == null ? null : t.Id, t == null ? null : t.CajeroNombre))
                         .AsNoTracking().ToListAsync(ct)))
                 .RequireAuthorization().WithTags("Caja");
+            // Moves the register to another device (replaced PC); null frees it so the next shift binds it again.
+            app.MapPut("/api/caja/cajas/{id:guid}/dispositivo", async (Guid id, Asignar body, ICommandHandler<Asignar, Response> h, CancellationToken ct) =>
+                    (await h.Handle(body with { CajaId = id }, ct)).ToHttp(Results.Ok))
+                .RequirePermiso(Permisos.ConfiguracionGestionar).WithTags("Caja");
+        }
+    }
+
+    public sealed record Asignar(Guid CajaId, Guid? DispositivoId) : ICommand<Response>;
+
+    internal sealed class AsignarHandler(CajaDbContext db, IAuditoria auditoria) : ICommandHandler<Asignar, Response>
+    {
+        public async Task<Result<Response>> Handle(Asignar c, CancellationToken ct)
+        {
+            var caja = await db.Cajas.FirstOrDefaultAsync(x => x.Id == c.CajaId, ct);
+            if (caja is null) return CajaErrors.CajaNoEncontrada;
+            caja.DispositivoId = c.DispositivoId;
+            await auditoria.RegistrarAsync("caja.asignar-dispositivo", "Caja", caja.Id, c, ct);
+            return new Response(caja.Id);
         }
     }
 }
@@ -70,7 +88,12 @@ internal static class AbrirTurno
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            if (!await db.Cajas.AnyAsync(x => x.Id == c.CajaId && x.Activa, ct)) return CajaErrors.CajaNoEncontrada;
+            var caja = await db.Cajas.FirstOrDefaultAsync(x => x.Id == c.CajaId && x.Activa, ct);
+            if (caja is null) return CajaErrors.CajaNoEncontrada;
+            // The first shift binds the register to this device; afterwards only a supervisor may open it elsewhere.
+            if (caja.DispositivoId is { } equipo && equipo != usuario.DispositivoId && !usuario.Tiene(Permisos.CajaAprobarCierre))
+                return CajaErrors.OtroDispositivo;
+            caja.DispositivoId ??= usuario.DispositivoId;
             if (await db.Turnos.AnyAsync(t => t.CajaId == c.CajaId && t.Estado == EstadoTurno.Abierto, ct)) return CajaErrors.CajaOcupada;
             if (await db.Turnos.AnyAsync(t => t.CajeroId == usuario.UsuarioId && t.Estado == EstadoTurno.Abierto, ct)) return CajaErrors.CajeroConTurno;
 
@@ -141,14 +164,12 @@ internal static class RegistrarMovimiento
         }
     }
 
-    internal sealed class Handler(ICajaOperaciones operaciones, IAuditoria auditoria) : ICommandHandler<Command, Response>
+    internal sealed class Handler(CajaOperaciones ops, IAuditoria auditoria) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            var turno = await operaciones.ObtenerTurnoAbiertoAsync(c.TurnoId, ct);
+            var turno = await ops.ObtenerTurnoAbiertoAsync(c.TurnoId, ct);
             if (turno.IsFailure) return turno.Error!;
-            var ops = (CajaOperaciones)operaciones;
-            if (c.TipoMovimiento != Tipo.Entrada && await ops.EfectivoEsperadoAsync(c.TurnoId, ct) < c.Monto) return CajaErrors.SinEfectivo;
 
             var tipo = c.TipoMovimiento switch
             {

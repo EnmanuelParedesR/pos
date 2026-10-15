@@ -7,10 +7,22 @@ public enum TipoEcf { CreditoFiscal31 = 31, Consumo32 = 32, NotaDebito33 = 33, N
 
 public sealed record LineaFiscal(string Descripcion, decimal Cantidad, decimal PrecioUnitario, decimal Descuento, TasaItbis Tasa, decimal Itbis, decimal Total);
 
-/// <param name="ENcfModificado">For credit notes: the e-NCF being corrected.</param>
+/// <summary>DGII modification code of a credit note: 1 cancels the whole document (a void), 3 corrects amounts (a return).</summary>
+public enum CodigoModificacion { Anulacion = 1, CorreccionMontos = 3 }
+
+public enum TipoPagoEcf { Contado = 1, Credito = 2 }
+
+/// <summary>Consumer receipts (32) of this amount or more must identify the buyer.</summary>
+public static class LimitesEcf
+{
+    public const decimal ConsumoIdentificado = 250_000m;
+}
+
+/// <param name="ENcfModificado">For credit notes: the e-NCF being corrected (required).</param>
 public sealed record DocumentoAEmitir(
     TipoEcf Tipo, Guid ReferenciaId, string? RncComprador, string? NombreComprador,
-    IReadOnlyList<LineaFiscal> Lineas, decimal Itbis, decimal Total, string? ENcfModificado = null);
+    IReadOnlyList<LineaFiscal> Lineas, decimal Itbis, decimal Total, string? ENcfModificado = null,
+    CodigoModificacion? CodigoModificacion = null, TipoPagoEcf TipoPago = TipoPagoEcf.Contado);
 
 /// <param name="UrlQr">What the printed QR code points to.</param>
 public sealed record ComprobanteEmitido(Guid DocumentoId, string ENcf, string CodigoSeguridad, DateTime FechaFirmaUtc, string UrlQr);

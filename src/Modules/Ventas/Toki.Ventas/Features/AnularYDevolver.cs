@@ -39,19 +39,14 @@ internal static class AnularVenta
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            var venta = await db.VentaCompletaAsync(c.VentaId, ct);
+            // Lock order: sale row → shift → stock → fiscal sequence → customer → audit.
+            var venta = await db.BloquearVentaAsync(c.VentaId, ct);
             if (venta is null) return VentasErrors.VentaNoEncontrada;
             if (venta.Estado == EstadoVenta.Anulada) return VentasErrors.YaAnulada;
             if (venta.Lineas.Any(l => l.CantidadDevuelta > 0)) return VentasErrors.ConDevoluciones;
 
-            // Same lock order as a sale: shift, then fiscal sequence, then stock, then audit.
             var turno = await caja.ObtenerTurnoAbiertoAsync(venta.TurnoId, ct);
             if (turno.IsFailure) return turno.Error!.Code == "Caja.TurnoCerrado" ? VentasErrors.FueraDeTurno : turno.Error;
-
-            var nota = await fiscal.EmitirAsync(new DocumentoAEmitir(TipoEcf.NotaCredito34, venta.Id, venta.RncCliente, venta.ClienteNombre,
-                venta.Lineas.Select(l => new LineaFiscal(l.Descripcion, l.Cantidad, l.PrecioUnitario, l.Descuento, l.TasaItbis, l.Itbis, l.Total)).ToList(),
-                venta.Itbis, venta.Total, venta.ENcf), ct);
-            if (nota.IsFailure) return nota.Error!;
 
             var entrada = await inventario.RegistrarEntradaAsync(TipoMovimiento.AnulacionVenta, venta.Id,
                 venta.Lineas.Select(l => new LineaMovimiento(l.ProductoId, Math.Round(l.Cantidad * l.Factor, 3), l.CostoUnitario / l.Factor)).ToList(),
@@ -59,6 +54,11 @@ internal static class AnularVenta
             if (entrada.IsFailure) return entrada.Error!;
             var cobros = await caja.AnularCobrosAsync(venta.Id, ct);
             if (cobros.IsFailure) return cobros.Error!;
+
+            var nota = await fiscal.EmitirAsync(new DocumentoAEmitir(TipoEcf.NotaCredito34, venta.Id, venta.RncCliente, venta.ClienteNombre,
+                venta.Lineas.Select(l => new LineaFiscal(l.Descripcion, l.Cantidad, l.PrecioUnitario, l.Descuento, l.TasaItbis, l.Itbis, l.Total)).ToList(),
+                venta.Itbis, venta.Total, venta.ENcf, CodigoModificacion.Anulacion), ct);
+            if (nota.IsFailure) return nota.Error!;
             if (venta.ClienteId is not null) await clientes.AnularVentaAsync(venta.Id, ct);
 
             venta.Estado = EstadoVenta.Anulada;
@@ -120,11 +120,12 @@ internal static class DevolverVenta
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            if (await db.Devoluciones.AsNoTracking().FirstOrDefaultAsync(d => d.Id == c.DevolucionId, ct) is { } ya)
-                return new Response(ya.Id, ya.ENcf, ya.Total, ya.Itbis, ya.Medio);
+            if (await YaRegistradaAsync(c.DevolucionId, ct) is { } ya) return ya;
 
-            var venta = await db.VentaCompletaAsync(c.VentaId, ct);
+            // Lock order: sale row → shift → stock → fiscal sequence → customer → audit. The sale lock makes returns and voids of one sale run one at a time.
+            var venta = await db.BloquearVentaAsync(c.VentaId, ct);
             if (venta is null) return VentasErrors.VentaNoEncontrada;
+            if (await YaRegistradaAsync(c.DevolucionId, ct) is { } repetida) return repetida;
             if (venta.Estado == EstadoVenta.Anulada) return VentasErrors.YaAnulada;
 
             var turno = await caja.ObtenerTurnoAbiertoAsync(c.TurnoId, ct);
@@ -132,7 +133,8 @@ internal static class DevolverVenta
 
             var ids = c.Lineas.Select(l => l.LineaVentaId).ToList();
             var yaDevuelto = await db.Set<LineaDevolucion>().Where(l => ids.Contains(l.LineaVentaId))
-                .GroupBy(l => l.LineaVentaId).Select(g => new { g.Key, Total = g.Sum(x => x.Total) }).ToDictionaryAsync(x => x.Key, x => x.Total, ct);
+                .GroupBy(l => l.LineaVentaId).Select(g => new { g.Key, Total = g.Sum(x => x.Total), Itbis = g.Sum(x => x.Itbis) })
+                .ToDictionaryAsync(x => x.Key, x => (x.Total, x.Itbis), ct);
 
             var devolucion = new Devolucion
             {
@@ -150,40 +152,49 @@ internal static class DevolverVenta
                 if (lv.Unidad == UnidadMedida.Unidad && lv.PresentacionId is null && l.Cantidad != Math.Truncate(l.Cantidad))
                     return Error.Validation("Ventas.CantidadInvalida", $"{lv.Descripcion} se devuelve por unidad.");
 
-                // The last piece returned takes whatever is left, so the line never refunds more than it charged.
-                var monto = l.Cantidad == pendiente
-                    ? lv.Total - yaDevuelto.GetValueOrDefault(lv.Id)
-                    : Dinero.Redondear(lv.Total * l.Cantidad / lv.Cantidad);
-                var itbis = Itbis.Incluido(monto, lv.TasaItbis);
+                // The last piece returned takes whatever is left, so the line never refunds more (or other ITBIS) than it charged.
+                var (montoPrevio, itbisPrevio) = yaDevuelto.GetValueOrDefault(lv.Id);
+                var ultima = l.Cantidad == pendiente;
+                var monto = ultima ? lv.Total - montoPrevio : Dinero.Redondear(lv.Total * l.Cantidad / lv.Cantidad);
+                var itbis = ultima ? lv.Itbis - itbisPrevio : Itbis.Incluido(monto, lv.TasaItbis);
                 lv.CantidadDevuelta += l.Cantidad;
                 devolucion.Lineas.Add(new LineaDevolucion { DevolucionId = devolucion.Id, LineaVentaId = lv.Id, Cantidad = l.Cantidad, Total = monto, Itbis = itbis, Repuesto = l.Reponer });
-                lineasFiscales.Add(new LineaFiscal(lv.Descripcion, l.Cantidad, lv.PrecioUnitario, 0, lv.TasaItbis, itbis, monto));
+                // DGII checks Precio × Cantidad − Descuento = MontoItem; the returned amount is already net of the sale's discounts.
+                var descuento = Math.Max(0, Dinero.Redondear(lv.PrecioUnitario * l.Cantidad) - monto);
+                lineasFiscales.Add(new LineaFiscal(lv.Descripcion, l.Cantidad, lv.PrecioUnitario, descuento, lv.TasaItbis, itbis, monto));
                 if (l.Reponer) reponer.Add(new LineaMovimiento(lv.ProductoId, Math.Round(l.Cantidad * lv.Factor, 3), lv.CostoUnitario / lv.Factor));
             }
             devolucion.Total = devolucion.Lineas.Sum(l => l.Total);
             devolucion.Itbis = devolucion.Lineas.Sum(l => l.Itbis);
 
-            var nota = await fiscal.EmitirAsync(new DocumentoAEmitir(TipoEcf.NotaCredito34, devolucion.Id, venta.RncCliente, venta.ClienteNombre,
-                lineasFiscales, devolucion.Itbis, devolucion.Total, venta.ENcf), ct);
-            if (nota.IsFailure) return nota.Error!;
-            devolucion.ENcf = nota.Value.ENcf;
+            if (c.Medio == MedioPago.SaldoFavor && venta.ClienteId is null) return VentasErrors.MedioNoDisponible;
+            if (c.Medio != MedioPago.SaldoFavor)
+            {
+                // Money goes back the way it came in: a card sale is never refunded in cash.
+                var cobrado = venta.Pagos.Where(p => p.Medio == c.Medio).Sum(p => p.Monto);
+                var devueltoAsi = await db.Devoluciones.Where(d => d.VentaId == venta.Id && d.Medio == c.Medio).Select(d => d.Total).ToListAsync(ct);
+                if (devolucion.Total > cobrado - devueltoAsi.Sum()) return VentasErrors.MedioExcedido(c.Medio, Math.Max(0, cobrado - devueltoAsi.Sum()));
+            }
 
             if (reponer.Count > 0)
             {
                 var entrada = await inventario.RegistrarEntradaAsync(TipoMovimiento.Devolucion, devolucion.Id, reponer, actualizarCosto: false, ct);
                 if (entrada.IsFailure) return entrada.Error!;
             }
-            if (c.Medio == MedioPago.SaldoFavor)
+            if (c.Medio != MedioPago.SaldoFavor)
             {
-                // To the customer account: pays down this sale's unpaid credit first, the rest is balance in favor.
-                if (venta.ClienteId is not { } clienteId) return VentasErrors.MedioNoDisponible;
-                await clientes.AcreditarDevolucionAsync(clienteId, venta.Id, devolucion.Id, devolucion.Total, ct);
-            }
-            else
-            {
+                // shortcut: a cash refund may carry centavos the drawer cannot pay; round refunds like sales if blind counts show it.
                 var reembolso = await caja.RegistrarReembolsoAsync(c.TurnoId, devolucion.Id, c.Medio, devolucion.Total, ct);
                 if (reembolso.IsFailure) return reembolso.Error!;
             }
+
+            var nota = await fiscal.EmitirAsync(new DocumentoAEmitir(TipoEcf.NotaCredito34, devolucion.Id, venta.RncCliente, venta.ClienteNombre,
+                lineasFiscales, devolucion.Itbis, devolucion.Total, venta.ENcf, CodigoModificacion.CorreccionMontos), ct);
+            if (nota.IsFailure) return nota.Error!;
+            devolucion.ENcf = nota.Value.ENcf;
+
+            // To the customer account: pays down this sale's unpaid credit first, the rest is balance in favor.
+            if (c.Medio == MedioPago.SaldoFavor) await clientes.AcreditarDevolucionAsync(venta.ClienteId!.Value, venta.Id, devolucion.Id, devolucion.Total, ct);
 
             db.Devoluciones.Add(devolucion);
             outbox.Agregar(new DevolucionRegistradaV1(devolucion.Id, venta.Id, devolucion.ENcf, c.Medio.ToString(), devolucion.Total, devolucion.Itbis));
@@ -191,6 +202,10 @@ internal static class DevolverVenta
                 new { Devolucion = devolucion.Id, devolucion.Total, c.Medio, c.Motivo, NotaCredito = devolucion.ENcf }, ct);
             return new Response(devolucion.Id, devolucion.ENcf, devolucion.Total, devolucion.Itbis, c.Medio);
         }
+
+        private async Task<Response?> YaRegistradaAsync(Guid devolucionId, CancellationToken ct) =>
+            await db.Devoluciones.AsNoTracking().Where(d => d.Id == devolucionId)
+                .Select(d => new Response(d.Id, d.ENcf, d.Total, d.Itbis, d.Medio)).FirstOrDefaultAsync(ct);
     }
 
     internal sealed record Body(Guid DevolucionId, Guid TurnoId, IReadOnlyList<Linea> Lineas, MedioPago Medio, string Motivo, Guid? AutorizacionSupervisorId);

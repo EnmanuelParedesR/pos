@@ -10,17 +10,43 @@ public static class Tienda
 {
     private static readonly HashSet<TokiApp> ConSecuencias = [];
 
+    private static int _ultimoPlu = 1000;
+
     public static async Task CargarSecuenciasAsync(this TokiApp app)
     {
         lock (ConSecuencias) if (!ConSecuencias.Add(app)) return;
         var admin = app.Cliente(await app.AdminAsync());
+        await app.ConfigurarNegocioAsync();
         foreach (var tipo in new[] { 31, 32, 34 })
             (await admin.PostAsJsonAsync("/api/fiscal/secuencias", new { Tipo = tipo, Desde = 1, Hasta = 100_000, VenceEl = "2030-12-31" })).EnsureSuccessStatusCode();
     }
 
-    public static async Task<Cajero> CajeroConTurnoAsync(this TokiApp app, decimal fondo = 2000m)
+    /// <summary>Issuing needs the shop's RNC; the rest keeps its defaults.</summary>
+    public static async Task ConfigurarNegocioAsync(this TokiApp app)
     {
-        await app.CargarSecuenciasAsync();
+        var admin = app.Cliente(await app.AdminAsync());
+        var negocio = await admin.GetFromJsonAsync<JsonElement>("/api/configuracion/negocio");
+        (await admin.PutAsJsonAsync("/api/configuracion/negocio", new
+        {
+            Nombre = "Carnicería de prueba", Rnc = "131245678", TopeDescuentoPct = negocio.GetProperty("topeDescuentoPct").GetDecimal(),
+        })).EnsureSuccessStatusCode();
+    }
+
+    /// <summary>A PLU no other test uses (PLUs are unique per store).</summary>
+    public static string NuevoPlu() => Interlocked.Increment(ref _ultimoPlu).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>A price label as the scale prints it: "22" + 4-digit PLU + amount in centavos (6 digits) + EAN-13 check digit.</summary>
+    public static string EtiquetaPrecio(string plu, decimal monto)
+    {
+        var doce = $"22{int.Parse(plu, System.Globalization.CultureInfo.InvariantCulture):0000}{(int)(monto * 100):000000}";
+        var suma = doce.Select((d, i) => (d - '0') * (i % 2 == 0 ? 1 : 3)).Sum();
+        return doce + (10 - suma % 10) % 10;
+    }
+
+    /// <param name="cargarSecuencias">False for tests that load their own e-NCF ranges.</param>
+    public static async Task<Cajero> CajeroConTurnoAsync(this TokiApp app, decimal fondo = 2000m, bool cargarSecuencias = true)
+    {
+        if (cargarSecuencias) await app.CargarSecuenciasAsync();
         var admin = app.Cliente(await app.AdminAsync());
         var caja = (await (await admin.PostAsJsonAsync("/api/caja/cajas", new { Nombre = "Caja " + Guid.NewGuid().ToString()[..4] })).Json()).GetProperty("id").GetGuid();
         var sesion = await app.UsuarioAsync(Roles.Cajero);

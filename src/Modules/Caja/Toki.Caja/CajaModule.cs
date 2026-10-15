@@ -15,7 +15,8 @@ public static class CajaModule
     public static IServiceCollection AddCajaModule(this IServiceCollection services)
     {
         services.AddModuleDbContext<CajaDbContext>();
-        services.AddScoped<ICajaOperaciones, CajaOperaciones>();
+        services.AddScoped<CajaOperaciones>();
+        services.AddScoped<ICajaOperaciones>(sp => sp.GetRequiredService<CajaOperaciones>());
         return services;
     }
 }
@@ -42,6 +43,7 @@ internal sealed class CajaConfiguration : IEntityTypeConfiguration<CajaFisica>, 
         b.Property(t => t.Version).IsConcurrencyToken();
         // One open shift per register, enforced by the database too.
         b.HasIndex(t => t.CajaId).IsUnique().HasFilter("[CerradoUtc] IS NULL").HasDatabaseName("IX_Turnos_CajaAbierta");
+        b.HasIndex(t => t.CajeroId).IsUnique().HasFilter("[CerradoUtc] IS NULL").HasDatabaseName("IX_Turnos_CajeroAbierto");
         b.HasIndex(t => t.AbiertoUtc);
     }
 
@@ -70,17 +72,20 @@ internal sealed class CajaOperaciones(CajaDbContext db, IUserContext usuario, IO
         var t = await (from turno in db.Turnos
                        join caja in db.Cajas on turno.CajaId equals caja.Id
                        where turno.Id == turnoId
-                       select new { turno, caja.Nombre }).AsNoTracking().FirstOrDefaultAsync(ct);
+                       select new { turno, caja.Nombre, caja.DispositivoId }).AsNoTracking().FirstOrDefaultAsync(ct);
         if (t is null) return CajaErrors.TurnoNoEncontrado;
         if (t.turno.Estado != EstadoTurno.Abierto) return CajaErrors.TurnoCerrado;
-        if (t.turno.CajeroId != usuario.UsuarioId && !usuario.Tiene(Permisos.CajaAprobarCierre)) return CajaErrors.TurnoAjeno;
+        var supervisor = usuario.Tiene(Permisos.CajaAprobarCierre);
+        if (t.turno.CajeroId != usuario.UsuarioId && !supervisor) return CajaErrors.TurnoAjeno;
+        if (t.DispositivoId is { } equipo && equipo != usuario.DispositivoId && !supervisor) return CajaErrors.OtroDispositivo;
         return new TurnoAbierto(t.turno.Id, t.turno.CajaId, t.Nombre, t.turno.CajeroId);
     }
 
-    public Task RegistrarCobroAsync(Guid turnoId, Guid ventaId, IReadOnlyList<CobroMedio> pagos, CancellationToken ct)
+    public Task RegistrarCobroAsync(Guid turnoId, Guid ventaId, IReadOnlyList<CobroMedio> pagos, decimal redondeo, CancellationToken ct)
     {
         foreach (var p in pagos.Where(p => p.Monto > 0))
             Agregar(turnoId, TipoMovimientoCaja.Cobro, p.Medio, p.Monto, ventaId, p.Referencia);
+        if (redondeo > 0) Agregar(turnoId, TipoMovimientoCaja.Redondeo, MedioPago.Efectivo, redondeo, ventaId, null);
         return Task.CompletedTask;
     }
 
@@ -88,7 +93,6 @@ internal sealed class CajaOperaciones(CajaDbContext db, IUserContext usuario, IO
     {
         var turno = await ObtenerTurnoAbiertoAsync(turnoId, ct);
         if (turno.IsFailure) return turno.Error!;
-        if (medio == MedioPago.Efectivo && await EfectivoEsperadoAsync(turnoId, ct) < monto) return CajaErrors.SinEfectivo;
         Agregar(turnoId, TipoMovimientoCaja.Reembolso, medio, monto, referenciaId, null);
         return Result.Success();
     }
@@ -103,12 +107,13 @@ internal sealed class CajaOperaciones(CajaDbContext db, IUserContext usuario, IO
 
     public async Task<Result> AnularCobrosAsync(Guid ventaId, CancellationToken ct)
     {
-        var cobros = await db.Movimientos.Where(m => m.ReferenciaId == ventaId && m.Tipo == TipoMovimientoCaja.Cobro).AsNoTracking().ToListAsync(ct);
+        var cobros = await db.Movimientos.Where(m => m.ReferenciaId == ventaId && (m.Tipo == TipoMovimientoCaja.Cobro || m.Tipo == TipoMovimientoCaja.Redondeo)).AsNoTracking().ToListAsync(ct);
         if (cobros.Count == 0) return Result.Success();
         var turnoId = cobros[0].TurnoId;
         var turno = await db.TurnoAsync(turnoId, ct);
         if (turno is not { Estado: EstadoTurno.Abierto }) return CajaErrors.TurnoCerrado;
-        foreach (var c in cobros) Agregar(turnoId, TipoMovimientoCaja.AnulacionCobro, c.Medio, c.Monto, ventaId, c.Referencia);
+        foreach (var c in cobros)
+            Agregar(turnoId, TipoMovimientoCaja.AnulacionCobro, c.Medio, c.Monto, ventaId, c.Tipo == TipoMovimientoCaja.Redondeo ? ReporteZ.ReferenciaRedondeo : c.Referencia);
         return Result.Success();
     }
 

@@ -35,7 +35,7 @@ public sealed class VentasTests(TokiApp app) : IClassFixture<TokiApp>
         var r = await cajero.VenderAsync(Venta(cajero.TurnoId, 505.75m, 1000m, Linea(chuleta, 2.35m), Linea(refresco, 2)));
         r.StatusCode.ShouldBe(HttpStatusCode.Created);
         var venta = await r.Json();
-        venta.GetProperty("cambio").GetDecimal().ShouldBe(494.25m);
+        venta.GetProperty("cambio").GetDecimal().ShouldBe(494m); // no coins under RD$ 1: the 0.25 stays in the drawer as rounding
         venta.GetProperty("eNcf").GetString()!.ShouldStartWith("E32");
         var comprobante = venta.GetProperty("comprobante");
         comprobante.GetProperty("itbis").EnumerateArray().Sum(i => i.GetProperty("itbis").GetDecimal()).ShouldBe(18m);
@@ -44,7 +44,9 @@ public sealed class VentasTests(TokiApp app) : IClassFixture<TokiApp>
         var admin = await Admin();
         (await admin.ExistenciaAsync(chuleta)).ShouldBe(47.65m);
         (await admin.ExistenciaAsync(refresco)).ShouldBe(22m);
-        (await app.ReporteXAsync(cajero.TurnoId)).GetProperty("efectivoEsperado").GetDecimal().ShouldBe(1505.75m);
+        var x = await app.ReporteXAsync(cajero.TurnoId);
+        x.GetProperty("efectivoEsperado").GetDecimal().ShouldBe(1506m);
+        x.GetProperty("redondeo").GetDecimal().ShouldBe(0.25m);
         (await ContarAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox.Where(m => m.Tipo.EndsWith("VentaRegistradaV1")))).ShouldBeGreaterThan(0);
         (await app.DescuadresKardexAsync()).ShouldBeEmpty();
         (await app.VerificarAuditoriaAsync()).ShouldBeNull();
@@ -233,14 +235,25 @@ public sealed class VentasTests(TokiApp app) : IClassFixture<TokiApp>
     public async Task Una_etiqueta_de_precio_cobra_lo_que_dice_la_etiqueta()
     {
         var cajero = await app.CajeroConTurnoAsync();
-        var (chuleta, _) = await ProductosAsync();
-        var r = await cajero.VenderAsync(new
+        var admin = await Admin();
+        var plu = NuevoPlu();
+        var chuleta = await admin.ProductoAsync(await admin.CategoriaAsync(), "Chuleta " + plu, 165m, unidad: "Libra", tasa: "Exento", costo: 110m, existencia: 50, plu: plu);
+        var otro = await admin.ProductoAsync(await admin.CategoriaAsync(), "Costilla " + plu, 150m, unidad: "Libra", tasa: "Exento", existencia: 50);
+        object Cuerpo(Guid producto, decimal total, string codigo) => new
         {
-            VentaId = Guid.CreateVersion7(), TurnoId = cajero.TurnoId, Pagos = new[] { new { Medio = "Efectivo", Monto = 400m } }, TotalEsperado = 387.75m,
-            Lineas = new[] { new { ProductoId = chuleta, Cantidad = 2.35m, MontoEtiqueta = 387.75m, CodigoEtiqueta = "2200001038775" } },
-        });
+            VentaId = Guid.CreateVersion7(), TurnoId = cajero.TurnoId, Pagos = new[] { new { Medio = "Efectivo", Monto = 400m } }, TotalEsperado = total,
+            Lineas = new[] { new { ProductoId = producto, Cantidad = 1m, CodigoEtiqueta = codigo } },
+        };
+
+        // The server reads the amount from the code: a register that claims a lower total is told the real one.
+        var etiqueta = EtiquetaPrecio(plu, 387.75m);
+        (await (await cajero.VenderAsync(Cuerpo(chuleta, 100m, etiqueta))).CodigoError()).ShouldBe("Ventas.TotalCambio");
+        // A label printed for another product cannot be charged on this one.
+        (await (await cajero.VenderAsync(Cuerpo(otro, 387.75m, etiqueta))).CodigoError()).ShouldBe("Ventas.EtiquetaNoCoincide");
+
+        var r = await cajero.VenderAsync(Cuerpo(chuleta, 387.75m, etiqueta));
         r.StatusCode.ShouldBe(HttpStatusCode.Created);
-        (await (await Admin()).ExistenciaAsync(chuleta)).ShouldBe(47.65m);
+        (await admin.ExistenciaAsync(chuleta)).ShouldBe(47.65m); // 387.75 / 165 = 2.35 lb
     }
 
     [Fact]
@@ -262,7 +275,7 @@ public sealed class VentasTests(TokiApp app) : IClassFixture<TokiApp>
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         var lista = await cajero.Cliente.GetFromJsonAsync<JsonElement>($"/api/ventas/en-espera?turnoId={cajero.TurnoId}");
         lista[0].GetProperty("contenido").GetProperty("lineas").GetInt32().ShouldBe(3);
-        (await cajero.Cliente.DeleteAsync($"/api/ventas/en-espera/{espera}")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await cajero.Cliente.DeleteAsync($"/api/ventas/en-espera/{espera}?turnoId={cajero.TurnoId}")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await cajero.Cliente.GetFromJsonAsync<JsonElement>($"/api/ventas/en-espera?turnoId={cajero.TurnoId}")).GetArrayLength().ShouldBe(0);
     }
 }

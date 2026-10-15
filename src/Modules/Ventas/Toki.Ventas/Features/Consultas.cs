@@ -94,7 +94,7 @@ internal static class ListarVentas
 internal static class VentasEnEspera
 {
     public sealed record Guardar(Guid Id, Guid TurnoId, string Etiqueta, JsonElement Contenido, decimal Total) : ICommand<Ok>;
-    public sealed record Quitar(Guid Id) : ICommand<Ok>;
+    public sealed record Quitar(Guid Id, Guid TurnoId) : ICommand<Ok>;
     public sealed record Item(Guid Id, string Etiqueta, decimal Total, DateTime CreadaUtc, JsonElement Contenido);
 
     internal sealed class Validator : AbstractValidator<Guardar>
@@ -113,7 +113,8 @@ internal static class VentasEnEspera
         {
             var turno = await caja.ObtenerTurnoAbiertoAsync(c.TurnoId, ct);
             if (turno.IsFailure) return turno.Error!;
-            var espera = await db.EnEspera.FirstOrDefaultAsync(e => e.Id == c.Id, ct);
+            // Only this shift's cart: an id from another register never overwrites theirs (it fails as a duplicate instead).
+            var espera = await db.EnEspera.FirstOrDefaultAsync(e => e.Id == c.Id && e.TurnoId == c.TurnoId, ct);
             if (espera is null) db.EnEspera.Add(espera = new VentaEnEspera { Id = c.Id, CreadaUtc = reloj.GetUtcNow().UtcDateTime });
             espera.TurnoId = c.TurnoId;
             espera.UsuarioId = usuario.UsuarioId;
@@ -124,11 +125,14 @@ internal static class VentasEnEspera
         }
     }
 
-    internal sealed class QuitarHandler(VentasDbContext db) : ICommandHandler<Quitar, Ok>
+    /// <remarks>shortcut: carts of a closed shift stay in the table (Caja cannot reach Ventas tables); purge them on TurnoCerradoV1 when the outbox dispatcher exists.</remarks>
+    internal sealed class QuitarHandler(VentasDbContext db, ICajaOperaciones caja) : ICommandHandler<Quitar, Ok>
     {
         public async Task<Result<Ok>> Handle(Quitar c, CancellationToken ct)
         {
-            await db.EnEspera.Where(e => e.Id == c.Id).ExecuteDeleteAsync(ct);
+            var turno = await caja.ObtenerTurnoAbiertoAsync(c.TurnoId, ct);
+            if (turno.IsFailure) return turno.Error!;
+            await db.EnEspera.Where(e => e.Id == c.Id && e.TurnoId == c.TurnoId).ExecuteDeleteAsync(ct);
             return Ok.Valor;
         }
     }
@@ -140,8 +144,8 @@ internal static class VentasEnEspera
             app.MapPut("/api/ventas/en-espera", async (Guardar c, ICommandHandler<Guardar, Ok> h, CancellationToken ct) =>
                     (await h.Handle(c, ct)).ToHttp(_ => Results.NoContent()))
                 .RequirePermiso(Permisos.VentasRegistrar).WithTags("Ventas");
-            app.MapDelete("/api/ventas/en-espera/{id:guid}", async (Guid id, ICommandHandler<Quitar, Ok> h, CancellationToken ct) =>
-                    (await h.Handle(new Quitar(id), ct)).ToHttp(_ => Results.NoContent()))
+            app.MapDelete("/api/ventas/en-espera/{id:guid}", async (Guid id, Guid turnoId, ICommandHandler<Quitar, Ok> h, CancellationToken ct) =>
+                    (await h.Handle(new Quitar(id, turnoId), ct)).ToHttp(_ => Results.NoContent()))
                 .RequirePermiso(Permisos.VentasRegistrar).WithTags("Ventas");
             app.MapGet("/api/ventas/en-espera", async (Guid turnoId, VentasDbContext db, CancellationToken ct) =>
                 {

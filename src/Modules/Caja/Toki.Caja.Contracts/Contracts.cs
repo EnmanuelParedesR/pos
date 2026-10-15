@@ -15,7 +15,8 @@ public interface ICajaOperaciones
     /// <summary>The shift if it is open and the caller may sell on it (its cashier, or someone who can approve closings).</summary>
     Task<Result<TurnoAbierto>> ObtenerTurnoAbiertoAsync(Guid turnoId, CancellationToken ct);
 
-    Task RegistrarCobroAsync(Guid turnoId, Guid ventaId, IReadOnlyList<CobroMedio> pagos, CancellationToken ct);
+    /// <param name="redondeo">Centavos kept because cash change is given in whole pesos.</param>
+    Task RegistrarCobroAsync(Guid turnoId, Guid ventaId, IReadOnlyList<CobroMedio> pagos, decimal redondeo, CancellationToken ct);
 
     /// <summary>Money given back to a customer (a return).</summary>
     Task<Result> RegistrarReembolsoAsync(Guid turnoId, Guid referenciaId, MedioPago medio, decimal monto, CancellationToken ct);

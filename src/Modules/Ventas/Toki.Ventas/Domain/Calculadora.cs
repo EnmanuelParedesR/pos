@@ -16,8 +16,6 @@ internal sealed record LineaCalculada(decimal Bruto, decimal DescuentoLinea, dec
 internal sealed record Totales(IReadOnlyList<LineaCalculada> Lineas, decimal Bruto, decimal Descuento, decimal Subtotal, decimal Itbis, decimal Total)
 {
     public decimal PorcentajeDescuento => Bruto == 0 ? 0 : Math.Round(Descuento / Bruto * 100, 2);
-
-    public decimal ItbisDe(IReadOnlyList<TasaItbis> tasas, TasaItbis tasa) => Lineas.Where((_, i) => tasas[i] == tasa).Sum(l => l.Itbis);
 }
 
 /// <summary>The only place where a sale's money is computed. Shelf prices include ITBIS (DR retail),
@@ -86,18 +84,23 @@ internal sealed record PagoAplicado(MedioPago Medio, decimal Monto, decimal? Rec
 
 internal static class Pagos
 {
-    /// <summary>Mixed payments must add up to the total. Only cash may exceed it, and the excess is the change.</summary>
-    public static Result<(IReadOnlyList<PagoAplicado> Pagos, decimal Cambio)> Aplicar(decimal total, IReadOnlyList<PagoEntrada> pagos)
+    /// <summary>Mixed payments must add up to the total. Only cash may exceed it, and the excess is the change.
+    /// There are no coins under RD$ 1: cash comes in whole pesos and the change is rounded down; the kept centavos are
+    /// <c>Redondeo</c>, so the drawer's expected cash is always a countable amount.</summary>
+    public static Result<(IReadOnlyList<PagoAplicado> Pagos, decimal Cambio, decimal Redondeo)> Aplicar(decimal total, IReadOnlyList<PagoEntrada> pagos)
     {
         if (pagos.Any(p => p.Monto <= 0 || p.Monto != Math.Round(p.Monto, 2)))
             return Error.Validation("Ventas.PagoInvalido", "Cada pago debe ser un monto positivo con hasta 2 decimales.");
+        if (pagos.Any(p => p.Medio == MedioPago.Efectivo && p.Monto != Math.Truncate(p.Monto)))
+            return Error.Validation("Ventas.EfectivoSinCentavos", "El efectivo se recibe en pesos enteros.");
         var efectivo = pagos.Where(p => p.Medio == MedioPago.Efectivo).Sum(p => p.Monto);
         var otros = pagos.Where(p => p.Medio != MedioPago.Efectivo).Sum(p => p.Monto);
         if (otros > total) return Error.Validation("Ventas.PagoExcedido", "Solo el efectivo puede pasar del total (la devuelta sale del efectivo).");
         if (efectivo + otros < total) return Error.Validation("Ventas.PagoIncompleto", $"Faltan RD$ {total - efectivo - otros:N2}.");
 
-        var cambio = efectivo + otros - total;
-        var porDescontar = cambio;
+        var exceso = efectivo + otros - total;
+        var cambio = Math.Floor(exceso);
+        var porDescontar = exceso;
         var aplicados = new List<PagoAplicado>();
         foreach (var p in pagos.Reverse())
         {
@@ -107,6 +110,6 @@ internal static class Pagos
             aplicados.Add(new PagoAplicado(p.Medio, p.Monto - resta, p.Monto, p.Referencia));
         }
         aplicados.Reverse();
-        return (aplicados.Where(a => a.Monto > 0).ToList(), cambio);
+        return (aplicados.Where(a => a.Monto > 0).ToList(), cambio, exceso - cambio);
     }
 }

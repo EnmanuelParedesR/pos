@@ -34,7 +34,11 @@ internal sealed class Venta
     public decimal Itbis { get; set; }
     public decimal Total { get; set; }
     public decimal Cambio { get; set; }
+    /// <summary>Cash centavos kept because change is given in whole pesos.</summary>
+    public decimal Redondeo { get; set; }
     public EstadoVenta Estado { get; set; }
+    /// <summary>Bumped by an atomic update before a void or return reads the sale: it locks the row, so they run one at a time.</summary>
+    public int Version { get; set; }
     public DateTime FechaUtc { get; set; }
     public DateTime? AnuladaUtc { get; set; }
     public string? MotivoAnulacion { get; set; }
@@ -130,6 +134,12 @@ internal static class VentasErrors
     public static readonly Error CantidadDevolucion = Error.Validation("Ventas.CantidadDevolucion", "No se puede devolver más de lo que se vendió.");
     public static readonly Error EtiquetaRepetida = Error.Conflict("Ventas.EtiquetaRepetida", "Esa etiqueta de balanza ya está en la venta.");
     public static readonly Error MedioNoDisponible = Error.Validation("Ventas.MedioNoDisponible", "Ese medio de pago necesita un cliente con cuenta.");
+    public static readonly Error IdRepetido = Error.Conflict("Ventas.IdRepetido", "Ese número de venta ya se usó para otra venta. Vuelva a cobrar.");
+    public static readonly Error EtiquetaNoCoincide = Error.Conflict("Ventas.EtiquetaNoCoincide", "La etiqueta de balanza es de otro producto.");
+    public static readonly Error RncRequerido = Error.Validation("Ventas.RncRequerido", "Este comprobante necesita el RNC o la cédula del cliente.");
+
+    public static Error MedioExcedido(MedioPago medio, decimal maximo) =>
+        Error.Validation("Ventas.MedioExcedido", $"Por {medio} se pueden devolver como máximo RD$ {maximo:N2} (lo que se cobró así).");
 
     public static Error TotalCambio(decimal total) =>
         Error.Conflict("Ventas.TotalCambio", $"El total cambió a RD$ {total:N2}. Revise la venta antes de cobrar.") with

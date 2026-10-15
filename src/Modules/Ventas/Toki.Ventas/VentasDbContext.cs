@@ -17,6 +17,13 @@ internal sealed class VentasDbContext(DbContextOptions<VentasDbContext> options)
 
     public Task<Venta?> VentaCompletaAsync(Guid id, CancellationToken ct) =>
         Ventas.Include(v => v.Lineas.OrderBy(l => l.Orden)).Include(v => v.Pagos).FirstOrDefaultAsync(v => v.Id == id, ct);
+
+    /// <summary>Locks the sale row (until the transaction ends) and only then reads it, so the checks see committed data.</summary>
+    public async Task<Venta?> BloquearVentaAsync(Guid id, CancellationToken ct)
+    {
+        await Ventas.Where(v => v.Id == id).ExecuteUpdateAsync(s => s.SetProperty(v => v.Version, v => v.Version + 1), ct);
+        return await VentaCompletaAsync(id, ct);
+    }
 }
 
 internal sealed class VentasConfiguration :
@@ -38,6 +45,7 @@ internal sealed class VentasConfiguration :
         b.Property(v => v.TipoComprobante).HasConversion<int>();
         b.Property(v => v.Nivel).HasConversion<string>().HasMaxLength(10);
         b.Property(v => v.Estado).HasConversion<string>().HasMaxLength(12);
+        b.Property(v => v.Version).IsConcurrencyToken();
         b.HasMany(v => v.Lineas).WithOne().HasForeignKey(l => l.VentaId).HasPrincipalKey(v => v.Id);
         b.HasMany(v => v.Pagos).WithOne().HasForeignKey(p => p.VentaId).HasPrincipalKey(v => v.Id);
     }
@@ -46,6 +54,7 @@ internal sealed class VentasConfiguration :
     {
         b.ToTable("LineasVenta");
         b.HasIndex(l => l.ProductoId);
+        b.Property(l => l.Descripcion).HasMaxLength(220); // "{product} ({presentation})": 150 + 60 + 3
         b.Property(l => l.TasaItbis).HasConversion<string>().HasMaxLength(12);
         b.Property(l => l.CodigoEtiqueta).HasMaxLength(20);
     }

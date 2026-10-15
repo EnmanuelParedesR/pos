@@ -54,24 +54,48 @@ internal static class CargarSecuencia
     }
 }
 
-/// <summary>Ranges with usage and the two alerts: 80 % used, or 30 days to expire.</summary>
+/// <summary>Loaded ranges with their usage.</summary>
 internal static class ListarSecuencias
 {
-    public sealed record Item(Guid Id, TipoEcf Tipo, string Desde, string Hasta, string Siguiente, long Disponibles, decimal PorcentajeUsado,
-        DateOnly VenceEl, bool Activa, bool AlertaUso, bool AlertaVencimiento);
+    public sealed record Item(Guid Id, TipoEcf Tipo, string Desde, string Hasta, string Siguiente, long Disponibles, decimal PorcentajeUsado, DateOnly VenceEl);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/fiscal/secuencias", async (FiscalDbContext db, TimeProvider reloj, CancellationToken ct) =>
+            app.MapGet("/api/fiscal/secuencias", async (FiscalDbContext db, CancellationToken ct) =>
                 {
-                    var hoy = DiaNegocio.De(reloj.GetUtcNow().UtcDateTime);
                     var secuencias = await db.Secuencias.AsNoTracking().OrderBy(s => s.Tipo).ThenBy(s => s.Desde).ToListAsync(ct);
                     return Results.Ok(secuencias.Select(s => new Item(s.Id, s.Tipo, ENcf.Formatear(s.Tipo, s.Desde), ENcf.Formatear(s.Tipo, s.Hasta),
-                        ENcf.Formatear(s.Tipo, s.Siguiente), Math.Max(0, s.Hasta - s.Siguiente + 1), s.PorcentajeUsado, s.VenceEl, s.Activa,
-                        s.PorcentajeUsado >= 80, s.VenceEl.DayNumber - hoy.DayNumber <= 30)));
+                        ENcf.Formatear(s.Tipo, s.Siguiente), Math.Max(0, s.Hasta - s.Siguiente + 1), s.PorcentajeUsado, s.VenceEl)));
                 })
                 .RequirePermiso(Permisos.FiscalGestionar).WithTags("Fiscal");
+    }
+}
+
+/// <summary>Per receipt type, over the ranges that can still be used: an alert when fewer than 20 % of the numbers are left
+/// or the last usable range expires within 30 days. The register shows it as a banner before numbers run out.</summary>
+internal static class AlertasSecuencias
+{
+    public sealed record Item(TipoEcf Tipo, long Disponibles, DateOnly? VenceEl, bool Alerta);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapGet("/api/fiscal/alertas", async (FiscalDbContext db, TimeProvider reloj, CancellationToken ct) =>
+                {
+                    var hoy = DiaNegocio.De(reloj.GetUtcNow().UtcDateTime);
+                    var usables = await db.Secuencias.Where(s => s.Siguiente <= s.Hasta && s.VenceEl >= hoy).AsNoTracking().ToListAsync(ct);
+                    var tipos = new[] { TipoEcf.CreditoFiscal31, TipoEcf.Consumo32, TipoEcf.NotaCredito34 };
+                    return Results.Ok(tipos.Select(t =>
+                    {
+                        var rangos = usables.Where(s => s.Tipo == t).ToList();
+                        var disponibles = rangos.Sum(s => s.Hasta - s.Siguiente + 1);
+                        var total = rangos.Sum(s => s.Total);
+                        DateOnly? vence = rangos.Count == 0 ? null : rangos.Max(s => s.VenceEl);
+                        return new Item(t, disponibles, vence, disponibles == 0 || disponibles * 5 < total || vence!.Value.DayNumber - hoy.DayNumber <= 30);
+                    }));
+                })
+                .RequireAuthorization().WithTags("Fiscal");
     }
 }
 

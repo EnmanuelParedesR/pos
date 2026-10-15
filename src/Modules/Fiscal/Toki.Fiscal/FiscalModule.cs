@@ -65,6 +65,8 @@ internal sealed class FiscalConfiguration : IEntityTypeConfiguration<Secuencia>,
 /// <summary>Signs the e-CF XML. Returns the signed document and its security code (first 6 characters of the signature).</summary>
 internal interface IEcfFirmador
 {
+    /// <summary>True for the stand-in signer: its documents are stored as Simulado and never sent.</summary>
+    bool EsSimulado { get; }
     (string XmlFirmado, string CodigoSeguridad) Firmar(XDocument xml);
 }
 
@@ -72,6 +74,8 @@ internal interface IEcfFirmador
 /// <remarks>shortcut: hash instead of XMLDSig with the taxpayer's .p12; replace with CertStoreEcfSigner before certification (TK-055).</remarks>
 internal sealed class FirmadorSimulado : IEcfFirmador
 {
+    public bool EsSimulado => true;
+
     public (string XmlFirmado, string CodigoSeguridad) Firmar(XDocument xml)
     {
         var firma = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(xml.ToString(SaveOptions.DisableFormatting))));
@@ -88,12 +92,16 @@ internal sealed class ComprobantesFiscales(FiscalDbContext db, IConfiguracionCon
     public async Task<Result<ComprobanteEmitido>> EmitirAsync(DocumentoAEmitir doc, CancellationToken ct)
     {
         if (doc.Tipo == TipoEcf.CreditoFiscal31 && !Rnc.EsValido(doc.RncComprador)) return FiscalErrors.RncRequerido;
+        if (doc.Tipo == TipoEcf.Consumo32 && doc.Total >= LimitesEcf.ConsumoIdentificado && !Rnc.EsValido(doc.RncComprador)) return FiscalErrors.RncRequerido;
+        if (doc.Tipo is TipoEcf.NotaCredito34 or TipoEcf.NotaDebito33 && (doc.ENcfModificado is null || doc.CodigoModificacion is null))
+            return FiscalErrors.ReferenciaRequerida;
+        var negocio = await configuracion.ObtenerNegocioAsync(ct);
+        if (!Rnc.EsValido(negocio.Rnc)) return FiscalErrors.SinRncEmisor;
 
         var ahora = reloj.GetUtcNow().UtcDateTime;
         var numero = await ReservarAsync(doc.Tipo, DiaNegocio.De(ahora), ct);
         if (numero is null) return FiscalErrors.SinSecuencia(doc.Tipo);
 
-        var negocio = await configuracion.ObtenerNegocioAsync(ct);
         var encf = ENcf.Formatear(doc.Tipo, numero.Value);
         var (xml, codigo) = firmador.Firmar(ArmarXml(doc, encf, negocio, ahora));
 
@@ -101,7 +109,7 @@ internal sealed class ComprobantesFiscales(FiscalDbContext db, IConfiguracionCon
         {
             Id = Guid.CreateVersion7(), ENcf = encf, Tipo = doc.Tipo, ReferenciaId = doc.ReferenciaId, ENcfModificado = doc.ENcfModificado,
             RncComprador = doc.RncComprador, NombreComprador = doc.NombreComprador, Itbis = doc.Itbis, Total = doc.Total,
-            FechaFirmaUtc = ahora, CodigoSeguridad = codigo, XmlFirmado = Comprimir(xml), Estado = EstadoEnvio.Pendiente,
+            FechaFirmaUtc = ahora, CodigoSeguridad = codigo, XmlFirmado = Comprimir(xml), Estado = firmador.EsSimulado ? EstadoEnvio.Simulado : EstadoEnvio.Pendiente,
             FechaLimiteEnvioUtc = ahora + PlazoEnvio,
         };
         db.Documentos.Add(documento);
@@ -112,7 +120,7 @@ internal sealed class ComprobantesFiscales(FiscalDbContext db, IConfiguracionCon
     /// <summary>Takes the next number of the oldest valid range. The update locks the range row until commit; a rollback gives the number back.</summary>
     private async Task<long?> ReservarAsync(TipoEcf tipo, DateOnly hoy, CancellationToken ct)
     {
-        var candidatos = await db.Secuencias.Where(s => s.Tipo == tipo && s.Activa && s.Siguiente <= s.Hasta && s.VenceEl >= hoy)
+        var candidatos = await db.Secuencias.Where(s => s.Tipo == tipo && s.Siguiente <= s.Hasta && s.VenceEl >= hoy)
             .OrderBy(s => s.Desde).Select(s => s.Id).ToListAsync(ct);
         foreach (var id in candidatos)
         {
@@ -136,6 +144,8 @@ internal sealed class ComprobantesFiscales(FiscalDbContext db, IConfiguracionCon
                 new XElement("RNCComprador", doc.RncComprador),
                 new XElement("RazonSocialComprador", doc.NombreComprador),
                 new XElement("NCFModificado", doc.ENcfModificado),
+                new XElement("CodigoModificacion", (int?)doc.CodigoModificacion),
+                new XElement("TipoPago", (int)doc.TipoPago),
                 new XElement("MontoTotal", doc.Total.ToString("0.00", CultureInfo.InvariantCulture)),
                 new XElement("TotalITBIS", doc.Itbis.ToString("0.00", CultureInfo.InvariantCulture))),
             new XElement("DetallesItems", doc.Lineas.Select((l, i) => new XElement("Item",

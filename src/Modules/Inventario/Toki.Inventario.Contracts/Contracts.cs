@@ -22,7 +22,13 @@ public interface ICatalogoConsultas
 {
     /// <summary>Products (or presentations) by id. Missing ids are simply absent from the result.</summary>
     Task<IReadOnlyList<ProductoParaVenta>> ObtenerParaVentaAsync(IReadOnlyCollection<(Guid ProductoId, Guid? PresentacionId)> items, CancellationToken ct);
+
+    /// <summary>Reads a scale label (weight or price) and finds its product by PLU. A sale trusts this, never an amount sent by the register.</summary>
+    Task<Result<EtiquetaLeida>> LeerEtiquetaAsync(string codigo, CancellationToken ct);
 }
+
+/// <summary>Exactly one of <see cref="Peso"/> (pounds) or <see cref="Monto"/> (line total) is set.</summary>
+public sealed record EtiquetaLeida(Guid ProductoId, decimal? Peso, decimal? Monto);
 
 /// <param name="Cantidad">Base units (units or pounds), always positive.</param>
 /// <param name="CostoUnitario">Cost per base unit for entries (purchases); ignored on exits.</param>

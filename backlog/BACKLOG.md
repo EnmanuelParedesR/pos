@@ -130,6 +130,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 |---|---|---|
 | R1 (`backlog/reviews/R1-M0-M1.md`) | M0 + M1 | ✅ Corregidos 1–8, 10–17 y 18 en parte. Pendiente: 9 (HTTPS, ver TK-093), fijar la imagen de SQL Server de CI con etiqueta fechada |
 | R2 (`backlog/reviews/R2-M2.md`) | M2 | ✅ Corregidos 1–13, 15–17 (14 colación solo en SQL Server). Pruebas nuevas: conteo con ventas en medio, costo promedio, última libra en paralelo, kardex = existencia |
+| R3 (`backlog/reviews/R3-M3-M4.md`) | M3 + M4 | ✅ Corregidos 1–13, 15–20. Bloqueo de la fila de venta en anular/devolver, etiqueta leída en el servidor, reembolso por el mismo medio, tope y costo por línea, devuelta en pesos enteros (`Redondeo`), e-CF simulado, código de modificación y tipo de pago, caja ligada al equipo. Pendiente: 14 (enlace QR por tipo, con TK-055); el carrito en espera de un turno cerrado se purga cuando exista el despachador del outbox; el reembolso en efectivo puede llevar centavos. Las pruebas en paralelo solo compiten de verdad en el job de SQL Server |
 
 ## Fuera de V1 (no se construye ahora)
 

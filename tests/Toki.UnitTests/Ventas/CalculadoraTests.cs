@@ -71,18 +71,74 @@ public sealed class CalculadoraTests
         var t = Calcular(null, new LineaEntrada(165m, 2.35m, TasaItbis.Exento, null, MontoFijo: 387.75m));
         t.Total.ShouldBe(387.75m);
     }
+
+    [Fact]
+    public void Una_etiqueta_de_precio_admite_descuento_de_linea()
+    {
+        var t = Calcular(null, new LineaEntrada(165m, 2.35m, TasaItbis.Exento, new Descuento(true, 10m), MontoFijo: 387.75m));
+        t.Lineas[0].Bruto.ShouldBe(387.75m);
+        t.Descuento.ShouldBe(38.78m);
+        t.Total.ShouldBe(348.97m);
+    }
+
+    [Fact]
+    public void Descuento_global_en_porcentaje_sobre_tasas_distintas()
+    {
+        // 10 % off 118 (18 %) + 116 (16 %) + 50 (exempt): each line keeps its own rate after the discount.
+        var t = Calcular(new Descuento(true, 10m),
+            new LineaEntrada(118m, 1, TasaItbis.General18, null),
+            new LineaEntrada(116m, 1, TasaItbis.Reducida16, null),
+            new LineaEntrada(50m, 1, TasaItbis.Exento, null));
+        t.Descuento.ShouldBe(28.40m);
+        t.Lineas.Select(l => l.Total).ShouldBe([106.20m, 104.40m, 45m]);
+        t.Lineas.Select(l => l.Itbis).ShouldBe([16.20m, 14.40m, 0m]);
+        t.Total.ShouldBe(255.60m);
+        t.Itbis.ShouldBe(30.60m);
+    }
+
+    [Fact]
+    public void Un_descuento_del_100_por_ciento_deja_la_linea_en_cero()
+    {
+        var t = Calcular(null, new LineaEntrada(59m, 2, TasaItbis.General18, new Descuento(true, 100m)), new LineaEntrada(100m, 1, TasaItbis.Exento, null));
+        t.Lineas[0].Total.ShouldBe(0m);
+        t.Lineas[0].Itbis.ShouldBe(0m);
+        t.Total.ShouldBe(100m);
+        t.PorcentajeDescuento.ShouldBe(54.13m);
+    }
 }
 
 public sealed class PagosTests
 {
     [Fact]
-    public void El_efectivo_da_la_devuelta()
+    public void El_efectivo_da_la_devuelta_en_pesos_enteros()
     {
         var r = Pagos.Aplicar(376.75m, [new PagoEntrada(MedioPago.Efectivo, 500m, null)]).Value;
-        r.Cambio.ShouldBe(123.25m);
+        r.Cambio.ShouldBe(123m);
+        r.Redondeo.ShouldBe(0.25m);
         r.Pagos.Single().Monto.ShouldBe(376.75m);
         r.Pagos.Single().Recibido.ShouldBe(500m);
     }
+
+    [Fact]
+    public void Los_centavos_de_la_devuelta_quedan_como_redondeo()
+    {
+        var r = Pagos.Aplicar(505.75m, [new PagoEntrada(MedioPago.Efectivo, 1000m, null)]).Value;
+        r.Cambio.ShouldBe(494m);
+        r.Redondeo.ShouldBe(0.25m);
+        (r.Pagos.Sum(p => p.Monto) + r.Redondeo + r.Cambio).ShouldBe(1000m); // what the drawer kept plus the change
+    }
+
+    [Fact]
+    public void Con_tarjeta_los_centavos_se_cobran_exactos()
+    {
+        var r = Pagos.Aplicar(505.75m, [new PagoEntrada(MedioPago.Tarjeta, 5.75m, null), new PagoEntrada(MedioPago.Efectivo, 500m, null)]).Value;
+        r.Cambio.ShouldBe(0m);
+        r.Redondeo.ShouldBe(0m);
+    }
+
+    [Fact]
+    public void El_efectivo_con_centavos_es_un_error() =>
+        Pagos.Aplicar(100m, [new PagoEntrada(MedioPago.Efectivo, 100.50m, null)]).Error!.Code.ShouldBe("Ventas.EfectivoSinCentavos");
 
     [Fact]
     public void Pago_mixto_tarjeta_y_efectivo()
@@ -99,5 +155,5 @@ public sealed class PagosTests
 
     [Fact]
     public void Si_falta_dinero_es_un_error() =>
-        Pagos.Aplicar(100m, [new PagoEntrada(MedioPago.Efectivo, 99.99m, null)]).Error!.Code.ShouldBe("Ventas.PagoIncompleto");
+        Pagos.Aplicar(100m, [new PagoEntrada(MedioPago.Efectivo, 99m, null)]).Error!.Code.ShouldBe("Ventas.PagoIncompleto");
 }

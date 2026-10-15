@@ -43,17 +43,14 @@ public sealed class CajaTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
-    public async Task Un_retiro_pide_supervisor_y_no_saca_mas_de_lo_que_hay()
+    public async Task Un_retiro_pide_supervisor()
     {
         var (cajero, turno) = await TurnoAsync(fondo: 1000m);
 
         var sinAutorizacion = await cajero.PostAsJsonAsync($"/api/caja/turnos/{turno}/movimientos", new { TipoMovimiento = "Retiro", Monto = 500m, Motivo = "Recogida" });
         (await sinAutorizacion.CodigoError()).ShouldBe("Autorizacion.Requerida");
 
-        var demasiado = await cajero.PostAsJsonAsync($"/api/caja/turnos/{turno}/movimientos",
-            new { TipoMovimiento = "Retiro", Monto = 1500m, Motivo = "Recogida", AutorizacionSupervisorId = await AutorizarAsync(cajero, "caja.retirar", turno) });
-        (await demasiado.CodigoError()).ShouldBe("Caja.SinEfectivo");
-
+        // No "not enough cash" answer: it would let the cashier probe the expected cash and defeat the blind count.
         (await cajero.PostAsJsonAsync($"/api/caja/turnos/{turno}/movimientos",
             new { TipoMovimiento = "Retiro", Monto = 600m, Motivo = "Recogida", AutorizacionSupervisorId = await AutorizarAsync(cajero, "caja.retirar", turno) }))
             .StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -101,6 +98,28 @@ public sealed class CajaTests(TokiApp app) : IClassFixture<TokiApp>
         var (cajero, turno) = await TurnoAsync();
         var r = await cajero.PostAsJsonAsync($"/api/caja/turnos/{turno}/cerrar", new { Conteo = new[] { new { Denominacion = 300m, Cantidad = 1 } } });
         r.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task La_caja_queda_ligada_al_equipo_donde_se_abrio()
+    {
+        var admin = app.Cliente(await app.AdminAsync());
+        var codigo = (await (await admin.PostAsJsonAsync("/api/identidad/dispositivos/codigos", new { NombreDispositivo = "Caja 2" })).Json()).GetProperty("codigo").GetString();
+        var equipo2 = await (await app.Anonimo().PostAsJsonAsync("/api/identidad/dispositivos/emparejar", new { Codigo = codigo })).Json();
+        var usuario = $"u{Guid.NewGuid():N}"[..12];
+        (await admin.PostAsJsonAsync("/api/identidad/usuarios", new { Nombre = "Luis", Codigo = usuario, Pin = "4321", RolId = Roles.Cajero })).EnsureSuccessStatusCode();
+        var enEquipo2 = app.Cliente(await app.IniciarSesionAsync(usuario, "4321", equipo2.GetProperty("token").GetString()!));
+
+        // The first shift (on the main PC) binds the register; a cashier on another device cannot open it or sell on it.
+        var (cajero, turno) = await TurnoAsync();
+        var caja = (await cajero.GetFromJsonAsync<JsonElement>("/api/caja/turnos/actual")).GetProperty("cajaId").GetGuid();
+        (await (await enEquipo2.PostAsJsonAsync("/api/caja/turnos", new { CajaId = caja, FondoInicial = 0m })).CodigoError()).ShouldBe("Caja.OtroDispositivo");
+
+        // Moving the register to the other device: the old one can no longer operate the shift.
+        (await admin.PutAsJsonAsync($"/api/caja/cajas/{caja}/dispositivo", new { DispositivoId = equipo2.GetProperty("dispositivoId").GetGuid() }))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await (await cajero.PostAsJsonAsync($"/api/caja/turnos/{turno}/movimientos", new { TipoMovimiento = "Entrada", Monto = 1m, Motivo = "CambioAdicional" }))
+            .CodigoError()).ShouldBe("Caja.OtroDispositivo");
     }
 
     [Fact]

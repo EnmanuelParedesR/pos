@@ -8,6 +8,8 @@ internal sealed class CajaFisica
     public Guid Id { get; set; }
     public string Nombre { get; set; } = "";
     public bool Activa { get; set; } = true;
+    /// <summary>The paired device this register belongs to (set on its first shift). Its shifts are only operated from there.</summary>
+    public Guid? DispositivoId { get; set; }
 }
 
 internal enum EstadoTurno { Abierto, Cerrado }
@@ -33,7 +35,8 @@ internal sealed class Turno
     public int Version { get; set; }
 }
 
-internal enum TipoMovimientoCaja { Cobro, AnulacionCobro, Reembolso, Entrada, Retiro, Gasto, AbonoCliente }
+/// <summary>Redondeo: centavos the store keeps because change is given in whole pesos (there are no coins below RD$ 1).</summary>
+internal enum TipoMovimientoCaja { Cobro, AnulacionCobro, Reembolso, Entrada, Retiro, Gasto, AbonoCliente, Redondeo }
 
 internal enum MotivoMovimiento { CambioAdicional, Recogida, DepositoBanco, PagoSuplidor, GastoMenor, Otro }
 
@@ -55,7 +58,7 @@ internal sealed class MovimientoCaja
     public Guid? SupervisorId { get; set; }
     public DateTime FechaUtc { get; set; }
 
-    public bool Entra => Tipo is TipoMovimientoCaja.Cobro or TipoMovimientoCaja.Entrada or TipoMovimientoCaja.AbonoCliente;
+    public bool Entra => Tipo is TipoMovimientoCaja.Cobro or TipoMovimientoCaja.Entrada or TipoMovimientoCaja.AbonoCliente or TipoMovimientoCaja.Redondeo;
 }
 
 /// <summary>Dominican peso bills and coins for the closing count.</summary>
@@ -84,6 +87,6 @@ internal static class CajaErrors
     public static readonly Error CajeroConTurno = Error.Conflict("Caja.CajeroConTurno", "Este cajero ya tiene un turno abierto en otra caja.");
     public static readonly Error TurnoCerrado = Error.Conflict("Caja.TurnoCerrado", "El turno ya está cerrado.");
     public static readonly Error TurnoAjeno = Error.Forbidden("Caja.TurnoAjeno", "Este turno es de otro cajero.");
-    public static readonly Error SinEfectivo = Error.Conflict("Caja.SinEfectivo", "No hay tanto efectivo en la caja.");
+    public static readonly Error OtroDispositivo = Error.Forbidden("Caja.OtroDispositivo", "Esta caja está asignada a otro equipo.");
     public static readonly Error DenominacionInvalida = Error.Validation("Caja.DenominacionInvalida", "Esa denominación no existe.");
 }

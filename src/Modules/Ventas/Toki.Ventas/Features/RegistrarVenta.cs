@@ -18,14 +18,14 @@ using Toki.Ventas.Domain;
 
 namespace Toki.Ventas.Features;
 
-/// <summary>A sale in one transaction: totals and ITBIS, e-CF, stock out, payments into the shift, outbox and audit.
+/// <summary>A sale in one transaction: totals and ITBIS, stock out, payments into the shift, e-CF, outbox and audit.
 /// <see cref="Command.VentaId"/> comes from the register; repeating the request returns the same sale.</summary>
 internal static class RegistrarVenta
 {
     /// <param name="PrecioUnitario">Only when the cashier changes the price (needs ventas.cambiar-precio).</param>
-    /// <param name="MontoEtiqueta">Amount from a price label: the line total is fixed.</param>
+    /// <param name="CodigoEtiqueta">Scale label as scanned. The server reads the weight or the amount from it; <see cref="Cantidad"/> is then ignored.</param>
     public sealed record Linea(Guid ProductoId, Guid? PresentacionId, decimal Cantidad, decimal? PrecioUnitario = null, Descuento? Descuento = null,
-        string? Nota = null, string? CodigoEtiqueta = null, decimal? MontoEtiqueta = null);
+        string? Nota = null, string? CodigoEtiqueta = null);
 
     public sealed record Pago(MedioPago Medio, decimal Monto, string? Referencia = null);
 
@@ -48,7 +48,6 @@ internal static class RegistrarVenta
             {
                 l.RuleFor(x => x.Cantidad).GreaterThan(0).LessThanOrEqualTo(100_000).PrecisionScale(19, 3, true);
                 l.RuleFor(x => x.PrecioUnitario).GreaterThan(0).PrecisionScale(19, 2, true).When(x => x.PrecioUnitario is not null);
-                l.RuleFor(x => x.MontoEtiqueta).GreaterThan(0).PrecisionScale(19, 2, true).When(x => x.MontoEtiqueta is not null);
                 l.RuleFor(x => x.Nota).MaximumLength(100);
                 l.RuleFor(x => x.CodigoEtiqueta).MaximumLength(20);
             });
@@ -74,12 +73,12 @@ internal static class RegistrarVenta
         {
             var negocio = await configuracion.ObtenerNegocioAsync(ct);
             // A retry of a saved sale gets the same answer, even after the shift closed.
-            if (await db.VentaCompletaAsync(c.VentaId, ct) is { } yaGuardada) return Respuesta(yaGuardada, negocio);
+            if (await db.VentaCompletaAsync(c.VentaId, ct) is { } yaGuardada) return Repetida(yaGuardada, c, negocio);
 
             // Lock the shift: a concurrent retry of this same sale waits here and then finds it saved.
             var turno = await caja.ObtenerTurnoAbiertoAsync(c.TurnoId, ct);
             if (turno.IsFailure) return turno.Error!;
-            if (await db.VentaCompletaAsync(c.VentaId, ct) is { } existente) return Respuesta(existente, negocio);
+            if (await db.VentaCompletaAsync(c.VentaId, ct) is { } existente) return Repetida(existente, c, negocio);
 
             var etiquetas = c.Lineas.Where(l => l.CodigoEtiqueta is not null).Select(l => l.CodigoEtiqueta).ToList();
             if (etiquetas.Count != etiquetas.Distinct().Count()) return VentasErrors.EtiquetaRepetida;
@@ -92,37 +91,51 @@ internal static class RegistrarVenta
             }
             var rnc = Rnc.Normalizar(c.RncCliente) ?? cliente?.RncCedula;
             var nombreCliente = c.NombreCliente?.Trim() ?? cliente?.Nombre;
-            if (c.TipoComprobante == TipoEcf.CreditoFiscal31 && !Rnc.EsValido(rnc))
-                return Error.Validation("Ventas.RncRequerido", "El crédito fiscal necesita el RNC o la cédula del cliente.");
 
             var productos = (await catalogo.ObtenerParaVentaAsync(c.Lineas.Select(l => (l.ProductoId, l.PresentacionId)).ToList(), ct))
                 .ToDictionary(p => (p.ProductoId, p.PresentacionId));
             var permisos = new HashSet<string>();
-            var entradas = new List<(Linea Linea, ProductoParaVenta Producto, decimal Precio, decimal Cantidad)>();
+            var entradas = new List<(Linea Linea, ProductoParaVenta Producto, decimal Precio, decimal Cantidad, decimal? MontoFijo)>();
             foreach (var l in c.Lineas)
             {
                 if (!productos.TryGetValue((l.ProductoId, l.PresentacionId), out var p) || !p.Activo) return VentasErrors.ProductoNoDisponible;
                 var lista = c.Nivel == NivelPrecio.Mayorista ? p.PrecioMayorista ?? p.Precio : p.Precio;
                 var precio = l.PrecioUnitario ?? lista;
-                // A price label fixes the amount; the quantity follows from the price (for stock).
-                var cantidad = l.MontoEtiqueta is { } monto ? Math.Round(monto / precio, 3, MidpointRounding.AwayFromZero) : l.Cantidad;
+                var cantidad = l.Cantidad;
+                decimal? montoFijo = null;
+                if (l.CodigoEtiqueta is { } codigo)
+                {
+                    var etiqueta = await catalogo.LeerEtiquetaAsync(codigo, ct);
+                    if (etiqueta.IsFailure) return etiqueta.Error!;
+                    if (etiqueta.Value.ProductoId != l.ProductoId || l.PresentacionId is not null) return VentasErrors.EtiquetaNoCoincide;
+                    if (etiqueta.Value.Peso is { } peso) cantidad = peso;
+                    // A price label fixes the amount; the quantity follows from the price (for stock).
+                    if (etiqueta.Value.Monto is { } monto) (montoFijo, cantidad) = (monto, Math.Round(monto / precio, 3, MidpointRounding.AwayFromZero));
+                }
                 if (p.Unidad == UnidadMedida.Unidad && p.PresentacionId is null && cantidad != Math.Truncate(cantidad))
                     return Error.Validation("Ventas.CantidadInvalida", $"{p.Nombre} se vende por unidad.");
 
-                var costoVendido = p.CostoBase * p.Factor;
-                var bajoCosto = precio / (1 + Itbis.Porcentaje(p.TasaItbis)) < costoVendido;
                 var mayoristaSinCliente = c.Nivel == NivelPrecio.Mayorista && cliente?.Nivel != NivelPrecioCliente.Mayorista;
-                if (precio != lista || mayoristaSinCliente || bajoCosto) permisos.Add(Permisos.VentasCambiarPrecio);
-                entradas.Add((l, p, precio, cantidad));
+                if (precio != lista || mayoristaSinCliente) permisos.Add(Permisos.VentasCambiarPrecio);
+                entradas.Add((l, p, precio, cantidad, montoFijo));
             }
 
             var totales = Calculadora.Calcular(
-                entradas.Select(e => new LineaEntrada(e.Precio, e.Cantidad, e.Producto.TasaItbis, e.Linea.Descuento, e.Linea.MontoEtiqueta)).ToList(),
+                entradas.Select(e => new LineaEntrada(e.Precio, e.Cantidad, e.Producto.TasaItbis, e.Linea.Descuento, e.MontoFijo)).ToList(),
                 c.DescuentoGlobal);
             if (totales.IsFailure) return totales.Error!;
             var t = totales.Value;
             if (t.Total != c.TotalEsperado) return VentasErrors.TotalCambio(t.Total);
-            if (t.PorcentajeDescuento > negocio.TopeDescuentoPct) permisos.Add(Permisos.VentasDescuentoMayor);
+            if ((c.TipoComprobante == TipoEcf.CreditoFiscal31 || t.Total >= LimitesEcf.ConsumoIdentificado) && !Rnc.EsValido(rnc)) return VentasErrors.RncRequerido;
+
+            // Per line, after every discount: a big discount on one item, or a line sold under its cost, needs a supervisor.
+            for (var i = 0; i < entradas.Count; i++)
+            {
+                var linea = t.Lineas[i];
+                var costo = Dinero.Redondear(entradas[i].Producto.CostoBase * entradas[i].Producto.Factor * entradas[i].Cantidad);
+                if (linea.Descuento * 100 > linea.Bruto * negocio.TopeDescuentoPct) permisos.Add(Permisos.VentasDescuentoMayor);
+                if (linea.Total - linea.Itbis < costo) permisos.Add(Permisos.VentasCambiarPrecio);
+            }
 
             var pagos = Pagos.Aplicar(t.Total, c.Pagos.Select(p => new PagoEntrada(p.Medio, p.Monto, p.Referencia?.Trim())).ToList());
             if (pagos.IsFailure) return pagos.Error!;
@@ -130,20 +143,25 @@ internal static class RegistrarVenta
             var saldoFavor = pagos.Value.Pagos.Where(p => p.Medio == MedioPago.SaldoFavor).Sum(p => p.Monto);
             if (fiado > 0 && cliente!.Deuda + fiado > cliente.LimiteCredito) permisos.Add(Permisos.FiadoExcederLimite);
 
+            // shortcut: one ventas.cambiar-precio authorization covers every line of the sale; bind it to the expected total if supervisors ask for it.
             var autorizado = await AutorizarAsync(permisos, c, ct);
             if (autorizado.IsFailure) return autorizado.Error!;
 
-            var lineasFiscales = entradas.Select((e, i) => new LineaFiscal(e.Producto.Nombre, e.Cantidad, e.Precio, t.Lineas[i].Descuento,
-                e.Producto.TasaItbis, t.Lineas[i].Itbis, t.Lineas[i].Total)).ToList();
-            var comprobante = await fiscal.EmitirAsync(new DocumentoAEmitir(c.TipoComprobante, c.VentaId, rnc, nombreCliente, lineasFiscales, t.Itbis, t.Total), ct);
-            if (comprobante.IsFailure) return comprobante.Error!;
-
+            // Lock order, the same in every handler: shift → stock (by ProductoId) → fiscal sequence → customer → audit.
             var salida = await inventario.RegistrarSalidaAsync(TipoMovimiento.Venta, c.VentaId,
                 entradas.Select(e => new LineaMovimiento(e.Producto.ProductoId, Math.Round(e.Cantidad * e.Producto.Factor, 3))).ToList(), ct);
             if (salida.IsFailure) return salida.Error!;
 
-            await caja.RegistrarCobroAsync(c.TurnoId, c.VentaId, pagos.Value.Pagos.Select(p => new CobroMedio(p.Medio, p.Monto, p.Referencia)).ToList(), ct);
-            // Customer account last (after stock): the limit is re-checked under the customer's lock.
+            await caja.RegistrarCobroAsync(c.TurnoId, c.VentaId, pagos.Value.Pagos.Select(p => new CobroMedio(p.Medio, p.Monto, p.Referencia)).ToList(),
+                pagos.Value.Redondeo, ct);
+
+            var lineasFiscales = entradas.Select((e, i) => new LineaFiscal(e.Producto.Nombre, e.Cantidad, e.Precio, t.Lineas[i].Descuento,
+                e.Producto.TasaItbis, t.Lineas[i].Itbis, t.Lineas[i].Total)).ToList();
+            var comprobante = await fiscal.EmitirAsync(new DocumentoAEmitir(c.TipoComprobante, c.VentaId, rnc, nombreCliente, lineasFiscales, t.Itbis, t.Total,
+                TipoPago: fiado > 0 ? TipoPagoEcf.Credito : TipoPagoEcf.Contado), ct);
+            if (comprobante.IsFailure) return comprobante.Error!;
+
+            // The customer's limit is re-checked under the customer's lock.
             if (saldoFavor > 0 && await clientes.UsarSaldoFavorAsync(cliente!.Id, c.VentaId, saldoFavor, ct) is { IsFailure: true } sinSaldo) return sinSaldo.Error!;
             if (fiado > 0 && await clientes.CargarFiadoAsync(cliente!.Id, c.VentaId, comprobante.Value.ENcf, fiado,
                     permitirExceso: permisos.Contains(Permisos.FiadoExcederLimite), ct) is { IsFailure: true } limite)
@@ -155,7 +173,7 @@ internal static class RegistrarVenta
                 ClienteId = c.ClienteId, ClienteNombre = nombreCliente, RncCliente = rnc, TipoComprobante = c.TipoComprobante,
                 ENcf = comprobante.Value.ENcf, CodigoSeguridad = comprobante.Value.CodigoSeguridad, UrlQr = comprobante.Value.UrlQr, Nivel = c.Nivel,
                 Bruto = t.Bruto, Descuento = t.Descuento, Subtotal = t.Subtotal, Itbis = t.Itbis, Total = t.Total, Cambio = pagos.Value.Cambio,
-                Estado = EstadoVenta.Completada, FechaUtc = reloj.GetUtcNow().UtcDateTime, SupervisorId = usuario.SupervisorId,
+                Redondeo = pagos.Value.Redondeo, Estado = EstadoVenta.Completada, FechaUtc = reloj.GetUtcNow().UtcDateTime, SupervisorId = usuario.SupervisorId,
                 Lineas = entradas.Select((e, i) => new LineaVenta
                 {
                     Id = Guid.CreateVersion7(), VentaId = c.VentaId, Orden = i + 1, ProductoId = e.Producto.ProductoId, PresentacionId = e.Producto.PresentacionId,
@@ -198,6 +216,10 @@ internal static class RegistrarVenta
             }
             return Result.Success();
         }
+
+        /// <summary>A retry gets the saved sale; a different cart under the same id (a register bug) must not be "paid" with the old sale.</summary>
+        private static Result<Response> Repetida(Venta v, Command c, DatosNegocio negocio) =>
+            v.Total == c.TotalEsperado ? Respuesta(v, negocio) : VentasErrors.IdRepetido;
 
         private static Response Respuesta(Venta v, DatosNegocio negocio) =>
             new(v.Id, v.Numero, v.ENcf, v.Total, v.Cambio, ComprobanteImpresion.De(v, negocio));

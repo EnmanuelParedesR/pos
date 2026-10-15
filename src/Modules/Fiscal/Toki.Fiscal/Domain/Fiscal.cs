@@ -14,7 +14,6 @@ internal sealed class Secuencia
     /// <summary>Next number to assign. Moved only by an atomic update inside the sale's transaction, so a rollback leaves no gap.</summary>
     public long Siguiente { get; set; }
     public DateOnly VenceEl { get; set; }
-    public bool Activa { get; set; } = true;
     public DateTime CreadaUtc { get; set; }
 
     public long Usados => Siguiente - Desde;
@@ -22,7 +21,8 @@ internal sealed class Secuencia
     public decimal PorcentajeUsado => Total == 0 ? 100 : Math.Round(100m * Usados / Total, 1);
 }
 
-internal enum EstadoEnvio { Pendiente, Aceptado, AceptadoCondicional, Rechazado }
+/// <summary>Simulado: signed by the stand-in signer; never sent to the DGII (the real sender only reads Pendiente).</summary>
+internal enum EstadoEnvio { Pendiente, Aceptado, AceptadoCondicional, Rechazado, Simulado }
 
 /// <summary>A signed e-CF. Never deleted or edited: corrections are credit notes.</summary>
 internal sealed class DocumentoFiscal
@@ -54,9 +54,6 @@ internal static class ENcf
     /// <summary>"E" + 2-digit type + 10-digit sequence, e.g. E320000000001.</summary>
     public static string Formatear(TipoEcf tipo, long numero) =>
         $"E{(int)tipo:00}{numero.ToString("D10", CultureInfo.InvariantCulture)}";
-
-    public static bool EsValido(string? valor) =>
-        valor is { Length: 13 } && valor[0] == 'E' && valor.Skip(1).All(char.IsAsciiDigit);
 }
 
 internal static class FiscalErrors
@@ -65,6 +62,8 @@ internal static class FiscalErrors
         Error.Conflict("Fiscal.SinSecuencia", $"No hay números e-NCF disponibles para {Nombre(tipo)}. Cargue un rango nuevo.");
 
     public static readonly Error RangoSolapado = Error.Conflict("Fiscal.RangoSolapado", "Ese rango se cruza con otro ya cargado.");
+    public static readonly Error SinRncEmisor = Error.Conflict("Fiscal.SinRncEmisor", "Configure el RNC del negocio antes de emitir comprobantes.");
+    public static readonly Error ReferenciaRequerida = Error.Validation("Fiscal.ReferenciaRequerida", "Una nota de crédito necesita el e-NCF que modifica.");
     public static readonly Error RncRequerido = Error.Validation("Fiscal.RncRequerido", "El crédito fiscal necesita el RNC o la cédula del cliente.");
 
     public static string Nombre(TipoEcf tipo) => tipo switch
