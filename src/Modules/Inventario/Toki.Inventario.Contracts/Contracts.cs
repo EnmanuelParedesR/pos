@@ -39,8 +39,9 @@ public interface IMovimientosInventario
 {
     /// <summary>Takes stock out. Fails with Inventario.SinExistencia unless the product may be sold without stock (then it is flagged for counting).</summary>
     /// <param name="soloConExistencia">True for non-sale exits (voiding a purchase): never below zero, even for products sold without stock.</param>
+    /// <param name="revertirCosto">Voiding a purchase: each line's <see cref="LineaMovimiento.CostoUnitario"/> is taken back out of the average cost.</param>
     Task<Result> RegistrarSalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, CancellationToken ct, Guid? almacenId = null,
-        bool soloConExistencia = false);
+        bool soloConExistencia = false, bool revertirCosto = false);
 
     /// <summary>Puts stock in. When <paramref name="actualizarCosto"/> is true (purchases) the weighted average cost is recomputed.</summary>
     Task<Result> RegistrarEntradaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, bool actualizarCosto, CancellationToken ct, Guid? almacenId = null);

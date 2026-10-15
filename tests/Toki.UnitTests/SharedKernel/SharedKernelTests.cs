@@ -52,6 +52,15 @@ public sealed class SharedKernelTests
     public void Formato_de_RNC_o_cedula(string valor, bool valido) => Rnc.EsValido(valor).ShouldBe(valido);
 
     [Fact]
+    public void Un_pago_va_a_las_facturas_mas_viejas_primero_sin_pasar_su_saldo()
+    {
+        var abiertas = new[] { ("A", 100m), ("B", 0m), ("C", 250m), ("D", 50m) };
+        Asignacion.EnOrden(300m, abiertas).ShouldBe([("A", 100m), ("C", 200m)]);
+        Asignacion.EnOrden(1000m, abiertas).Sum(x => x.Monto).ShouldBe(400m); // the rest (600) is left to the caller
+        Asignacion.EnOrden(0m, abiertas).ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Un_resultado_fallido_no_entrega_valor()
     {
         Result<int> r = Error.NotFound("X", "no");

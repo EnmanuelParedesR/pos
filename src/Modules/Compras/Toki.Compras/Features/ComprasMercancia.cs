@@ -14,21 +14,27 @@ using Toki.SharedKernel;
 
 namespace Toki.Compras.Features;
 
-/// <summary>Creates (Id null) or replaces a purchase draft. Nothing moves until it is applied.</summary>
+/// <summary>Creates or replaces a purchase draft. Nothing moves until it is applied.</summary>
 internal static class GuardarCompra
 {
     /// <param name="CostoUnitario">Cost of one purchased unit (of the presentation when given), before ITBIS.</param>
     public sealed record Linea(Guid ProductoId, Guid? PresentacionId, decimal Cantidad, decimal CostoUnitario, TasaItbis? TasaItbis = null);
 
-    public sealed record Command(Guid? Id, Guid SuplidorId, string Ncf, DateOnly FechaFactura, Condicion Condicion, IReadOnlyList<Linea> Lineas,
-        Guid? AlmacenId = null, int? DiasCredito = null, string? Notas = null) : ICommand<Response>;
+    /// <param name="Nueva">True for POST: <see cref="Id"/> comes from the client, and a retry returns the saved draft.</param>
+    /// <param name="ItbisFactura">ITBIS and total as printed on the invoice (optional): they win over Toki's line math when within RD$ 1.</param>
+    public sealed record Command(Guid Id, bool Nueva, Guid SuplidorId, string Ncf, DateOnly FechaFactura, Condicion Condicion, IReadOnlyList<Linea> Lineas,
+        Guid? AlmacenId = null, int? DiasCredito = null, string? Notas = null, decimal? ItbisFactura = null, decimal? TotalFactura = null) : ICommand<Response>;
 
     public sealed record Response(Guid Id, decimal Subtotal, decimal Itbis, decimal Total);
 
     internal sealed class Validator : AbstractValidator<Command>
     {
-        public Validator()
+        public Validator(TimeProvider reloj)
         {
+            RuleFor(c => c.Id).NotEmpty();
+            RuleFor(c => c.FechaFactura).Must(f => FechaDocumento.EsValida(f, reloj)).WithMessage(FechaDocumento.Mensaje);
+            RuleFor(c => c.ItbisFactura).GreaterThanOrEqualTo(0).PrecisionScale(19, 2, true);
+            RuleFor(c => c.TotalFactura).GreaterThan(0).PrecisionScale(19, 2, true);
             RuleFor(c => c.Ncf).Must(Domain.Ncf.EsValido).WithMessage("El NCF no es válido (B01… de 11 caracteres o E31… de 13).");
             RuleFor(c => c.Condicion).IsInEnum();
             RuleFor(c => c.Lineas).NotEmpty().Must(l => l.Count <= 500);
@@ -47,18 +53,23 @@ internal static class GuardarCompra
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
+            // Lock first: an edit and an apply of the same draft run one at a time (the apply claims the same row).
+            var compra = await db.BloquearCompraAsync(c.Id, ct);
+            if (c.Nueva && compra is not null) return new Response(compra.Id, compra.Subtotal, compra.Itbis, compra.Total);
+            if (!c.Nueva && compra is null) return ComprasErrors.CompraNoEncontrada;
+            if (compra is { Estado: not EstadoCompra.Borrador }) return ComprasErrors.NoEsBorrador;
+
             var suplidor = await db.Suplidores.AsNoTracking().FirstOrDefaultAsync(s => s.Id == c.SuplidorId && s.Activo, ct);
             if (suplidor is null) return ComprasErrors.SuplidorNoEncontrado;
+            if (suplidor.Rnc is null) return ComprasErrors.SuplidorSinRnc;
             var ncf = c.Ncf.Trim().ToUpperInvariant();
-            if (await db.Compras.AnyAsync(x => x.SuplidorId == c.SuplidorId && x.Ncf == ncf && x.Estado != EstadoCompra.Anulada && x.Id != c.Id, ct))
+            if (await db.Compras.AnyAsync(x => x.SuplidorId == c.SuplidorId && x.Ncf == ncf && x.Estado != EstadoCompra.Anulada && x.Id != c.Id, ct)
+                || await db.Gastos.AnyAsync(g => g.SuplidorId == c.SuplidorId && g.Ncf == ncf && !g.Anulado, ct))
                 return ComprasErrors.NcfRepetido;
 
-            var compra = c.Id is { } id ? await db.Compras.Include(x => x.Lineas).FirstOrDefaultAsync(x => x.Id == id, ct) : null;
-            if (c.Id is not null && compra is null) return ComprasErrors.CompraNoEncontrada;
-            if (compra is { Estado: not EstadoCompra.Borrador }) return ComprasErrors.NoEsBorrador;
             if (compra is null)
             {
-                compra = new Compra { Id = Guid.CreateVersion7(), Estado = EstadoCompra.Borrador, CreadaUtc = reloj.GetUtcNow().UtcDateTime, UsuarioId = usuario.UsuarioId };
+                compra = new Compra { Id = c.Id, Estado = EstadoCompra.Borrador, CreadaUtc = reloj.GetUtcNow().UtcDateTime, UsuarioId = usuario.UsuarioId };
                 db.Compras.Add(compra);
             }
 
@@ -86,24 +97,26 @@ internal static class GuardarCompra
             compra.Vence = c.Condicion == Condicion.Credito ? c.FechaFactura.AddDays(c.DiasCredito ?? suplidor.DiasCredito) : null;
             compra.AlmacenId = c.AlmacenId;
             compra.Notas = c.Notas?.Trim();
-            compra.Recalcular();
+            if (!compra.Recalcular(c.ItbisFactura, c.TotalFactura)) return ComprasErrors.TotalFacturaLejos;
             return new Response(compra.Id, compra.Subtotal, compra.Itbis, compra.Total);
         }
     }
 
+    /// <param name="Id">Generated by the client (GUID v7) on POST: a retry returns the same draft.</param>
     internal sealed record Body(Guid SuplidorId, string Ncf, DateOnly FechaFactura, Condicion Condicion, IReadOnlyList<Linea> Lineas,
-        Guid? AlmacenId = null, int? DiasCredito = null, string? Notas = null);
+        Guid? AlmacenId = null, int? DiasCredito = null, string? Notas = null, decimal? ItbisFactura = null, decimal? TotalFactura = null, Guid? Id = null);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app)
         {
+            static Command Comando(Guid id, bool nueva, Body b) =>
+                new(id, nueva, b.SuplidorId, b.Ncf, b.FechaFactura, b.Condicion, b.Lineas, b.AlmacenId, b.DiasCredito, b.Notas, b.ItbisFactura, b.TotalFactura);
             app.MapPost("/api/compras", async (Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
-                    (await h.Handle(new Command(null, b.SuplidorId, b.Ncf, b.FechaFactura, b.Condicion, b.Lineas, b.AlmacenId, b.DiasCredito, b.Notas), ct))
-                    .ToHttp(r => Results.Created($"/api/compras/{r.Id}", r)))
+                    (await h.Handle(Comando(b.Id ?? Guid.CreateVersion7(), true, b), ct)).ToHttp(r => Results.Created($"/api/compras/{r.Id}", r)))
                 .RequirePermiso(Permisos.ComprasGestionar).WithTags("Compras");
             app.MapPut("/api/compras/{id:guid}", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
-                    (await h.Handle(new Command(id, b.SuplidorId, b.Ncf, b.FechaFactura, b.Condicion, b.Lineas, b.AlmacenId, b.DiasCredito, b.Notas), ct)).ToHttp())
+                    (await h.Handle(Comando(id, false, b), ct)).ToHttp())
                 .RequirePermiso(Permisos.ComprasGestionar).WithTags("Compras");
         }
     }
@@ -151,8 +164,8 @@ internal static class AplicarCompra
     }
 }
 
-/// <summary>Voids a purchase. An applied one takes its stock back out (never below zero) and needs no payments on it.</summary>
-/// <remarks>shortcut: the average cost is not recomputed backwards; the next purchase corrects it. Fine for rare voids.</remarks>
+/// <summary>Voids a purchase. An applied one takes its stock back out (never below zero), takes its cost back out of the average,
+/// and needs no payments on it. Lock order: purchase row → supplier → stock → audit.</summary>
 internal static class AnularCompra
 {
     public sealed record Command(Guid Id, string Motivo) : ICommand<Ok>;
@@ -166,19 +179,21 @@ internal static class AnularCompra
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
-            var compra = await db.Compras.Include(x => x.Lineas).FirstOrDefaultAsync(x => x.Id == c.Id, ct);
+            var compra = await db.BloquearCompraAsync(c.Id, ct);
             if (compra is null) return ComprasErrors.CompraNoEncontrada;
-            if (compra.Estado == EstadoCompra.Anulada) return Error.Conflict("Compras.YaAnulada", "La compra ya está anulada.");
+            if (compra.Estado == EstadoCompra.Anulada) return ComprasErrors.YaAnulado;
 
             if (compra.Estado == EstadoCompra.Aplicada)
             {
                 await db.BloquearSuplidorAsync(compra.SuplidorId, ct);
                 var cuenta = await db.CuentasPorPagar.FirstOrDefaultAsync(x => x.DocumentoId == compra.Id, ct);
-                if (cuenta is not null && await db.Aplicaciones.AnyAsync(a => a.CuentaId == cuenta.Id, ct)) return ComprasErrors.ConPagos;
+                if (cuenta is not null && await db.TienePagosAsync(cuenta.Id, ct)) return ComprasErrors.ConPagos;
                 if (cuenta is not null) cuenta.Anulada = true;
 
+                // The same cost per base unit the apply put in, so the average goes back to what it was.
                 var salida = await inventario.RegistrarSalidaAsync(TipoMovimiento.AnulacionCompra, compra.Id,
-                    compra.Lineas.Select(l => new LineaMovimiento(l.ProductoId, Math.Round(l.Cantidad * l.Factor, 3))).ToList(), ct, compra.AlmacenId, soloConExistencia: true);
+                    compra.Lineas.Select(l => new LineaMovimiento(l.ProductoId, Math.Round(l.Cantidad * l.Factor, 3), Math.Round(l.CostoUnitario / l.Factor, 4))).ToList(),
+                    ct, compra.AlmacenId, soloConExistencia: true, revertirCosto: true);
                 if (salida.IsFailure) return salida.Error!;
                 outbox.Agregar(new CompraAnuladaV1(compra.Id, c.Motivo.Trim()));
             }

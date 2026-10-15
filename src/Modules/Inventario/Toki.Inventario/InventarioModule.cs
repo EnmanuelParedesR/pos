@@ -73,12 +73,12 @@ internal sealed class CatalogoConsultas(InventarioDbContext db) : ICatalogoConsu
 internal sealed class MovimientosInventario(InventarioDbContext db, IOutbox outbox, IUserContext usuario, TimeProvider reloj) : IMovimientosInventario
 {
     public Task<Result> RegistrarSalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, CancellationToken ct, Guid? almacenId = null,
-        bool soloConExistencia = false) =>
-        SalidaAsync(tipo, referenciaId, lineas, permitirNegativoSiProductoLoPermite: !soloConExistencia, motivo: null, ct, almacenId);
+        bool soloConExistencia = false, bool revertirCosto = false) =>
+        SalidaAsync(tipo, referenciaId, lineas, permitirNegativoSiProductoLoPermite: !soloConExistencia, motivo: null, ct, almacenId, revertirCosto);
 
     /// <param name="permitirNegativoSiProductoLoPermite">Only sales honour "sell without stock"; adjustments and transfers never go below zero.</param>
     public async Task<Result> SalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas,
-        bool permitirNegativoSiProductoLoPermite, string? motivo, CancellationToken ct, Guid? almacenId = null)
+        bool permitirNegativoSiProductoLoPermite, string? motivo, CancellationToken ct, Guid? almacenId = null, bool revertirCosto = false)
     {
         var almacen = almacenId ?? Almacen.PrincipalId;
         foreach (var linea in Agrupar(lineas))
@@ -98,7 +98,17 @@ internal sealed class MovimientosInventario(InventarioDbContext db, IOutbox outb
             var resultante = await CantidadAsync(linea.ProductoId, almacen, ct);
             if (filas == 0) return InventarioErrors.SinExistencia(producto.Nombre, resultante);
 
-            Registrar(tipo, referenciaId, linea.ProductoId, almacen, -q, producto.Costo, resultante, motivo);
+            var costo = producto.Costo;
+            if (revertirCosto && linea.CostoUnitario is { } costoEntrada)
+            {
+                // Same order as an entry: the stock row is already locked, so the cost read here cannot be lost by a concurrent purchase.
+                var costoActual = await db.Productos.Where(p => p.Id == linea.ProductoId).Select(p => p.Costo).SingleAsync(ct);
+                var total = await db.Existencias.Where(e => e.ProductoId == linea.ProductoId).SumAsync(e => e.Cantidad, ct);
+                if (CostoPromedio.Revertir(total, costoActual, q, costoEntrada) is { } revertido)
+                    await db.Productos.Where(p => p.Id == linea.ProductoId).ExecuteUpdateAsync(s => s.SetProperty(p => p.Costo, revertido), ct);
+                costo = costoEntrada;
+            }
+            Registrar(tipo, referenciaId, linea.ProductoId, almacen, -q, costo, resultante, motivo);
         }
         return Result.Success();
     }
@@ -169,5 +179,11 @@ internal sealed class MovimientosInventario(InventarioDbContext db, IOutbox outb
             : null;
 
     private static IEnumerable<LineaMovimiento> Agrupar(IReadOnlyList<LineaMovimiento> lineas) =>
-        lineas.GroupBy(l => l.ProductoId).OrderBy(g => g.Key).Select(g => new LineaMovimiento(g.Key, g.Sum(l => l.Cantidad)));
+        lineas.GroupBy(l => l.ProductoId).OrderBy(g => g.Key).Select(g =>
+        {
+            var cantidad = g.Sum(l => l.Cantidad);
+            // The group keeps the weighted cost of its lines (a voided purchase may list one product twice at different costs).
+            decimal? costo = g.All(l => l.CostoUnitario is not null) ? Math.Round(g.Sum(l => l.Cantidad * l.CostoUnitario!.Value) / cantidad, 4) : null;
+            return new LineaMovimiento(g.Key, cantidad, costo);
+        });
 }

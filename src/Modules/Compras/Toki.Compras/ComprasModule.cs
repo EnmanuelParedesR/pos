@@ -31,15 +31,29 @@ internal sealed class ComprasDbContext(DbContextOptions<ComprasDbContext> option
     public Task<int> BloquearSuplidorAsync(Guid id, CancellationToken ct) =>
         Suplidores.Where(s => s.Id == id).ExecuteUpdateAsync(s => s.SetProperty(x => x.DiasCredito, x => x.DiasCredito), ct);
 
-    /// <summary>Open payables of a supplier with their balance, oldest due first.</summary>
-    public async Task<List<(CuentaPorPagar Cuenta, decimal Saldo)>> AbiertasAsync(Guid suplidorId, CancellationToken ct)
+    /// <summary>Locks the purchase row (until the transaction ends) and only then reads it with its lines. Null when it does not exist.</summary>
+    public async Task<Compra?> BloquearCompraAsync(Guid id, CancellationToken ct)
     {
-        var cuentas = await CuentasPorPagar.Where(c => c.SuplidorId == suplidorId && !c.Anulada).AsNoTracking().ToListAsync(ct);
-        var ids = cuentas.Select(c => c.Id).ToList();
-        var pagado = await Aplicaciones.Where(a => ids.Contains(a.CuentaId)).GroupBy(a => a.CuentaId)
-            .Select(g => new { g.Key, Monto = g.Sum(a => a.Monto) }).ToDictionaryAsync(x => x.Key, x => x.Monto, ct);
-        return cuentas.Select(c => (c, c.Total - pagado.GetValueOrDefault(c.Id))).Where(x => x.Item2 > 0)
-            .OrderBy(x => x.c.Vence).ThenBy(x => x.c.Fecha).ToList();
+        await Compras.Where(c => c.Id == id).ExecuteUpdateAsync(s => s.SetProperty(c => c.Version, c => c.Version + 1), ct);
+        return await Compras.Include(c => c.Lineas).FirstOrDefaultAsync(c => c.Id == id, ct);
+    }
+
+    /// <summary>A payable with live (not voided) payments on it cannot be voided.</summary>
+    public Task<bool> TienePagosAsync(Guid cuentaId, CancellationToken ct) =>
+        (from a in Aplicaciones join p in Pagos on a.PagoId equals p.Id where a.CuentaId == cuentaId && !p.Anulado select a).AnyAsync(ct);
+
+    /// <summary>Open payables with their balance, oldest due first: of one supplier, or of all (aging). Paid ones stay in the database.</summary>
+    public async Task<List<(CuentaPorPagar Cuenta, decimal Saldo)>> AbiertasAsync(Guid? suplidorId, CancellationToken ct)
+    {
+        var abiertas = await (from c in CuentasPorPagar
+                              where !c.Anulada && (suplidorId == null || c.SuplidorId == suplidorId)
+                              let pagado = (from a in Aplicaciones
+                                            join p in Pagos on a.PagoId equals p.Id
+                                            where a.CuentaId == c.Id && !p.Anulado
+                                            select (decimal?)a.Monto).Sum() ?? 0
+                              where c.Total > pagado
+                              select new { c, Saldo = c.Total - pagado }).AsNoTracking().ToListAsync(ct);
+        return abiertas.OrderBy(x => x.c.Vence).ThenBy(x => x.c.Fecha).Select(x => (x.c, x.Saldo)).ToList();
     }
 }
 
@@ -59,7 +73,9 @@ internal sealed class ComprasConfiguration :
         b.HasKey(c => c.Numero);
         b.Property(c => c.Numero).ValueGeneratedOnAdd();
         b.HasAlternateKey(c => c.Id);
-        b.HasIndex(c => new { c.SuplidorId, c.Ncf });
+        // One live invoice per supplier NCF, enforced by the database too (a double click cannot create two drafts).
+        b.HasIndex(c => new { c.SuplidorId, c.Ncf }).IsUnique().HasFilter("[Estado] <> 'Anulada'");
+        b.Property(c => c.Version).IsConcurrencyToken();
         b.HasIndex(c => c.FechaFactura);
         b.Property(c => c.Ncf).HasMaxLength(13);
         b.Property(c => c.RncSuplidor).HasMaxLength(11);
@@ -72,12 +88,13 @@ internal sealed class ComprasConfiguration :
     public void Configure(EntityTypeBuilder<LineaCompra> b)
     {
         b.ToTable("LineasCompra");
+        b.Property(l => l.Descripcion).HasMaxLength(220); // "{product} ({presentation})": 150 + 60 + 3
         b.Property(l => l.TasaItbis).HasConversion<string>().HasMaxLength(12);
     }
 
     public void Configure(EntityTypeBuilder<Gasto> b)
     {
-        b.HasIndex(g => new { g.SuplidorId, g.Ncf });
+        b.HasIndex(g => new { g.SuplidorId, g.Ncf }).IsUnique().HasFilter("[Anulado] = 0");
         b.HasIndex(g => g.Fecha);
         b.Property(g => g.Ncf).HasMaxLength(13);
         b.Property(g => g.RncSuplidor).HasMaxLength(11);

@@ -112,23 +112,42 @@ internal sealed class CajaOperaciones(CajaDbContext db, IUserContext usuario, IO
         return Result.Success();
     }
 
-    public async Task<Result> RegistrarAbonoClienteAsync(Guid turnoId, Guid abonoId, MedioPago medio, decimal monto, CancellationToken ct)
+    public async Task<Result> RegistrarAbonoClienteAsync(Guid turnoId, Guid abonoId, MedioPago medio, decimal monto, decimal redondeo, CancellationToken ct)
     {
         var turno = await ObtenerTurnoAbiertoAsync(turnoId, ct);
         if (turno.IsFailure) return turno.Error!;
         Agregar(turnoId, TipoMovimientoCaja.AbonoCliente, medio, monto, abonoId, null);
+        if (redondeo > 0) Agregar(turnoId, TipoMovimientoCaja.Redondeo, MedioPago.Efectivo, redondeo, abonoId, null);
         return Result.Success();
     }
 
-    public async Task<Result> AnularCobrosAsync(Guid ventaId, CancellationToken ct)
+    public async Task<Result> RegistrarPagoSuplidorAsync(Guid turnoId, Guid pagoId, decimal monto, CancellationToken ct)
     {
-        var cobros = await db.Movimientos.Where(m => m.ReferenciaId == ventaId && (m.Tipo == TipoMovimientoCaja.Cobro || m.Tipo == TipoMovimientoCaja.Redondeo)).AsNoTracking().ToListAsync(ct);
-        if (cobros.Count == 0) return Result.Success();
-        var turnoId = cobros[0].TurnoId;
-        var turno = await db.TurnoAsync(turnoId, ct);
-        if (turno is not { Estado: EstadoTurno.Abierto }) return CajaErrors.TurnoCerrado;
-        foreach (var c in cobros)
-            Agregar(turnoId, TipoMovimientoCaja.AnulacionCobro, c.Medio, c.Monto, ventaId, c.Tipo == TipoMovimientoCaja.Redondeo ? ReporteZ.ReferenciaRedondeo : c.Referencia);
+        var turno = await ObtenerTurnoAbiertoAsync(turnoId, ct);
+        if (turno.IsFailure) return turno.Error!;
+        Agregar(turnoId, TipoMovimientoCaja.Retiro, MedioPago.Efectivo, monto, pagoId, null, MotivoMovimiento.PagoSuplidor);
+        return Result.Success();
+    }
+
+    public async Task<Result> AnularMovimientosAsync(Guid referenciaId, CancellationToken ct)
+    {
+        var movimientos = await db.Movimientos.Where(m => m.ReferenciaId == referenciaId).AsNoTracking().ToListAsync(ct);
+        if (movimientos.Count == 0) return Result.Success();
+        var turnoId = movimientos[0].TurnoId;
+        // The update locks the shift: a closing cannot count the drawer while the reversal commits.
+        if (await db.Turnos.Where(t => t.Id == turnoId && t.Estado == EstadoTurno.Abierto)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.Version, t => t.Version + 1), ct) == 0)
+            return CajaErrors.TurnoCerrado;
+        foreach (var m in movimientos)
+        {
+            switch (m.Tipo)
+            {
+                case TipoMovimientoCaja.Cobro: Agregar(turnoId, TipoMovimientoCaja.AnulacionCobro, m.Medio, m.Monto, referenciaId, m.Referencia); break;
+                case TipoMovimientoCaja.Redondeo: Agregar(turnoId, TipoMovimientoCaja.AnulacionCobro, m.Medio, m.Monto, referenciaId, ReporteZ.ReferenciaRedondeo); break;
+                case TipoMovimientoCaja.AbonoCliente: Agregar(turnoId, TipoMovimientoCaja.AnulacionAbono, m.Medio, m.Monto, referenciaId, m.Referencia); break;
+                case TipoMovimientoCaja.Retiro: Agregar(turnoId, TipoMovimientoCaja.Entrada, m.Medio, m.Monto, referenciaId, null, m.Motivo, "Anulación"); break;
+            }
+        }
         return Result.Success();
     }
 

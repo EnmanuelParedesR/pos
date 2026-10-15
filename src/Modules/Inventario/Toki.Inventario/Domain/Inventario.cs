@@ -145,6 +145,15 @@ internal static class CostoPromedio
         if (existencia <= 0) return Math.Round(costoEntrada, 4);
         return Math.Round((existencia * costoActual + cantidad * costoEntrada) / (existencia + cantidad), 4);
     }
+
+    /// <summary>Takes a voided purchase back out of the average: the inverse of <see cref="Calcular"/>.
+    /// Null (keep the cost) when nothing is left in stock or the result is not positive: most of that purchase was already sold.</summary>
+    public static decimal? Revertir(decimal existenciaDespues, decimal costoActual, decimal cantidad, decimal costoEntrada)
+    {
+        if (existenciaDespues <= 0) return null;
+        var costo = Math.Round(((existenciaDespues + cantidad) * costoActual - cantidad * costoEntrada) / existenciaDespues, 4);
+        return costo > 0 ? costo : null;
+    }
 }
 
 internal static class InventarioErrors

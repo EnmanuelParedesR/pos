@@ -7,6 +7,25 @@ public static class Dinero
     public static decimal Redondear(decimal monto) => Math.Round(monto, 2, MidpointRounding.AwayFromZero);
 }
 
+/// <summary>How a payment is spread over open invoices: in the given order (oldest first), each up to its balance.</summary>
+public static class Asignacion
+{
+    /// <returns>The invoices that receive something, with the amount; the rest of <paramref name="monto"/> is <c>monto − sum</c>.</returns>
+    public static List<(T Item, decimal Monto)> EnOrden<T>(decimal monto, IEnumerable<(T Item, decimal Saldo)> abiertas)
+    {
+        var resultado = new List<(T, decimal)>();
+        foreach (var (item, saldo) in abiertas)
+        {
+            if (monto <= 0) break;
+            var parte = Math.Min(monto, saldo);
+            if (parte <= 0) continue;
+            resultado.Add((item, parte));
+            monto -= parte;
+        }
+        return resultado;
+    }
+}
+
 /// <summary>Dominican business day. The Dominican Republic is UTC-4 all year (no daylight saving).</summary>
 public static class DiaNegocio
 {

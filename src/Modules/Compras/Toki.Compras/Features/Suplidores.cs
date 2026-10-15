@@ -34,8 +34,9 @@ internal static class GuardarSuplidor
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            var s = c.Id is { } id ? await db.Suplidores.FirstOrDefaultAsync(x => x.Id == id, ct) : null;
-            if (c.Id is not null && s is null) return ComprasErrors.SuplidorNoEncontrado;
+            // Lock first on an update, so the audit head stays the last lock (a payment to this supplier takes them in that order).
+            if (c.Id is { } id && await db.BloquearSuplidorAsync(id, ct) == 0) return ComprasErrors.SuplidorNoEncontrado;
+            var s = c.Id is { } existente ? await db.Suplidores.SingleAsync(x => x.Id == existente, ct) : null;
             if (s is null) db.Suplidores.Add(s = new Suplidor { Id = Guid.CreateVersion7() });
             s.Nombre = c.Nombre.Trim();
             s.Rnc = Rnc.Normalizar(c.Rnc);

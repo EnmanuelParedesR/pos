@@ -41,9 +41,16 @@ internal sealed class Compra
     public DateTime? AnuladaUtc { get; set; }
     public string? MotivoAnulacion { get; set; }
     public Guid UsuarioId { get; set; }
+    /// <summary>Bumped by an atomic update before an edit or a void reads the purchase: it locks the row, so they run one at a time.</summary>
+    public int Version { get; set; }
     public List<LineaCompra> Lineas { get; set; } = [];
 
-    public void Recalcular()
+    /// <summary>The invoice's own totals may differ from Toki's line math by centavos (suppliers round ITBIS on the subtotal).</summary>
+    public const decimal ToleranciaFactura = 1m;
+
+    /// <param name="itbisFactura">ITBIS printed on the invoice; when given (within RD$ 1 of the computed one) it is the one paid and reported in the 606.</param>
+    /// <param name="totalFactura">Total printed on the invoice, same rule.</param>
+    public bool Recalcular(decimal? itbisFactura = null, decimal? totalFactura = null)
     {
         foreach (var l in Lineas)
         {
@@ -54,6 +61,11 @@ internal sealed class Compra
         Subtotal = Lineas.Sum(l => l.Subtotal);
         Itbis = Lineas.Sum(l => l.Itbis);
         Total = Subtotal + Itbis;
+        if (Math.Abs((itbisFactura ?? Itbis) - Itbis) > ToleranciaFactura || Math.Abs((totalFactura ?? Total) - Total) > ToleranciaFactura) return false;
+        Itbis = itbisFactura ?? Itbis;
+        Total = totalFactura ?? Total;
+        Subtotal = Total - Itbis;
+        return true;
     }
 }
 
@@ -98,6 +110,7 @@ internal sealed class Gasto
     public decimal Itbis { get; set; }
     public decimal Total { get; set; }
     public bool Anulado { get; set; }
+    public string? MotivoAnulacion { get; set; }
     public DateTime CreadoUtc { get; set; }
     public Guid UsuarioId { get; set; }
 }
@@ -129,8 +142,13 @@ internal sealed class PagoSuplidor
     public decimal Monto { get; set; }
     public MedioPagoSuplidor Medio { get; set; }
     public string? Referencia { get; set; }
+    /// <summary>Set when the cash came out of a register's drawer during this shift.</summary>
+    public Guid? TurnoId { get; set; }
     public DateTime CreadoUtc { get; set; }
     public Guid UsuarioId { get; set; }
+    /// <summary>A voided payment stays for history; its applications no longer count (the invoices are open again).</summary>
+    public bool Anulado { get; set; }
+    public string? MotivoAnulacion { get; set; }
     public List<AplicacionPago> Aplicaciones { get; set; } = [];
 }
 
@@ -157,4 +175,18 @@ internal static class ComprasErrors
     public static readonly Error ConPagos = Error.Conflict("Compras.ConPagos", "La compra tiene pagos aplicados; no se puede anular.");
     public static readonly Error PagoMayorQueDeuda = Error.Validation("Compras.PagoMayorQueDeuda", "El pago es mayor que lo que se le debe al suplidor.");
     public static readonly Error ProductoNoEncontrado = Error.NotFound("Compras.ProductoNoEncontrado", "Un producto de la compra no existe.");
+    public static readonly Error YaAnulado = Error.Conflict("Compras.YaAnulada", "Ya está anulado.");
+    public static readonly Error SuplidorSinRnc = Error.Validation("Compras.SuplidorSinRnc", "El suplidor necesita RNC o cédula para registrar facturas con NCF (606).");
+    public static readonly Error TotalFacturaLejos = Error.Validation("Compras.TotalFacturaLejos",
+        $"El ITBIS o el total de la factura difiere en más de RD$ {Compra.ToleranciaFactura:N0} de lo calculado. Revise cantidades y costos.");
+    public static readonly Error PagoNoEncontrado = Error.NotFound("Compras.PagoNoEncontrado", "El pago no existe.");
+    public static readonly Error GastoNoEncontrado = Error.NotFound("Compras.GastoNoEncontrado", "El gasto no existe.");
+}
+
+/// <summary>Invoice and payment dates: required, and never later than tomorrow (a typo in the year would break statements and aging).</summary>
+internal static class FechaDocumento
+{
+    public static bool EsValida(DateOnly fecha, TimeProvider reloj) => fecha != default && fecha <= DiaNegocio.De(reloj.GetUtcNow().UtcDateTime).AddDays(1);
+
+    public const string Mensaje = "La fecha es obligatoria y no puede ser futura.";
 }

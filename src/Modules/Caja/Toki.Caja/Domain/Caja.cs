@@ -36,7 +36,7 @@ internal sealed class Turno
 }
 
 /// <summary>Redondeo: centavos the store keeps because change is given in whole pesos (there are no coins below RD$ 1).</summary>
-internal enum TipoMovimientoCaja { Cobro, AnulacionCobro, Reembolso, Entrada, Retiro, Gasto, AbonoCliente, Redondeo }
+internal enum TipoMovimientoCaja { Cobro, AnulacionCobro, Reembolso, Entrada, Retiro, Gasto, AbonoCliente, Redondeo, AnulacionAbono }
 
 internal enum MotivoMovimiento { CambioAdicional, Recogida, DepositoBanco, PagoSuplidor, GastoMenor, Otro }
 

@@ -58,4 +58,15 @@ public sealed class CostoPromedioTests
     [Fact]
     public void Sin_existencia_toma_el_costo_de_la_entrada() =>
         CostoPromedio.Calcular(existencia: -2, costoActual: 100, cantidad: 5, costoEntrada: 120).ShouldBe(120m);
+
+    [Fact]
+    public void Anular_una_compra_la_saca_del_promedio()
+    {
+        // 50 lb at 100, then 100 lb typed at 1,000 → 700. Voiding it leaves 50 lb and gives back 100.
+        var promedio = CostoPromedio.Calcular(existencia: 50, costoActual: 100, cantidad: 100, costoEntrada: 1000);
+        CostoPromedio.Revertir(existenciaDespues: 50, costoActual: promedio, cantidad: 100, costoEntrada: 1000).ShouldBe(100m);
+        // Most of that purchase was sold already: the cost stays rather than going to zero or below.
+        CostoPromedio.Revertir(existenciaDespues: 5, costoActual: 700, cantidad: 100, costoEntrada: 1000).ShouldBeNull();
+        CostoPromedio.Revertir(existenciaDespues: 0, costoActual: 700, cantidad: 100, costoEntrada: 1000).ShouldBeNull();
+    }
 }

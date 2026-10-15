@@ -140,6 +140,138 @@ public sealed class ComprasTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task Anular_una_compra_con_un_error_de_tipeo_devuelve_el_costo_y_dos_anulaciones_sacan_una_vez()
+    {
+        var c = await Admin();
+        var chuleta = await c.ProductoAsync(await c.CategoriaAsync(), "Chuleta " + Guid.NewGuid().ToString()[..4], 165m, unidad: "Libra", tasa: "Exento", costo: 100m, existencia: 50);
+        // 1,000 typed instead of 100: the average jumps to (50×100 + 100×1,000) / 150 = 700.
+        var compra = await CompraAsync(c, await SuplidorAsync(c), "Contado", new DateOnly(2026, 10, 15),
+            new { ProductoId = chuleta, Cantidad = 100m, CostoUnitario = 1000m, TasaItbis = "Exento" });
+        (await c.GetFromJsonAsync<JsonElement>($"/api/inventario/productos/{chuleta}")).GetProperty("costo").GetDecimal().ShouldBe(700m);
+
+        var respuestas = await Task.WhenAll(
+            c.PostAsJsonAsync($"/api/compras/{compra}/anular", new { Motivo = "costo mal escrito" }),
+            c.PostAsJsonAsync($"/api/compras/{compra}/anular", new { Motivo = "costo mal escrito" }));
+        respuestas.Count(r => r.StatusCode == HttpStatusCode.NoContent).ShouldBe(1);
+        (await respuestas.Single(r => r.StatusCode != HttpStatusCode.NoContent).CodigoError()).ShouldBe("Compras.YaAnulada");
+
+        (await c.ExistenciaAsync(chuleta)).ShouldBe(50m);
+        (await c.GetFromJsonAsync<JsonElement>($"/api/inventario/productos/{chuleta}")).GetProperty("costo").GetDecimal().ShouldBe(100m);
+        (await app.DescuadresKardexAsync()).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Las_facturas_no_se_duplican_y_un_reintento_devuelve_el_mismo_borrador()
+    {
+        var c = await Admin();
+        var sal = await c.ProductoAsync(await c.CategoriaAsync(), "Sal " + Guid.NewGuid().ToString()[..4], 20m);
+        var suplidor = await SuplidorAsync(c);
+        var ncf = NcfNuevo();
+        var id = Guid.CreateVersion7();
+        object Compra(Guid? clave) => new
+        {
+            Id = clave, SuplidorId = suplidor, Ncf = ncf, FechaFactura = "2026-10-15", Condicion = "Contado",
+            Lineas = new[] { new { ProductoId = sal, Cantidad = 1m, CostoUnitario = 10m } },
+        };
+        var primera = await (await c.PostAsJsonAsync("/api/compras", Compra(id))).Json();
+        var segunda = await c.PostAsJsonAsync("/api/compras", Compra(id));
+        segunda.StatusCode.ShouldBe(HttpStatusCode.Created);
+        (await segunda.Json()).GetProperty("id").GetGuid().ShouldBe(primera.GetProperty("id").GetGuid());
+
+        // The same NCF cannot come back as an expense either.
+        var gasto = await c.PostAsJsonAsync("/api/compras/gastos", new
+        {
+            SuplidorId = suplidor, Ncf = ncf, Fecha = "2026-10-15", Concepto = "x", Tipo = "GastosFinancieros", Subtotal = 100m, Itbis = 0m, Condicion = "Contado",
+        });
+        (await gasto.CodigoError()).ShouldBe("Compras.NcfRepetido");
+    }
+
+    [Fact]
+    public async Task El_ITBIS_de_la_factura_manda_si_esta_a_menos_de_un_peso()
+    {
+        var c = await Admin();
+        var cat = await c.CategoriaAsync();
+        var (a, b) = (await c.ProductoAsync(cat, "Aceite " + Guid.NewGuid().ToString()[..4], 300m), await c.ProductoAsync(cat, "Harina " + Guid.NewGuid().ToString()[..4], 60m));
+        var suplidor = await SuplidorAsync(c);
+        // Line math: 3 × 33.33 = 99.99 → ITBIS 18.00; 1 × 10.55 → 1.90. Total 130.44. The invoice says ITBIS 19.89, total 130.43.
+        object Compra(decimal itbis, decimal total) => new
+        {
+            SuplidorId = suplidor, Ncf = NcfNuevo(), FechaFactura = "2026-10-15", Condicion = "Credito", ItbisFactura = itbis, TotalFactura = total,
+            Lineas = new object[] { new { ProductoId = a, Cantidad = 3m, CostoUnitario = 33.33m }, new { ProductoId = b, Cantidad = 1m, CostoUnitario = 10.55m } },
+        };
+        var r = await (await c.PostAsJsonAsync("/api/compras", Compra(19.89m, 130.43m))).Json();
+        (r.GetProperty("itbis").GetDecimal(), r.GetProperty("total").GetDecimal()).ShouldBe((19.89m, 130.43m));
+        (await (await c.PostAsJsonAsync("/api/compras", Compra(25m, 136m))).CodigoError()).ShouldBe("Compras.TotalFacturaLejos");
+    }
+
+    [Fact]
+    public async Task Gastos_y_pagos_mal_escritos_se_anulan()
+    {
+        var c = await Admin();
+        var suplidor = await SuplidorAsync(c);
+        var ncf = NcfNuevo();
+        object Gasto(decimal subtotal) => new
+        {
+            SuplidorId = suplidor, Ncf = ncf, Fecha = "2026-10-10", Concepto = "Alquiler", Tipo = "Arrendamientos", Subtotal = subtotal, Itbis = 0m, Condicion = "Credito",
+        };
+        var malo = (await (await c.PostAsJsonAsync("/api/compras/gastos", Gasto(40000m))).Json()).GetProperty("id").GetGuid();
+        (await c.PostAsJsonAsync($"/api/compras/gastos/{malo}/anular", new { Motivo = "era 4,000" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await c.PostAsJsonAsync("/api/compras/gastos", Gasto(4000m))).StatusCode.ShouldBe(HttpStatusCode.Created); // the NCF is free again
+
+        async Task<decimal> Saldo() => (await c.GetFromJsonAsync<JsonElement>($"/api/compras/suplidores/{suplidor}/estado-cuenta")).GetProperty("saldo").GetDecimal();
+        (await Saldo()).ShouldBe(4000m);
+        var pago = (await (await c.PostAsJsonAsync("/api/compras/pagos", new { SuplidorId = suplidor, Monto = 4000m, Medio = "Transferencia", Fecha = "2026-10-15" })).Json())
+            .GetProperty("pagoId").GetGuid();
+        (await Saldo()).ShouldBe(0m);
+        (await c.PostAsJsonAsync($"/api/compras/pagos/{pago}/anular", new { Motivo = "era otro suplidor" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await Saldo()).ShouldBe(4000m);
+        (await (await c.PostAsJsonAsync($"/api/compras/pagos/{pago}/anular", new { Motivo = "otra vez" })).CodigoError()).ShouldBe("Compras.YaAnulada");
+    }
+
+    [Fact]
+    public async Task Pagarle_al_suplidor_con_efectivo_de_la_caja_sale_del_turno()
+    {
+        var c = await Admin();
+        var cajero = await app.CajeroConTurnoAsync(fondo: 10000m);
+        var suplidor = await SuplidorAsync(c);
+        (await c.PostAsJsonAsync("/api/compras/gastos", new
+        {
+            SuplidorId = suplidor, Ncf = NcfNuevo(), Fecha = "2026-10-10", Concepto = "Transporte", Tipo = "TrabajosSuministrosServicios", Subtotal = 5000m, Itbis = 0m, Condicion = "Credito",
+        })).EnsureSuccessStatusCode();
+
+        var pagoId = Guid.CreateVersion7();
+        object Pago() => new { PagoId = pagoId, SuplidorId = suplidor, Monto = 5000m, Medio = "Efectivo", Fecha = "2026-10-15", TurnoId = cajero.TurnoId };
+        (await c.PostAsJsonAsync("/api/compras/pagos", Pago())).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await c.PostAsJsonAsync("/api/compras/pagos", Pago())).StatusCode.ShouldBe(HttpStatusCode.OK); // a retry pays once
+        (await app.ReporteXAsync(cajero.TurnoId)).GetProperty("efectivoEsperado").GetDecimal().ShouldBe(5000m);
+
+        (await c.PostAsJsonAsync($"/api/compras/pagos/{pagoId}/anular", new { Motivo = "no era a este" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await app.ReporteXAsync(cajero.TurnoId)).GetProperty("efectivoEsperado").GetDecimal().ShouldBe(10000m);
+    }
+
+    [Fact]
+    public async Task Fechas_futuras_y_suplidores_sin_RNC_se_rechazan_y_la_antiguedad_usa_el_vencimiento()
+    {
+        var c = await Admin();
+        var sinRnc = (await (await c.PostAsJsonAsync("/api/compras/suplidores", new { Nombre = "Sin RNC " + Guid.NewGuid().ToString()[..4], DiasCredito = 0 })).Json())
+            .GetProperty("id").GetGuid();
+        object Gasto(Guid suplidor, DateOnly fecha, int dias) => new
+        {
+            SuplidorId = suplidor, Ncf = NcfNuevo(), Fecha = fecha, Concepto = "Luz", Tipo = "TrabajosSuministrosServicios", Subtotal = 100m, Itbis = 0m,
+            Condicion = "Credito", DiasCredito = dias,
+        };
+        var hoy = DateOnly.FromDateTime(app.Reloj.GetUtcNow().UtcDateTime.AddHours(-4));
+        (await (await c.PostAsJsonAsync("/api/compras/gastos", Gasto(sinRnc, hoy, 0))).CodigoError()).ShouldBe("Compras.SuplidorSinRnc");
+
+        var suplidor = await SuplidorAsync(c);
+        (await c.PostAsJsonAsync("/api/compras/gastos", Gasto(suplidor, hoy.AddYears(1), 0))).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await c.PostAsJsonAsync("/api/compras/gastos", Gasto(suplidor, hoy, 0))).EnsureSuccessStatusCode();                // due today: not overdue
+        (await c.PostAsJsonAsync("/api/compras/gastos", Gasto(suplidor, hoy.AddDays(-1), 0))).EnsureSuccessStatusCode();    // due yesterday: 1–30
+        var fila = (await c.GetFromJsonAsync<JsonElement>("/api/compras/por-pagar")).EnumerateArray().Single(i => i.GetProperty("suplidorId").GetGuid() == suplidor);
+        (fila.GetProperty("porVencer").GetDecimal(), fila.GetProperty("vencido1a30").GetDecimal()).ShouldBe((100m, 100m));
+    }
+
+    [Fact]
     public async Task Un_cajero_no_puede_registrar_compras()
     {
         var cajero = app.Cliente(await app.UsuarioAsync(Roles.Cajero));

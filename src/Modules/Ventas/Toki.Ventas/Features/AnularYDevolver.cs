@@ -52,7 +52,7 @@ internal static class AnularVenta
                 venta.Lineas.Select(l => new LineaMovimiento(l.ProductoId, Math.Round(l.Cantidad * l.Factor, 3), l.CostoUnitario / l.Factor)).ToList(),
                 actualizarCosto: false, ct);
             if (entrada.IsFailure) return entrada.Error!;
-            var cobros = await caja.AnularCobrosAsync(venta.Id, ct);
+            var cobros = await caja.AnularMovimientosAsync(venta.Id, ct);
             if (cobros.IsFailure) return cobros.Error!;
 
             var nota = await fiscal.EmitirAsync(new DocumentoAEmitir(TipoEcf.NotaCredito34, venta.Id, venta.RncCliente, venta.ClienteNombre,

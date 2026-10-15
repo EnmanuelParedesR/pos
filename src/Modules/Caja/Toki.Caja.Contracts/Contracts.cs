@@ -22,10 +22,14 @@ public interface ICajaOperaciones
     Task<Result> RegistrarReembolsoAsync(Guid turnoId, Guid referenciaId, MedioPago medio, decimal monto, CancellationToken ct);
 
     /// <summary>A customer pays their credit (fiado) at the register.</summary>
-    Task<Result> RegistrarAbonoClienteAsync(Guid turnoId, Guid abonoId, MedioPago medio, decimal monto, CancellationToken ct);
+    /// <param name="redondeo">Cash centavos kept because the customer paid in whole pesos.</param>
+    Task<Result> RegistrarAbonoClienteAsync(Guid turnoId, Guid abonoId, MedioPago medio, decimal monto, decimal redondeo, CancellationToken ct);
 
-    /// <summary>Reverses every payment of a sale in its shift (a void).</summary>
-    Task<Result> AnularCobrosAsync(Guid ventaId, CancellationToken ct);
+    /// <summary>A supplier is paid in cash from the drawer (a withdrawal with reason PagoSuplidor).</summary>
+    Task<Result> RegistrarPagoSuplidorAsync(Guid turnoId, Guid pagoId, decimal monto, CancellationToken ct);
+
+    /// <summary>Reverses every movement of a sale, a customer payment or a drawer supplier payment (a void). Only while its shift is open.</summary>
+    Task<Result> AnularMovimientosAsync(Guid referenciaId, CancellationToken ct);
 }
 
 public sealed record TurnoAbiertoV1(Guid TurnoId, Guid CajaId, Guid CajeroId, decimal FondoInicial) : IntegrationEvent(TurnoId);
