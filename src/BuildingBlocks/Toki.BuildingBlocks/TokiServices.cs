@@ -29,6 +29,7 @@ public static class TokiServices
         services.AddScoped<IAuditoria, Auditoria>();
         services.AddHealthChecks().AddCheck<RelojHealthCheck>("reloj").AddCheck<OutboxHealthCheck>("outbox");
         services.AddScoped<ProcesadorOutbox>();
+        if (db.CrearAlIniciar) services.AddHostedService<CrearBaseDeDatosAlArrancar>();
         services.AddHostedService<ProcesadorOutboxWorker>();
 
         services.Scan(s => s.FromAssemblies(modulos)
@@ -65,12 +66,19 @@ public static class TokiServices
     {
         await using var scope = services.CreateAsyncScope();
         var contextos = scope.ServiceProvider.GetServices<ModuleDbContext>().ToList();
+        var creador = (RelationalDatabaseCreator)contextos[0].GetService<IDatabaseCreator>();
         if (scope.ServiceProvider.GetRequiredService<DatabaseOptions>().Provider == DbProvider.SqlServer)
         {
-            foreach (var db in contextos) await db.Database.MigrateAsync(ct);
+            if (await creador.ExistsAsync(ct) && await contextos[0].Database.SqlQuery<int>(
+                    $"SELECT CASE WHEN OBJECT_ID('infra.AuditoriaCabeza') IS NOT NULL AND OBJECT_ID('dbo.__EFMigrationsHistory') IS NULL THEN 1 ELSE 0 END AS Value").SingleAsync(ct) == 1)
+                throw new InvalidOperationException("Esta base se creó antes de las migraciones (TK-090): respáldela y créela de nuevo (ADR-0005).");
+            foreach (var db in contextos)
+            {
+                db.Database.SetCommandTimeout(TimeSpan.FromMinutes(30)); // an index over a year of sales takes a while on SQL Server Express
+                await db.Database.MigrateAsync(ct);
+            }
             return;
         }
-        var creador = (RelationalDatabaseCreator)contextos[0].GetService<IDatabaseCreator>();
         if (await creador.ExistsAsync(ct) && await creador.HasTablesAsync(ct)) return;
         if (!await creador.ExistsAsync(ct)) await creador.CreateAsync(ct);
         foreach (var db in contextos) await ((RelationalDatabaseCreator)db.GetService<IDatabaseCreator>()).CreateTablesAsync(ct);

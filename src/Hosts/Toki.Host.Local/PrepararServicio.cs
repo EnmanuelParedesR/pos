@@ -23,7 +23,7 @@ internal static class PrepararServicio
 
         var datos = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki");
         var carpeta = Directory.CreateDirectory(datos);
-        foreach (var sub in new[] { "logs", "respaldos" }) carpeta.CreateSubdirectory(sub);
+        foreach (var sub in new[] { "logs", "respaldos", "claves" }) carpeta.CreateSubdirectory(sub);
         carpeta.SetAccessControl(Permitir(carpeta.GetAccessControl(), identidad, FileSystemRights.Modify));
         Console.WriteLine($"Carpeta de datos: {datos}");
 
@@ -39,6 +39,14 @@ internal static class PrepararServicio
         comando.Parameters.AddWithValue("@cuenta", cuenta);
         await comando.ExecuteNonQueryAsync();
         Console.WriteLine($"Login de SQL Server listo para {cuenta} en {servidor.DataSource}");
+
+        // SQL Server writes the plain .bak where Toki can read and delete it (its own Backup folder is closed to Toki's account).
+        await using var servicio = sql.CreateCommand();
+        servicio.CommandText = "SELECT TOP 1 service_account FROM sys.dm_server_services WHERE servicename LIKE 'SQL Server (%'";
+        var cuentaSql = (string)(await servicio.ExecuteScalarAsync())!;
+        var trabajo = carpeta.CreateSubdirectory(Path.Combine("respaldos", "trabajo"));
+        trabajo.SetAccessControl(Permitir(trabajo.GetAccessControl(), new NTAccount(cuentaSql), FileSystemRights.Modify));
+        Console.WriteLine($"SQL Server ({cuentaSql}) puede escribir respaldos en {trabajo.FullName}");
     }
 
     private static T Permitir<T>(T seguridad, NTAccount cuenta, FileSystemRights derechos) where T : FileSystemSecurity

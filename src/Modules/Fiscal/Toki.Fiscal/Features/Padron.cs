@@ -39,8 +39,7 @@ internal static class Padron
     internal static async Task<Encoding> CodificacionAsync(Stream archivo, CancellationToken ct)
     {
         var inicio = new byte[64 * 1024];
-        var leidos = 0;
-        while (leidos < inicio.Length && await archivo.ReadAsync(inicio.AsMemory(leidos), ct) is var n and > 0) leidos += n;
+        var leidos = await archivo.ReadAtLeastAsync(inicio, inicio.Length, throwOnEndOfStream: false, ct);
         // A multi-byte character may be cut at the end of the sample: leave its last 3 bytes out.
         var muestra = inicio.AsSpan(0, leidos == inicio.Length ? leidos - 3 : leidos);
         try

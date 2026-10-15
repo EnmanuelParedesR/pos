@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Toki.BuildingBlocks;
 using Toki.BuildingBlocks.Endpoints;
@@ -18,14 +19,18 @@ namespace Toki.Configuracion;
 
 public static class ConfiguracionModule
 {
-    public static IServiceCollection AddConfiguracionModule(this IServiceCollection services)
+    public static IServiceCollection AddConfiguracionModule(this IServiceCollection services, IConfiguration config)
     {
         services.AddModuleDbContext<ConfiguracionDbContext>();
         services.AddScoped<IConfiguracionConsultas, ConfiguracionConsultas>();
         services.AddSingleton<UltimaVerificacionAuditoria>();
         services.AddHostedService<VerificacionNocturnaAuditoria>();
         services.AddHealthChecks().AddCheck<UltimaVerificacionAuditoria>("auditoria").AddCheck<RespaldoHealthCheck>("respaldo");
-        services.AddDataProtection().SetApplicationName("Toki");
+        // The key ring that protects the backup key lives with the store's data, not in the service account's profile.
+        var claves = services.AddDataProtection().SetApplicationName("Toki").PersistKeysToFileSystem(new DirectoryInfo(
+            config["Toki:CarpetaClaves"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki", "claves")));
+        if (OperatingSystem.IsWindows()) claves.ProtectKeysWithDpapi(protectToLocalMachine: true);
+        services.AddSingleton<EstadoRespaldo>();
         services.AddScoped<Respaldos>();
         services.AddSingleton<ServicioLicencia>();
         services.AddSingleton<IFeatureService>(sp => sp.GetRequiredService<ServicioLicencia>());
@@ -66,7 +71,8 @@ internal sealed class NegocioConfiguration : IEntityTypeConfiguration<Negocio>
         b.Property(n => n.PieRecibo).HasMaxLength(500);
         b.Property(n => n.RespaldoSal).HasMaxLength(16);
         b.Property(n => n.RespaldoClave).HasMaxLength(1000);
-        b.HasData(new Negocio());
+        // Literal values: changing a property default later must not overwrite the owner's settings through a migration.
+        b.HasData(new Negocio { Id = 1, Nombre = "Mi tienda", TopeDescuentoPct = 10 });
     }
 }
 

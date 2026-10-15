@@ -18,34 +18,46 @@ public interface IManejadorEvento<in TEvento> where TEvento : IIntegrationEvent
 }
 
 /// <summary>Delivers outbox messages in order to the in-process handlers, then marks them processed.
-/// A failing message is logged and retried on the next pass; the messages after it still go.</summary>
+/// A failing message is logged and retried on the next run; the messages after it still go. Each message has its own DI scope,
+/// so a handler that fails halfway leaves nothing tracked for the next one.</summary>
 /// <remarks>shortcut: no upload to the cloud yet (SubidoUtc stays empty); that comes with the cloud backend (TK-088, phase 2).</remarks>
-public sealed class ProcesadorOutbox(InfraDbContext db, IServiceProvider servicios, TiposEvento tipos, TimeProvider reloj, ILogger<ProcesadorOutbox> log)
+public sealed class ProcesadorOutbox(InfraDbContext db, IServiceScopeFactory scopes, TiposEvento tipos, TimeProvider reloj, ILogger<ProcesadorOutbox> log)
 {
     public const int Lote = 100;
 
+    /// <summary>One run over everything pending. Each message is read once per run (a watermark), so failing ones cannot keep the run spinning.</summary>
     /// <returns>How many messages were taken.</returns>
     public async Task<int> ProcesarAsync(CancellationToken ct)
     {
-        var mensajes = await db.Outbox.Where(m => m.ProcesadoUtc == null).OrderBy(m => m.Secuencia).Take(Lote).AsNoTracking().ToListAsync(ct);
-        foreach (var m in mensajes)
+        long desde = 0;
+        var total = 0;
+        while (true)
         {
-            try
-            {
-                if (tipos.PorNombre.TryGetValue(m.Tipo, out var tipo))
-                {
-                    var evento = JsonSerializer.Deserialize(m.Payload, tipo, Json.Opciones)!;
-                    foreach (var manejador in servicios.GetServices(typeof(IManejadorEvento<>).MakeGenericType(tipo)))
-                        await (Task)manejador!.GetType().GetMethod(nameof(IManejadorEvento<IIntegrationEvent>.ManejarAsync))!.Invoke(manejador, [evento, ct])!;
-                }
-                await db.Outbox.Where(x => x.Secuencia == m.Secuencia).ExecuteUpdateAsync(s => s.SetProperty(x => x.ProcesadoUtc, reloj.GetUtcNow().UtcDateTime), ct);
-            }
-            catch (Exception ex) when (!ct.IsCancellationRequested)
-            {
-                log.LogError(ex, "No se pudo procesar el evento {Tipo} {Id}; se reintenta en la próxima pasada", m.Tipo, m.Id);
-            }
+            var mensajes = await db.Outbox.Where(m => m.ProcesadoUtc == null && m.Secuencia > desde).OrderBy(m => m.Secuencia).Take(Lote).AsNoTracking().ToListAsync(ct);
+            foreach (var m in mensajes) await EntregarAsync(m, ct);
+            total += mensajes.Count;
+            if (mensajes.Count < Lote) return total;
+            desde = mensajes[^1].Secuencia;
         }
-        return mensajes.Count;
+    }
+
+    private async Task EntregarAsync(OutboxMensaje m, CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            if (tipos.PorNombre.TryGetValue(m.Tipo, out var tipo))
+            {
+                var evento = JsonSerializer.Deserialize(m.Payload, tipo, Json.Opciones)!;
+                foreach (var manejador in scope.ServiceProvider.GetServices(typeof(IManejadorEvento<>).MakeGenericType(tipo)))
+                    await (Task)manejador!.GetType().GetMethod(nameof(IManejadorEvento<IIntegrationEvent>.ManejarAsync))!.Invoke(manejador, [evento, ct])!;
+            }
+            await db.Outbox.Where(x => x.Secuencia == m.Secuencia).ExecuteUpdateAsync(s => s.SetProperty(x => x.ProcesadoUtc, reloj.GetUtcNow().UtcDateTime), ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            log.LogError(ex, "No se pudo procesar el evento {Tipo} {Id}; se reintenta en la próxima pasada", m.Tipo, m.Id);
+        }
     }
 }
 
@@ -66,7 +78,7 @@ internal sealed class ProcesadorOutboxWorker(IServiceScopeFactory scopes, IConfi
             {
                 await using var scope = scopes.CreateAsyncScope();
                 var procesador = scope.ServiceProvider.GetRequiredService<ProcesadorOutbox>();
-                while (await procesador.ProcesarAsync(stoppingToken) == ProcesadorOutbox.Lote) { }
+                await procesador.ProcesarAsync(stoppingToken);
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {

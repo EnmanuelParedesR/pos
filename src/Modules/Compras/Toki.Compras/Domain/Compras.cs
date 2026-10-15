@@ -29,6 +29,8 @@ internal sealed class Compra
     public string Ncf { get; set; } = "";
     public DateOnly FechaFactura { get; set; }
     public Condicion Condicion { get; set; }
+    /// <summary>How a cash (contado) invoice was paid, for the 606 payment form. Unknown stays empty there.</summary>
+    public MedioPagoSuplidor? Medio { get; set; }
     public DateOnly? Vence { get; set; }
     public Guid? AlmacenId { get; set; }
     public EstadoCompra Estado { get; set; }
@@ -105,6 +107,8 @@ internal sealed class Gasto
     public string Concepto { get; set; } = "";
     public TipoGasto Tipo { get; set; }
     public Condicion Condicion { get; set; }
+    /// <summary>How a cash (contado) expense was paid, for the 606 payment form.</summary>
+    public MedioPagoSuplidor? Medio { get; set; }
     public DateOnly? Vence { get; set; }
     public decimal Subtotal { get; set; }
     public decimal Itbis { get; set; }

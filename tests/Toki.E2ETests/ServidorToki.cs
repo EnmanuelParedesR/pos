@@ -58,6 +58,7 @@ public sealed class ServidorToki : IAsyncDisposable
             ["Serilog__MinimumLevel__Default"] = "Warning",
             ["Licencia__Archivo"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_licencia_{Guid.NewGuid():N}.jws"),
             ["Respaldo__Carpeta"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_respaldos_{Guid.NewGuid():N}"),
+            ["Toki__CarpetaClaves"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_claves_{Guid.NewGuid():N}"),
         };
         var servidor = new ServidorToki(BuscarDll(), entorno, new Uri($"http://127.0.0.1:{puerto}"), contenedor, archivo);
         entorno["Licencia__ClavePublica"] = servidor.ClaveLicencias.ExportSubjectPublicKeyInfoPem();

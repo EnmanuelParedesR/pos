@@ -125,7 +125,7 @@ internal static class EstadoCola
 /// <summary>Issued e-CF, newest first, optionally only those still waiting to be sent.</summary>
 internal static class ListarDocumentos
 {
-    public sealed record Item(Guid Id, string ENcf, TipoEcf Tipo, Guid ReferenciaId, decimal Total, DateTime FechaFirmaUtc, EstadoEnvio Estado,
+    public sealed record Item(Guid Id, string ENcf, TipoEcf Tipo, Guid ReferenciaId, decimal Total, decimal Itbis, DateTime FechaFirmaUtc, EstadoEnvio Estado,
         DateTime FechaLimiteEnvioUtc, string? UltimoError);
 
     internal sealed class Endpoint : IEndpoint
@@ -136,7 +136,7 @@ internal static class ListarDocumentos
                     var q = db.Documentos.AsNoTracking();
                     if (soloPendientes == true) q = q.Where(d => d.Estado == EstadoEnvio.Pendiente);
                     return Results.Ok(await q.OrderByDescending(d => d.FechaFirmaUtc).Take(Math.Clamp(ultimos ?? 100, 1, 1000))
-                        .Select(d => new Item(d.Id, d.ENcf, d.Tipo, d.ReferenciaId, d.Total, d.FechaFirmaUtc, d.Estado, d.FechaLimiteEnvioUtc, d.UltimoError))
+                        .Select(d => new Item(d.Id, d.ENcf, d.Tipo, d.ReferenciaId, d.Total, d.Itbis, d.FechaFirmaUtc, d.Estado, d.FechaLimiteEnvioUtc, d.UltimoError))
                         .ToListAsync(ct));
                 })
                 .RequirePermiso(Permisos.FiscalGestionar).WithTags("Fiscal");

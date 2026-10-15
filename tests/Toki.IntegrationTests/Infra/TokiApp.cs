@@ -71,6 +71,7 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         builder.UseSetting("Outbox:Procesar", "false");
         builder.UseSetting("Auditoria:VerificacionNocturna", "false");
         builder.UseSetting("Respaldo:Automatico", "false");
+        builder.UseSetting("Toki:CarpetaClaves", Path.Combine(Path.GetTempPath(), $"toki_claves_{Guid.NewGuid():N}"));
         builder.UseSetting("Licencia:ClavePublica", ClaveLicencias.ExportSubjectPublicKeyInfoPem());
         builder.UseSetting("Licencia:Archivo", Path.Combine(Path.GetTempPath(), $"toki_licencia_{Guid.NewGuid():N}.jws"));
         builder.UseSetting("Respaldo:Carpeta", Path.Combine(Path.GetTempPath(), $"toki_respaldos_{Guid.NewGuid():N}"));

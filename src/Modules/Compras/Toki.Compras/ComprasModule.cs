@@ -83,6 +83,7 @@ internal sealed class ComprasConfiguration :
         b.Property(c => c.Notas).HasMaxLength(500);
         b.Property(c => c.Estado).HasConversion<string>().HasMaxLength(12);
         b.Property(c => c.Condicion).HasConversion<string>().HasMaxLength(10);
+        b.Property(c => c.Medio).HasConversion<string>().HasMaxLength(15);
         b.HasMany(c => c.Lineas).WithOne().HasForeignKey(l => l.CompraId).HasPrincipalKey(c => c.Id);
     }
 
@@ -101,6 +102,7 @@ internal sealed class ComprasConfiguration :
         b.Property(g => g.RncSuplidor).HasMaxLength(11);
         b.Property(g => g.Tipo).HasConversion<int>();
         b.Property(g => g.Condicion).HasConversion<string>().HasMaxLength(10);
+        b.Property(g => g.Medio).HasConversion<string>().HasMaxLength(15);
     }
 
     public void Configure(EntityTypeBuilder<CuentaPorPagar> b)

@@ -236,9 +236,13 @@ public sealed class DiaDeTiendaTests
 
         var filas607 = (await Ok(await admin.GetAsync($"/api/reportes/dgii/607?{periodo}"))).EnumerateArray().ToList();
         filas607.Count.ShouldBe(documentos.Count);
-        var totalPorNcf = documentos.ToDictionary(d => d.GetProperty("eNcf").GetString()!, d => d.GetProperty("total").GetDecimal());
+        var porNcf = documentos.ToDictionary(d => d.GetProperty("eNcf").GetString()!);
         foreach (var f in filas607)
-            (f.GetProperty("montoFacturado").GetDecimal() + f.GetProperty("itbisFacturado").GetDecimal()).ShouldBe(totalPorNcf[f.GetProperty("ncf").GetString()!]);
+        {
+            var doc = porNcf[f.GetProperty("ncf").GetString()!];
+            f.GetProperty("itbisFacturado").GetDecimal().ShouldBe(doc.GetProperty("itbis").GetDecimal());
+            (f.GetProperty("montoFacturado").GetDecimal() + f.GetProperty("itbisFacturado").GetDecimal()).ShouldBe(doc.GetProperty("total").GetDecimal());
+        }
 
         foreach (var v in (await Ok(await admin.GetAsync("/api/reportes/inventario/valor"))).EnumerateArray())
             v.GetProperty("existencia").GetDecimal().ShouldBe(existencias[v.GetProperty("productoId").GetGuid()]);
@@ -298,9 +302,8 @@ public sealed class DiaDeTiendaTests
         {
             var r = await enviar();
             if (r.StatusCode != HttpStatusCode.Conflict || intento == 3) return r;
-            var cuerpo = await r.Content.ReadAsStringAsync();
-            if (!cuerpo.Contains("\"code\":\"Ocupado\"", StringComparison.Ordinal))
-                return new HttpResponseMessage(r.StatusCode) { Content = new StringContent(cuerpo, System.Text.Encoding.UTF8, "application/problem+json"), RequestMessage = r.RequestMessage };
+            // ReadAsStringAsync buffers the body, so the caller can still read it.
+            if (!(await r.Content.ReadAsStringAsync()).Contains("\"code\":\"Ocupado\"", StringComparison.Ordinal)) return r;
             await Task.Delay(100 * intento);
         }
     }

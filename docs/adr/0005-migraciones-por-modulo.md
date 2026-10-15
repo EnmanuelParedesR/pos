@@ -22,6 +22,10 @@ dotnet build Toki.slnx
 dotnet dotnet-ef migrations add <Nombre><Módulo> --project src/Modules/<Módulo>/Toki.<Módulo> --startup-project src/Modules/<Módulo>/Toki.<Módulo> --context <Módulo>DbContext --output-dir Persistence/Migraciones --no-build
 ```
 
+- Las migraciones corren en el `StartingAsync` del host (después de avisar a Windows que el servicio arrancó y antes de que Kestrel escuche), con 30 minutos por comando.
+- Una migración posterior a `Inicial*` no puede insertar, cambiar ni borrar filas que el dueño edita (roles salvo Administrador, `Negocio`, `FormatosEtiqueta`); una prueba lo verifica. Esos cambios se escriben con `migrationBuilder.Sql` respetando lo que la tienda ya cambió.
+- Una base de SQL Server creada antes de las migraciones no arranca: la API pide respaldarla y crearla de nuevo.
+
 ## Consecuencias
 
 - Las migraciones son SQL de SQL Server; SQLite no las usa. Un error que solo exista en las migraciones aparece en el job de SQL Server, no en local.

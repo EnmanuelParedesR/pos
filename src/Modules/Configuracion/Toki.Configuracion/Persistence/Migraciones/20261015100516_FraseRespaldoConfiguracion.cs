@@ -26,13 +26,7 @@ namespace Toki.Configuracion.Persistence.Migraciones
                 maxLength: 16,
                 nullable: true);
 
-            migrationBuilder.UpdateData(
-                schema: "config",
-                table: "Negocio",
-                keyColumn: "Id",
-                keyValue: 1,
-                columns: new[] { "RespaldoClave", "RespaldoSal" },
-                values: new object[] { null, null });
+            // No UpdateData of the seeded row: the new columns start null anyway, and the owner's row is never rewritten (R6 #9).
         }
 
         /// <inheritdoc />

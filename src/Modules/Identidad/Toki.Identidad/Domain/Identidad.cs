@@ -16,12 +16,19 @@ internal sealed class Rol
     public string Nombre { get; set; } = "";
     public List<string> Permisos { get; set; } = [];
 
+    /// <remarks>Supervisor and Cajero are written out on purpose, not derived from <see cref="P.Todos"/>: the owner edits them, and a new
+    /// permission must not become a migration that rewrites their roles in every store (R6 #9). Administrador always gets every permission anyway.</remarks>
     public static IEnumerable<Rol> Predeterminados()
     {
-        string[] soloAdmin = [P.UsuariosGestionar, P.DispositivosGestionar,
-            P.ConfiguracionGestionar, P.FiscalGestionar];
         yield return new Rol { Id = AdministradorId, Nombre = "Administrador", Permisos = [.. P.Todos] };
-        yield return new Rol { Id = SupervisorId, Nombre = "Supervisor", Permisos = [.. P.Todos.Except(soloAdmin)] };
+        yield return new Rol
+        {
+            Id = SupervisorId, Nombre = "Supervisor",
+            Permisos = [P.ProductosGestionar, P.PreciosCambiar, P.InventarioVer, P.InventarioAjustar, P.InventarioContar, P.InventarioTransferir,
+                P.CajaOperar, P.CajaRetirar, P.CajaAprobarCierre, P.CajaAbrirGaveta,
+                P.VentasRegistrar, P.VentasAnular, P.VentasDevolver, P.VentasDescuentoMayor, P.VentasCambiarPrecio,
+                P.ComprasGestionar, P.ClientesGestionar, P.FiadoGestionar, P.FiadoExcederLimite, P.ReportesVer],
+        };
         yield return new Rol
         {
             Id = CajeroId, Nombre = "Cajero",

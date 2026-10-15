@@ -288,9 +288,7 @@ public sealed class VentasTests(TokiApp app) : IClassFixture<TokiApp>
         (await cajero.Cliente.PostAsJsonAsync($"/api/caja/turnos/{cajero.TurnoId}/cerrar",
             new { Conteo = Array.Empty<object>(), AutorizacionSupervisorId = await cajero.Cliente.AutorizarAsync("caja.aprobar-cierre", cajero.TurnoId) })).EnsureSuccessStatusCode();
 
-        var procesador = Toki.BuildingBlocks.Messaging.ProcesadorOutbox.Lote;
-        while (procesador == Toki.BuildingBlocks.Messaging.ProcesadorOutbox.Lote) // the whole backlog of this app, not just the first batch
-            procesador = await app.EnScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Messaging.ProcesadorOutbox>().ProcesarAsync(CancellationToken.None));
+        await app.EnScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Messaging.ProcesadorOutbox>().ProcesarAsync(CancellationToken.None));
         (await cajero.Cliente.GetFromJsonAsync<JsonElement>($"/api/ventas/en-espera?turnoId={cajero.TurnoId}")).GetArrayLength().ShouldBe(0);
         (await ContarAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox.Where(m => m.Tipo.EndsWith("TurnoCerradoV1") && m.ProcesadoUtc == null))).ShouldBe(0);
     }

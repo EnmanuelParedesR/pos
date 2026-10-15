@@ -82,6 +82,10 @@ namespace Toki.Compras.Persistence.Migraciones
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
 
+                    b.Property<string>("Medio")
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
                     b.Property<string>("MotivoAnulacion")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -208,6 +212,10 @@ namespace Toki.Compras.Persistence.Migraciones
                     b.Property<decimal>("Itbis")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
+
+                    b.Property<string>("Medio")
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
 
                     b.Property<string>("MotivoAnulacion")
                         .HasMaxLength(200)

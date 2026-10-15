@@ -22,13 +22,28 @@ if (args is ["descifrar-respaldo", var archivo, var salida])
     var frase = Environment.GetEnvironmentVariable("TOKI_FRASE_RESPALDO");
     if (frase is null)
     {
+        // Typed without echo: the phrase opens every backup of the store.
         Console.Write("Frase del respaldo: ");
-        frase = Console.ReadLine() ?? "";
+        var tecleada = new System.Text.StringBuilder();
+        for (var tecla = Console.ReadKey(intercept: true); tecla.Key != ConsoleKey.Enter; tecla = Console.ReadKey(intercept: true))
+            if (tecla.Key == ConsoleKey.Backspace) tecleada.Length = Math.Max(0, tecleada.Length - 1);
+            else tecleada.Append(tecla.KeyChar);
+        Console.WriteLine();
+        frase = tecleada.ToString();
     }
-    await using (var entrada = File.OpenRead(archivo))
-    await using (var destino = File.Create(salida))
-        await CifradoRespaldo.DescifrarAsync(entrada, destino, frase, CancellationToken.None);
-    Console.WriteLine($"Listo: {salida}");
+    try
+    {
+        await using (var entrada = File.OpenRead(archivo))
+        await using (var destino = File.Create(salida))
+            await CifradoRespaldo.DescifrarAsync(entrada, destino, frase, CancellationToken.None);
+        Console.WriteLine($"Listo: {salida}");
+    }
+    catch (System.Security.Cryptography.CryptographicException e)
+    {
+        File.Delete(salida); // a half-written file must never look like a usable backup
+        Console.Error.WriteLine($"No se pudo abrir el respaldo: {e.Message} (¿frase equivocada?)");
+        Environment.ExitCode = 1;
+    }
     return;
 }
 
@@ -65,7 +80,7 @@ Assembly[] modulos =
 
 builder.Services.AddToki(builder.Configuration, modulos);
 builder.Services.AddIdentidadModule();
-builder.Services.AddConfiguracionModule();
+builder.Services.AddConfiguracionModule(builder.Configuration);
 builder.Services.AddInventarioModule();
 builder.Services.AddCajaModule();
 builder.Services.AddFiscalModule();
@@ -94,7 +109,6 @@ if (app.Environment.IsDevelopment())
 app.MapHealthChecks("/health").AllowAnonymous();
 app.MapEndpoints(modulos);
 
-if (app.Configuration.GetValue<bool>("Database:CrearAlIniciar")) await TokiServices.CrearBaseDeDatosAsync(app.Services);
 
 await app.RunAsync();
 

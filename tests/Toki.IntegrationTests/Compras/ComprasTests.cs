@@ -285,7 +285,20 @@ public sealed class ComprasTests(TokiApp app) : IClassFixture<TokiApp>
             SuplidorId = suplidor, Ncf = ncfGasto, Fecha = "2026-10-14", Concepto = "Hielo", Tipo = "TrabajosSuministrosServicios", Subtotal = 500m, Itbis = 90m, Condicion = "Contado",
         })).EnsureSuccessStatusCode();
 
+        var ncfTransferencia = NcfNuevo();
+        (await c.PostAsJsonAsync("/api/compras/gastos", new
+        {
+            SuplidorId = suplidor, Ncf = ncfTransferencia, Fecha = "2026-10-14", Concepto = "Fumigación", Tipo = "TrabajosSuministrosServicios", Subtotal = 1000m, Itbis = 180m,
+            Condicion = "Contado", Medio = "Transferencia",
+        })).EnsureSuccessStatusCode();
+
         var filas = (await c.GetFromJsonAsync<JsonElement>("/api/reportes/dgii/606?desde=2026-10-14&hasta=2026-10-14")).EnumerateArray().ToList();
+        // Payment form: transfer → 2 with the invoice date; a credit purchase → 4 with no date; a cash one whose medium is unknown → empty.
+        var transferida = filas.Single(f => f.GetProperty("ncf").GetString() == ncfTransferencia);
+        (transferida.GetProperty("formaPago").GetInt32(), transferida.GetProperty("fechaPago").GetString()).ShouldBe((2, "2026-10-14"));
+        var credito = filas.Single(f => f.GetProperty("ncf").GetString() == ncfCompra);
+        (credito.GetProperty("formaPago").GetInt32(), credito.GetProperty("fechaPago").ValueKind).ShouldBe((4, JsonValueKind.Null));
+        filas.Single(f => f.GetProperty("ncf").GetString() == ncfGasto).GetProperty("formaPago").ValueKind.ShouldBe(JsonValueKind.Null);
         var deCompra = filas.Single(f => f.GetProperty("ncf").GetString() == ncfCompra);
         (deCompra.GetProperty("tipoBienesServicios").GetInt32(), deCompra.GetProperty("montoBienes").GetDecimal(), deCompra.GetProperty("tipoId").GetInt32()).ShouldBe((9, 1800m, 1));
         filas.Single(f => f.GetProperty("ncf").GetString() == ncfGasto).GetProperty("itbisFacturado").GetDecimal().ShouldBe(90m);

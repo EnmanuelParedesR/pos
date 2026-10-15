@@ -13,6 +13,8 @@ public sealed class DatabaseOptions
     /// <summary>SqlServer in production. Sqlite for development and tests on machines without SQL Server (ADR-0002).</summary>
     public DbProvider Provider { get; set; } = DbProvider.SqlServer;
     public string ConnectionString { get; set; } = "";
+    /// <summary>Create or migrate the database when the host starts.</summary>
+    public bool CrearAlIniciar { get; set; }
 }
 
 /// <summary>One connection and one transaction per request, shared by every module's DbContext,
