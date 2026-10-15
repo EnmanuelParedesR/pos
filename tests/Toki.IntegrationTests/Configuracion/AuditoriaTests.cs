@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Toki.BuildingBlocks.Persistence;
-using Toki.Configuracion;
+using Toki.Settings;
 using Toki.IntegrationTests.Infra;
 
 namespace Toki.IntegrationTests.Configuracion;

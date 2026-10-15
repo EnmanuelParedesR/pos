@@ -5,15 +5,15 @@ using Scalar.AspNetCore;
 using Serilog;
 using Toki.BuildingBlocks;
 using Toki.BuildingBlocks.Endpoints;
-using Toki.Caja;
-using Toki.Clientes;
-using Toki.Compras;
-using Toki.Configuracion;
+using Toki.CashRegister;
+using Toki.Customers;
+using Toki.Purchasing;
+using Toki.Settings;
 using Toki.Fiscal;
-using Toki.Ventas;
-using Toki.Identidad;
-using Toki.Inventario;
-using Toki.Reportes;
+using Toki.Sales;
+using Toki.Identity;
+using Toki.Inventory;
+using Toki.Reports;
 using Toki.Host.Local;
 
 // Restoring on any PC: Toki.Host.Local descifrar-respaldo <archivo.toki-respaldo> <salida>, with the phrase in TOKI_FRASE_RESPALDO or typed.

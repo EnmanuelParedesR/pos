@@ -36,18 +36,18 @@ Toki.slnx
 │  │                                               interceptores EF, auditoría encadenada, health checks
 │  │
 │  ├─ Modules/
-│  │  ├─ Ventas/         Toki.Ventas            + Toki.Ventas.Contracts
-│  │  ├─ Caja/           Toki.Caja              + Toki.Caja.Contracts
-│  │  ├─ Inventario/     Toki.Inventario        + Toki.Inventario.Contracts   (incluye catálogo y precios)
-│  │  ├─ Compras/        Toki.Compras           + Toki.Compras.Contracts
-│  │  ├─ Clientes/       Toki.Clientes          + Toki.Clientes.Contracts     (clientes y fiado)
+│  │  ├─ Ventas/         Toki.Sales            + Toki.Sales.Contracts
+│  │  ├─ Caja/           Toki.CashRegister              + Toki.CashRegister.Contracts
+│  │  ├─ Inventario/     Toki.Inventory        + Toki.Inventory.Contracts   (incluye catálogo y precios)
+│  │  ├─ Compras/        Toki.Purchasing           + Toki.Purchasing.Contracts
+│  │  ├─ Clientes/       Toki.Customers          + Toki.Customers.Contracts     (clientes y fiado)
 │  │  ├─ Fiscal/         Toki.Fiscal            + Toki.Fiscal.Contracts
 │  │  │                  Toki.Fiscal.Proveedores.EcfSsd   ← adaptador aislado del SDK del proveedor
 │  │  ├─ Hardware/       Toki.Hardware.Config   + Toki.Hardware.Config.Contracts (perfiles por dispositivo)
-│  │  ├─ Identidad/      Toki.Identidad         + Toki.Identidad.Contracts    (usuarios, PIN, dispositivos)
-│  │  ├─ Configuracion/  Toki.Configuracion     + Toki.Configuracion.Contracts (negocio, licencia, marca)
+│  │  ├─ Identidad/      Toki.Identity         + Toki.Identity.Contracts    (usuarios, PIN, dispositivos)
+│  │  ├─ Configuracion/  Toki.Settings     + Toki.Settings.Contracts (negocio, licencia, marca)
 │  │  ├─ Sync/           Toki.Sync              + Toki.Sync.Contracts          (subida, bajada, ingesta)
-│  │  └─ Reportes/       Toki.Reportes          ← solo lectura; vistas SQL (ver 3.4) — añadido a la lista pedida
+│  │  └─ Reportes/       Toki.Reports          ← solo lectura; vistas SQL (ver 3.4) — añadido a la lista pedida
 │  │
 │  └─ Client/
 │     ├─ Toki.Client.Wpf/        ← shell WPF + BlazorWebView, DI, Velopack, arranque
@@ -61,7 +61,7 @@ Toki.slnx
 │     └─ Toki.Hardware.Simulados/← balanza, impresora y terminal falsos para desarrollo y demos
 │
 └─ tests/
-   ├─ Toki.Ventas.UnitTests/ (… uno por módulo con lógica de dominio)
+   ├─ Toki.Sales.UnitTests/ (… uno por módulo con lógica de dominio)
    ├─ Toki.IntegrationTests/       ← WebApplicationFactory + Testcontainers (SQL Server) + Respawn
    ├─ Toki.ArchitectureTests/      ← ArchUnitNET: reglas de dependencia y convenciones
    ├─ Toki.Fiscal.Tests/           ← XML e-CF: snapshot + validación XSD + verificación de firma
@@ -71,7 +71,7 @@ Toki.slnx
    └─ Toki.Escuadra.Visual/        ← capturas Playwright por resolución, tema y marca
 ```
 
-**Dos proyectos por módulo, no cuatro.** El módulo (`Toki.Ventas`) contiene sus slices, su dominio y su persistencia, todo `internal`. Su proyecto `Contracts` contiene lo único que otros pueden ver. No se separa cada módulo en Domain/Application/Infrastructure: eso es la arquitectura por capas que VSA reemplaza, y para un desarrollador casi solo multiplica los proyectos sin beneficio. Si un módulo crece mucho (Fiscal es el candidato), se le puede separar el dominio después.
+**Dos proyectos por módulo, no cuatro.** El módulo (`Toki.Sales`) contiene sus slices, su dominio y su persistencia, todo `internal`. Su proyecto `Contracts` contiene lo único que otros pueden ver. No se separa cada módulo en Domain/Application/Infrastructure: eso es la arquitectura por capas que VSA reemplaza, y para un desarrollador casi solo multiplica los proyectos sin beneficio. Si un módulo crece mucho (Fiscal es el candidato), se le puede separar el dominio después.
 
 **Qué monta cada host.** Cada módulo expone `AddXxxModule(services, config)` y `MapXxxEndpoints(app)`. El host decide qué módulos y qué slices registra:
 
@@ -90,7 +90,7 @@ Toki.slnx
 ### 2.2 Cómo se ve una slice: `Ventas/RegistrarVenta`
 
 ```
-Toki.Ventas/
+Toki.Sales/
 ├─ VentasModule.cs                     ← AddVentasModule / MapVentasEndpoints
 ├─ Domain/
 │  ├─ Venta.cs                         ← agregado: líneas, pagos, totales, ITBIS, redondeo

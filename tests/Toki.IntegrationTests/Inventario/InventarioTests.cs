@@ -31,7 +31,7 @@ public sealed class InventarioTests(TokiApp app) : IClassFixture<TokiApp>
         var cat = await c.CategoriaAsync("Cerdo");
         var id = await c.ProductoAsync(cat, "Chuleta", 165m, unidad: "Libra", plu: "321");
         var etiqueta = "200032102350";
-        etiqueta += Toki.Inventario.Domain.EtiquetaBalanza.DigitoVerificador(etiqueta);
+        etiqueta += Toki.Inventory.Domain.EtiquetaBalanza.DigitoVerificador(etiqueta);
 
         var r = await c.GetFromJsonAsync<JsonElement>($"/api/inventario/productos/por-codigo/{etiqueta}");
         r.GetProperty("productoId").GetGuid().ShouldBe(id);

@@ -1,6 +1,6 @@
 using Shouldly;
-using Toki.Caja.Contracts;
-using Toki.Caja.Domain;
+using Toki.CashRegister.Contracts;
+using Toki.CashRegister.Domain;
 
 namespace Toki.UnitTests.Caja;
 

@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
-using Toki.Caja.Contracts;
+using Toki.CashRegister.Contracts;
 using Toki.IntegrationTests.Infra;
 
 namespace Toki.IntegrationTests.Plataforma;

@@ -1,5 +1,5 @@
 using Shouldly;
-using Toki.Identidad.Domain;
+using Toki.Identity.Domain;
 
 namespace Toki.UnitTests.Identidad;
 

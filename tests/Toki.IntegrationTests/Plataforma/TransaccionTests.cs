@@ -3,9 +3,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
-using Toki.Configuracion;
+using Toki.Settings;
 using Toki.IntegrationTests.Infra;
-using Toki.Inventario.Persistence;
+using Toki.Inventory.Persistence;
 using Toki.SharedKernel;
 
 namespace Toki.IntegrationTests.Plataforma;

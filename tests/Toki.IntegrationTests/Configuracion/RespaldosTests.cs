@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
-using Toki.Configuracion;
+using Toki.Settings;
 using Toki.IntegrationTests.Infra;
 
 namespace Toki.IntegrationTests.Configuracion;

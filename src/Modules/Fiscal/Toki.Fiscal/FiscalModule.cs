@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.Extensions.DependencyInjection;
 using Toki.BuildingBlocks;
 using Toki.BuildingBlocks.Persistence;
-using Toki.Configuracion.Contracts;
+using Toki.Settings.Contracts;
 using Toki.Fiscal.Contracts;
 using Toki.Fiscal.Domain;
 using Toki.SharedKernel;

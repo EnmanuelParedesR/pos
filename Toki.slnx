@@ -14,22 +14,22 @@
     <Project Path="src/Hosts/Toki.Host.Local/Toki.Host.Local.csproj" />
   </Folder>
   <Folder Name="/src/Modules/">
-    <Project Path="src/Modules/Caja/Toki.Caja.Contracts/Toki.Caja.Contracts.csproj" />
-    <Project Path="src/Modules/Caja/Toki.Caja/Toki.Caja.csproj" />
-    <Project Path="src/Modules/Clientes/Toki.Clientes.Contracts/Toki.Clientes.Contracts.csproj" />
-    <Project Path="src/Modules/Clientes/Toki.Clientes/Toki.Clientes.csproj" />
-    <Project Path="src/Modules/Compras/Toki.Compras.Contracts/Toki.Compras.Contracts.csproj" />
-    <Project Path="src/Modules/Compras/Toki.Compras/Toki.Compras.csproj" />
-    <Project Path="src/Modules/Configuracion/Toki.Configuracion.Contracts/Toki.Configuracion.Contracts.csproj" />
-    <Project Path="src/Modules/Configuracion/Toki.Configuracion/Toki.Configuracion.csproj" />
+    <Project Path="src/Modules/CashRegister/Toki.CashRegister.Contracts/Toki.CashRegister.Contracts.csproj" />
+    <Project Path="src/Modules/CashRegister/Toki.CashRegister/Toki.CashRegister.csproj" />
+    <Project Path="src/Modules/Customers/Toki.Customers.Contracts/Toki.Customers.Contracts.csproj" />
+    <Project Path="src/Modules/Customers/Toki.Customers/Toki.Customers.csproj" />
+    <Project Path="src/Modules/Purchasing/Toki.Purchasing.Contracts/Toki.Purchasing.Contracts.csproj" />
+    <Project Path="src/Modules/Purchasing/Toki.Purchasing/Toki.Purchasing.csproj" />
+    <Project Path="src/Modules/Settings/Toki.Settings.Contracts/Toki.Settings.Contracts.csproj" />
+    <Project Path="src/Modules/Settings/Toki.Settings/Toki.Settings.csproj" />
     <Project Path="src/Modules/Fiscal/Toki.Fiscal.Contracts/Toki.Fiscal.Contracts.csproj" />
     <Project Path="src/Modules/Fiscal/Toki.Fiscal/Toki.Fiscal.csproj" />
-    <Project Path="src/Modules/Identidad/Toki.Identidad/Toki.Identidad.csproj" />
-    <Project Path="src/Modules/Inventario/Toki.Inventario.Contracts/Toki.Inventario.Contracts.csproj" />
-    <Project Path="src/Modules/Inventario/Toki.Inventario/Toki.Inventario.csproj" />
-    <Project Path="src/Modules/Reportes/Toki.Reportes/Toki.Reportes.csproj" />
-    <Project Path="src/Modules/Ventas/Toki.Ventas.Contracts/Toki.Ventas.Contracts.csproj" />
-    <Project Path="src/Modules/Ventas/Toki.Ventas/Toki.Ventas.csproj" />
+    <Project Path="src/Modules/Identity/Toki.Identity/Toki.Identity.csproj" />
+    <Project Path="src/Modules/Inventory/Toki.Inventory.Contracts/Toki.Inventory.Contracts.csproj" />
+    <Project Path="src/Modules/Inventory/Toki.Inventory/Toki.Inventory.csproj" />
+    <Project Path="src/Modules/Reports/Toki.Reports/Toki.Reports.csproj" />
+    <Project Path="src/Modules/Sales/Toki.Sales.Contracts/Toki.Sales.Contracts.csproj" />
+    <Project Path="src/Modules/Sales/Toki.Sales/Toki.Sales.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Toki.ArchitectureTests/Toki.ArchitectureTests.csproj" />

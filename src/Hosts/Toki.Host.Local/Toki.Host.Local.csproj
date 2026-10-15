@@ -10,15 +10,15 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Modules\Identidad\Toki.Identidad\Toki.Identidad.csproj" />
-    <ProjectReference Include="..\..\Modules\Configuracion\Toki.Configuracion\Toki.Configuracion.csproj" />
-    <ProjectReference Include="..\..\Modules\Inventario\Toki.Inventario\Toki.Inventario.csproj" />
-    <ProjectReference Include="..\..\Modules\Caja\Toki.Caja\Toki.Caja.csproj" />
+    <ProjectReference Include="..\..\Modules\Identity\Toki.Identity\Toki.Identity.csproj" />
+    <ProjectReference Include="..\..\Modules\Settings\Toki.Settings\Toki.Settings.csproj" />
+    <ProjectReference Include="..\..\Modules\Inventory\Toki.Inventory\Toki.Inventory.csproj" />
+    <ProjectReference Include="..\..\Modules\CashRegister\Toki.CashRegister\Toki.CashRegister.csproj" />
     <ProjectReference Include="..\..\Modules\Fiscal\Toki.Fiscal\Toki.Fiscal.csproj" />
-    <ProjectReference Include="..\..\Modules\Ventas\Toki.Ventas\Toki.Ventas.csproj" />
-    <ProjectReference Include="..\..\Modules\Compras\Toki.Compras\Toki.Compras.csproj" />
-    <ProjectReference Include="..\..\Modules\Clientes\Toki.Clientes\Toki.Clientes.csproj" />
-    <ProjectReference Include="..\..\Modules\Reportes\Toki.Reportes\Toki.Reportes.csproj" />
+    <ProjectReference Include="..\..\Modules\Sales\Toki.Sales\Toki.Sales.csproj" />
+    <ProjectReference Include="..\..\Modules\Purchasing\Toki.Purchasing\Toki.Purchasing.csproj" />
+    <ProjectReference Include="..\..\Modules\Customers\Toki.Customers\Toki.Customers.csproj" />
+    <ProjectReference Include="..\..\Modules\Reports\Toki.Reports\Toki.Reports.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.IntegrationTests" />

@@ -1,7 +1,7 @@
 using Shouldly;
-using Toki.Caja.Contracts;
+using Toki.CashRegister.Contracts;
 using Toki.SharedKernel;
-using Toki.Ventas.Domain;
+using Toki.Sales.Domain;
 
 namespace Toki.UnitTests.Ventas;
 

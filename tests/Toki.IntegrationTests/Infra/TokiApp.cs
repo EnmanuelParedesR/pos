@@ -205,7 +205,7 @@ public sealed class TokiApp : WebApplicationFactory<Program>
     /// <summary>The kardex rule: for every product and warehouse, the movements add up to the stock and the last row's result equals it.</summary>
     public Task<IReadOnlyList<string>> DescuadresKardexAsync() => EnScopeAsync<IReadOnlyList<string>>(async sp =>
     {
-        var db = sp.GetRequiredService<Toki.Inventario.Persistence.InventarioDbContext>();
+        var db = sp.GetRequiredService<Toki.Inventory.Persistence.InventarioDbContext>();
         var existencias = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.Existencias);
         var movimientos = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.Movimientos);
         return existencias

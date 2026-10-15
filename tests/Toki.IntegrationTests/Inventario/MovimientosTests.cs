@@ -79,7 +79,7 @@ public sealed class MovimientosTests(TokiApp app) : IClassFixture<TokiApp>
         var id = await c.ProductoAsync(await c.CategoriaAsync(), "Pechuga", 140m, unidad: "Libra", plu: "0731");
         (await c.GetFromJsonAsync<JsonElement>($"/api/inventario/productos/{id}")).GetProperty("plu").GetString().ShouldBe("731");
 
-        string Etiqueta(string doce) => doce + Toki.Inventario.Domain.EtiquetaBalanza.DigitoVerificador(doce);
+        string Etiqueta(string doce) => doce + Toki.Inventory.Domain.EtiquetaBalanza.DigitoVerificador(doce);
         var peso = await c.GetFromJsonAsync<JsonElement>($"/api/inventario/productos/por-codigo/{Etiqueta("200073101500")}"); // 5-digit PLU, 1.500 lb
         peso.GetProperty("productoId").GetGuid().ShouldBe(id);
         peso.GetProperty("cantidadEtiqueta").GetDecimal().ShouldBe(1.5m);
@@ -112,7 +112,7 @@ public sealed class MovimientosTests(TokiApp app) : IClassFixture<TokiApp>
         var c = await Admin();
         await c.ProductoAsync(await c.CategoriaAsync(), "Huevos", 10m, plu: "555");
         var etiqueta = "200055501000";
-        etiqueta += Toki.Inventario.Domain.EtiquetaBalanza.DigitoVerificador(etiqueta);
+        etiqueta += Toki.Inventory.Domain.EtiquetaBalanza.DigitoVerificador(etiqueta);
         (await (await c.GetAsync($"/api/inventario/productos/por-codigo/{etiqueta}")).CodigoError()).ShouldBe("Inventario.EtiquetaNoAplica");
     }
 
@@ -137,7 +137,7 @@ public sealed class MovimientosTests(TokiApp app) : IClassFixture<TokiApp>
         })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         var id = await c.ProductoAsync(await c.CategoriaAsync(), "Queso de hoja", 260m, unidad: "Libra", plu: "88");
         var etiqueta = "290088031250";
-        etiqueta += Toki.Inventario.Domain.EtiquetaBalanza.DigitoVerificador(etiqueta);
+        etiqueta += Toki.Inventory.Domain.EtiquetaBalanza.DigitoVerificador(etiqueta);
         var r = await c.GetFromJsonAsync<JsonElement>($"/api/inventario/productos/por-codigo/{etiqueta}");
         r.GetProperty("productoId").GetGuid().ShouldBe(id);
         r.GetProperty("montoEtiqueta").GetDecimal().ShouldBe(312.50m);

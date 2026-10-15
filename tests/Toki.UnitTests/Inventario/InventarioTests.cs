@@ -1,5 +1,5 @@
 using Shouldly;
-using Toki.Inventario.Domain;
+using Toki.Inventory.Domain;
 
 namespace Toki.UnitTests.Inventario;
 

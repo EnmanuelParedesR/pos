@@ -9,7 +9,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Shouldly;
 using Toki.BuildingBlocks.Persistence;
-using Toki.Configuracion;
+using Toki.Settings;
 using Toki.IntegrationTests.Infra;
 
 namespace Toki.IntegrationTests.Configuracion;

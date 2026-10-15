@@ -3,10 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
-using Toki.Configuracion;
-using Toki.Inventario.Contracts;
-using Toki.Inventario.Domain;
-using Toki.Inventario.Persistence;
+using Toki.Settings;
+using Toki.Inventory.Contracts;
+using Toki.Inventory.Domain;
+using Toki.Inventory.Persistence;
 using Toki.SharedKernel;
 
 namespace Toki.IntegrationTests.Infra;
