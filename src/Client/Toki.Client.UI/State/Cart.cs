@@ -6,7 +6,7 @@ namespace Toki.Client.UI.State;
 /// <param name="Wholesale">The sale's customer buys at wholesale; the cart keeps it in step with its customer.</param>
 public sealed record CartLine(Guid ProductId, Guid? PresentationId, string Name, string Unit, decimal ListPrice, decimal Quantity,
     string? ScaleLabel = null, decimal? LabelAmount = null, Discount? Discount = null, decimal? OverriddenPrice = null,
-    decimal? WholesalePrice = null, bool Wholesale = false)
+    decimal? WholesalePrice = null, bool Wholesale = false, string? Note = null)
 {
     public Guid Id { get; init; } = Guid.NewGuid();
     /// <summary>A wholesale customer pays the wholesale price where the product has one, as the server prices it.</summary>
@@ -23,7 +23,7 @@ public sealed record CartLine(Guid ProductId, Guid? PresentationId, string Name,
     public bool ByWeight => Unit == nameof(UnitOfMeasure.Pound);
 
     public SaleLine ToSaleLine() => new(ProductId, PresentationId, Quantity,
-        OverriddenPrice, Discount, null, ScaleLabel);
+        OverriddenPrice, Discount, Note, ScaleLabel);
 }
 
 /// <summary>The sale being rung up. The server recomputes everything; this total is what the cashier sees and what it confirms (ExpectedTotal).</summary>
@@ -64,7 +64,7 @@ public sealed class Cart
     public bool HasLabel(string code) => _lines.Exists(l => l.ScaleLabel == code);
 
     /// <summary>Adds a scanned or tapped product. The same per-unit product without a label adds up on its line.</summary>
-    public CartLine Add(ProductByCode p, string? scaleLabel, decimal quantity = 1m)
+    public CartLine Add(ProductByCode p, string? scaleLabel, decimal quantity = 1m, string? note = null)
     {
         CartLine line;
         // A presentation (a 2 lb pack) is sold by the piece even when its product is sold by the pound.
@@ -85,7 +85,7 @@ public sealed class Cart
         }
         else
         {
-            line = new(p.ProductId, p.PresentationId, p.Name, unit, p.Price, quantity, WholesalePrice: p.WholesalePrice, Wholesale: IsWholesale);
+            line = new(p.ProductId, p.PresentationId, p.Name, unit, p.Price, quantity, WholesalePrice: p.WholesalePrice, Wholesale: IsWholesale, Note: note);
             _lines.Add(line);
         }
         Selected = line.Id;

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Toki.Client.UI.Api;
+using Toki.Hardware;
 using Toki.Client.UI.Components;
 using Toki.Client.UI.Pages;
 using Toki.Client.UI.State;

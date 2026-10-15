@@ -32,3 +32,7 @@
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .kpi { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
 .kpi__value { font-size: var(--t-32); font-weight: 700; }
+
+.weigh { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 8px 0 16px; }
+.weigh__value { font-size: var(--t-72); font-weight: 700; line-height: 1; }
+.weigh__value span { font-size: var(--t-32); color: var(--text-2); }

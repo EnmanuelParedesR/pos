@@ -36,10 +36,11 @@
   --touch-money: 72px;
 }
 
-/* shortcut: IBM Plex Sans is used when installed and falls back to Segoe UI; bundle the OFL .woff2 files in wwwroot/fonts before the pilot. */
-@font-face { font-family: "Toki Sans"; src: local("IBM Plex Sans"), local("IBMPlexSans"); font-weight: 400; }
-@font-face { font-family: "Toki Sans"; src: local("IBM Plex Sans SemiBold"), local("IBMPlexSans-SemiBold"); font-weight: 600; }
-@font-face { font-family: "Toki Sans"; src: local("IBM Plex Sans Bold"), local("IBMPlexSans-Bold"); font-weight: 700; }
+/* IBM Plex Sans (OFL), bundled: the Latin-1 subset of @ibm/plex-sans 1.1.0 (fonts/README.md). The panel imports this file too; Vite bundles the fonts. */
+@font-face { font-family: "Toki Sans"; src: url("fonts/IBMPlexSans-Regular-Latin1.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Toki Sans"; src: url("fonts/IBMPlexSans-Medium-Latin1.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Toki Sans"; src: url("fonts/IBMPlexSans-SemiBold-Latin1.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Toki Sans"; src: url("fonts/IBMPlexSans-Bold-Latin1.woff2") format("woff2"); font-weight: 700; font-display: swap; }
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }

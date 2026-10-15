@@ -1,4 +1,5 @@
-@* The invoice as the thermal printer would print it. *@
+@* The invoice as the thermal printer prints it, and Imprimir to print it again (no drawer: a reprint takes no cash). *@
+@inject Peripherals Peripherals
 <Dialog Title="@($"Factura {Receipt.ENcf}")" Subtitle="@(Receipt.IsVoided ? "ANULADA" : null)" OnClose="OnClose">
     <ChildContent>
         <div class="receipt" aria-label="Factura">
@@ -46,7 +47,14 @@
         </div>
     </ChildContent>
     <Footer>
-        @* shortcut: no thermal printer driver yet (Toki.Hardware.EscPos); this is a preview. Wire IPrinter here when it exists. *@
+        @if (_message is not null)
+        {
+            <span class="esc-muted" role="status" style="margin-right:auto">@_message</span>
+        }
+        @if (Peripherals.Printer is not null)
+        {
+            <Button Disabled="_printing" OnClick="PrintAsync"><Icon Name="printer" /> @(_printing ? "Imprimiendo…" : "Imprimir")</Button>
+        }
         <Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="OnClose">Cerrar</Button>
     </Footer>
 </Dialog>
@@ -54,4 +62,14 @@
 @code {
     [Parameter, EditorRequired] public Receipt Receipt { get; set; } = default!;
     [Parameter] public EventCallback OnClose { get; set; }
+
+    private bool _printing;
+    private string? _message;
+
+    private async Task PrintAsync()
+    {
+        _printing = true;
+        var ok = await Peripherals.TryAsync(p => p.PrintAsync(Receipt, false, CancellationToken.None));
+        (_printing, _message) = (false, ok ? "Factura enviada a la impresora." : "No se pudo imprimir. Revise el papel y que la impresora esté encendida.");
+    }
 }

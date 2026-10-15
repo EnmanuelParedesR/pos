@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <ProjectReference Include="..\Toki.Client.UI\Toki.Client.UI.csproj" />
+    <ProjectReference Include="..\..\Hardware\Toki.Hardware.Simulated\Toki.Hardware.Simulated.csproj" />
   </ItemGroup>
 </Project>

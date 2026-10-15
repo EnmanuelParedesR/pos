@@ -1,6 +1,7 @@
 @inject TokiApi Api
 @inject Cart Cart
 @inject Approver Approver
+@inject Peripherals Peripherals
 
 <Dialog Title="Cobrar" Subtitle="@($"{Cart.LineCount} {(Cart.LineCount == 1 ? "línea" : "líneas")} · {(Cart.Customer?.Name ?? Cart.ManualName ?? "cliente de contado")}")" Wide="true" OnClose="Cancel" OnKey="KeyAsync">
     <ChildContent>
@@ -38,6 +39,13 @@
                 {
                     <div class="esc-label">Devuelta</div>
                     <Money Value="Change" Size="52" />
+                }
+                @if (Peripherals.Printer is not null)
+                {
+                    @* Remembered on this PC: a store that hands out few receipts turns it off once. *@
+                    <label class="esc-row" style="gap:8px;min-height:48px">
+                        <input type="checkbox" style="width:22px;height:22px" checked="@Peripherals.Settings.PrintAfterSale" @onchange="PrintChangedAsync" /> Imprimir factura
+                    </label>
                 }
             </div>
 
@@ -269,6 +277,8 @@
         }
         Fail(Notice.Kinds.Error, "No se pudo completar la autorización. Intente de nuevo.");
     }
+
+    private Task PrintChangedAsync(ChangeEventArgs e) => Peripherals.SaveAsync(Peripherals.Settings with { PrintAfterSale = e.Value is true });
 
     private void Fail(Notice.Kinds kind, string message) => (_noticeKind, _notice, _sending) = (kind, message, false);
 

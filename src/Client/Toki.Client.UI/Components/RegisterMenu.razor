@@ -3,6 +3,7 @@
 @inject Approver Approver
 @inject Cart Cart
 @inject NavigationManager Nav
+@inject Peripherals Peripherals
 
 <Dialog Title="@Title" OnClose="Back" OnKey="KeyAsync">
     <ChildContent>
@@ -15,6 +16,10 @@
             <div class="esc-col">
                 <Button Wide="true" OnClick="() => Choose(CashMovementKind.CashIn)" style="justify-content:space-between"><span>Entrada de efectivo</span></Button>
                 <Button Wide="true" OnClick="() => Choose(CashMovementKind.Withdrawal)" style="justify-content:space-between"><span>Salida de efectivo (retiro o gasto)</span></Button>
+                @if (Peripherals.Printer is not null)
+                {
+                    <Button Wide="true" Disabled="_sending" OnClick="OpenDrawerAsync" style="justify-content:space-between"><span>Abrir la gaveta sin venta</span>@if (!Session.Can("register.open-drawer")) { <Icon Name="lock" /> }</Button>
+                }
                 <Button Wide="true" OnClick='() => Nav.NavigateTo("shift-sales")' style="justify-content:space-between"><span>Ventas de este turno · anular y devolver</span></Button>
                 <Button Wide="true" OnClick='() => Nav.NavigateTo("close-register")' style="justify-content:space-between"><span>Cerrar caja</span></Button>
                 @if (Session.IsBackOffice)
@@ -134,6 +139,19 @@
         (_messageKind, _message) = (r.Problem!.Kind, r.Problem.IsUncertain
             ? "No se sabe si se registró. Toque Registrar de nuevo cuando vuelva la conexión: no se registra dos veces."
             : r.Problem.Message);
+    }
+
+    /// <summary>Needs register.open-drawer, or a supervisor who has it.</summary>
+    // shortcut: only a supervisor's approval leaves a trace on the server; add the audited drawer-opening endpoint (arquitectura §6.3) so every opening does.
+    private async Task OpenDrawerAsync()
+    {
+        if (_sending) return;
+        _sending = true;
+        var allowed = Session.Can("register.open-drawer")
+            || await Approver.RequestAsync("register.open-drawer", Session.Shift!.ShiftId, "Abrir la gaveta sin venta") is not null;
+        var opened = allowed && await Peripherals.TryAsync(p => p.OpenDrawerAsync(CancellationToken.None));
+        _sending = false;
+        if (allowed) (_messageKind, _message) = opened ? (Notice.Kinds.Success, "Gaveta abierta.") : (Notice.Kinds.Error, "No se pudo abrir la gaveta. Revise la impresora: la gaveta se conecta a ella.");
     }
 
     private async Task SignOutAsync()

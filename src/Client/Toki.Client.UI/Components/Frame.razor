@@ -3,6 +3,7 @@
 @inject Session Session
 @inject TokiApi Api
 @inject NavigationManager Nav
+@inject Peripherals Peripherals
 
 @if (_ready)
 {
@@ -75,6 +76,7 @@
     protected override async Task OnInitializedAsync()
     {
         await Session.LoadAsync();
+        await Peripherals.LoadAsync();
         Session.Changed += OnSessionChanged;
         Nav.LocationChanged += OnLocationChanged;
         Guard();

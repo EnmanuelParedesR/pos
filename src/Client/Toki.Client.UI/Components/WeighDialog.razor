@@ -1,0 +1,124 @@
+@* A by-the-pound product on the scale: the live weight, and Aceptar only once it is stable. Typing it is the fallback, with a reason
+   that travels with the line (the supervisor sees it in the sale). *@
+@implements IDisposable
+@inject Peripherals Peripherals
+
+<Dialog Title="Pesar" Subtitle="@Name" OnClose="OnClose" OnKey="KeyAsync">
+    <ChildContent>
+        @if (!_manual)
+        {
+            <div class="weigh" role="status" aria-live="polite">
+                <div class="weigh__value esc-num">@_reading.Pounds.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)<span> lb</span></div>
+                <span class="esc-pill @Pill">@StatusText</span>
+                <div class="esc-subtitle">@Format.WithCurrency(Price) / lb@(_reading.IsUsable ? $" · {Format.WithCurrency(Math.Round(Price * _reading.Pounds, 2, MidpointRounding.AwayFromZero))}" : "")</div>
+            </div>
+        }
+        else
+        {
+            <div class="esc-row" role="group" aria-label="Motivo">
+                @foreach (var r in Reasons)
+                {
+                    <button type="button" class="esc-chip" aria-pressed="@(r == _reason ? "true" : "false")" onmousedown="event.preventDefault()" @onclick="() => _reason = r">@r</button>
+                }
+            </div>
+            <input @ref="_input" data-no-scan class="esc-input esc-input--large esc-num" inputmode="decimal" aria-label="Peso en libras" @bind="_text" @bind:event="oninput" />
+            <Keypad WithDot="true" OnKey="k => _text = Keypad.Apply(_text, k)" />
+        }
+        @if (_error is not null)
+        {
+            <Notice Title="@_error" />
+        }
+    </ChildContent>
+    <Footer>
+        @if (!_manual)
+        {
+            <Button Variant="Button.Variants.Ghost" OnClick="TypeIt">Escribir el peso</Button>
+        }
+        <Button OnClick="OnClose" Shortcut="Esc">Cancelar</Button>
+        <Button Variant="Button.Variants.Primary" Shortcut="Enter" Disabled="@(!_manual && !_reading.IsUsable)" OnClick="AcceptAsync">Aceptar</Button>
+    </Footer>
+</Dialog>
+
+@code {
+    public sealed record Weighed(decimal Pounds, string? Note);
+    private static readonly string[] Reasons = ["La balanza no responde", "La balanza no se estabiliza", "Pesado en otra balanza"];
+
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter, EditorRequired] public decimal Price { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<Weighed> OnDone { get; set; }
+
+    private readonly CancellationTokenSource _stop = new();
+    private ScaleReading _reading = new(0m, ScaleStatus.Unstable);
+    private bool _manual, _focusInput;
+    private string _text = "";
+    private string? _reason, _error;
+    private ElementReference _input;
+
+    private string Pill => _reading switch
+    {
+        { IsUsable: true } => "esc-pill--success",
+        { Status: ScaleStatus.Stable } => "esc-pill--neutral",
+        { Status: ScaleStatus.Overload } => "esc-pill--error",
+        _ => "esc-pill--warning",
+    };
+
+    private string StatusText => _reading switch
+    {
+        { IsUsable: true } => "Peso estable",
+        { Status: ScaleStatus.Stable } => "Ponga el producto en la balanza",
+        { Status: ScaleStatus.Unstable } => "Esperando peso estable",
+        { Status: ScaleStatus.Overload } => "La balanza está sobrecargada",
+        _ => "La balanza no responde. Revise el cable o escriba el peso.",
+    };
+
+    protected override void OnInitialized() => _ = WatchAsync();
+
+    /// <summary>Four readings a second while the dialog is open.</summary>
+    private async Task WatchAsync()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+            do
+            {
+                if (Peripherals.Scale is not { } scale || _manual) continue;
+                _reading = await scale.ReadAsync(_stop.Token);
+                await InvokeAsync(StateHasChanged);
+            } while (await timer.WaitForNextTickAsync(_stop.Token));
+        }
+        catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException) { } // closed
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusInput) return;
+        _focusInput = false;
+        await _input.FocusAsync();
+    }
+
+    private void TypeIt() => (_manual, _error, _focusInput) = (true, null, true);
+
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await AcceptAsync();
+    }
+
+    private async Task AcceptAsync()
+    {
+        if (!_manual)
+        {
+            if (_reading.IsUsable) await OnDone.InvokeAsync(new(_reading.Pounds, null));
+            return;
+        }
+        var v = Format.ParseNumber(_text);
+        _error = _reason is null ? "Elija por qué escribe el peso." : v is not > 0 ? "Escriba el peso en libras, mayor que cero." : null;
+        if (_error is null) await OnDone.InvokeAsync(new(Math.Round(v!.Value, 3), $"Peso escrito: {_reason}"));
+    }
+
+    public void Dispose()
+    {
+        _stop.Cancel();
+        _stop.Dispose();
+    }
+}

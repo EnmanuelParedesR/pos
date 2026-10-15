@@ -10,5 +10,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Client\Toki.Client.UI\Toki.Client.UI.csproj" />
+    <ProjectReference Include="..\..\src\Hardware\Toki.Hardware.Simulated\Toki.Hardware.Simulated.csproj" />
   </ItemGroup>
 </Project>

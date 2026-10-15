@@ -1,3 +1,5 @@
+using Toki.Hardware;
+
 namespace Toki.Client.UI.Api;
 
 // The local API's wire contracts (camelCase JSON, enums by name). Only what the screens use.
@@ -63,13 +65,6 @@ public sealed record SaleLine(Guid ProductId, Guid? PresentationId, decimal Quan
 public sealed record Payment(PaymentMethod Method, decimal Amount, string? Reference = null);
 public sealed record RegisterSale(Guid SaleId, Guid ShiftId, List<SaleLine> Lines, List<Payment> Payments, decimal ExpectedTotal,
     EcfType DocumentType, Guid? CustomerId, string? CustomerRnc, string? CustomerName, PriceLevel PriceLevel, Discount? GlobalDiscount, List<Guid> SupervisorApprovals);
-public sealed record ReceiptLine(string Description, decimal Quantity, string Unit, decimal Price, decimal Discount, decimal Total, string? Note);
-public sealed record ReceiptItbis(string Rate, decimal Base, decimal Itbis);
-/// <param name="Method">Already in Spanish, as printed.</param>
-public sealed record ReceiptPayment(string Method, decimal Amount, decimal? Received);
-public sealed record Receipt(string BusinessName, string? Rnc, string? Address, string? Phone, string DocumentType, string ENcf, long Number,
-    DateTime LocalDateTime, string Register, string Cashier, string? Customer, string? CustomerRnc, ReceiptLine[] Lines, decimal Subtotal, decimal Discount,
-    ReceiptItbis[] Itbis, decimal Total, ReceiptPayment[] Payments, decimal Change, string SecurityCode, string QrUrl, string? Footer, bool IsVoided);
 public sealed record SaleRegistered(Guid SaleId, long Number, string ENcf, decimal Total, decimal Change, Receipt Receipt);
 public sealed record SaleSummary(Guid Id, long Number, string ENcf, DateTime DateUtc, string Status, string Cashier, string? Customer, decimal Total);
 public sealed record SaleDetailLine(Guid Id, string Description, decimal Quantity, decimal UnitPrice, decimal Discount, decimal Total, decimal Itbis,

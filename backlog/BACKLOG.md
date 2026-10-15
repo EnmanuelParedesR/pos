@@ -147,9 +147,9 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-114 | App de la tienda: WPF + BlazorWebView, token del equipo cifrado con DPAPI (escritura atómica), WebView2 cerrado (sin recargar, zoom, deslizar ni menú), errores no manejados al registro | 🟡 Compila; falta abrirla una vez en una PC de caja (y en la VM limpia) y comprobar a mano que Ctrl+R y deslizar no hacen nada (R7 #11) |
 | TK-115 | Host web de desarrollo (`Toki.Client.Web`) para ver y probar las pantallas en el navegador | ✅ |
 | TK-116 | Pruebas bUnit: carrito, cobro con total corregido, supervisor, PIN equivocado, F7; y de R7: sesión vencida, cobro incierto, devolución y cierre reintentados, conteo sin salir del campo, presentación, doble confirmación, F3, pantalla que falla | ✅ |
-| TK-117 | Balanza (`IScale`) por marca; hoy el peso se escribe | 🔨 |
-| TK-118 | Impresora térmica ESC/POS y gaveta; hoy la factura es una vista previa | 🔨 |
-| TK-119 | Incluir IBM Plex Sans (OFL) en `wwwroot/fuentes`; hoy usa la instalada o Segoe UI | 🔨 |
+| TK-117 | Balanza (`IScale`) por marca; hoy el peso se escribe | 🟡 Falta probar con equipo real. `Toki.Hardware.Scales`: CAS (PD-II, ER), Toledo 8217 y envío continuo por COM (fuentes en su README); peso en vivo y "Esperando peso estable" en la caja; peso escrito con motivo (va en la nota de la línea); "Leer balanza" en Equipos de la caja |
+| TK-118 | Impresora térmica ESC/POS y gaveta; hoy la factura es una vista previa | 🟡 Falta probar con equipo real. `Toki.Hardware.EscPos`: factura en ESC/POS (58 y 80 mm, PC850, QR modelo 2, corte, gaveta) por la cola de Windows (RAW) o COM; imprime al cobrar si "Imprimir factura" (se recuerda en la PC) y reimprime desde la factura; "Abrir la gaveta sin venta" en Caja pide `register.open-drawer` o un supervisor (falta el endpoint auditado de §6.3); simulada en desarrollo y en el host web |
+| TK-119 | Incluir IBM Plex Sans (OFL) en `wwwroot/fuentes`; hoy usa la instalada o Segoe UI | ✅ Latin-1 de `@ibm/plex-sans` 1.1.0 (400, 500, 600, 700) en `Toki.Escuadra/wwwroot/fonts`, con `OFL.txt` y su origen en `README.md`; el panel lo toma del mismo CSS |
 | TK-120 | Administración que falta (dividido en TK-184..187) | ↪ Reemplazado por TK-184, TK-185, TK-186 y TK-187 |
 | TK-184 | Administración: inventario (existencias, ajustes, conteo físico, transferencias, kardex por producto) | 🔨 |
 | TK-185 | Administración: compras, suplidores, gastos con NCF y pagos a suplidores | 🔨 |

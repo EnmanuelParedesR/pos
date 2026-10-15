@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Toki.Client.UI.State;
 using Toki.Escuadra.Components;
+using Toki.Hardware;
 
 namespace Toki.Client.UI.Api;
 

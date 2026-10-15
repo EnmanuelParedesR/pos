@@ -67,7 +67,7 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         (line.Quantity, line.Price, line.Total).ShouldBe((2m, 250m, 500m));
         sold.Receipt.Itbis.ShouldHaveSingleItem().Itbis.ShouldBeGreaterThan(0);
         sold.Receipt.Payments.ShouldHaveSingleItem().Received.ShouldBe(1000m);
-        (await Send<C.Receipt>(api, HttpMethod.Get, $"/api/sales/{sold.SaleId}/receipt")).ENcf.ShouldBe(sold.ENcf);
+        (await Send<Toki.Hardware.Receipt>(api, HttpMethod.Get, $"/api/sales/{sold.SaleId}/receipt")).ENcf.ShouldBe(sold.ENcf);
         (await Send<List<C.SaleSummary>>(api, HttpMethod.Get, $"/api/sales?shiftId={shift}")).ShouldHaveSingleItem().Total.ShouldBe(500m);
         var sale = await Send<C.SaleDetail>(api, HttpMethod.Get, $"/api/sales/{sold.SaleId}");
         (sale.Lines.ShouldHaveSingleItem().Quantity, sale.Payments.ShouldHaveSingleItem().Amount, sale.Total).ShouldBe((2m, 500m, 500m));
