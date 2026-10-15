@@ -45,3 +45,41 @@ Funciona, pero parece una plantilla de administración genérica: todo es una ta
 1. **Resumen que cuenta una historia.** Una cifra héroe con comparación y mini-tendencia, "Para revisar" arriba, la gráfica con la referencia de la semana pasada, y los más vendidos con barras de proporción.
 2. **Capa visual "Escuadra Admin".** Neutros cálidos (fondo #F6F5F2, tinta #14181D), la marca como acento con una escala de 50 a 900, semánticos suaves, una paleta de datos de 4 colores, superficies sin borde con sombra muy sutil, radio de 14 px, íconos y una escala tipográfica real. La caja no cambia.
 3. **Navegación moderna y adaptable.** Barra lateral con íconos y colapsable en la PC, barra inferior en el celular, asistente siempre visible ("Pregúntale a Toki…"), estados vacíos y de carga (*skeletons*) cuidados, y cero tablas sin estilo.
+
+## Rondas de diseño (TK-173)
+
+Ciclo: implementar → capturar (PC 1366×768 y celular 375×812) → criticar → corregir. Datos de prueba: 14 días de ventas en la tienda local (Caja 2, Yudelka), un cierre con faltante de RD$ 150, uno con sobrante de RD$ 25 y la costilla por debajo del mínimo.
+
+**Antes (ronda 0).** Seis tarjetas blancas con borde gris del mismo peso, barra oscura de la caja arriba, "Vender" en azul compitiendo con todo, gráfica casi vacía y la tabla de más vendidos desalineada.
+
+### Ronda 1: capa Escuadra Admin y nuevo Resumen
+- **Qué se hizo:** capa `.esc-admin` (neutros cálidos, escala de azul 50–900, sombras suaves, radio 16), barra lateral con íconos y colapsable, barra inferior en el celular, Resumen con "Para revisar" arriba, cifra héroe con comparación y mini-tendencia, gráfica con la semana anterior en gris, medios de pago y lo más vendido con barras de proporción.
+- **Impresión:** por primera vez se entiende en 3 segundos cuánto se vendió y qué está mal. Ya no parece una plantilla.
+- **Hallazgos:**
+  - 🔴 La escala de la gráfica saltaba de 25k a 50k: las barras ocupaban media gráfica. → Escala con pasos 1 · 1.5 · 2 · 2.5 · 3 · 4 · 5 · 6 · 8.
+  - 🔴 El sobrante (RD$ 25) salía en rojo, igual que un faltante. → Rojo solo para faltantes; ámbar para sobrantes.
+  - 🟡 La tarjeta de medios de pago quedaba medio vacía y el subtítulo listaba las cajas abiertas en una línea larga. → Nueva tarjeta "Cajas ahora" (persona, desde qué hora) debajo de los medios de pago; el subtítulo queda corto.
+  - 🟡 Celular: el ícono de la alerta quedaba solo en una fila y el control Hoy/Ayer/7 días/Mes no ocupaba el ancho. → Alerta en cuadrícula ícono + texto + botón; acciones del encabezado a todo el ancho.
+  - 🟡 Celular: las etiquetas de la gráfica se montaban ("Sáb 10 Dom 1"). → Dos renglones en pantallas angostas.
+  - 🟡 Celular: Productos y Turnos se volvían una tabla con desplazamiento lateral y el precio quedaba fuera de vista. → Columnas secundarias ocultas en el celular; la categoría o la caja pasan a un segundo renglón.
+
+### Ronda 2: Productos, Turnos, Configuración y el panel en la nube
+- **Qué se hizo:** tablas con encabezado fijo, números a la derecha, fila con tinte al pasar el mouse, esqueletos de carga y estados vacíos con qué hacer; formularios con el error al lado de cada campo; Configuración con la descripción a la izquierda y el formulario a la derecha; el panel React con el mismo marco, la barra "Pregúntale a Toki…" en todas las pantallas, Resumen con comparación "a esta hora" contra el mismo día de la semana pasada, Ventas con el periodo anterior en gris y Tiendas que se refresca sola al conectar una caja (TK-170).
+- **Hallazgos:**
+  - 🔴 Los renglones pensados para el celular (categoría, caja) también salían en la PC por un empate de especificidad en el CSS. → Corregido.
+  - 🔴 El diálogo de producto es más alto que 768 px y el botón Guardar quedaba fuera de vista. → Pie del diálogo fijo abajo.
+  - 🟡 Existencias con tres decimales ("27.800 lb"): así pesa la balanza, no así lee el dueño. → "27.8 lb" en la administración.
+  - 🟡 Celular: el precio se partía en dos renglones y el nombre del cajero quedaba apretado por el avatar. → Precio sin cortes, existencia debajo del precio y sin avatar en las tablas del celular.
+  - 🟡 Cierre Z: "Entradas y retiros +0.00 · −0.00" no se entiende. → Dos renglones, cada uno con su nombre.
+  - 🟡 Panel, Ventas: "Del vie, 9 oct al jue, 15 oct" y "vs. RD$ 0.00 antes". → "Del 9 al 15 de octubre" y "Sin ventas en los 7 días anteriores"; los días sin ventas en gris.
+  - 🟢 Panel, Cuadres: la tabla dejaba un hueco blanco con un solo cierre. → Sin altura mínima.
+
+### Ronda 3: periodos, menú contraído y casos sin comparación
+- **Qué se revisó:** Resumen en Hoy, Ayer, 7 días y Mes; menú contraído; Productos y Turnos en el celular; panel (Ventas, Asistente) en el celular; que la caja (entrar, vender) siga igual.
+- **Hallazgos:**
+  - 🔴 Sin ventas el mes anterior, el héroe decía "vs. los mismos días del mes pasado (RD$ 0.00)" y las métricas "0 el mes pasado": ruido que parece un error. → "No hay ventas en … para comparar" y sin notas en cero.
+  - 🟡 En "Mes" todas las barras salían en el azul oscuro de "hoy". → Solo el último día del periodo va oscuro.
+  - 🟡 En "Mes", "Para revisar" traía un faltante de hace 9 días. → Las alertas siempre miran los últimos 7 días, sea cual sea el periodo.
+  - 🟡 Celular, Turnos: la columna de la flecha le quitaba espacio al nombre. → Sin flecha en el celular (la fila entera se toca).
+  - ✅ La caja no cambió: entrar con PIN, vender y cerrar siguen con su barra oscura, alto contraste y 48/72 px; la capa nueva solo aplica dentro de `.esc-admin`.
+- **Veredicto:** se puede entregar. Lo que queda depende del backend (ver pendientes en `sistema-de-diseno.md`).

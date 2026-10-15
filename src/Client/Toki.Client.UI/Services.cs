@@ -17,6 +17,7 @@ public static class Services
         services.AddScoped<TokiApi>();
         services.AddScoped<Approver>();
         services.AddScoped<Cart>();
+        services.AddScoped<BackOffice>();
         return services;
     }
 }

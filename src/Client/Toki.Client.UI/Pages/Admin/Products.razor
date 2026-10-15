@@ -2,131 +2,173 @@
 @inject TokiApi Api
 @inject Session Session
 
-<Admin Title="Productos" Subtitle="Precios con ITBIS incluido. Busque por nombre o PLU.">
+<Admin Title="Productos" Subtitle="Precios con ITBIS incluido. Toque un producto para cambiarlo.">
     <Actions>
         @if (Session.Can("products.manage"))
         {
-            <div class="esc-row">
-                <Button OnClick="() => _newCategory = true">Nueva categoría</Button>
-                <Button Variant="Button.Variants.Primary" Disabled="@(_categories.Count == 0)" OnClick="New"><Icon Name="plus" /> Nuevo producto</Button>
-            </div>
+            <Button OnClick="() => (_newCategory, _error, _categoryError) = (true, null, null)">Nueva categoría</Button>
+            <Button Variant="Button.Variants.Primary" Disabled="@(_categories.Count == 0)" OnClick="New"><Icon Name="plus" /> Nuevo producto</Button>
         }
     </Actions>
     <ChildContent>
-        <form class="esc-row" @onsubmit="LoadAsync">
-            <label class="esc-card" style="flex:1 1 280px;display:flex;align-items:center;gap:10px;padding:0 12px;border-color:var(--control-border)">
-                <Icon Name="search" />
-                <input class="sale__scanner" style="height:44px;font-size:var(--t-15);font-weight:400" placeholder="Buscar por nombre o PLU" aria-label="Buscar producto" @bind="_search" />
+        <form class="esc-row" style="gap:12px" @onsubmit="LoadAsync">
+            <label class="esc-search">
+                <Icon Name="search" Size="18" />
+                <input placeholder="Buscar por nombre o PLU" aria-label="Buscar producto" @bind="_search" @bind:event="oninput" @bind:after="SearchAsync" />
             </label>
-            <select class="esc-select" style="width:auto" aria-label="Categoría" @bind="_category" @bind:after="LoadAsync">
+            <select class="esc-select" style="width:auto;min-width:200px" aria-label="Categoría" @bind="_category" @bind:after="LoadAsync">
                 <option value="">Todas las categorías</option>
                 @foreach (var c in _categories)
                 {
                     <option value="@c.Id">@c.Name</option>
                 }
             </select>
-            <Button Type="submit">Buscar</Button>
         </form>
         @if (_categories.Count == 0 && !_loading)
         {
             <Notice Kind="Notice.Kinds.Info" Title="Empiece creando una categoría (por ejemplo Res, Pollo o Colmado) y luego sus productos." />
         }
-        <div class="esc-card esc-table-wrap">
-            <table class="esc-table" style="min-width:720px">
-                <thead><tr><th>Producto</th><th>Categoría</th><th>Se vende</th><th class="esc-num">Precio RD$</th><th>ITBIS</th><th class="esc-num">Existencia</th></tr></thead>
+        <div class="esc-card esc-table-wrap esc-table-wrap--tall">
+            <table class="esc-table esc-table--wide">
+                <thead><tr><th>Producto</th><th class="esc-hide-sm">Categoría</th><th class="esc-hide-sm">Se vende</th><th class="esc-num">Precio</th><th class="esc-hide-sm">ITBIS</th><th class="esc-num esc-hide-sm">Existencia</th><th class="esc-table__chev esc-hide-sm"><span class="esc-visually-hidden">Abrir</span></th></tr></thead>
                 <tbody>
-                    @foreach (var p in _products)
+                    @if (_loading)
                     {
-                        <tr class="selectable" tabindex="0" @onclick="() => EditAsync(p.Id)" @onkeydown='e => e.Key == "Enter" ? EditAsync(p.Id) : Task.CompletedTask'>
-                            <td style="font-weight:600">@p.Name @if (!p.IsActive) { <span class="esc-pill esc-pill--neutral">inactivo</span> }</td>
-                            <td>@p.Category</td>
-                            <td>@Names.Unit(p.Unit)</td>
-                            <td class="esc-num" style="font-weight:600">@Format.Amount(p.Price)</td>
-                            <td>@Names.Itbis(p.ItbisRate)</td>
-                            <td class="esc-num" style="@(p.Stock < 0 ? "color:var(--warning);font-weight:700" : "")">@(p.Stock is { } e ? Format.Quantity(e, p.Unit) : "—")</td>
-                        </tr>
+                        @for (var i = 0; i < 6; i++)
+                        {
+                            <tr><td><Skeleton Width="160px" /></td><td class="esc-hide-sm"><Skeleton Width="90px" /></td><td class="esc-hide-sm"><Skeleton Width="80px" /></td><td><Skeleton /></td><td class="esc-hide-sm"><Skeleton Width="50px" /></td><td class="esc-hide-sm"><Skeleton /></td><td class="esc-hide-sm"></td></tr>
+                        }
                     }
-                    @if (_products.Count == 0)
+                    else
                     {
-                        <tr><td colspan="6" class="esc-muted">@(_loading ? "Cargando…" : "No hay productos que coincidan.")</td></tr>
+                        @foreach (var p in _products)
+                        {
+                            <tr class="selectable" tabindex="0" @onclick="() => EditAsync(p.Id)" @onkeydown='e => e.Key == "Enter" ? EditAsync(p.Id) : Task.CompletedTask'>
+                                <td style="font-weight:600">@p.Name @if (!p.IsActive) { <span class="esc-pill esc-pill--neutral" style="margin-left:6px">Inactivo</span> }<span class="esc-table__sub esc-only-sm">@p.Category · @Names.Itbis(p.ItbisRate)</span></td>
+                                <td class="esc-hide-sm"><span class="esc-row" style="gap:8px;flex-wrap:nowrap"><span class="esc-swatch" style="background:@Color(p.Category)"></span>@p.Category</span></td>
+                                <td class="esc-muted esc-hide-sm">@Names.Unit(p.Unit)</td>
+                                <td class="esc-num" style="font-weight:600;white-space:nowrap">@Format.WithCurrency(p.Price)@if (p.Unit == "Pound") { <span class="esc-muted" style="font-weight:400"> /lb</span> }
+                                    <span class="esc-table__sub esc-only-sm">@(p.Stock is { } st ? $"Quedan {Stock(st, p.Unit)}" : "")</span></td>
+                                <td class="esc-muted esc-hide-sm">@Names.Itbis(p.ItbisRate)</td>
+                                <td class="esc-num esc-hide-sm">
+                                    @if (p.Stock is { } e && e < 0)
+                                    {
+                                        <span class="esc-pill esc-pill--warning" title="Se vendió más de lo que había registrado">@Stock(e, p.Unit)</span>
+                                    }
+                                    else
+                                    {
+                                        @(p.Stock is { } s ? Stock(s, p.Unit) : "—")
+                                    }
+                                </td>
+                                <td class="esc-table__chev esc-hide-sm">@if (Session.Can("products.manage")) { <Icon Name="chevron-right" Size="18" /> }</td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>
+            @if (!_loading && _products.Count == 0)
+            {
+                <EmptyState Icon="package" Title="@(string.IsNullOrWhiteSpace(_search) ? "Todavía no hay productos" : $"Nada coincide con “{_search}”")">
+                    @(string.IsNullOrWhiteSpace(_search) ? "Cree el primero con “Nuevo producto”." : "Pruebe con otra palabra o con el PLU de la balanza.")
+                </EmptyState>
+            }
             @* shortcut: one page of 50 (the API's page size); add "Ver más" (page=2) when the catalog makes searching tiresome. *@
             @if (_products.Count >= 50)
             {
-                <div class="esc-subtitle" style="padding:8px 16px">Se muestran los primeros 50. Busque por nombre o PLU para encontrar los demás.</div>
+                <div class="esc-table-foot">Se muestran los primeros 50. Busque por nombre o PLU para encontrar los demás.</div>
             }
         </div>
+
+        @if (_newCategory)
+        {
+            <Dialog Title="Nueva categoría" Subtitle="Agrupa los productos en la caja y en los reportes." OnClose="() => _newCategory = false">
+                <ChildContent>
+                    <Field Label="Nombre" Error="@_categoryError" Hint="Por ejemplo: Res, Pollo, Cerdo o Colmado.">
+                        <input class="esc-input" maxlength="80" @bind="_categoryName" @bind:after="() => _categoryError = null" aria-invalid="@(_categoryError is not null ? "true" : "false")" autofocus />
+                    </Field>
+                    <Field Label="Color del mosaico en la caja">
+                        <input type="color" class="esc-input" style="padding:4px;width:120px" @bind="_categoryColor" />
+                    </Field>
+                    @if (_error is not null) { <Notice Title="@_error" /> }
+                </ChildContent>
+                <Footer>
+                    <Button OnClick="() => _newCategory = false" Shortcut="Esc">Cancelar</Button>
+                    <Button Variant="Button.Variants.Primary" OnClick="CreateCategoryAsync">Crear categoría</Button>
+                </Footer>
+            </Dialog>
+        }
+
+        @if (_editing is { } f)
+        {
+            <Dialog Title="@(f.Id is null ? "Nuevo producto" : f.Name)" Subtitle="@(f.Id is null ? "Lo que se vende en la caja. Los campos con * son obligatorios." : "Editar producto")" Wide="true" OnClose="() => _editing = null">
+                <ChildContent>
+                    <div class="esc-form-grid">
+                        <Field Label="Nombre *" Wide="true" Error="@Err("name")">
+                            <input class="esc-input" maxlength="150" @bind="f.Name" @bind:after='() => Clear("name")' aria-invalid="@Invalid("name")" autofocus />
+                        </Field>
+                        <Field Label="Categoría">
+                            <select class="esc-select" @bind="f.CategoryId">
+                                @foreach (var c in _categories) { <option value="@c.Id">@c.Name</option> }
+                            </select>
+                        </Field>
+                        <Field Label="Se vende">
+                            <select class="esc-select" @bind="f.Unit">
+                                <option value="@UnitOfMeasure.Unit">Por unidad</option>
+                                <option value="@UnitOfMeasure.Pound">Por libra</option>
+                            </select>
+                        </Field>
+                        <Field Label="Precio RD$ (con ITBIS) *" Error="@Err("price")">
+                            <input class="esc-input esc-num" inputmode="decimal" @bind="f.Price" @bind:after='() => Clear("price")' aria-invalid="@Invalid("price")" />
+                        </Field>
+                        <Field Label="ITBIS *" Error="@Err("itbis")" Hint="Revíselo: va al reporte 607.">
+                            @* No default: a careless "Exento" would declare ITBIS 0 in the 607. *@
+                            <select class="esc-select" @bind="f.ItbisRate" @bind:after='() => Clear("itbis")' aria-invalid="@Invalid("itbis")">
+                                <option value="">Elija…</option>
+                                <option value="@ItbisRate.General18">18 %</option>
+                                <option value="@ItbisRate.Exempt">Exento</option>
+                                <option value="@ItbisRate.Reduced16">16 %</option>
+                                <option value="@ItbisRate.Zero">0 %</option>
+                            </select>
+                        </Field>
+                        <Field Label="Precio mayorista" Error="@Err("wholesale")" Hint="Opcional.">
+                            <input class="esc-input esc-num" inputmode="decimal" @bind="f.WholesalePrice" @bind:after='() => Clear("wholesale")' aria-invalid="@Invalid("wholesale")" />
+                        </Field>
+                        <Field Label="PLU de la balanza" Error="@Err("plu")" Hint="Opcional. Hasta 6 números.">
+                            <input class="esc-input" inputmode="numeric" maxlength="6" @bind="f.Plu" @bind:after='() => Clear("plu")' aria-invalid="@Invalid("plu")" />
+                        </Field>
+                        @if (f.Id is null)
+                        {
+                            <Field Label="Costo sin ITBIS" Error="@Err("cost")">
+                                <input class="esc-input esc-num" inputmode="decimal" @bind="f.Cost" @bind:after='() => Clear("cost")' aria-invalid="@Invalid("cost")" />
+                            </Field>
+                            <Field Label="Existencia inicial" Error="@Err("stock")">
+                                <input class="esc-input esc-num" inputmode="decimal" @bind="f.InitialStock" @bind:after='() => Clear("stock")' aria-invalid="@Invalid("stock")" />
+                            </Field>
+                            <Field Label="Código de barras" Hint="Opcional.">
+                                <input class="esc-input" maxlength="50" @bind="f.Barcode" />
+                            </Field>
+                        }
+                        <Field Label="Existencia mínima" Error="@Err("minimum")" Hint="Avisa cuando quede menos.">
+                            <input class="esc-input esc-num" inputmode="decimal" @bind="f.MinimumStock" @bind:after='() => Clear("minimum")' aria-invalid="@Invalid("minimum")" />
+                        </Field>
+                    </div>
+                    <div class="esc-col" style="gap:0">
+                        <label class="esc-check"><input type="checkbox" @bind="f.SellWithoutStock" /> Se puede vender aunque no haya existencia</label>
+                        @if (f.Id is not null)
+                        {
+                            <label class="esc-check"><input type="checkbox" @bind="f.IsActive" /> Activo (aparece en la caja)</label>
+                        }
+                    </div>
+                    @if (_error is not null) { <Notice Title="@_error" /> }
+                </ChildContent>
+                <Footer>
+                    <Button OnClick="() => _editing = null" Shortcut="Esc">Cancelar</Button>
+                    <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SaveAsync">@(_sending ? "Guardando…" : "Guardar")</Button>
+                </Footer>
+            </Dialog>
+        }
     </ChildContent>
 </Admin>
-
-@if (_newCategory)
-{
-    <Dialog Title="Nueva categoría" OnClose="() => _newCategory = false">
-        <ChildContent>
-            <label class="esc-field"><span>Nombre</span><input class="esc-input" maxlength="80" @bind="_categoryName" autofocus /></label>
-            <label class="esc-field"><span>Color del mosaico</span><input type="color" class="esc-input" style="padding:4px;width:120px" @bind="_categoryColor" /></label>
-            @if (_error is not null) { <Notice Title="@_error" /> }
-        </ChildContent>
-        <Footer>
-            <Button OnClick="() => _newCategory = false" Shortcut="Esc">Cancelar</Button>
-            <Button Variant="Button.Variants.Primary" OnClick="CreateCategoryAsync">Crear</Button>
-        </Footer>
-    </Dialog>
-}
-
-@if (_editing is { } f)
-{
-    <Dialog Title="@(f.Id is null ? "Nuevo producto" : "Editar producto")" Wide="true" OnClose="() => _editing = null">
-        <ChildContent>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
-                <label class="esc-field" style="grid-column:1/-1"><span>Nombre</span><input class="esc-input" maxlength="150" @bind="f.Name" autofocus /></label>
-                <label class="esc-field"><span>Categoría</span>
-                    <select class="esc-select" @bind="f.CategoryId">
-                        @foreach (var c in _categories) { <option value="@c.Id">@c.Name</option> }
-                    </select>
-                </label>
-                <label class="esc-field"><span>Se vende</span>
-                    <select class="esc-select" @bind="f.Unit">
-                        <option value="@UnitOfMeasure.Unit">Por unidad</option>
-                        <option value="@UnitOfMeasure.Pound">Por libra</option>
-                    </select>
-                </label>
-                <label class="esc-field"><span>PLU (balanza, opcional)</span><input class="esc-input" inputmode="numeric" maxlength="6" @bind="f.Plu" /></label>
-                <label class="esc-field"><span>ITBIS</span>
-                    @* No default: a careless "Exento" would declare ITBIS 0 in the 607. *@
-                    <select class="esc-select" @bind="f.ItbisRate" aria-invalid="@(_error is not null && f.ItbisRate is null)">
-                        <option value="">Elija…</option>
-                        <option value="@ItbisRate.General18">18 %</option>
-                        <option value="@ItbisRate.Exempt">Exento</option>
-                        <option value="@ItbisRate.Reduced16">16 %</option>
-                        <option value="@ItbisRate.Zero">0 %</option>
-                    </select>
-                </label>
-                <label class="esc-field"><span>Precio RD$ (con ITBIS)</span><input class="esc-input esc-num" inputmode="decimal" @bind="f.Price" /></label>
-                <label class="esc-field"><span>Precio mayorista (opcional)</span><input class="esc-input esc-num" inputmode="decimal" @bind="f.WholesalePrice" /></label>
-                @if (f.Id is null)
-                {
-                    <label class="esc-field"><span>Costo sin ITBIS</span><input class="esc-input esc-num" inputmode="decimal" @bind="f.Cost" /></label>
-                    <label class="esc-field"><span>Existencia inicial</span><input class="esc-input esc-num" inputmode="decimal" @bind="f.InitialStock" /></label>
-                    <label class="esc-field"><span>Código de barras (opcional)</span><input class="esc-input" maxlength="50" @bind="f.Barcode" /></label>
-                }
-                <label class="esc-field"><span>Existencia mínima</span><input class="esc-input esc-num" inputmode="decimal" @bind="f.MinimumStock" /></label>
-            </div>
-            <label class="esc-row"><input type="checkbox" style="width:22px;height:22px" @bind="f.SellWithoutStock" /> Se puede vender aunque no haya existencia</label>
-            @if (f.Id is not null)
-            {
-                <label class="esc-row"><input type="checkbox" style="width:22px;height:22px" @bind="f.IsActive" /> Activo (aparece en la caja)</label>
-            }
-            @if (_error is not null) { <Notice Title="@_error" /> }
-        </ChildContent>
-        <Footer>
-            <Button OnClick="() => _editing = null" Shortcut="Esc">Cancelar</Button>
-            <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SaveAsync">Guardar</Button>
-        </Footer>
-    </Dialog>
-}
 
 @code {
     private sealed class ProductForm
@@ -138,14 +180,32 @@
 
     private List<Category> _categories = [];
     private List<ProductSummary> _products = [];
-    private string? _search, _category, _error, _categoryName;
+    private string? _search, _category, _error, _categoryName, _categoryError;
     private string _categoryColor = "#0B5CAD";
     private ProductForm? _editing;
     private bool _loading = true, _sending, _newCategory;
+    private readonly Dictionary<string, string> _errors = [];
+    private CancellationTokenSource? _typing;
+
+    private string? Err(string field) => _errors.GetValueOrDefault(field);
+    private string Invalid(string field) => _errors.ContainsKey(field) ? "true" : "false";
+    private void Clear(string field) => _errors.Remove(field);
+    /// <summary>"27.8 lb" or "12": the owner reads stock, not the scale's thousandths.</summary>
+    private static string Stock(decimal value, string unit) => value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + (unit == "Pound" ? " lb" : "");
+    private string Color(string category) => _categories.Find(c => c.Name == category)?.Color ?? "var(--text-3)";
 
     protected override async Task OnInitializedAsync()
     {
         _categories = (await Api.GetAsync<List<Category>>("/api/inventory/categories")).Value ?? [];
+        await LoadAsync();
+    }
+
+    /// <summary>Search while typing, a moment after the last key.</summary>
+    private async Task SearchAsync()
+    {
+        _typing?.Cancel();
+        _typing = new CancellationTokenSource();
+        try { await Task.Delay(250, _typing.Token); } catch (TaskCanceledException) { return; }
         await LoadAsync();
     }
 
@@ -156,7 +216,11 @@
         (_products, _loading) = (r.Value ?? [], false);
     }
 
-    private void New() => (_editing, _error) = (new ProductForm { CategoryId = Guid.TryParse(_category, out var c) ? c : _categories[0].Id }, null);
+    private void New()
+    {
+        _errors.Clear();
+        (_editing, _error) = (new ProductForm { CategoryId = Guid.TryParse(_category, out var c) ? c : _categories[0].Id }, null);
+    }
 
     private async Task EditAsync(Guid id)
     {
@@ -164,6 +228,7 @@
         var r = await Api.GetAsync<ProductDetail>($"/api/inventory/products/{id}");
         if (r.Value is not { } p) return;
         string N(decimal? v) => v?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        _errors.Clear();
         (_editing, _error) = (new ProductForm
         {
             Id = p.Id, Version = p.Version, Name = p.Name, CategoryId = p.CategoryId, Unit = p.Unit, Plu = p.Plu, ItbisRate = p.ItbisRate,
@@ -173,17 +238,35 @@
 
     private async Task CreateCategoryAsync()
     {
-        var r = await Api.PostAsync<Created>("/api/inventory/categories", new { Name = _categoryName?.Trim(), Color = _categoryColor.ToUpperInvariant(), Notes = Array.Empty<string>() });
+        if (string.IsNullOrWhiteSpace(_categoryName)) { _categoryError = "Escriba el nombre de la categoría."; return; }
+        var r = await Api.PostAsync<Created>("/api/inventory/categories", new { Name = _categoryName.Trim(), Color = _categoryColor.ToUpperInvariant(), Notes = Array.Empty<string>() });
         if (!r.Ok) { _error = r.Problem!.Message; return; }
         (_newCategory, _categoryName, _error) = (false, null, null);
         _categories = (await Api.GetAsync<List<Category>>("/api/inventory/categories")).Value ?? [];
     }
 
+    /// <summary>Checks every field at once and says next to each one what is wrong.</summary>
+    private bool Validate(ProductForm f)
+    {
+        _errors.Clear();
+        static bool Bad(string? text, bool optional = true) => string.IsNullOrWhiteSpace(text) ? !optional : Format.ParseNumber(text) is not >= 0;
+        if (string.IsNullOrWhiteSpace(f.Name)) _errors["name"] = "Escriba el nombre.";
+        if (Format.ParseNumber(f.Price) is not > 0) _errors["price"] = "Escriba un precio mayor que cero.";
+        if (f.ItbisRate is null) _errors["itbis"] = "Elija el ITBIS del producto.";
+        if (Bad(f.WholesalePrice)) _errors["wholesale"] = "Escriba un número o déjelo vacío.";
+        if (!string.IsNullOrWhiteSpace(f.Plu) && !f.Plu.Trim().All(char.IsAsciiDigit)) _errors["plu"] = "Solo números.";
+        if (f.Id is null && Bad(f.Cost)) _errors["cost"] = "Escriba un número (0 si no lo sabe).";
+        if (f.Id is null && Bad(f.InitialStock)) _errors["stock"] = "Escriba un número (0 si no hay).";
+        if (Bad(f.MinimumStock)) _errors["minimum"] = "Escriba un número (0 si no aplica).";
+        return _errors.Count == 0;
+    }
+
     private async Task SaveAsync()
     {
         if (_editing is not { } f) return;
-        if (Format.ParseNumber(f.Price) is not > 0 || string.IsNullOrWhiteSpace(f.Name)) { _error = "Escriba el nombre y un precio mayor que cero."; return; }
-        if (f.ItbisRate is not { } rate) { _error = "Elija el ITBIS del producto."; return; }
+        _error = null;
+        if (!Validate(f)) return;
+        var rate = f.ItbisRate!.Value;
         var price = Format.ParseNumber(f.Price)!.Value;
         var wholesale = Format.ParseNumber(f.WholesalePrice);
         var minimum = Format.ParseNumber(f.MinimumStock) ?? 0;
@@ -208,13 +291,13 @@
             await LoadAsync();
             return;
         }
-        _error = p.Code switch
+        switch (p.Code)
         {
-            "Inventory.DuplicatePlu" => "Ese PLU ya lo tiene otro producto.",
-            "Inventory.DuplicateBarcode" => "Ese código de barras ya lo tiene otro producto.",
-            "Concurrency" => "Alguien cambió este producto mientras lo editaba. Ciérrelo y ábralo de nuevo.",
-            "Inventory.NoPricePermission" => "Su usuario no puede cambiar precios.",
-            _ => p.Message,
-        };
+            case "Inventory.DuplicatePlu": _errors["plu"] = "Ese PLU ya lo tiene otro producto."; break;
+            case "Inventory.DuplicateBarcode": _error = "Ese código de barras ya lo tiene otro producto."; break;
+            case "Concurrency": _error = "Alguien cambió este producto mientras lo editaba. Ciérrelo y ábralo de nuevo."; break;
+            case "Inventory.NoPricePermission": _errors["price"] = "Su usuario no puede cambiar precios."; break;
+            default: _error = p.Message; break;
+        }
     }
 }

@@ -1,67 +1,137 @@
 @page "/admin/shifts"
 @inject TokiApi Api
+@inject NavigationManager Nav
 
-<Admin Title="Turnos y cuadres" Subtitle="Últimos 7 días. Toque un turno para ver su cierre Z.">
-    <div class="esc-card esc-table-wrap">
-        <table class="esc-table" style="min-width:720px">
-            <thead><tr><th>Z</th><th>Caja</th><th>Cajero</th><th>Abierto</th><th>Cerrado</th><th class="esc-num">Esperado</th><th class="esc-num">Contado</th><th class="esc-num">Diferencia</th></tr></thead>
-            <tbody>
-                @foreach (var t in _shifts)
-                {
-                    <tr class="selectable" tabindex="0" @onclick="() => ShowAsync(t.ShiftId)" @onkeydown='e => e.Key == "Enter" ? ShowAsync(t.ShiftId) : Task.CompletedTask'>
-                        <td>@(t.ZNumber?.ToString() ?? "—")</td><td>@t.Register</td><td>@t.Cashier</td>
-                        <td>@Format.Date(t.OpenedUtc)</td>
-                        <td>@(t.ClosedUtc is { } c ? Format.Time(c) : "Abierto")</td>
-                        <td class="esc-num">@(t.ExpectedCash is { } e ? Format.Amount(e) : "—")</td>
-                        <td class="esc-num">@(t.CountedCash is { } k ? Format.Amount(k) : "—")</td>
-                        <td class="esc-num" style="font-weight:700;color:@(t.Difference is null or 0 ? "var(--text)" : "var(--warning)")">@(t.Difference is { } d ? Format.Amount(d) : "—")</td>
-                    </tr>
-                }
-                @if (_shifts.Count == 0)
-                {
-                    <tr><td colspan="8" class="esc-muted">@(_message ?? "No hay turnos en estos días.")</td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
-</Admin>
-
-@if (_z is { } z)
-{
-    <Dialog Title="@(z.ZNumber is { } n ? $"Cierre Z #{n}" : "Reporte X (turno abierto)")" Subtitle="@($"{z.Register} · {z.Cashier}")" Wide="true" OnClose="() => _z = null">
-        <ChildContent>
-            <div class="kpis">
-                <div class="esc-card kpi"><span class="esc-label">Fondo</span><span class="kpi__value">@Format.Amount(z.OpeningFloat)</span></div>
-                <div class="esc-card kpi"><span class="esc-label">Efectivo esperado</span><span class="kpi__value">@Format.Amount(z.ExpectedCash)</span></div>
-                <div class="esc-card kpi"><span class="esc-label">Contado</span><span class="kpi__value">@(z.CountedCash is { } c ? Format.Amount(c) : "—")</span></div>
-            </div>
-            <table class="esc-table">
-                <thead><tr><th>Forma de pago</th><th class="esc-num">Cobros</th><th class="esc-num">Anulaciones</th><th class="esc-num">Reembolsos</th><th class="esc-num">Abonos</th><th class="esc-num">Neto</th></tr></thead>
+<Admin Title="Turnos y cuadres" Subtitle="Cada turno con lo que se esperaba en efectivo y lo que se contó. Toque uno para ver su cierre.">
+    <Actions>
+        <Segmented Label="Periodo" Options="Ranges" Value="@_days" ValueChanged="ChangeDaysAsync" />
+    </Actions>
+    <ChildContent>
+        <div class="esc-row" style="gap:12px">
+            <button type="button" class="esc-chip" aria-pressed="@(_onlyDifferences ? "true" : "false")" @onclick="() => _onlyDifferences = !_onlyDifferences">Solo con diferencias</button>
+            @if (!_loading && _shifts.Count > 0)
+            {
+                var closed = _shifts.Where(s => s.ClosedUtc is not null).ToList();
+                var missing = closed.Where(s => s.Difference < 0).Sum(s => s.Difference!.Value);
+                <span class="esc-muted">
+                    @closed.Count @(closed.Count == 1 ? "cierre" : "cierres") · @closed.Count(s => s.Difference == 0) cuadraron@(missing < 0 ? $" · faltaron {Format.WithCurrency(-missing)} en total" : "")
+                </span>
+            }
+        </div>
+        <div class="esc-card esc-table-wrap esc-table-wrap--tall">
+            <table class="esc-table esc-table--wide">
+                <thead><tr><th>Cajero</th><th class="esc-hide-sm">Caja</th><th class="esc-hide-sm">Turno</th><th>Cuadre</th><th class="esc-num esc-hide-sm">Esperado</th><th class="esc-num esc-hide-sm">Contado</th><th class="esc-num esc-hide-sm">Z</th><th class="esc-table__chev esc-hide-sm"><span class="esc-visually-hidden">Abrir</span></th></tr></thead>
                 <tbody>
-                    @foreach (var m in z.ByMethod)
+                    @if (_loading)
                     {
-                        <tr><td>@Names.PaymentMethod(m.Method)</td><td class="esc-num">@Format.Amount(m.SalePayments)</td><td class="esc-num">@Format.Amount(m.Voids)</td><td class="esc-num">@Format.Amount(m.Refunds)</td><td class="esc-num">@Format.Amount(m.CustomerPayments)</td><td class="esc-num" style="font-weight:700">@Format.Amount(m.Net)</td></tr>
+                        @for (var i = 0; i < 5; i++)
+                        {
+                            <tr><td><Skeleton Width="150px" /></td><td class="esc-hide-sm"><Skeleton Width="60px" /></td><td class="esc-hide-sm"><Skeleton Width="180px" /></td><td><Skeleton Width="110px" /></td><td class="esc-hide-sm"><Skeleton /></td><td class="esc-hide-sm"><Skeleton /></td><td class="esc-hide-sm"><Skeleton Width="30px" /></td><td class="esc-hide-sm"></td></tr>
+                        }
+                    }
+                    @foreach (var t in Visible)
+                    {
+                        <tr class="selectable" tabindex="0" @onclick="() => ShowAsync(t.ShiftId)" @onkeydown='e => e.Key == "Enter" ? ShowAsync(t.ShiftId) : Task.CompletedTask'>
+                            <td><span class="esc-person"><span class="esc-avatar" aria-hidden="true">@Names.Initials(t.Cashier)</span><span><span style="font-weight:600">@t.Cashier</span><span class="esc-table__sub esc-only-sm">@t.Register · @Day(t.OpenedUtc), @Format.Time(t.OpenedUtc)</span></span></span></td>
+                            <td class="esc-hide-sm">@t.Register</td>
+                            <td class="esc-hide-sm">@Day(t.OpenedUtc)<span class="esc-table__sub">@Format.Time(t.OpenedUtc) – @(t.ClosedUtc is { } c ? Format.Time(c) : "sigue abierto")</span></td>
+                            <td><DifferencePill Shift="t" /></td>
+                            <td class="esc-num esc-hide-sm">@(t.ExpectedCash is { } e ? Format.Amount(e) : "—")</td>
+                            <td class="esc-num esc-hide-sm">@(t.CountedCash is { } k ? Format.Amount(k) : "—")</td>
+                            <td class="esc-num esc-muted esc-hide-sm">@(t.ZNumber is { } number ? $"#{number}" : "—")</td>
+                            <td class="esc-table__chev esc-hide-sm"><Icon Name="chevron-right" Size="18" /></td>
+                        </tr>
                     }
                 </tbody>
             </table>
-            <div class="esc-subtitle">@z.SaleCount ventas · @z.VoidedCount anuladas · entradas @Format.Amount(z.CashIn) · retiros @Format.Amount(z.Withdrawals) · gastos @Format.Amount(z.Expenses) · redondeo @Format.Amount(z.Rounding)</div>
-        </ChildContent>
-        <Footer><Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="() => _z = null">Cerrar</Button></Footer>
-    </Dialog>
-}
+            @if (!_loading && !Visible.Any())
+            {
+                <EmptyState Icon="wallet" Title="@(_onlyDifferences ? "Ningún turno con diferencias" : "No hay turnos en estos días")">
+                    @(_message ?? (_onlyDifferences ? "Todas las cajas cuadraron en este periodo." : "Los turnos aparecen aquí cuando una caja abre."))
+                </EmptyState>
+            }
+        </div>
+
+        @if (_z is { } z)
+        {
+            <Dialog Title="@(z.ZNumber is { } n ? $"Cierre Z #{n}" : "Turno abierto (reporte X)")" Subtitle="@($"{z.Register} · {z.Cashier} · {Day(z.OpenedUtc)}, {Format.Time(z.OpenedUtc)} – {(z.ClosedUtc is { } c ? Format.Time(c) : "sigue abierto")}")" Wide="true" OnClose="() => _z = null">
+                <ChildContent>
+                    @if (z.Difference is { } d && d != 0)
+                    {
+                        <Notice Kind="@(d < 0 ? Notice.Kinds.Error : Notice.Kinds.Warning)" Title="@($"{(d < 0 ? "Faltaron" : "Sobraron")} {Format.WithCurrency(Math.Abs(d))} en el efectivo")">
+                            Se esperaban @Format.WithCurrency(z.ExpectedCash) y se contaron @Format.WithCurrency(z.CountedCash ?? 0).
+                        </Notice>
+                    }
+                    <div class="kpis">
+                        <div class="esc-card kpi"><span class="esc-label">Fondo inicial</span><span class="kpi__value">@Format.Amount(z.OpeningFloat)</span></div>
+                        <div class="esc-card kpi"><span class="esc-label">Efectivo esperado</span><span class="kpi__value">@Format.Amount(z.ExpectedCash)</span></div>
+                        <div class="esc-card kpi"><span class="esc-label">Contado</span><span class="kpi__value">@(z.CountedCash is { } c ? Format.Amount(c) : "—")</span></div>
+                    </div>
+                    <div class="esc-table-wrap">
+                        <table class="esc-table" style="min-width:600px">
+                            <thead><tr><th>Forma de pago</th><th class="esc-num">Cobros</th><th class="esc-num">Anulaciones</th><th class="esc-num">Reembolsos</th><th class="esc-num">Abonos</th><th class="esc-num">Neto</th></tr></thead>
+                            <tbody>
+                                @foreach (var m in z.ByMethod)
+                                {
+                                    <tr><td>@Names.PaymentMethod(m.Method)</td><td class="esc-num">@Format.Amount(m.SalePayments)</td><td class="esc-num">@Format.Amount(m.Voids)</td><td class="esc-num">@Format.Amount(m.Refunds)</td><td class="esc-num">@Format.Amount(m.CustomerPayments)</td><td class="esc-num" style="font-weight:700">@Format.Amount(m.Net)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <dl class="esc-dl">
+                        <dt>Ventas</dt><dd>@z.SaleCount (@z.VoidedCount anuladas)</dd>
+                        <dt>Entradas de efectivo</dt><dd>@Format.Amount(z.CashIn)</dd>
+                        <dt>Retiros</dt><dd>@Format.Amount(z.Withdrawals)</dd>
+                        <dt>Gastos</dt><dd>@Format.Amount(z.Expenses)</dd>
+                        <dt>Redondeo</dt><dd>@Format.Amount(z.Rounding)</dd>
+                    </dl>
+                </ChildContent>
+                <Footer><Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="() => _z = null">Cerrar</Button></Footer>
+            </Dialog>
+        }
+    </ChildContent>
+</Admin>
 
 @code {
+    private static readonly IReadOnlyList<(string, string)> Ranges = [("1", "Hoy"), ("7", "7 días"), ("30", "30 días")];
+    private static readonly System.Globalization.CultureInfo Es = System.Globalization.CultureInfo.GetCultureInfo("es-DO");
+
+    [SupplyParameterFromQuery(Name = "shift")] public Guid? ShiftId { get; set; }
+
     private List<ShiftSummary> _shifts = [];
     private ZReport? _z;
     private string? _message;
+    private string _days = "7";
+    private bool _loading = true, _onlyDifferences;
+
+    private IEnumerable<ShiftSummary> Visible => _onlyDifferences ? _shifts.Where(s => s.Difference is { } d && d != 0) : _shifts;
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadAsync();
+        if (ShiftId is { } id) await ShowAsync(id);
+    }
+
+    private async Task ChangeDaysAsync(string days)
+    {
+        _days = days;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
         var today = Format.Today;
-        var r = await Api.GetAsync<List<ShiftSummary>>($"/api/reports/shifts?from={today.AddDays(-6):yyyy-MM-dd}&to={today:yyyy-MM-dd}");
+        var r = await Api.GetAsync<List<ShiftSummary>>($"/api/reports/shifts?from={today.AddDays(1 - int.Parse(_days)):yyyy-MM-dd}&to={today:yyyy-MM-dd}");
         _shifts = [.. (r.Value ?? []).OrderByDescending(t => t.OpenedUtc)];
-        _message = r.Problem?.Message;
+        (_message, _loading) = (r.Problem?.Message, false);
     }
 
     private async Task ShowAsync(Guid id) => _z = (await Api.GetAsync<ZReport>($"/api/cash/shifts/{id}/z")).Value;
+
+    private static string Day(DateTime utc)
+    {
+        var d = DateOnly.FromDateTime(Format.StoreTime(utc));
+        return d == Format.Today ? "Hoy" : d == Format.Today.AddDays(-1) ? "Ayer" : Format.StoreTime(utc).ToString("ddd d 'de' MMM", Es).Replace(".", "") is var s ? char.ToUpper(s[0], Es) + s[1..] : "";
+    }
 }

@@ -7,6 +7,9 @@
 @if (_ready)
 {
     <div style="min-height:100vh;display:flex;flex-direction:column">
+        @* The back office has its own shell (Admin.razor); the dark status bar is the register's. *@
+        @if (!IsBackOffice)
+        {
         <header class="esc-status-bar">
             <div class="esc-status-bar__group">
                 <Logo OnFrame="true" />
@@ -35,6 +38,7 @@
                 <span style="font-weight:600">@Format.Time(DateTimeOffset.UtcNow)</span>
             </div>
         </header>
+        }
         <main style="flex:1 1 auto;display:flex;flex-direction:column;min-height:0">
             @* A failure in one screen never freezes the register: the cart lives in a scoped service, so it survives. *@
             <ErrorBoundary @ref="_boundary">
@@ -53,6 +57,8 @@
 
 @code {
     private static readonly string[] Public = ["setup", "sign-in"];
+
+    private bool IsBackOffice => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("admin", StringComparison.Ordinal);
     private bool _ready;
     private Timer? _clock;
     private ErrorBoundary? _boundary;

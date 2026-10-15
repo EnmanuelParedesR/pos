@@ -30,7 +30,7 @@ public sealed class CloudSettingsTests
         page.Find("form").Submit();
 
         page.WaitForAssertion(() => page.Markup.ShouldContain("Conectada"));
-        page.Markup.ShouldContain("Pendientes por subir: <b>3</b>");
+        page.Markup.ShouldContain("<dt>Pendientes por subir</dt><dd>3</dd>");
         api.Requests.Single(r => r.Route == "/api/sync/connect").Body.ShouldContain("\"code\":\"12345678\"");
     }
 

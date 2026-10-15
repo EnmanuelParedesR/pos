@@ -1,0 +1,14 @@
+@* Escuadra Admin: one choice among a few (Hoy / Ayer / 7 días / Mes). *@
+<div class="esc-segmented" role="group" aria-label="@Label">
+    @foreach (var (value, text) in Options)
+    {
+        <button type="button" aria-pressed="@(value == Value ? "true" : "false")" @onclick="() => ValueChanged.InvokeAsync(value)">@text</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<(string Value, string Text)> Options { get; set; } = [];
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+}

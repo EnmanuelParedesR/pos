@@ -1,0 +1,17 @@
+@* Escuadra Admin: what an empty list or chart says, with what to do next. *@
+<div class="esc-empty" role="status">
+    <div class="esc-empty__icon"><Icon Name="@Icon" Size="22" /></div>
+    <div class="esc-empty__title">@Title</div>
+    @if (ChildContent is not null)
+    {
+        <p>@ChildContent</p>
+    }
+    @Action
+</div>
+
+@code {
+    [Parameter] public string Icon { get; set; } = "inbox";
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Action { get; set; }
+}

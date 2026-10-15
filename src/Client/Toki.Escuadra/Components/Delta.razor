@@ -1,0 +1,15 @@
+@* Escuadra Admin: "+12 %" against a reference. Green up, red down; the arrow and the sign say it too (never color alone). *@
+@if (Previous > 0)
+{
+    var change = (Current - Previous) / Previous * 100;
+    var kind = Math.Abs(change) < 0.5m ? "flat" : change > 0 ? "up" : "down";
+    <span class="esc-delta esc-delta--@kind">
+        @if (kind != "flat") { <Icon Name="@(kind == "up" ? "arrow-up" : "arrow-down")" Size="14" /> }
+        @(kind == "flat" ? "Igual" : $"{(change > 0 ? "+" : "−")}{Math.Abs(change):0} %")
+    </span>
+}
+
+@code {
+    [Parameter, EditorRequired] public decimal Current { get; set; }
+    [Parameter, EditorRequired] public decimal Previous { get; set; }
+}

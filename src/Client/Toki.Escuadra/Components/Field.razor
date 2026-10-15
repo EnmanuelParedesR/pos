@@ -1,0 +1,21 @@
+@* Escuadra Admin: a labelled field with its hint and its inline error (the input sets aria-invalid itself). *@
+<label class="esc-field @(Wide ? "esc-wide" : "")">
+    <span>@Label</span>
+    @ChildContent
+    @if (Error is not null)
+    {
+        <span class="esc-field__error" role="alert"><Icon Name="alert" Size="14" />@Error</span>
+    }
+    else if (Hint is not null)
+    {
+        <span class="esc-field__hint">@Hint</span>
+    }
+</label>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

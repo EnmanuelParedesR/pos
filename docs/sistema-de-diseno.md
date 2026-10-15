@@ -99,6 +99,28 @@ tests/
 | 2 | Tabla, filtros, tarjeta de cifra, gráfica, estados vacíos, menú lateral | Con administración y reportes |
 | 3 | Tema oscuro, componentes del celular, mascota, plantillas de impresión | Con el plan Negocio |
 
+## Escuadra Admin: la capa de la administración (TK-173)
+
+La caja se opera; la administración se **revisa**. Por eso la administración de la PC de la tienda (Blazor) y el panel del dueño en la nube (React) usan una capa propia, `escuadra-admin.css`, que solo aplica dentro de `.esc-admin`. La caja (entrar, vender, cobrar, abrir y cerrar) sigue con `escuadra.css` tal cual: alto contraste, teclado primero, 48/72 px.
+
+| Token | Valor |
+|---|---|
+| Marca | Escala `--brand-50 … --brand-900`; **600 = Azul Toki #0B5CAD** (logo C5). 500 #1F74C2 para barras, 700 #094B8E para hover y "hoy" |
+| Neutros cálidos | Fondo #F6F5F2, superficie #FFFFFF, superficie 2/3 #F2F0EC / #E9E6E0, líneas #ECE9E3 / #DAD5CC; texto #191C20, #57524A y #6E685E (todos AA sobre el fondo) |
+| Semánticos suaves | Fondo con tinte y texto fuerte: éxito #16663A/#E6F4EB, aviso #8C4A06/#FCF1DD, error #B42318/#FDECEA; un punto de color en cada píldora |
+| Datos (en orden fijo) | #1F6FC5 · #0E9384 · #D9822B · #8B5CF6 (validados para daltonismo, ΔE ≥ 11); periodo anterior en gris #D9D4CA |
+| Tipografía | Héroe 46 px (38 en el celular), título 28, métrica 24, cuerpo 15, etiquetas 13 en tipo oración (sin MAYÚSCULAS); cifras tabulares |
+| Forma | Radio 10 (controles), 16 (tarjetas), 20 (diálogos); superficies sin borde con sombra muy suave (`--elev-1`); foco con anillo azul de 3 px |
+| Táctil | 44 px mínimo; barra inferior del celular de 60 px |
+
+**Componentes nuevos** (Razor en `Toki.Escuadra/Components`, espejo en `src/Cloud/panel/src/ui.tsx`): `BarChart` (barras con la referencia en gris, tooltip al pasar o enfocar, estado vacío), `Sparkline`, `Delta` (+12 % con flecha), `Segmented` (Hoy / Ayer / 7 días / Mes), `EmptyState`, `Skeleton`, `Field` (etiqueta, ayuda y error en línea). Clases: marco `esc-shell` / `esc-side` (menú con íconos, contraíble) / `esc-topbar` + `esc-tabbar` (celular), `esc-page-head`, `esc-hero`, `esc-stats`, `esc-alerts` ("Para revisar"), `esc-barlist` (proporciones), `esc-tabs`, `esc-setting` (descripción a la izquierda, formulario a la derecha), `esc-ask` ("Pregúntale a Toki…"), `esc-hide-sm` / `esc-only-sm` (tablas que se vuelven lista en el celular).
+
+**Íconos:** la administración usa más íconos que los 13 de la caja (navegación, métricas, alertas), del mismo juego de trazo estilo Lucide y siempre junto a una palabra.
+
+**Reglas:** el número más importante es el más grande y siempre trae comparación; lo que hay que revisar va primero, con persona, monto, hora y una acción; las cifras se escriben como se dicen ("Faltaron RD$ 150.00 en Caja 2 · Yudelka Martínez · hoy, 12:48 p. m."); el rojo es solo para faltantes y errores; el modo oscuro queda listo para hacerse redefiniendo los mismos tokens.
+
+**Pendientes de backend (no se cambiaron contratos):** reporte de medios de pago por periodo en la tienda (hoy se suma desde cada Z, hasta 31 turnos); unidad (lb/unidad) en los más vendidos de la nube; ventas por hora en la tienda (para comparar "a esta hora" también en la PC); `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 (el filtro se aplica después de proyectar); nombres de clientes en el fiado de la nube.
+
 ## Pendientes
 
 - Nombre del producto (afecta el nombre del paquete y la galería).

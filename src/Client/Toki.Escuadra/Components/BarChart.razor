@@ -1,0 +1,67 @@
+@* Escuadra Admin: bars per period with the previous period as a gray ghost beside each bar.
+   Hover or focus a column for its tooltip; the plot is one image for screen readers, the tooltips are the table. *@
+@if (Points.All(p => p.Value == 0 && (p.Ghost ?? 0) == 0))
+{
+    <EmptyState Icon="chart" Title="@EmptyTitle">@EmptyText</EmptyState>
+}
+else
+{
+    var max = NiceMax(Points.Max(p => Math.Max(p.Value, p.Ghost ?? 0)));
+    <div class="esc-chart">
+        <div class="esc-chart__plot" role="list" aria-label="@Label">
+            <div class="esc-chart__grid" aria-hidden="true">
+                @foreach (var step in new[] { 1m, 0.5m, 0m })
+                {
+                    <div style="top:@Css(100 - step * 100)%"><span>@Short(max * step)</span></div>
+                }
+            </div>
+            @foreach (var p in Points)
+            {
+                <div class="esc-chart__col @(p.IsCurrent ? "esc-chart__col--current" : "")" role="listitem" tabindex="0"
+                     aria-label="@($"{p.Title}: {Format.WithCurrency(p.Value)}{(p.Ghost is { } g ? $", {GhostLabel}: {Format.WithCurrency(g)}" : "")}")">
+                    @if (p.Ghost is { } ghost)
+                    {
+                        <div class="esc-chart__ghost" style="height:@Css(ghost / max * 100)%"></div>
+                    }
+                    <div class="esc-chart__bar" style="height:@Css(p.Value / max * 100)%"></div>
+                    <div class="esc-chart__tip" aria-hidden="true">
+                        @p.Title
+                        <b>@Format.WithCurrency(p.Value)</b>
+                        @if (p.Detail is not null) { <span>@p.Detail<br /></span> }
+                        @if (p.Ghost is { } gh) { <span>@GhostLabel: @Format.WithCurrency(gh)</span> }
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="esc-chart__x" aria-hidden="true">
+            @foreach (var p in Points)
+            {
+                <span class="@(p.IsCurrent ? "is-current" : "")">@p.Label</span>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    public sealed record Point(string Label, string Title, decimal Value, decimal? Ghost = null, string? Detail = null, bool IsCurrent = false);
+
+    [Parameter, EditorRequired] public IReadOnlyList<Point> Points { get; set; } = [];
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    [Parameter] public string GhostLabel { get; set; } = "Semana anterior";
+    [Parameter] public string EmptyTitle { get; set; } = "Todavía no hay ventas";
+    [Parameter] public string? EmptyText { get; set; }
+
+    private static string Css(decimal percent) => Math.Clamp(percent, 0, 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>A round top for the scale (1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 × 10^n), so the grid reads "30k · 15k · 0" and the bars fill the plot.</summary>
+    private static decimal NiceMax(decimal value)
+    {
+        if (value <= 0) return 1;
+        var magnitude = (decimal)Math.Pow(10, Math.Floor(Math.Log10((double)value)));
+        foreach (var f in new[] { 1m, 1.5m, 2m, 2.5m, 3m, 4m, 5m, 6m, 8m, 10m })
+            if (value <= f * magnitude) return f * magnitude;
+        return 10 * magnitude;
+    }
+
+    private static string Short(decimal v) => v >= 1000 ? (v / 1000).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "k" : v.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+}

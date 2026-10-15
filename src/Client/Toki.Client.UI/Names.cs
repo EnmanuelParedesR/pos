@@ -32,6 +32,10 @@ public static class Names
         _ => "Saldo a favor",
     };
 
+    /// <summary>"Ramón Duarte" → "RD", for the avatar next to a person's name.</summary>
+    public static string Initials(string? name) =>
+        string.Concat((name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(w => char.ToUpperInvariant(w[0])));
+
     public static string SaleStatus(string status) => status == "Voided" ? "Anulada" : "Completada";
 
     public static string LicenseStatus(string status) => status switch

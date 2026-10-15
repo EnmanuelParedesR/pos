@@ -1,0 +1,17 @@
+@* A shift's cash result in words: "Cuadró", "Faltaron RD$ 150.00", "Sobraron …" or "Abierto". Icon and words, never color alone. *@
+@if (Shift.ClosedUtc is null)
+{
+    <span class="esc-pill esc-pill--neutral">Abierto</span>
+}
+else if (Shift.Difference is not { } d || d == 0)
+{
+    <span class="esc-pill esc-pill--success">Cuadró</span>
+}
+else
+{
+    <span class="esc-pill @(d < 0 ? "esc-pill--error" : "esc-pill--warning")">@(d < 0 ? "Faltaron" : "Sobraron") @Format.WithCurrency(Math.Abs(d))</span>
+}
+
+@code {
+    [Parameter, EditorRequired] public ShiftSummary Shift { get; set; } = null!;
+}

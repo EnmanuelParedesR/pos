@@ -1,0 +1,21 @@
+@* Escuadra Admin: a small trend line next to a hero number. Decorative: the number and its comparison carry the meaning. *@
+@if (Values.Count > 1)
+{
+    var max = Math.Max(Values.Max(), 1);
+    var step = (Width - 8) / (double)(Values.Count - 1);
+    var points = Values.Select((v, i) => (X: 4 + i * step, Y: Height - 4 - (double)(v / max) * (Height - 8))).ToList();
+    var line = string.Join(" ", points.Select(p => $"{N(p.X)},{N(p.Y)}"));
+    <svg class="esc-spark" aria-hidden="true" width="@Width" height="@Height" viewBox="0 0 @Width @Height" preserveAspectRatio="none">
+        <polygon points="@($"{N(points[0].X)},{Height} {line} {N(points[^1].X)},{Height}")" fill="currentColor" opacity="0.10" />
+        <polyline points="@line" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke" />
+        <circle cx="@N(points[^1].X)" cy="@N(points[^1].Y)" r="3.5" fill="currentColor" />
+    </svg>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<decimal> Values { get; set; } = [];
+    [Parameter] public int Width { get; set; } = 160;
+    [Parameter] public int Height { get; set; } = 48;
+
+    private static string N(double v) => v.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+}

@@ -1,72 +1,367 @@
 @page "/admin"
 @inject TokiApi Api
+@inject NavigationManager Nav
 
-<Admin Title="Resumen" Subtitle="@($"Hoy, {Format.Today.ToString("dddd d 'de' MMMM", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))}")">
-    @foreach (var a in _alerts)
-    {
-        <Notice Kind="Notice.Kinds.Warning" Title="@a" />
-    }
-    <div class="kpis">
-        <div class="esc-card kpi"><span class="esc-label">Vendido hoy</span><span class="kpi__value">@Format.WithCurrency(_today?.SalesWithItbis ?? 0)</span><span class="esc-subtitle">@(_today?.SaleCount ?? 0) facturas</span></div>
-        <div class="esc-card kpi"><span class="esc-label">Ganancia hoy</span><span class="kpi__value">@Format.WithCurrency(_today?.Profit ?? 0)</span><span class="esc-subtitle">sin ITBIS, después del costo</span></div>
-        <div class="esc-card kpi"><span class="esc-label">Ticket promedio</span><span class="kpi__value">@Format.WithCurrency(_today is { SaleCount: > 0 } h ? Math.Round(h.SalesWithItbis / h.SaleCount, 2) : 0)</span></div>
-        <div class="esc-card kpi"><span class="esc-label">Cajas abiertas</span><span class="kpi__value">@_registers.Count(c => c.OpenShiftId is not null) de @_registers.Count</span>
-            <span class="esc-subtitle">@string.Join(" · ", _registers.Where(c => c.Cashier is not null).Select(c => $"{c.Name}: {c.Cashier}"))</span></div>
-    </div>
-
-    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
-        <section class="esc-card esc-card--padded" style="flex:2 1 420px" aria-label="Últimos 7 días">
-            <div class="esc-label">Ventas de los últimos 7 días</div>
-            <div class="bars">
-                @foreach (var d in _week)
-                {
-                    var height = _max == 0 ? 0 : (int)(d.SalesWithItbis / _max * 100);
-                    <div class="bars__bar" title="@Format.WithCurrency(d.SalesWithItbis)">
-                        <span>@(d.SalesWithItbis >= 1000 ? $"{d.SalesWithItbis / 1000:0.#}k" : Format.Amount(d.SalesWithItbis))</span>
-                        <div style="height:@(height)%"></div>
-                        <span>@d.Day.ToString("ddd d", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))</span>
-                    </div>
-                }
+@* The owner's story of the day: how much and whether it is good (hero + comparison), what needs attention, then the detail. *@
+<Admin Title="Resumen" Subtitle="@Subtitle">
+    <Actions>
+        <Segmented Label="Periodo" Options="Ranges" Value="@_range" ValueChanged="ChangeRangeAsync" />
+    </Actions>
+    <ChildContent>
+        @if (_loading)
+        {
+            <div class="esc-card esc-hero"><div class="esc-col" style="gap:12px"><Skeleton Width="120px" /><Skeleton Width="280px" Height="44px" /><Skeleton Width="220px" /></div></div>
+            <div class="esc-grid">
+                <div class="esc-card esc-card--padded esc-span-8"><Skeleton Height="220px" /></div>
+                <div class="esc-card esc-card--padded esc-span-4"><Skeleton Height="220px" /></div>
             </div>
-        </section>
-        <section class="esc-card" style="flex:1 1 320px" aria-label="Más vendidos hoy">
-            <table class="esc-table">
-                <thead><tr><th>Más vendidos hoy</th><th class="esc-num">Cant.</th><th class="esc-num">Venta sin ITBIS</th></tr></thead>
-                <tbody>
-                    @foreach (var p in _top)
+        }
+        else
+        {
+            @* 1. What needs attention goes first (JTBD 2), with person, amount, time and an action. *@
+            @if (_alerts.Count > 0)
+            {
+                <section class="esc-card" aria-labelledby="review-title">
+                    <div class="esc-card__head" style="padding:16px 20px 0;margin:0">
+                        <h2 id="review-title" class="esc-card__title">Para revisar</h2>
+                        <span class="esc-card__aside">@_alerts.Count @(_alerts.Count == 1 ? "asunto" : "asuntos")</span>
+                    </div>
+                    <ul class="esc-alerts">
+                        @foreach (var a in _alerts)
+                        {
+                            <li class="esc-alert esc-alert--@a.Kind">
+                                <span class="esc-alert__icon"><Icon Name="@a.Icon" Size="18" /></span>
+                                <div class="esc-alert__body">
+                                    <div class="esc-alert__title">@((MarkupString)a.Title)</div>
+                                    <div class="esc-alert__meta">@a.Meta</div>
+                                </div>
+                                <a class="esc-button esc-button--small" href="@a.Href">@a.Action <Icon Name="chevron-right" Size="16" /></a>
+                            </li>
+                        }
+                    </ul>
+                </section>
+            }
+            else
+            {
+                <div class="esc-all-good" role="status"><Icon Name="check" /> Todo en orden: las cajas cuadraron y los comprobantes alcanzan.</div>
+            }
+
+            @* 2. The hero: the period's sales against the same days a week (or a month) before. *@
+            <section class="esc-card" aria-label="Ventas del periodo">
+                <div class="esc-hero">
+                    <div>
+                        <div class="esc-hero__label">@HeroLabel</div>
+                        <div class="esc-hero__value"><small>RD$</small>@Format.Amount(_current.Sales)</div>
+                        <div class="esc-hero__compare">
+                            @if (_range == "today")
+                            {
+                                @if (_previous.Sales == 0)
+                                {
+                                    <span>El @WeekdayLastWeek no hubo ventas.</span>
+                                }
+                                else if (_current.Sales >= _previous.Sales)
+                                {
+                                    <Delta Current="_current.Sales" Previous="_previous.Sales" /><span>Ya pasó lo del @WeekdayLastWeek completo (@Format.WithCurrency(_previous.Sales))</span>
+                                }
+                                else
+                                {
+                                    <span>Lleva el <b>@(Math.Round(_current.Sales / _previous.Sales * 100)) %</b> de lo que vendió el @WeekdayLastWeek en todo el día (@Format.WithCurrency(_previous.Sales))</span>
+                                }
+                            }
+                            else if (_previous.Sales == 0)
+                            {
+                                <span>No hay ventas en @CompareLabel para comparar.</span>
+                            }
+                            else
+                            {
+                                <Delta Current="_current.Sales" Previous="_previous.Sales" /><span>vs. @CompareLabel (@Format.WithCurrency(_previous.Sales))</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="esc-hero__spark"><Sparkline Values="@_chart.Select(p => p.Value).ToList()" Width="200" Height="64" /></div>
+                </div>
+                <div class="esc-stats" style="border-top:1px solid var(--line)">
+                    <div class="esc-stat">
+                        <span class="esc-stat__label"><Icon Name="receipt" Size="16" /> Facturas</span>
+                        <span class="esc-stat__value">@_current.Count</span>
+                        <span class="esc-stat__note">@(_previous.Count == 0 ? "Sin ventas para comparar" : $"{_previous.Count} {CompareShort}")</span>
+                    </div>
+                    <div class="esc-stat">
+                        <span class="esc-stat__label"><Icon Name="cart" Size="16" /> Ticket promedio</span>
+                        <span class="esc-stat__value">@Format.WithCurrency(_current.Average)</span>
+                        <span class="esc-stat__note">@(_previous.Count == 0 ? "Sin ventas para comparar" : $"{Format.WithCurrency(_previous.Average)} {CompareShort}")</span>
+                    </div>
+                    <div class="esc-stat">
+                        <span class="esc-stat__label"><Icon Name="chart" Size="16" /> Ganancia</span>
+                        <span class="esc-stat__value">@Format.WithCurrency(_current.Profit)</span>
+                        <span class="esc-stat__note">@(_current.Net > 0 ? $"{_current.Profit / _current.Net * 100:0} % de la venta sin ITBIS" : "Sin ITBIS, después del costo")</span>
+                    </div>
+                </div>
+            </section>
+
+            <div class="esc-grid">
+                <section class="esc-card esc-card--padded esc-span-8" aria-labelledby="chart-title">
+                    <div class="esc-card__head">
+                        <h2 id="chart-title" class="esc-card__title">@(_range == "month" ? "Ventas del mes, día por día" : "Ventas de los últimos 7 días")</h2>
+                        <div class="esc-legend"><span><i></i>@(_range == "month" ? "Este mes" : "Estos días")</span><span><i class="ghost"></i>@GhostLabel</span></div>
+                    </div>
+                    <BarChart Points="_chart" Label="Ventas por día" GhostLabel="@GhostLabel" EmptyText="Cuando la caja venda, aquí verá cada día comparado con la semana anterior." />
+                </section>
+
+                <div class="esc-span-4 esc-col" style="gap:16px">
+                <section class="esc-card esc-card--padded" aria-labelledby="mix-title">
+                    <div class="esc-card__head"><h2 id="mix-title" class="esc-card__title">Cómo le pagaron</h2><span class="esc-card__aside">@PeriodShort</span></div>
+                    @if (_mix.Count == 0)
                     {
-                        <tr><td>@p.Product</td><td class="esc-num">@p.Quantity.ToString("0.###")</td><td class="esc-num">@Format.Amount(p.NetWithoutItbis)</td></tr>
+                        <EmptyState Icon="cash" Title="Sin cobros en este periodo" />
                     }
+                    else
+                    {
+                        var total = _mix.Sum(m => m.Amount);
+                        <div class="esc-stack" aria-hidden="true">
+                            @foreach (var (m, i) in _mix.Select((m, i) => (m, i)))
+                            {
+                                <div style="flex:@Css(m.Amount);background:var(--data-@(i % 4 + 1))"></div>
+                            }
+                        </div>
+                        <ul class="esc-barlist">
+                            @foreach (var (m, i) in _mix.Select((m, i) => (m, i)))
+                            {
+                                <li class="esc-barlist__row">
+                                    <span class="esc-swatch" style="background:var(--data-@(i % 4 + 1))"></span>
+                                    <span class="esc-barlist__name">@Names.PaymentMethod(m.Method)</span>
+                                    <span class="esc-barlist__share">@(total == 0 ? 0 : Math.Round(m.Amount / total * 100)) %</span>
+                                    <span class="esc-barlist__value">@Format.WithCurrency(m.Amount)</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+
+                <section class="esc-card esc-card--padded" aria-labelledby="registers-title">
+                    <div class="esc-card__head"><h2 id="registers-title" class="esc-card__title">Cajas ahora</h2><span class="esc-card__aside">@_registers.Count(r => r.OpenShiftId is not null) de @_registers.Count abiertas</span></div>
+                    <ul class="esc-barlist">
+                        @foreach (var r in _registers)
+                        {
+                            <li class="esc-barlist__row" style="align-items:center">
+                                @if (r.Cashier is { } cashier)
+                                {
+                                    <span class="esc-avatar" aria-hidden="true">@Names.Initials(cashier)</span>
+                                    <span class="esc-barlist__name">@r.Name<span class="esc-table__sub">@cashier@(_openSince.TryGetValue(r.OpenShiftId!.Value, out var since) ? $" · desde {(DateOnly.FromDateTime(Format.StoreTime(since)) == Format.Today ? Format.Time(since) : When(since))}" : "")</span></span>
+                                    <span class="esc-pill esc-pill--success">Abierta</span>
+                                }
+                                else
+                                {
+                                    <span class="esc-avatar" aria-hidden="true" style="background:var(--surface-2);color:var(--text-3)"><Icon Name="register" Size="16" /></span>
+                                    <span class="esc-barlist__name">@r.Name</span>
+                                    <span class="esc-pill esc-pill--neutral">Cerrada</span>
+                                }
+                            </li>
+                        }
+                    </ul>
+                </section>
+                </div>
+
+                @if (_debts.Count > 0)
+                {
+                    <section class="esc-card esc-card--padded esc-span-12" aria-labelledby="debts-title">
+                        <div class="esc-card__head"><h2 id="debts-title" class="esc-card__title">Le deben (fiado)</h2><span class="esc-card__aside">@Format.WithCurrency(_debts.Sum(d => d.Total)) · @_debts.Count @(_debts.Count == 1 ? "cliente" : "clientes")</span></div>
+                        <ul class="esc-barlist">
+                            @foreach (var d in _debts.OrderByDescending(d => d.Total).Take(4))
+                            {
+                                <li class="esc-barlist__row" style="align-items:center">
+                                    <span class="esc-avatar" aria-hidden="true">@Names.Initials(d.Customer)</span>
+                                    <span class="esc-barlist__name">@d.Customer@if (d.CreditLimit > 0 && d.Total > d.CreditLimit) { <span class="esc-pill esc-pill--error" style="margin-left:8px">Pasó su límite</span> }@if (d.Over90 > 0) { <span class="esc-pill esc-pill--warning" style="margin-left:8px">Más de 90 días</span> }</span>
+                                    <span class="esc-barlist__value">@Format.WithCurrency(d.Total)</span>
+                                </li>
+                            }
+                        </ul>
+                    </section>
+                }
+
+                <section class="esc-card esc-card--padded esc-span-12" aria-labelledby="top-title">
+                    <div class="esc-card__head"><h2 id="top-title" class="esc-card__title">Lo más vendido</h2><span class="esc-card__aside">@PeriodShort · venta sin ITBIS</span></div>
                     @if (_top.Count == 0)
                     {
-                        <tr><td colspan="3" class="esc-muted">Sin ventas todavía.</td></tr>
+                        <EmptyState Icon="package" Title="Todavía no hay ventas en este periodo">Los productos aparecen aquí con su cantidad y su parte del total.</EmptyState>
                     }
-                </tbody>
-            </table>
-        </section>
-    </div>
+                    else
+                    {
+                        var max = _top.Max(p => p.NetWithoutItbis);
+                        var all = _topTotal == 0 ? 1 : _topTotal;
+                        <ul class="esc-barlist" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:16px 40px">
+                            @foreach (var p in _top)
+                            {
+                                <li>
+                                    <div class="esc-barlist__row">
+                                        <span class="esc-barlist__name">@p.Product</span>
+                                        <span class="esc-barlist__qty">@Quantity(p)</span>
+                                        <span class="esc-barlist__value">@Format.WithCurrency(p.NetWithoutItbis)</span>
+                                    </div>
+                                    <div class="esc-barlist__track" title="@($"{p.NetWithoutItbis / all * 100:0} % del total")"><div style="width:@Css(max == 0 ? 0 : p.NetWithoutItbis / max * 100)%"></div></div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            </div>
+        }
+    </ChildContent>
 </Admin>
 
 @code {
-    private DailySales? _today;
-    private List<DailySales> _week = [];
-    private List<ProductSales> _top = [];
-    private List<RegisterInfo> _registers = [];
-    private readonly List<string> _alerts = [];
-    private decimal _max;
-
-    protected override async Task OnInitializedAsync()
+    private sealed record Totals(decimal Sales, int Count, decimal Net, decimal Profit)
     {
-        var today = Format.Today;
-        var days = (await Api.GetAsync<List<DailySales>>($"/api/reports/sales/by-day?from={today.AddDays(-6):yyyy-MM-dd}&to={today:yyyy-MM-dd}")).Value ?? [];
-        // Days without sales are missing from the report: fill them so the chart has 7 bars.
-        _week = [.. Enumerable.Range(0, 7).Select(i => today.AddDays(i - 6)).Select(d => days.Find(x => x.Day == d) ?? new DailySales(d, 0, 0, 0, 0, 0, 0, 0, 0))];
-        _today = _week[^1];
-        _max = _week.Max(d => d.SalesWithItbis);
-        _top = [.. ((await Api.GetAsync<List<ProductSales>>($"/api/reports/sales/by-product?from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}")).Value ?? [])
-            .OrderByDescending(p => p.NetWithoutItbis).Take(6)];
-        _registers = (await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers")).Value ?? [];
-        foreach (var a in (await Api.GetAsync<List<SequenceAlert>>("/api/fiscal/alerts")).Value?.Where(a => a.Alert) ?? [])
-            _alerts.Add($"{Names.DocumentType(a.Type)}: quedan {a.Available} comprobantes{(a.ExpiresOn is { } v ? $", vencen el {v:dd/MM/yyyy}" : "")}. Cargue una nueva secuencia en Configuración.");
+        public decimal Average => Count == 0 ? 0 : Math.Round(Sales / Count, 2);
+        public static Totals Of(IEnumerable<DailySales> days) =>
+            days.Aggregate(new Totals(0, 0, 0, 0), (t, d) => new(t.Sales + d.SalesWithItbis, t.Count + d.SaleCount, t.Net + d.NetWithoutItbis, t.Profit + d.Profit));
     }
+
+    private sealed record Alert(string Kind, string Icon, string Title, string Meta, string Action, string Href);
+    private sealed record Mix(PaymentMethod Method, decimal Amount);
+
+    private static readonly System.Globalization.CultureInfo Es = System.Globalization.CultureInfo.GetCultureInfo("es-DO");
+    private static readonly IReadOnlyList<(string, string)> Ranges = [("today", "Hoy"), ("yesterday", "Ayer"), ("week", "7 días"), ("month", "Mes")];
+
+    private string _range = "today";
+    private bool _loading = true;
+    private DateOnly _from, _to;
+    private Totals _current = Totals.Of([]), _previous = Totals.Of([]);
+    private List<BarChart.Point> _chart = [];
+    private List<ProductSales> _top = [];
+    private decimal _topTotal;
+    private Dictionary<Guid, string> _units = [];
+    private List<RegisterInfo> _registers = [];
+    private List<Mix> _mix = [];
+    private Dictionary<Guid, DateTime> _openSince = [];
+    private List<Receivable> _debts = [];
+    private readonly List<Alert> _alerts = [];
+
+    private static string Subtitle => $"{Capitalize(Format.Today.ToString("dddd d 'de' MMMM", Es))} · cifras de esta tienda, al momento";
+
+    private string HeroLabel => _range switch
+    {
+        "today" => "Vendido hoy",
+        "yesterday" => $"Vendido ayer, {_to.ToString("dddd d", Es)}",
+        "week" => "Vendido en los últimos 7 días",
+        _ => $"Vendido en {_to.ToString("MMMM", Es)} (hasta hoy)",
+    };
+
+    private string WeekdayLastWeek => _to.AddDays(-7).ToString("dddd", Es) + " pasado";
+    private string CompareLabel => _range switch
+    {
+        "yesterday" => $"el {_to.AddDays(-7).ToString("dddd d", Es)}",
+        "week" => "los 7 días anteriores",
+        _ => "los mismos días del mes pasado",
+    };
+    private string CompareShort => _range switch { "today" or "yesterday" => $"el {_to.AddDays(-7).ToString("dddd", Es)} anterior", "week" => "la semana anterior", _ => "el mes pasado" };
+    private string GhostLabel => _range == "month" ? "Mes pasado" : "Semana anterior";
+    private string PeriodShort => _range switch { "today" => "Hoy", "yesterday" => "Ayer", "week" => "7 días", _ => "Este mes" };
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task ChangeRangeAsync(string range)
+    {
+        _range = range;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var today = Format.Today;
+        (_from, _to) = _range switch
+        {
+            "yesterday" => (today.AddDays(-1), today.AddDays(-1)),
+            "week" => (today.AddDays(-6), today),
+            "month" => (new DateOnly(today.Year, today.Month, 1), today),
+            _ => (today, today),
+        };
+        // Chart days and each one's reference ("ghost"): a week before, or the same day of last month.
+        var chartDays = _range == "month" ? Days(_from, _to) : Days(_to.AddDays(-6), _to);
+        Func<DateOnly, DateOnly> before = _range == "month" ? d => d.AddMonths(-1) : d => d.AddDays(-7);
+        var compareFrom = _range == "month" ? _from.AddMonths(-1) : _range == "week" ? _from.AddDays(-7) : _from.AddDays(-7);
+        var fetchFrom = new[] { compareFrom, before(chartDays[0]) }.Min();
+
+        var byDay = (await Api.GetAsync<List<DailySales>>($"/api/reports/sales/by-day?from={fetchFrom:yyyy-MM-dd}&to={_to:yyyy-MM-dd}")).Value ?? [];
+        var day = byDay.ToDictionary(d => d.Day);
+        decimal Sales(DateOnly d) => day.TryGetValue(d, out var s) ? s.SalesWithItbis : 0;
+
+        _current = Totals.Of(byDay.Where(d => d.Day >= _from && d.Day <= _to));
+        var previousTo = _range == "month" ? new[] { before(_to), new DateOnly(compareFrom.Year, compareFrom.Month, DateTime.DaysInMonth(compareFrom.Year, compareFrom.Month)) }.Min() : before(_to);
+        _previous = Totals.Of(byDay.Where(d => d.Day >= compareFrom && d.Day <= previousTo));
+        _chart = [.. chartDays.Select(d => new BarChart.Point(
+            Label: _range == "month" ? d.Day.ToString(Es) : d == today ? "Hoy" : Capitalize(d.ToString("ddd d", Es).Replace(".", "")),
+            Title: Capitalize(d.ToString("dddd d 'de' MMMM", Es)),
+            Value: Sales(d),
+            Ghost: Sales(before(d)),
+            Detail: day.TryGetValue(d, out var s) ? $"{s.SaleCount} {(s.SaleCount == 1 ? "factura" : "facturas")}" : "Sin ventas",
+            IsCurrent: d == _to))];
+
+        var products = (await Api.GetAsync<List<ProductSales>>($"/api/reports/sales/by-product?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}")).Value ?? [];
+        _topTotal = products.Sum(p => p.NetWithoutItbis);
+        _top = [.. products.OrderByDescending(p => p.NetWithoutItbis).Take(6)];
+        if (_units.Count == 0)
+            _units = ((await Api.GetAsync<List<ProductSummary>>("/api/inventory/products?includeInactive=true")).Value ?? []).ToDictionary(p => p.Id, p => p.Unit);
+        _registers = (await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers")).Value ?? [];
+        // Who owes (JTBD 4): today's balances, whatever the period.
+        _debts = [.. ((await Api.GetAsync<List<Receivable>>("/api/reports/receivables")).Value ?? []).Where(d => d.Total > 0)];
+
+        // Shifts of the period (payment mix) and of the last 7 days (differences to review).
+        var shiftFrom = new[] { _from, today.AddDays(-6) }.Min();
+        var shifts = (await Api.GetAsync<List<ShiftSummary>>($"/api/reports/shifts?from={shiftFrom:yyyy-MM-dd}&to={today:yyyy-MM-dd}")).Value ?? [];
+        _openSince = shifts.Where(s => s.ClosedUtc is null).ToDictionary(s => s.ShiftId, s => s.OpenedUtc);
+        await LoadMixAsync(shifts.Where(s => Format.StoreTime(s.OpenedUtc) is var o && DateOnly.FromDateTime(o) >= _from && DateOnly.FromDateTime(o) <= _to));
+
+        _alerts.Clear();
+        foreach (var s in shifts.Where(s => s.Difference is { } d && d != 0 && s.ClosedUtc is { } c && DateOnly.FromDateTime(Format.StoreTime(c)) >= today.AddDays(-6)).OrderByDescending(s => s.ClosedUtc).Take(5))
+        {
+            var d = s.Difference!.Value;
+            _alerts.Add(new(d < 0 ? "error" : "warning", "cash",
+                $"{(d < 0 ? "Faltaron" : "Sobraron")} <b>{Format.WithCurrency(Math.Abs(d))}</b> en {System.Net.WebUtility.HtmlEncode(s.Register)}",
+                $"{s.Cashier} · cierre Z #{s.ZNumber} · {When(s.ClosedUtc!.Value)}", "Ver cierre", $"admin/shifts?shift={s.ShiftId}"));
+        }
+        foreach (var s in shifts.Where(s => s.ClosedUtc is null && DateOnly.FromDateTime(Format.StoreTime(s.OpenedUtc)) < today))
+            _alerts.Add(new("warning", "clock", $"{System.Net.WebUtility.HtmlEncode(s.Register)} sigue abierta desde {When(s.OpenedUtc)}",
+                $"{s.Cashier} no ha cerrado el turno. Ciérrelo en la caja para cuadrar.", "Ver turno", $"admin/shifts?shift={s.ShiftId}"));
+        // Running low (JTBD 3). shortcut: the whole stock list filtered here, since ?belowMinimumOnly=true fails on the server (follow-up in TK-173).
+        var low = ((await Api.GetAsync<List<StockItem>>("/api/inventory/stock")).Value ?? []).Where(s => s.BelowMinimum && s.Quantity > 0).OrderBy(s => s.Quantity).ToList();
+        foreach (var s in low.Take(2))
+            _alerts.Add(new("warning", "package", $"Quedan <b>{(s.Unit == UnitOfMeasure.Pound ? $"{N(s.Quantity)} lb" : N(s.Quantity))}</b> de {System.Net.WebUtility.HtmlEncode(s.Name)}",
+                $"{s.Category} · está por debajo del mínimo{(low.Count > 2 && s == low[1] ? $" · y {low.Count - 2} productos más" : "")}", "Ver productos", "admin/products"));
+        foreach (var a in (await Api.GetAsync<List<SequenceAlert>>("/api/fiscal/alerts")).Value?.Where(a => a.Alert) ?? [])
+            _alerts.Add(new("warning", "receipt", $"Quedan <b>{a.Available}</b> comprobantes de {System.Net.WebUtility.HtmlEncode(Names.DocumentType(a.Type))}",
+                a.ExpiresOn is { } v ? $"Vencen el {v.ToString("d 'de' MMMM", Es)}. Sin comprobantes la caja no puede facturar." : "Sin comprobantes la caja no puede facturar.",
+                "Cargar secuencia", "admin/settings?section=fiscal"));
+        _loading = false;
+    }
+
+    /// <summary>The mix comes from each shift's Z (sales minus voids and refunds; customer payments are not sales).</summary>
+    // shortcut: one Z call per shift (at most 31); a payment-mix report endpoint would make the month cheaper.
+    private async Task LoadMixAsync(IEnumerable<ShiftSummary> shifts)
+    {
+        var reports = await Task.WhenAll(shifts.Take(31).Select(s => Api.GetAsync<ZReport>($"/api/cash/shifts/{s.ShiftId}/z")));
+        _mix = [.. reports.SelectMany(r => r.Value?.ByMethod ?? [])
+            .GroupBy(m => m.Method)
+            .Select(g => new Mix(g.Key, g.Sum(m => m.SalePayments - m.Voids - m.Refunds)))
+            .Where(m => m.Amount > 0)
+            .OrderByDescending(m => m.Amount)];
+    }
+
+    private string Quantity(ProductSales p) =>
+        _units.TryGetValue(p.ProductId, out var unit) && unit == "Pound" ? $"{N(p.Quantity)} lb" : $"{N(p.Quantity)} {(p.Quantity == 1 ? "unidad" : "unidades")}";
+
+    /// <summary>"hoy, 6:05 p. m.", "ayer, 7:10 p. m." or "lun 12 oct, 6:05 p. m.".</summary>
+    private static string When(DateTime utc)
+    {
+        var local = Format.StoreTime(utc);
+        var d = DateOnly.FromDateTime(local);
+        var day = d == Format.Today ? "hoy" : d == Format.Today.AddDays(-1) ? "ayer" : local.ToString("ddd d MMM", Es).Replace(".", "");
+        return $"{day}, {Format.Time(utc)}";
+    }
+
+    private static List<DateOnly> Days(DateOnly from, DateOnly to) => [.. Enumerable.Range(0, to.DayNumber - from.DayNumber + 1).Select(from.AddDays)];
+    private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpper(s[0], Es) + s[1..];
+    private static string N(decimal v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Css(decimal v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 }

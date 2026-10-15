@@ -1,42 +1,108 @@
-@* Back office frame: the side menu and the page. "Vender" goes to the register (F1). *@
+@* Back office shell (Escuadra Admin): icon menu on the PC (collapsible), top bar and bottom tabs on a narrow screen.
+   "Vender" goes to the register (F1). The register's dark status bar is not shown here (Frame skips it for admin routes). *@
+@implements IDisposable
 @inject Session Session
+@inject BackOffice BackOffice
 @inject TokiApi Api
 @inject NavigationManager Nav
 
 @* data-keys: escuadra.js sends here the keys pressed while nothing has the focus (F1 right after the page loads). *@
-<div class="esc-admin" data-keys @onkeydown="KeyDown">
-    <nav class="esc-menu" aria-label="Secciones">
-        <a href="sale" class="esc-menu__sell"><span>Vender</span><Keycap>F1</Keycap></a>
-        <NavLink href="admin" Match="NavLinkMatch.All">Resumen</NavLink>
-        <NavLink href="admin/products">Productos</NavLink>
-        <NavLink href="admin/shifts">Turnos y cuadres</NavLink>
-        @if (Session.Can("settings.manage") || Session.Can("users.manage"))
+<div class="esc-admin esc-shell @(BackOffice.MenuCollapsed ? "esc-shell--collapsed" : "")" data-keys @onkeydown="KeyDown">
+    <aside class="esc-side">
+        <div class="esc-side__brand">
+            <Logo Size="28" />
+            <span class="esc-spacer"></span>
+            <button type="button" class="esc-side__item esc-side__toggle" aria-label="@(BackOffice.MenuCollapsed ? "Mostrar el menú" : "Contraer el menú")"
+                    title="@(BackOffice.MenuCollapsed ? "Mostrar el menú" : "Contraer el menú")" @onclick="() => BackOffice.MenuCollapsed = !BackOffice.MenuCollapsed">
+                <Icon Name="panel" Size="18" />
+            </button>
+        </div>
+        @if (BackOffice.BusinessName is { } business)
         {
-            <NavLink href="admin/settings">Configuración</NavLink>
+            <div class="esc-side__store"><b>@business</b>Administración</div>
         }
-        <div class="esc-spacer"></div>
-        <a href="" @onclick="SignOutAsync" @onclick:preventDefault="true"><Icon Name="sign-out" /> &nbsp;Salir</a>
-    </nav>
-    <div class="esc-page">
-        <div class="esc-row" style="justify-content:space-between">
-            <div>
-                <h1 class="esc-title">@Title</h1>
-                @if (Subtitle is not null)
+        <nav class="esc-side__nav" aria-label="Secciones">
+            @foreach (var s in Sections)
+            {
+                <NavLink href="@s.Href" Match="@(s.Href == "admin" ? NavLinkMatch.All : NavLinkMatch.Prefix)" title="@s.Label">
+                    <Icon Name="@s.Icon" /><span class="esc-side__label">@s.Label</span>
+                </NavLink>
+            }
+        </nav>
+        <div class="esc-side__foot">
+            <a href="sale" class="esc-side__sell" title="Ir a vender (F1)"><Icon Name="cart" /><span class="esc-side__label">Ir a vender</span><span class="esc-spacer"></span><Keycap>F1</Keycap></a>
+            <div class="esc-side__user">
+                <span class="esc-avatar" aria-hidden="true">@Names.Initials(Session.Name)</span>
+                <div><b>@Session.Name</b>@(Session.Online ? "En línea" : "Sin conexión · reintentando")</div>
+            </div>
+            <a href="" title="Salir" @onclick="SignOutAsync" @onclick:preventDefault="true"><Icon Name="sign-out" /><span class="esc-side__label">Salir</span></a>
+        </div>
+    </aside>
+
+    <header class="esc-topbar">
+        <Logo Size="26" />
+        <span class="esc-topbar__store">@BackOffice.BusinessName</span>
+        <a href="sale" class="esc-button esc-button--small"><Icon Name="cart" Size="16" /> Vender</a>
+        <a href="" class="esc-button esc-button--ghost esc-button--small" aria-label="Salir" @onclick="SignOutAsync" @onclick:preventDefault="true"><Icon Name="sign-out" Size="18" /></a>
+    </header>
+
+    <main class="esc-main">
+        <div class="esc-page">
+            @if (!Session.Online)
+            {
+                <span class="esc-offline" role="status">Sin conexión con el servidor de la tienda · reintentando. Las cifras pueden no estar al día.</span>
+            }
+            <div class="esc-page-head">
+                <div>
+                    <h1>@Title</h1>
+                    @if (Subtitle is not null)
+                    {
+                        <p>@Subtitle</p>
+                    }
+                </div>
+                @if (Actions is not null)
                 {
-                    <p class="esc-subtitle">@Subtitle</p>
+                    <div class="esc-page-head__actions">@Actions</div>
                 }
             </div>
-            @Actions
+            @ChildContent
         </div>
-        @ChildContent
-    </div>
+    </main>
+
+    <nav class="esc-tabbar" aria-label="Secciones">
+        @foreach (var s in Sections)
+        {
+            <NavLink href="@s.Href" Match="@(s.Href == "admin" ? NavLinkMatch.All : NavLinkMatch.Prefix)"><Icon Name="@s.Icon" Size="22" />@s.Short</NavLink>
+        }
+    </nav>
 </div>
 
 @code {
+    private sealed record SectionLink(string Href, string Label, string Short, string Icon);
+
     [Parameter, EditorRequired] public string Title { get; set; } = "";
     [Parameter] public string? Subtitle { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private IEnumerable<SectionLink> Sections
+    {
+        get
+        {
+            yield return new("admin", "Resumen", "Resumen", "dashboard");
+            yield return new("admin/products", "Productos", "Productos", "package");
+            yield return new("admin/shifts", "Turnos y cuadres", "Cuadres", "wallet");
+            if (Session.Can("settings.manage") || Session.Can("users.manage")) yield return new("admin/settings", "Configuración", "Ajustes", "settings");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += OnSessionChanged;
+        BackOffice.BusinessName ??= (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value?.Name;
+    }
+
+    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
 
     private void KeyDown(KeyboardEventArgs e)
     {
@@ -49,4 +115,6 @@
         Session.Close();
         Nav.NavigateTo("sign-in");
     }
+
+    public void Dispose() => Session.Changed -= OnSessionChanged;
 }

@@ -1,0 +1,7 @@
+@* Escuadra Admin: a gray block where content is loading (still when the user prefers reduced motion). *@
+<span class="esc-skeleton" aria-hidden="true" style="width:@Width;height:@Height"></span>
+
+@code {
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "16px";
+}
