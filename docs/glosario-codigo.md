@@ -92,20 +92,30 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 |---|---|
 | `usuarios.gestionar` | `users.manage` |
 | `dispositivos.gestionar` | `devices.manage` |
-| `configuracion.gestionar` | `settings.manage` |
+| `configuracion.gestionar` (negocio, recibo, autorizaciones, nube, licencia) | `settings.manage` |
+| crear y renombrar cajas, asignarles equipo (M16) | `registers.manage` |
+| hacer y restaurar respaldos (M16) | `backups.manage` |
+| ver la auditoría (M16) | `audit.view` |
 | `productos.gestionar` | `products.manage` |
 | `precios.cambiar` | `prices.change` |
 | `inventario.ver` / `ajustar` / `contar` / `transferir` | `inventory.view` / `adjust` / `count` / `transfer` |
-| `caja.operar` / `retirar` / `aprobar-cierre` / `abrir-gaveta` | `register.operate` / `withdraw` / `approve-close` / `open-drawer` |
+| abrir turno / cerrar su turno / entradas de efectivo (M16, antes `register.operate`) | `register.open` / `close` / `cash-in` |
+| `caja.retirar` / `aprobar-cierre` (cierres con diferencia y turnos de otras cajas) / `abrir-gaveta` | `register.withdraw` / `approve-close` / `open-drawer` |
 | `ventas.registrar` / `anular` / `devolver` | `sales.create` / `void` / `return` |
 | `ventas.descuento-mayor` / `cambiar-precio` | `sales.large-discount` / `price-override` |
 | `ventas.quitar-linea` (quitar líneas o anular la venta en curso) | `sales.remove-line` |
-| `compras.gestionar` | `purchasing.manage` |
+| `compras.gestionar` (suplidores, compras, pedido sugerido) | `purchasing.manage` |
+| pagar a suplidores y gastos con NCF (M16) | `payables.pay` |
 | `clientes.gestionar` | `customers.manage` |
+| cobrar abonos de fiado en la caja (M16) | `credit.collect` |
 | `fiado.gestionar` / `exceder-limite` | `credit.manage` / `exceed-limit` |
-| `fiscal.gestionar` | `fiscal.manage` |
-| `reportes.ver` | `reports.view` |
+| `fiscal.gestionar` (certificado, secuencias, anulaciones, padrón) | `fiscal.manage` |
+| reportes de la DGII 606/607/608 (M16) | `fiscal.reports` |
+| `reportes.ver` (ventas e inventario) | `reports.view` |
+| Turnos y cuadres de todas las cajas (M16) | `shifts.view` |
 | ver costos y ganancias | `costs.view` |
+
+Roles de partida (M16): Administrador, Supervisor, Cajero, Cajero con apertura, Inventario (`StockKeeperId`), Contador (`AccountantId`).
 
 ## Otros
 

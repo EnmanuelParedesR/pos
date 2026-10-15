@@ -91,7 +91,7 @@ public sealed class AdminPurchasingTests
     [Fact]
     public void What_is_owed_shows_the_overdue_part_and_a_payment_goes_to_the_supplier_account()
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage", "reports.view");
+        var (ctx, api) = ScreenContext.Create("purchasing.manage", "payables.pay", "reports.view");
         using var _ = ctx;
         var payment = Guid.NewGuid();
         api.Json("GET", "/api/reports/payables", new[]

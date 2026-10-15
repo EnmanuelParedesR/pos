@@ -1,6 +1,7 @@
 @* A supplier's statement (invoices and payments with the running balance), paying it (oldest invoices first) and voiding a payment typed wrong.
    Opened from Suplidores and from Por pagar. *@
 @inject TokiApi Api
+@inject Session Session
 
 <Dialog Title="@(_statement?.Supplier ?? "Estado de cuenta")" Subtitle="@Subtitle" Wide="true" OnClose="OnClose">
     <ChildContent>
@@ -48,7 +49,7 @@
                                 <td class="esc-num" style="color:var(--success)">@(l.Payment > 0 ? Format.Amount(l.Payment) : "")</td>
                                 <td class="esc-num" style="font-weight:600">@Format.Amount(l.Balance)</td>
                                 <td class="esc-table__chev">
-                                    @if (l.PaymentId is { } id)
+                                    @if (l.PaymentId is { } id && CanPay)
                                     {
                                         <button type="button" class="esc-button esc-button--ghost esc-button--small" @onclick="() => (_voiding, _voidReason, _error) = (id, null, null)">Anular</button>
                                     }
@@ -86,7 +87,7 @@
         else
         {
             <Button OnClick="OnClose" Shortcut="Esc">Cerrar</Button>
-            @if (_statement is { Balance: > 0 })
+            @if (_statement is { Balance: > 0 } && CanPay)
             {
                 <Button Variant="Button.Variants.Primary" OnClick="StartPayment"><Icon Name="cash" Size="18" /> Pagar</Button>
             }
@@ -101,6 +102,8 @@
     /// <summary>A payment was saved or voided: the list behind should reload.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
 
+    /// <summary>TK-214: paying and voiding payments take payables.pay; purchasing.manage alone only reads the statement.</summary>
+    private bool CanPay => Session.Can("payables.pay");
     private SupplierStatement? _statement;
     private bool _paying, _sending;
     private string? _amount, _reference, _amountError, _error, _paid, _voidReason;
@@ -113,7 +116,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
-        if (Pay && _statement is { Balance: > 0 }) StartPayment();
+        if (Pay && CanPay && _statement is { Balance: > 0 }) StartPayment();
     }
 
     private async Task LoadAsync()

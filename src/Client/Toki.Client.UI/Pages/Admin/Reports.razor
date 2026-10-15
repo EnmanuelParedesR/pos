@@ -23,7 +23,7 @@
             }
         </section>
 
-        @foreach (var group in Groups)
+        @foreach (var group in Shown)
         {
             <section class="esc-card esc-card--padded">
                 <div class="esc-card__head"><h2 class="esc-section-title">@group.Title</h2>@if (group.Note is not null) { <span class="esc-muted">@group.Note</span> }</div>
@@ -56,6 +56,13 @@
 @code {
     private sealed record Report(string Path, string Name, string About, string Icon, bool UsesPeriod = true);
     private sealed record Group(string Title, string? Note, Report[] Reports);
+
+    /// <summary>TK-213: Turnos y cuadres needs shifts.view and the DGII formats fiscal.reports; the rest reports.view (the server checks the same).</summary>
+    private static string PermissionOf(Report r) => r.Path == "shifts" ? "shifts.view" : r.Path.StartsWith("dgii/", StringComparison.Ordinal) ? "fiscal.reports" : "reports.view";
+
+    public static bool Allowed(Session s) => s.Can("reports.view") || s.Can("shifts.view") || s.Can("fiscal.reports");
+
+    private IEnumerable<Group> Shown => Groups.Select(g => g with { Reports = [.. g.Reports.Where(r => Session.Can(PermissionOf(r)))] }).Where(g => g.Reports.Length > 0);
 
     private static readonly IReadOnlyList<(string, string)> Periods = [("month", "Este mes"), ("last-month", "Mes pasado"), ("7", "7 días")]; // any other dates: the fields beside it
     private static readonly (string, string)[] Formats = [("xlsx", "Excel"), ("csv", "CSV")];

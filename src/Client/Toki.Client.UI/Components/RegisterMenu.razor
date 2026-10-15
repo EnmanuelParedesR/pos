@@ -26,9 +26,13 @@ else
                 {
                     <Button Wide="true" Disabled="_sending" OnClick="OpenDrawerAsync" style="justify-content:space-between"><span>Abrir la gaveta sin venta</span>@if (!Session.Can("register.open-drawer")) { <Icon Name="lock" /> }</Button>
                 }
-                <Button Wide="true" OnClick="() => (_customerPayment, _message) = (true, null)" style="justify-content:space-between"><span>Abono de cliente (paga su fiado)</span></Button>
+                @if (Session.Can("credit.collect"))
+                {
+                    <Button Wide="true" OnClick="() => (_customerPayment, _message) = (true, null)" style="justify-content:space-between"><span>Abono de cliente (paga su fiado)</span></Button>
+                }
                 <Button Wide="true" OnClick='() => Nav.NavigateTo("shift-sales")' style="justify-content:space-between"><span>Ventas de este turno · anular y devolver</span></Button>
-                <Button Wide="true" OnClick='() => Nav.NavigateTo("close-register")' style="justify-content:space-between"><span>Cerrar caja</span></Button>
+                @* Without register.close a supervisor authorizes the closing with their PIN (TK-212). *@
+                <Button Wide="true" OnClick='() => Nav.NavigateTo("close-register")' style="justify-content:space-between"><span>Cerrar caja</span>@if (!Session.Can("register.close")) { <Icon Name="lock" /> }</Button>
                 @if (Session.IsBackOffice)
                 {
                     <Button Wide="true" OnClick='() => Nav.NavigateTo("admin")' style="justify-content:space-between"><span>Ir a administración</span></Button>

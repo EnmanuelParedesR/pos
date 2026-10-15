@@ -46,6 +46,19 @@
                     <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary">Guardar cambios</Button></div>
                 </div>
             </form>
+            @* The approval policy is settings.manage (TK-213), so it lives with the business data, not with Cajas (registers.manage). *@
+            <form class="esc-card esc-setting" @onsubmit="SaveApprovalsAsync" novalidate>
+                <div class="esc-setting__about"><h2>Autorizaciones</h2><p>Pedir autorización de supervisor para… Si nadie supervisa (por ejemplo, un colmado de una persona), apáguelas: quien atiende lo hace solo y queda igual en la auditoría.</p></div>
+                <div class="esc-setting__body">
+                    <fieldset class="esc-col" style="gap:0;border:0;padding:0;margin:0" aria-label="Pedir autorización de supervisor para">
+                        @foreach (var rule in _approvals)
+                        {
+                            <label class="esc-check"><input type="checkbox" role="switch" checked="@rule.Required" @onchange="e => _approvals[_approvals.IndexOf(rule)] = rule with { Required = (bool)e.Value! }" /> @Approver.Explain(rule.Permission)</label>
+                        }
+                    </fieldset>
+                    <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Guardar autorizaciones</Button></div>
+                </div>
+            </form>
             break;
 
         case Section.Registers:
@@ -88,18 +101,6 @@
                     </form>
                 </div>
             </section>
-            <form class="esc-card esc-setting" @onsubmit="SaveApprovalsAsync" novalidate>
-                <div class="esc-setting__about"><h2>Autorizaciones</h2><p>Pedir autorización de supervisor para… Si nadie supervisa (por ejemplo, un colmado de una persona), apáguelas: quien atiende lo hace solo y queda igual en la auditoría.</p></div>
-                <div class="esc-setting__body">
-                    <fieldset class="esc-col" style="gap:0;border:0;padding:0;margin:0" aria-label="Pedir autorización de supervisor para">
-                        @foreach (var rule in _approvals)
-                        {
-                            <label class="esc-check"><input type="checkbox" role="switch" checked="@rule.Required" @onchange="e => _approvals[_approvals.IndexOf(rule)] = rule with { Required = (bool)e.Value! }" /> @Approver.Explain(rule.Permission)</label>
-                        }
-                    </fieldset>
-                    <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Guardar autorizaciones</Button></div>
-                </div>
-            </form>
             break;
 
         case Section.FiscalSequences:
@@ -414,11 +415,15 @@
 
     private Section[] Sections => [.. new Section?[]
     {
-        Session.Can("settings.manage") ? Section.Business : null, Session.Can("settings.manage") ? Section.Registers : null,
+        Session.Can("settings.manage") ? Section.Business : null, Session.Can("registers.manage") ? Section.Registers : null,
         Session.Can("fiscal.manage") ? Section.FiscalSequences : null, Session.Can("devices.manage") ? Section.Devices : null, Session.Can("settings.manage") ? Section.Hardware : null,
         Session.Can("users.manage") ? Section.Users : null, Session.Can("users.manage") ? Section.Roles : null,
-        Session.Can("settings.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License,
+        Session.Can("backups.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License,
     }.OfType<Section>()];
+
+    /// <summary>Configuración shows in the menu when any of its sections does (License alone is only informative).</summary>
+    public static bool Allowed(Session s) =>
+        new[] { "settings.manage", "registers.manage", "backups.manage", "fiscal.manage", "devices.manage", "users.manage" }.Any(s.Can);
 
     private Section _section;
     private string? _message;
@@ -462,11 +467,11 @@
             case Section.Business:
                 var b = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value;
                 _business = b is null ? new() : new() { Name = b.Name, Rnc = b.Rnc, Address = b.Address, Phone = b.Phone, ReceiptFooter = b.ReceiptFooter, DiscountCap = b.DiscountCapPercent.ToString("0.##") };
+                _approvals = (await Api.GetAsync<List<ApprovalRule>>("/api/settings/approvals")).Value ?? [];
                 break;
             case Section.Registers:
                 _registers = (await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers")).Value ?? [];
                 _features ??= (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value;
-                _approvals = (await Api.GetAsync<List<ApprovalRule>>("/api/settings/approvals")).Value ?? [];
                 break;
             case Section.FiscalSequences:
                 _sequences = (await Api.GetAsync<List<EcfSequence>>("/api/fiscal/sequences")).Value ?? [];

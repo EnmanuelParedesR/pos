@@ -128,7 +128,8 @@ public sealed class DgiiEndToEndTests(DgiiTokiApp app) : IClassFixture<DgiiTokiA
         var smallDoc = await app.DocumentAsync("E320000000001");
         (smallDoc.Status, smallDoc.Channel, smallDoc.Environment).ShouldBe((SubmissionStatus.Accepted, EcfChannel.Rfce, FiscalEnvironment.TesteCF));
         var bigDoc = await app.DocumentAsync("E320000000002");
-        (bigDoc.Status, bigDoc.Channel, bigDoc.TrackId).ShouldBe((SubmissionStatus.Accepted, EcfChannel.Ecf, "track-2"));
+        (bigDoc.Status, bigDoc.Channel).ShouldBe((SubmissionStatus.Accepted, EcfChannel.Ecf));
+        bigDoc.TrackId.ShouldStartWith("track-"); // both whole e-CFs share one deadline (fake clock), so SQL Server may send either first
         var rejected = await app.DocumentAsync("E310000000001");
         (rejected.Status, rejected.DgiiCode, rejected.DgiiMessages).ShouldBe((SubmissionStatus.Rejected, 2, "145: El RNC del comprador no corresponde"));
 

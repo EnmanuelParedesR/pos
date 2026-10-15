@@ -43,7 +43,7 @@ internal static class Registers
         {
             app.MapPost("/api/cash/registers", async (Create c, ICommandHandler<Create, Response> h, CancellationToken ct) =>
                     (await h.Handle(c, ct)).ToHttp(r => Results.Created($"/api/cash/registers/{r.Id}", r)))
-                .RequirePermission(Permissions.SettingsManage).WithTags("CashRegister");
+                .RequirePermission(Permissions.RegistersManage).WithTags("CashRegister");
             app.MapGet("/api/cash/registers", async (CashRegisterDbContext db, CancellationToken ct) =>
                     Results.Ok(await (from r in db.Registers
                                       join s in db.Shifts.Where(s => s.Status == ShiftStatus.Open) on r.Id equals s.RegisterId into open
@@ -54,11 +54,11 @@ internal static class Registers
                 .RequireAuthorization().WithTags("CashRegister");
             app.MapPut("/api/cash/registers/{id:guid}", async (Guid id, RenameBody b, ICommandHandler<Rename, Response> h, CancellationToken ct) =>
                     (await h.Handle(new Rename(id, b.Name), ct)).ToHttp(_ => Results.NoContent()))
-                .RequirePermission(Permissions.SettingsManage).WithTags("CashRegister");
+                .RequirePermission(Permissions.RegistersManage).WithTags("CashRegister");
             // Moves the register to another device (replaced PC); null frees it so the next shift binds it again.
             app.MapPut("/api/cash/registers/{id:guid}/device", async (Guid id, AssignDevice body, ICommandHandler<AssignDevice, Response> h, CancellationToken ct) =>
                     (await h.Handle(body with { RegisterId = id }, ct)).ToHttp(Results.Ok))
-                .RequirePermission(Permissions.SettingsManage).WithTags("CashRegister");
+                .RequirePermission(Permissions.RegistersManage).WithTags("CashRegister");
         }
     }
 
@@ -100,10 +100,15 @@ internal static class Registers
     }
 }
 
-/// <summary>A cashier opens a shift on a physical register with the opening float.</summary>
+/// <summary>A cashier opens a shift on a physical register with the opening float. Without register.open a supervisor who has it
+/// authorizes the opening (TK-212: the manager opens the register in the morning); the shift is still the cashier's.</summary>
 internal static class OpenShift
 {
-    public sealed record Command(Guid RegisterId, decimal OpeningFloat) : ICommand<Response>;
+    public sealed record Command(Guid RegisterId, decimal OpeningFloat, Guid? SupervisorApprovalId = null) : ICommand<Response>, IRequiresApproval
+    {
+        public string Permission => Permissions.RegisterOpen;
+        public Guid ResourceId => RegisterId;
+    }
     public sealed record Response(Guid ShiftId);
 
     internal sealed class Validator : AbstractValidator<Command>
@@ -141,7 +146,7 @@ internal static class OpenShift
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/cash/shifts", async (Command c, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(c, ct)).ToHttp(r => Results.Created($"/api/cash/shifts/{r.ShiftId}", r)))
-                .RequirePermission(Permissions.RegisterOperate).WithTags("CashRegister");
+                .RequireAuthorization().WithTags("CashRegister"); // register.open or a supervisor who has it: the approval pipeline checks it
     }
 }
 
@@ -161,7 +166,7 @@ internal static class CurrentShift
                                    select new Response(shift.Id, register.Id, register.Name, shift.OpeningFloat, shift.OpenedUtc)).AsNoTracking().FirstOrDefaultAsync(ct);
                     return s is null ? EndpointExtensions.Problem(Error.NotFound("CashRegister.NoShift", "No tiene un turno abierto.")) : Results.Ok(s);
                 })
-                .RequirePermission(Permissions.RegisterOperate).WithTags("CashRegister");
+                .RequireAuthorization().WithTags("CashRegister");
     }
 }
 
@@ -174,7 +179,7 @@ internal static class RecordMovement
     public sealed record Command(Guid ShiftId, Guid MovementId, Kind MovementType, decimal Amount, MovementReason Reason, string? Note, Guid? SupervisorApprovalId)
         : ICommand<Response>, IRequiresApproval
     {
-        public string Permission => MovementType == Kind.CashIn ? Permissions.RegisterOperate : Permissions.RegisterWithdraw;
+        public string Permission => MovementType == Kind.CashIn ? Permissions.RegisterCashIn : Permissions.RegisterWithdraw;
         public Guid ResourceId => ShiftId;
     }
 
@@ -224,19 +229,16 @@ internal static class RecordMovement
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/cash/shifts/{id:guid}/movements", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.MovementId, b.MovementType, b.Amount, b.Reason, b.Note, b.SupervisorApprovalId), ct)).ToHttp())
-                .RequirePermission(Permissions.RegisterOperate).WithTags("CashRegister");
+                .RequireAuthorization().WithTags("CashRegister"); // register.cash-in / register.withdraw or a supervisor: the approval pipeline checks it
     }
 }
 
-/// <summary>Blind closing: the cashier counts bills and coins without seeing the expected cash; a supervisor approves.
-/// Returns the Z report with the difference.</summary>
+/// <summary>Blind closing: the cashier counts bills and coins without seeing the expected cash. Needs register.close (one's own shift;
+/// another's needs register.approve-close) or a supervisor's approval. A count with a difference needs register.approve-close or a supervisor's
+/// approval for the shift, when the store's policy asks for it (TK-212). Returns the Z report with the difference.</summary>
 internal static class CloseShift
 {
-    public sealed record Command(Guid ShiftId, IReadOnlyList<DenominationCount> CashCount, Guid? SupervisorApprovalId) : ICommand<ZReport>, IRequiresApproval
-    {
-        public string Permission => Permissions.RegisterApproveClose;
-        public Guid ResourceId => ShiftId;
-    }
+    public sealed record Command(Guid ShiftId, IReadOnlyList<DenominationCount> CashCount, Guid? SupervisorApprovalId) : ICommand<ZReport>;
 
     internal sealed class Validator : AbstractValidator<Command>
     {
@@ -253,7 +255,7 @@ internal static class CloseShift
     }
 
     internal sealed class Handler(CashRegisterDbContext db, InfraDbContext infra, ICashRegisterOperations operations, IUserContext user, IOutbox outbox, IAuditLog audit,
-        TimeProvider clock) : ICommandHandler<Command, ZReport>
+        ISupervisorApprovals approvals, IApprovalPolicy policy, TimeProvider clock) : ICommandHandler<Command, ZReport>
     {
         public async Task<Result<ZReport>> Handle(Command c, CancellationToken ct)
         {
@@ -263,19 +265,38 @@ internal static class CloseShift
             var shift = await db.Shifts.SingleAsync(s => s.Id == c.ShiftId, ct);
             var movements = await db.Movements.Where(m => m.ShiftId == c.ShiftId).AsNoTracking().ToListAsync(ct);
             var count = c.CashCount.Where(x => x.Quantity > 0).OrderByDescending(x => x.Denomination).ToList();
-            var lastZ = await db.Shifts.Where(s => s.RegisterId == shift.RegisterId && s.ZNumber != null).MaxAsync(s => s.ZNumber, ct) ?? 0;
+            var expected = ShiftBalance.ExpectedCash(shift.OpeningFloat, movements);
+            var counted = ShiftBalance.Counted(count);
 
+            // The approval is checked here, not in the pipeline: only the count tells whether there is a difference.
+            // One approval at most: register.approve-close also covers closing without register.close (it closes other registers' shifts).
+            // shortcut: "needs a supervisor" tells the cashier the count is off (not by how much); add a retry limit if stores report probing.
+            var approver = user.Has(Permissions.RegisterApproveClose);
+            var needed = counted != expected && !approver && await policy.RequiresSupervisorAsync(Permissions.RegisterApproveClose, ct) ? Permissions.RegisterApproveClose
+                : !approver && !user.Has(Permissions.RegisterClose) ? Permissions.RegisterClose
+                : null;
+            if (needed is not null)
+            {
+                if (c.SupervisorApprovalId is not { } id) return ApprovalErrors.Required(needed);
+                var supervisor = await approvals.ConsumeAsync(id, needed, c.ShiftId, ct);
+                if (supervisor.IsFailure) return supervisor.Error!;
+                user.SupervisorId = supervisor.Value;
+            }
+
+            var lastZ = await db.Shifts.Where(s => s.RegisterId == shift.RegisterId && s.ZNumber != null).MaxAsync(s => s.ZNumber, ct) ?? 0;
             shift.Status = ShiftStatus.Closed;
             shift.ClosedUtc = clock.GetUtcNow().UtcDateTime;
-            shift.ExpectedCash = ShiftBalance.ExpectedCash(shift.OpeningFloat, movements);
-            shift.CountedCash = ShiftBalance.Counted(count);
-            shift.Difference = shift.CountedCash - shift.ExpectedCash;
+            shift.ExpectedCash = expected;
+            shift.CountedCash = counted;
+            shift.Difference = counted - expected;
             shift.ClosingSupervisorId = user.SupervisorId ?? user.UserId;
             shift.CashCount = JsonSerializer.Serialize(count, Json.Options);
             shift.ZNumber = lastZ + 1;
 
             outbox.Add(new ShiftClosedV1(shift.Id, shift.RegisterId, shift.CashierId, shift.ZNumber.Value, shift.ExpectedCash.Value,
                 shift.CountedCash.Value, shift.Difference.Value));
+            if (needed is not null)
+                await audit.RecordAsync("approval.used", nameof(CloseShift), c.ShiftId, new { Permission = needed, Approval = c.SupervisorApprovalId }, ct);
             await audit.RecordAsync("cash.close-shift", "Shift", shift.Id,
                 new { shift.ZNumber, shift.ExpectedCash, shift.CountedCash, shift.Difference }, ct);
             shift.AuditChainHead = await AuditHead.TextAsync(infra, ct); // read after our own audit record: it includes the closing
@@ -290,7 +311,7 @@ internal static class CloseShift
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/cash/shifts/{id:guid}/close", async (Guid id, Body b, ICommandHandler<Command, ZReport> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.CashCount, b.SupervisorApprovalId), ct)).ToHttp())
-                .RequirePermission(Permissions.RegisterOperate).WithTags("CashRegister");
+                .RequireAuthorization().WithTags("CashRegister"); // register.close or a supervisor: the handler checks it with the count
     }
 }
 
@@ -304,7 +325,7 @@ internal static class GetZReport
                 {
                     var s = await db.Shifts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
                     if (s is null) return EndpointExtensions.Problem(CashRegisterErrors.ShiftNotFound);
-                    var supervisor = user.Has(Permissions.RegisterApproveClose) || user.Has(Permissions.ReportsView);
+                    var supervisor = user.Has(Permissions.RegisterApproveClose) || user.Has(Permissions.ShiftsView);
                     if (!supervisor && (s.CashierId != user.UserId || s.Status == ShiftStatus.Open))
                         return Results.Forbid();
                     var register = await db.Registers.Where(r => r.Id == s.RegisterId).Select(r => r.Name).SingleAsync(ct);
@@ -334,7 +355,7 @@ internal static class ListShifts
                                              select new Item(s.Id, r.Name, s.CashierName, s.OpenedUtc, s.ClosedUtc, s.ZNumber, s.OpeningFloat,
                                                  s.ExpectedCash, s.CountedCash, s.Difference)).AsNoTracking().ToListAsync(ct));
                 })
-                .RequirePermission(Permissions.ReportsView).WithTags("CashRegister");
+                .RequirePermission(Permissions.ShiftsView).WithTags("CashRegister");
     }
 }
 

@@ -23,7 +23,7 @@ internal static class VerifyAudit
         public void Map(IEndpointRouteBuilder app) =>
             app.MapGet("/api/audit/verify", async (InfraDbContext db, CancellationToken ct) =>
                     await AuditChain.VerifyAsync(db, ct) is { } broken ? Results.Ok(new Response(false, broken)) : Results.Ok(new Response(true, null)))
-                .RequirePermission(Permissions.SettingsManage).WithTags("Audit");
+                .RequirePermission(Permissions.AuditView).WithTags("Audit");
     }
 }
 

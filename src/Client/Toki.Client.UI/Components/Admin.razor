@@ -118,14 +118,14 @@
             yield return new("admin/products", "Productos", "Productos", "package");
             // TK-184 Inventario, TK-185 Compras
             if (SectionTabs.Inventory(Session).Count > 0) yield return new("admin/inventory", "Inventario", "Inventario", "boxes");
-            if (Session.Can("purchasing.manage")) yield return new("admin/purchasing", "Compras y gastos", "Compras", "truck");
-            yield return new("admin/shifts", "Turnos y cuadres", "Cuadres", "wallet");
+            if (SectionTabs.Purchasing(Session) is [var (purchasing, _), ..]) yield return new(purchasing, "Compras y gastos", "Compras", "truck");
+            if (Session.Can("shifts.view")) yield return new("admin/shifts", "Turnos y cuadres", "Cuadres", "wallet"); // TK-213
             if (Session.Can("customers.manage")) yield return new("admin/customers", "Clientes", "Clientes", "users");
             if (Session.Can("sales.create") || Session.Can("products.manage")) yield return new("admin/orders", "Pedidos y catálogo", "Pedidos", "calendar"); // TK-193..195
             yield return new("admin/invoices", "Facturas", "Facturas", "receipt");
-            yield return new("admin/reports", "Reportes", "Reportes", "chart");
+            if (Pages.Admin.Reports.Allowed(Session)) yield return new("admin/reports", "Reportes", "Reportes", "chart");
             if (Session.Can("fiscal.manage")) yield return new("admin/ecf", "Comprobantes electrónicos", "e-CF", "send"); // TK-204
-            if (Session.Can("settings.manage") || Session.Can("users.manage")) yield return new("admin/settings", "Configuración", "Ajustes", "settings");
+            if (Pages.Admin.Settings.Allowed(Session)) yield return new("admin/settings", "Configuración", "Ajustes", "settings");
         }
     }
 

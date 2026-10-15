@@ -23,7 +23,7 @@ public sealed class OrdersTests
     [Fact]
     public void F10_saves_the_cart_as_an_order_for_its_customer_with_a_cash_deposit()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.operate");
+        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null, 2);
@@ -53,7 +53,7 @@ public sealed class OrdersTests
     [Fact]
     public void Charging_an_order_loads_it_at_todays_price_and_the_checkout_takes_the_deposit_first()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.operate");
+        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var orderId = Guid.NewGuid();
         var cart = ctx.Services.GetRequiredService<Cart>();
@@ -86,7 +86,7 @@ public sealed class OrdersTests
     [Fact]
     public void The_register_reminds_todays_and_tomorrows_orders()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.operate");
+        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Json("GET", "/api/orders", new[] { Order(Guid.NewGuid(), Format.Today), Order(Guid.NewGuid(), Format.Today.AddDays(1)), Order(Guid.NewGuid(), Format.Today) });

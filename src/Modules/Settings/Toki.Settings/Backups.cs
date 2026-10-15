@@ -147,14 +147,14 @@ internal static class SetBackupPassphrase
         public void Map(IEndpointRouteBuilder app)
         {
             app.MapPut("/api/backups/passphrase", async (Command c, ICommandHandler<Command, Ok> h, CancellationToken ct) => (await h.Handle(c, ct)).ToHttp(_ => Results.NoContent()))
-                .RequirePermission(Permissions.SettingsManage).WithTags("Backups");
+                .RequirePermission(Permissions.BackupsManage).WithTags("Backups");
             // The host's token, not the request's: a back office that gives up waiting must not cut a backup halfway.
             app.MapPost("/api/backups", async (Backups backups, IHostApplicationLifetime lifetime) =>
                     (await backups.CreateAsync(lifetime.ApplicationStopping)).ToHttp(r => Results.Created($"/api/backups/{r.FileName}", r)))
-                .RequirePermission(Permissions.SettingsManage).WithTags("Backups");
+                .RequirePermission(Permissions.BackupsManage).WithTags("Backups");
             app.MapGet("/api/backups", (Backups backups) =>
                     Results.Ok(backups.List().Select(f => new BackupFile(f.Name, f.Length, f.LastWriteTimeUtc))))
-                .RequirePermission(Permissions.SettingsManage).WithTags("Backups");
+                .RequirePermission(Permissions.BackupsManage).WithTags("Backups");
         }
     }
 }

@@ -15,7 +15,7 @@ namespace Toki.Settings;
 internal sealed class ApprovalPolicy(SettingsDbContext db) : IApprovalPolicy
 {
     /// <summary>The actions the owner may turn off, in screen order, and whether a store asks for each until the owner saves the policy.
-    /// Any other approval (cash in, purchasing, credit over the limit) always asks.</summary>
+    /// Any other approval (opening a shift, cash in, purchasing, credit over the limit) always asks. register.approve-close is "close a shift with a difference" (TK-212).</summary>
     public static readonly (string Permission, bool Default)[] Defaults =
     [
         (Permissions.SalesRemoveLine, false), (Permissions.SalesVoid, true), (Permissions.SalesReturn, true),

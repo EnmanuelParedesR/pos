@@ -252,7 +252,11 @@ public static class Roles
 {
     public static readonly Guid Administrator = new("0199e000-0000-7000-8000-000000000001");
     public static readonly Guid Supervisor = new("0199e000-0000-7000-8000-000000000002");
-    public static readonly Guid Cashier = new("0199e000-0000-7000-8000-000000000003");
+    /// <summary>Cajero con apertura: the tests open their own shifts. The plain Cajero (TK-216) needs a supervisor to open one.</summary>
+    public static readonly Guid Cashier = new("0199e000-0000-7000-8000-000000000004");
+    public static readonly Guid CashierWithoutOpening = new("0199e000-0000-7000-8000-000000000003");
+    public static readonly Guid StockKeeper = new("0199e000-0000-7000-8000-000000000005");
+    public static readonly Guid Accountant = new("0199e000-0000-7000-8000-000000000006");
 }
 
 public static class HttpExtensions

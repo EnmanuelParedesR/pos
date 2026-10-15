@@ -33,15 +33,17 @@ internal static class CreateUser
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            if (!await db.Roles.AnyAsync(r => r.Id == c.RoleId, ct)) return IdentityErrors.RoleNotFound;
+            var role = await db.Roles.AsNoTracking().FirstOrDefaultAsync(r => r.Id == c.RoleId, ct);
+            if (role is null) return IdentityErrors.RoleNotFound;
             if (c.RoleId == Role.AdministratorId && !await db.IsAdministratorAsync(me.UserId, ct)) return IdentityErrors.AdministratorOnly;
+            if (Escalation.NotHeld(me, role.Effective) is { Count: > 0 } missing) return IdentityErrors.PermissionsNotHeld(missing);
             if (await db.Users.AnyAsync(u => u.Code == User.NormalizeCode(c.Code), ct)) return IdentityErrors.DuplicateCode;
 
             var user = new User { Id = Guid.CreateVersion7(), Name = c.Name.Trim(), Code = User.NormalizeCode(c.Code), RoleId = c.RoleId };
             user.ChangePin(c.Pin);
             db.Users.Add(user);
             outbox.Add(new UserProfileChangedV1(user.Id, user.Name, user.IsActive));
-            await audit.RecordAsync("identity.create-user", "User", user.Id, new { user.Name, user.Code, user.RoleId }, ct);
+            await audit.RecordAsync("identity.create-user", "User", user.Id, new { before = (object?)null, after = new { user.Name, user.Code, user.RoleId, user.IsActive } }, ct);
             return new Response(user.Id);
         }
     }
@@ -75,12 +77,17 @@ internal static class UpdateUser
         {
             var user = await db.Users.FirstOrDefaultAsync(u => u.Id == c.Id, ct);
             if (user is null) return IdentityErrors.UserNotFound;
-            if (!await db.Roles.AnyAsync(r => r.Id == c.RoleId, ct)) return IdentityErrors.RoleNotFound;
+            var roles = await db.Roles.AsNoTracking().Where(r => r.Id == c.RoleId || r.Id == user.RoleId).ToListAsync(ct);
+            if (roles.All(r => r.Id != c.RoleId)) return IdentityErrors.RoleNotFound;
             if (user.Id == me.UserId && (!c.IsActive || c.RoleId != user.RoleId))
                 return Error.Validation("Identity.CannotLockSelf", "No puede desactivarse ni cambiarse el rol a sí mismo.");
             if ((c.RoleId == Role.AdministratorId || user.RoleId == Role.AdministratorId) && !await db.IsAdministratorAsync(me.UserId, ct))
                 return IdentityErrors.AdministratorOnly;
+            // TK-215: the new role and the current one (a PIN reset would let the actor sign in as someone with more permissions).
+            if (Escalation.NotHeld(me, roles.SelectMany(r => r.Effective)) is { Count: > 0 } missing) return IdentityErrors.PermissionsNotHeld(missing);
+            // At least one active Administrador always remains: only an active Administrador changes one, and never themselves (above).
 
+            var before = new { user.Name, user.RoleId, user.IsActive };
             user.Name = c.Name.Trim();
             user.RoleId = c.RoleId;
             user.IsActive = c.IsActive;
@@ -92,7 +99,7 @@ internal static class UpdateUser
             }
             outbox.Add(new UserProfileChangedV1(user.Id, user.Name, user.IsActive));
             await audit.RecordAsync("identity.update-user", "User", user.Id,
-                new { user.Name, user.RoleId, user.IsActive, PinChanged = c.Pin is not null }, ct);
+                new { before, after = new { user.Name, user.RoleId, user.IsActive }, PinChanged = c.Pin is not null }, ct);
             return Ok.Value;
         }
     }

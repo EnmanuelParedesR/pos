@@ -18,7 +18,7 @@ public sealed class RegisterCustomerPaymentTests
     [Fact]
     public void From_the_F9_menu_the_cashier_finds_the_customer_sees_the_debt_and_records_a_cash_payment()
     {
-        var (ctx, api) = ScreenContext.Create("register.operate", "customers.manage", "sales.create");
+        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect", "customers.manage", "sales.create");
         using var _ = ctx;
         Customer(api, 1_250.40m).Json("POST", $"/api/customers/{Ana}/payments", new { customerPaymentId = Guid.NewGuid(), applied = 1_000m, remainingDebt = 250.40m });
         var menu = ctx.Render<RegisterMenu>();
@@ -45,7 +45,7 @@ public sealed class RegisterCustomerPaymentTests
     [Fact]
     public void Centavos_in_cash_or_more_than_the_debt_cannot_be_confirmed_and_an_unanswered_payment_is_retried_with_the_same_id()
     {
-        var (ctx, api) = ScreenContext.Create("register.operate", "customers.manage");
+        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect", "customers.manage");
         using var _ = ctx;
         Customer(api, 300m).Respond("POST", $"/api/customers/{Ana}/payments", _ => throw new TaskCanceledException());
         var dialog = ctx.Render<CustomerPaymentDialog>();
@@ -79,7 +79,7 @@ public sealed class RegisterCustomerPaymentTests
     [Fact]
     public void A_customer_who_owes_nothing_has_nothing_to_pay()
     {
-        var (ctx, api) = ScreenContext.Create("register.operate", "customers.manage");
+        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect", "customers.manage");
         using var _ = ctx;
         Customer(api, 0m);
         var dialog = ctx.Render<CustomerPaymentDialog>();

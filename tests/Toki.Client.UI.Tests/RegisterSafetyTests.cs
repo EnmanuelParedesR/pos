@@ -29,7 +29,7 @@ public sealed class RegisterSafetyTests
     [Fact]
     public void When_the_session_expires_the_register_asks_for_the_pin_and_keeps_the_cart()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.operate");
+        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null);
@@ -53,7 +53,7 @@ public sealed class RegisterSafetyTests
     [Fact]
     public void A_checkout_without_an_answer_locks_the_cart_until_the_server_says_whether_it_was_saved()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.operate");
+        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null);
@@ -126,7 +126,7 @@ public sealed class RegisterSafetyTests
     [Fact]
     public void Closing_counts_the_field_still_being_typed_when_F12_is_pressed()
     {
-        var (ctx, api) = ScreenContext.Create("register.operate", "register.approve-close");
+        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect", "register.approve-close");
         using var _ = ctx;
         api.Json("GET", "/api/cash/denominations", Denominations)
            .Json("POST", $"/api/cash/shifts/{ScreenContext.Shift.ShiftId}/close", Z(7));
@@ -145,7 +145,7 @@ public sealed class RegisterSafetyTests
     [Fact]
     public void Opening_counts_the_field_still_being_typed_when_F12_is_pressed()
     {
-        var (ctx, api) = ScreenContext.Create("register.operate");
+        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var register = new RegisterInfo(Guid.NewGuid(), "Caja 1", true, null, null);
         api.Json("GET", "/api/cash/denominations", Denominations)
@@ -163,7 +163,7 @@ public sealed class RegisterSafetyTests
     [Fact]
     public void A_close_retried_after_it_was_saved_shows_its_Z()
     {
-        var (ctx, api) = ScreenContext.Create("register.operate", "register.approve-close");
+        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect", "register.approve-close");
         using var _ = ctx;
         var shift = ScreenContext.Shift.ShiftId;
         api.Json("GET", "/api/cash/denominations", Denominations)

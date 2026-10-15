@@ -32,8 +32,8 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin)
     public bool IsPaired => DeviceToken is not null;
     public bool IsOpen => Token is not null;
     public bool Can(string permission) => _permissions.Contains(permission);
-    /// <summary>Owners and supervisors land on the back office; cashiers go straight to the register.</summary>
-    public bool IsBackOffice => Can("reports.view");
+    /// <summary>Owners, supervisors, the accountant and whoever does not sell (Inventario) land on the back office; cashiers go straight to the register.</summary>
+    public bool IsBackOffice => Can("reports.view") || Can("shifts.view") || Can("fiscal.reports") || !Can("sales.create");
 
     public async Task LoadAsync()
     {
