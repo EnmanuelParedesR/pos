@@ -35,9 +35,9 @@ public static class TokiServices
             .AddClasses(c => c.AssignableTo(typeof(ICommandHandler<,>)), publicOnly: false).AsImplementedInterfaces().WithScopedLifetime());
         services.Scan(s => s.FromAssemblies(modulos)
             .AddClasses(c => c.AssignableTo(typeof(IManejadorEvento<>)), publicOnly: false).AsImplementedInterfaces().WithScopedLifetime());
-        foreach (var tipo in modulos.SelectMany(a => a.GetTypes()).SelectMany(t => t.GetInterfaces())
-                     .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IManejadorEvento<>)).Select(i => i.GetGenericArguments()[0]))
-            ProcesadorOutbox.Tipos[tipo.FullName!] = tipo;
+        services.AddSingleton(new TiposEvento(modulos.SelectMany(a => a.GetTypes()).SelectMany(t => t.GetInterfaces())
+            .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IManejadorEvento<>)).Select(i => i.GetGenericArguments()[0])
+            .Distinct().ToDictionary(t => t.FullName!)));
         services.AddValidatorsFromAssemblies(modulos, includeInternalTypes: true);
 
         services.TryDecorate(typeof(ICommandHandler<,>), typeof(AutorizacionDecorator<,>));

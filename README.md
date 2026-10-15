@@ -48,6 +48,8 @@ Contra SQL Server la API aplica sola las migraciones de cada módulo al arrancar
 
 En producción (ppsettings.Production.json) escucha solo HTTPS en el puerto 5443 con un certificado propio de la PC principal, y escribe logs diarios en C:\ProgramData\Toki\logs.
 
+Respaldos: el dueño define una frase (PUT /api/respaldos/frase); cada noche a las 23:30 la API respalda la base, la cifra con esa frase (AES-256-GCM) y guarda los 14 más nuevos en C:\ProgramData\Toki\respaldos (y una copia en Respaldo:CopiaEn, si se configura, por ejemplo una memoria USB o una carpeta de red). Para abrir un respaldo en cualquier PC: `Toki.Host.Local descifrar-respaldo <archivo> <salida>` con la frase.
+
 Primer uso: `POST /api/identidad/instalacion` crea el administrador y empareja la PC principal; luego `POST /api/identidad/sesiones` con el encabezado `X-Dispositivo`.
 
 ## Reglas

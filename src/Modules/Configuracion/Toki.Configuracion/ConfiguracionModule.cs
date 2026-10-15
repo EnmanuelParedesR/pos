@@ -1,5 +1,6 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
@@ -23,7 +24,10 @@ public static class ConfiguracionModule
         services.AddScoped<IConfiguracionConsultas, ConfiguracionConsultas>();
         services.AddSingleton<UltimaVerificacionAuditoria>();
         services.AddHostedService<VerificacionNocturnaAuditoria>();
-        services.AddHealthChecks().AddCheck<UltimaVerificacionAuditoria>("auditoria");
+        services.AddHealthChecks().AddCheck<UltimaVerificacionAuditoria>("auditoria").AddCheck<RespaldoHealthCheck>("respaldo");
+        services.AddDataProtection().SetApplicationName("Toki");
+        services.AddScoped<Respaldos>();
+        services.AddHostedService<RespaldoNocturno>();
         return services;
     }
 }
@@ -37,6 +41,10 @@ internal sealed class Negocio
     public string? Telefono { get; set; }
     public string? PieRecibo { get; set; }
     public decimal TopeDescuentoPct { get; set; } = 10;
+    /// <summary>Salt of the backup passphrase (in every backup's header too).</summary>
+    public byte[]? RespaldoSal { get; set; }
+    /// <summary>Key derived from the passphrase, protected for this machine (ASP.NET Core Data Protection). The phrase itself is never stored.</summary>
+    public string? RespaldoClave { get; set; }
 
     public DatosNegocio ADatos() => new(Nombre, Rnc, Direccion, Telefono, PieRecibo, TopeDescuentoPct);
 }
@@ -54,6 +62,8 @@ internal sealed class NegocioConfiguration : IEntityTypeConfiguration<Negocio>
         b.ToTable("Negocio");
         b.Property(n => n.Id).ValueGeneratedNever();
         b.Property(n => n.PieRecibo).HasMaxLength(500);
+        b.Property(n => n.RespaldoSal).HasMaxLength(16);
+        b.Property(n => n.RespaldoClave).HasMaxLength(1000);
         b.HasData(new Negocio());
     }
 }

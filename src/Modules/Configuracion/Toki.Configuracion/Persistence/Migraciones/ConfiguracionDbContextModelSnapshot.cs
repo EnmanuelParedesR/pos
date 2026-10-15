@@ -40,6 +40,14 @@ namespace Toki.Configuracion.Persistence.Migraciones
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<string>("RespaldoClave")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<byte[]>("RespaldoSal")
+                        .HasMaxLength(16)
+                        .HasColumnType("varbinary(16)");
+
                     b.Property<string>("Rnc")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");

@@ -20,12 +20,9 @@ public interface IManejadorEvento<in TEvento> where TEvento : IIntegrationEvent
 /// <summary>Delivers outbox messages in order to the in-process handlers, then marks them processed.
 /// A failing message is logged and retried on the next pass; the messages after it still go.</summary>
 /// <remarks>shortcut: no upload to the cloud yet (SubidoUtc stays empty); that comes with the cloud backend (TK-088, phase 2).</remarks>
-public sealed class ProcesadorOutbox(InfraDbContext db, IServiceProvider servicios, TimeProvider reloj, ILogger<ProcesadorOutbox> log)
+public sealed class ProcesadorOutbox(InfraDbContext db, IServiceProvider servicios, TiposEvento tipos, TimeProvider reloj, ILogger<ProcesadorOutbox> log)
 {
     public const int Lote = 100;
-
-    /// <summary>Event type by full name: the outbox stores the name, the handlers know the type.</summary>
-    internal static Dictionary<string, Type> Tipos { get; } = [];
 
     /// <returns>How many messages were taken.</returns>
     public async Task<int> ProcesarAsync(CancellationToken ct)
@@ -35,7 +32,7 @@ public sealed class ProcesadorOutbox(InfraDbContext db, IServiceProvider servici
         {
             try
             {
-                if (Tipos.TryGetValue(m.Tipo, out var tipo))
+                if (tipos.PorNombre.TryGetValue(m.Tipo, out var tipo))
                 {
                     var evento = JsonSerializer.Deserialize(m.Payload, tipo, Json.Opciones)!;
                     foreach (var manejador in servicios.GetServices(typeof(IManejadorEvento<>).MakeGenericType(tipo)))
@@ -51,6 +48,9 @@ public sealed class ProcesadorOutbox(InfraDbContext db, IServiceProvider servici
         return mensajes.Count;
     }
 }
+
+/// <summary>Event types that have handlers, by full name: the outbox stores the name, the handlers know the type.</summary>
+public sealed record TiposEvento(IReadOnlyDictionary<string, Type> PorNombre);
 
 /// <summary>Runs <see cref="ProcesadorOutbox"/> every <c>Outbox:IntervaloSegundos</c> (5), unless <c>Outbox:Procesar</c> is false
 /// (the in-memory test host, whose tests run it themselves against a fake clock).</summary>

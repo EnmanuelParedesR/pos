@@ -17,8 +17,8 @@ public sealed class AuditoriaTests(TokiApp app) : IClassFixture<TokiApp>
     public void La_verificacion_nocturna_corre_a_las_3_de_la_madrugada_de_la_tienda()
     {
         // 06:00 UTC is 02:00 in Santo Domingo: one hour to go. 08:00 UTC is 04:00: 23 hours.
-        VerificacionNocturnaAuditoria.HastaLaProxima(new DateTime(2026, 10, 15, 6, 0, 0, DateTimeKind.Utc)).ShouldBe(TimeSpan.FromHours(1));
-        VerificacionNocturnaAuditoria.HastaLaProxima(new DateTime(2026, 10, 15, 8, 0, 0, DateTimeKind.Utc)).ShouldBe(TimeSpan.FromHours(23));
+        VerificacionNocturnaAuditoria.HastaLaProxima(new DateTime(2026, 10, 15, 6, 0, 0, DateTimeKind.Utc), TimeSpan.FromHours(3)).ShouldBe(TimeSpan.FromHours(1));
+        VerificacionNocturnaAuditoria.HastaLaProxima(new DateTime(2026, 10, 15, 8, 0, 0, DateTimeKind.Utc), TimeSpan.FromHours(3)).ShouldBe(TimeSpan.FromHours(23));
     }
 
     [Fact]

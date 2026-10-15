@@ -70,6 +70,8 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         // Background work would race the tests when they move the fake clock; tests run it themselves.
         builder.UseSetting("Outbox:Procesar", "false");
         builder.UseSetting("Auditoria:VerificacionNocturna", "false");
+        builder.UseSetting("Respaldo:Automatico", "false");
+        builder.UseSetting("Respaldo:Carpeta", Path.Combine(Path.GetTempPath(), $"toki_respaldos_{Guid.NewGuid():N}"));
         builder.ConfigureTestServices(s =>
         {
             s.AddSingleton<TimeProvider>(Reloj);

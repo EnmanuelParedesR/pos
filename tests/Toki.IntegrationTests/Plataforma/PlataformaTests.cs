@@ -26,7 +26,7 @@ public sealed class PlataformaTests(TokiApp app) : IClassFixture<TokiApp>
     {
         var admin = app.Cliente(await app.AdminAsync());
         await admin.CategoriaAsync();
-        (await SaludAsync()).ShouldBe((HttpStatusCode.OK, "Healthy"));
+        (await SaludAsync()).Item1.ShouldBe(HttpStatusCode.OK); // Healthy, or Degraded while no backup exists
 
         // The newest audit record is an hour ahead of the server clock: someone moved Windows time back.
         var ultima = await app.EnScopeAsync(sp => sp.GetRequiredService<InfraDbContext>().Auditoria.MaxAsync(r => r.Secuencia));

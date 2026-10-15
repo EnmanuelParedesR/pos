@@ -16,6 +16,22 @@ using Toki.Inventario;
 using Toki.Reportes;
 using Toki.Host.Local;
 
+// Restoring on any PC: Toki.Host.Local descifrar-respaldo <archivo.toki-respaldo> <salida>, with the phrase in TOKI_FRASE_RESPALDO or typed.
+if (args is ["descifrar-respaldo", var archivo, var salida])
+{
+    var frase = Environment.GetEnvironmentVariable("TOKI_FRASE_RESPALDO");
+    if (frase is null)
+    {
+        Console.Write("Frase del respaldo: ");
+        frase = Console.ReadLine() ?? "";
+    }
+    await using (var entrada = File.OpenRead(archivo))
+    await using (var destino = File.Create(salida))
+        await CifradoRespaldo.DescifrarAsync(entrada, destino, frase, CancellationToken.None);
+    Console.WriteLine($"Listo: {salida}");
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(o => o.ServiceName = "Toki");
 builder.Host.UseSerilog((ctx, cfg) => cfg.ReadFrom.Configuration(ctx.Configuration).WriteTo.Console());

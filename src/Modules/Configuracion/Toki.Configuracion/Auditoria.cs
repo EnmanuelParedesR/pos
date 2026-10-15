@@ -49,7 +49,7 @@ internal sealed class VerificacionNocturnaAuditoria(IServiceScopeFactory scopes,
         if (!config.GetValue("Auditoria:VerificacionNocturna", true)) return; // off in the in-memory test host (fake clock)
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(HastaLaProxima(reloj.GetUtcNow().UtcDateTime), reloj, stoppingToken);
+            await Task.Delay(HastaLaProxima(reloj.GetUtcNow().UtcDateTime, Hora), reloj, stoppingToken);
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
@@ -63,10 +63,11 @@ internal sealed class VerificacionNocturnaAuditoria(IServiceScopeFactory scopes,
         }
     }
 
-    public static TimeSpan HastaLaProxima(DateTime ahoraUtc)
+    /// <summary>Time left until the next <paramref name="hora"/> of the store's clock (UTC−4).</summary>
+    public static TimeSpan HastaLaProxima(DateTime ahoraUtc, TimeSpan hora)
     {
         var local = ahoraUtc + DiaNegocio.Desfase;
-        var proxima = local.Date + Hora;
+        var proxima = local.Date + hora;
         if (proxima <= local) proxima = proxima.AddDays(1);
         return proxima - local;
     }
