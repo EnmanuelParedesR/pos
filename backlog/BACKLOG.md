@@ -46,10 +46,10 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 
 | Ticket | Qué | Estado |
 |---|---|---|
-| TK-030 | Cajas físicas | ⬜ |
-| TK-031 | Abrir turno: caja + cajero + fondo inicial (un turno abierto por caja) | ⬜ |
-| TK-032 | Entradas, retiros (supervisor) y gastos menores con motivo; no se editan | ⬜ |
-| TK-033 | Cierre ciego con conteo por denominaciones, esperado, diferencia, aprobación de supervisor y reporte Z | ⬜ |
+| TK-030 | Cajas físicas | ✅ |
+| TK-031 | Abrir turno: caja + cajero + fondo inicial (un turno abierto por caja) | ✅ |
+| TK-032 | Entradas, retiros (supervisor) y gastos menores con motivo; no se editan | ✅ |
+| TK-033 | Cierre ciego con conteo por denominaciones, esperado, diferencia, aprobación de supervisor y reporte Z | ✅ |
 
 ## M4 · Ventas
 
