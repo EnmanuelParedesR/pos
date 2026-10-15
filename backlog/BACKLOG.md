@@ -245,6 +245,7 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-181 | Panel: subir Vitest a 5 (aviso de npm audit en tinypool, solo desarrollo) | ✅ Vitest 5.0.3; `npm audit` sin hallazgos |
 | TK-182 | Encontrar y arreglar la prueba que falló una vez en la suite (posible inestabilidad) | ✅ No se reprodujo (6 corridas completas, 140 de proyectos en paralelo, 720 de las clases bUnit sospechosas); no quedó registrado cuál prueba falló (la corrida fue en la copia principal que comparten varios agentes) |
 | TK-183 | Modo oscuro de Escuadra Admin (variables listas) | ⬜ |
+| TK-211 | CI verde: SQL Server en Testcontainers y Playwright en Ubuntu | ✅ La cadena del contenedor lleva `Persist Security Info=True` (EF volvía a `master` sin la contraseña de `sa` cuando una base recién creada tardaba en abrir: "Login failed"); el servidor TLS de `NodeCertificatePinTests` solo cuenta pedidos completos (en Linux, TLS 1.3, el cliente que rechaza el certificado cierra después del saludo) |
 
 ## M15 · Brechas frente a la competencia
 

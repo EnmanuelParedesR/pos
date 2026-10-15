@@ -130,6 +130,9 @@ public sealed class NodeCertificatePinTests
                         if (n == 0) break;
                         head.Append(Encoding.ASCII.GetString(buffer, 0, n));
                     }
+                    // TK-211: with TLS 1.3 (Linux) the handshake ends here before the client checks our certificate; a refusing
+                    // client then just closes, so only a request that actually arrived counts.
+                    if (!head.ToString().Contains("\r\n\r\n", StringComparison.Ordinal)) continue;
                     Interlocked.Increment(ref _requests);
                     await tls.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"), _stop.Token);
                 }
