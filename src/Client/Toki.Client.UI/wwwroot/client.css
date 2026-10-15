@@ -32,3 +32,19 @@
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .kpi { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
 .kpi__value { font-size: var(--t-32); font-weight: 700; }
+
+/* Back office (TK-184, TK-185): product picker for transfers and purchases, and quantity inputs inside table rows. */
+.picker { position: relative; min-width: 0; display: flex; flex-direction: column; }
+.picker > .esc-search { flex: none; }
+.picker .esc-search input:focus-visible { outline: 0; }
+.picker__list { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 5; list-style: none; margin: 0; padding: 4px;
+  background: var(--surface); border-radius: var(--r-control); box-shadow: var(--elev-pop); max-height: 320px; overflow: auto; }
+.picker__list button { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 12px; min-height: var(--touch);
+  border: 0; background: transparent; border-radius: var(--r-small); text-align: left; color: var(--text); cursor: pointer; }
+.picker__list button:hover, .picker__list button:focus-visible { background: var(--brand-50); }
+.picker__none { padding: 8px 4px; font-size: var(--t-13); }
+.cell-input { width: 120px; min-height: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+.totals { display: grid; grid-template-columns: max-content max-content; gap: 6px 24px; justify-content: end; font-variant-numeric: tabular-nums; }
+.totals dt { color: var(--text-2); }
+.totals dd { margin: 0; text-align: right; font-weight: 600; }
+.totals .totals__grand { font-size: var(--t-20); font-weight: 700; }

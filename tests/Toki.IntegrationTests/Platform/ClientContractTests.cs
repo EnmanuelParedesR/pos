@@ -96,6 +96,49 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         var customer = (await Send<C.Created>(api, HttpMethod.Post, "/api/customers", new C.NewCustomer("Ana Pérez", null, "809-555-0102", null, false))).Id;
         (await Send<List<C.CustomerSummary>>(api, HttpMethod.Get, "/api/customers?search=Ana")).ShouldHaveSingleItem().Id.ShouldBe(customer);
         (await Send<C.CustomerDetail>(api, HttpMethod.Get, $"/api/customers/{customer}")).Name.ShouldBe("Ana Pérez");
+
+        // Inventory back office (TK-184)
+        var store = (await Send<List<C.Warehouse>>(api, HttpMethod.Get, "/api/inventory/warehouses")).ShouldHaveSingleItem();
+        store.IsMain.ShouldBeTrue();
+        var ribs = (await Send<C.Created>(api, HttpMethod.Post, "/api/inventory/products", new C.CreateProduct("Costilla", category, C.UnitOfMeasure.Pound, null,
+            C.ItbisRate.Exempt, 180, null, 120, false, 50, null, 10))).Id;
+        var low = (await Send<List<C.StockLevel>>(api, HttpMethod.Get, "/api/inventory/stock?belowMinimumOnly=true")).ShouldHaveSingleItem();
+        (low.ProductId, low.Quantity, low.Value, low.BelowMinimum).ShouldBe((ribs, 10m, 1200m, true));
+        (await Send<List<C.StockLevel>>(api, HttpMethod.Get, $"/api/inventory/stock?warehouseId={store.Id}")).Count.ShouldBe(2);
+        await Send<C.AdjustmentRecorded>(api, HttpMethod.Post, "/api/inventory/adjustments", new C.AdjustStock(ribs, null, -1.5m, C.AdjustmentReason.Damage, "se cayó"));
+        var kardex = await Send<List<C.StockMovement>>(api, HttpMethod.Get, $"/api/inventory/products/{ribs}/movements?last=100");
+        (kardex[0].Type, kardex[0].Quantity, kardex[0].ResultingStock).ShouldBe((C.StockMovementType.Adjustment, -1.5m, 8.5m));
+        var cold = (await Send<C.Created>(api, HttpMethod.Post, "/api/inventory/warehouses", new { Name = "Cuarto frío" })).Id;
+        await Send<C.TransferRecorded>(api, HttpMethod.Post, "/api/inventory/transfers", new C.TransferStock(store.Id, cold, [new C.TransferLine(ribs, 2)]));
+        var started = await Send<C.StockCountStarted>(api, HttpMethod.Post, "/api/inventory/stock-counts", new C.StartStockCount(null, category));
+        (await Send<List<C.StockCountSummary>>(api, HttpMethod.Get, "/api/inventory/stock-counts")).ShouldHaveSingleItem().Status.ShouldBe(C.StockCountStatus.Open);
+        var sheet = await Send<C.StockCountSheet>(api, HttpMethod.Get, $"/api/inventory/stock-counts/{started.StockCountId}");
+        sheet.Lines.Length.ShouldBe(2);
+        await Send<C.Empty>(api, HttpMethod.Put, $"/api/inventory/stock-counts/{started.StockCountId}/lines", new C.RecordCount([new C.CountedLine(ribs, 6)]));
+        var applied = await Send<C.StockCountApplied>(api, HttpMethod.Post, $"/api/inventory/stock-counts/{started.StockCountId}/apply", new C.ApplyStockCount(null));
+        (applied.Differences.ShouldHaveSingleItem().Difference, applied.DifferenceValue).ShouldBe((-0.5m, -60m));
+
+        // Purchasing back office (TK-185)
+        var supplier = (await Send<C.Created>(api, HttpMethod.Post, "/api/purchasing/suppliers", new C.SaveSupplier("Granja del Cibao", "101234567", null, "Pedro", 15, true))).Id;
+        await Send<C.Empty>(api, HttpMethod.Put, $"/api/purchasing/suppliers/{supplier}", new C.SaveSupplier("Granja del Cibao", "101234567", "809-555-0103", "Pedro", 30, true));
+        (await Send<List<C.Supplier>>(api, HttpMethod.Get, "/api/purchasing/suppliers?search=Granja")).ShouldHaveSingleItem().CreditDays.ShouldBe(30);
+        var purchase = await Send<C.PurchaseSaved>(api, HttpMethod.Post, "/api/purchasing/purchases", new C.SavePurchase(supplier, "B0100000001", today, C.PaymentTerms.Credit,
+            [new C.PurchaseLineInput(steak, null, 10, 140, C.ItbisRate.General18)], null, null, null, null, null, Guid.CreateVersion7(), null));
+        purchase.Total.ShouldBe(1652m);
+        await Send<C.Empty>(api, HttpMethod.Post, $"/api/purchasing/purchases/{purchase.Id}/post");
+        (await Send<List<C.PurchaseSummary>>(api, HttpMethod.Get, $"/api/purchasing/purchases?{range}")).ShouldHaveSingleItem().Status.ShouldBe("Posted");
+        var bought = await Send<C.PurchaseDetail>(api, HttpMethod.Get, $"/api/purchasing/purchases/{purchase.Id}");
+        (bought.Terms, bought.Lines.ShouldHaveSingleItem().ItbisRate, bought.DueDate).ShouldBe((C.PaymentTerms.Credit, C.ItbisRate.General18, today.AddDays(30)));
+        var expense = await Send<C.ExpenseRecorded>(api, HttpMethod.Post, "/api/purchasing/expenses", new C.RecordExpense(supplier, "B0100000002", today, "Transporte",
+            C.ExpenseType.WorkSuppliesAndServices, 100, 18, C.PaymentTerms.Cash, null, Guid.CreateVersion7(), C.SupplierPaymentMethod.Transfer));
+        (await Send<List<C.Expense>>(api, HttpMethod.Get, $"/api/purchasing/expenses?{range}")).ShouldHaveSingleItem().Total.ShouldBe(118m);
+        await Send<C.Empty>(api, HttpMethod.Post, $"/api/purchasing/expenses/{expense.Id}/void", new C.VoidReason("Repetido"));
+        var paid = await Send<C.SupplierPaid>(api, HttpMethod.Post, "/api/purchasing/payments", new C.PaySupplier(supplier, 500, C.SupplierPaymentMethod.Transfer, today, "T-1", Guid.CreateVersion7()));
+        paid.Allocations.ShouldHaveSingleItem().RemainingBalance.ShouldBe(1152m);
+        var statement = await Send<C.SupplierStatement>(api, HttpMethod.Get, $"/api/purchasing/suppliers/{supplier}/statement");
+        (statement.Balance, statement.Lines.Single(l => l.Type == "Pago").PaymentId).ShouldBe((1152m, paid.SupplierPaymentId));
+        (await Send<List<C.SupplierPayable>>(api, HttpMethod.Get, "/api/reports/payables")).ShouldHaveSingleItem().NotYetDue.ShouldBe(1152m);
+        await Send<C.Empty>(api, HttpMethod.Post, $"/api/purchasing/payments/{paid.SupplierPaymentId}/void", new C.VoidReason("Monto equivocado"));
     }
 
     [Fact]
