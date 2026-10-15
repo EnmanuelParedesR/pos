@@ -132,7 +132,7 @@ public sealed class AdminInventoryTests
         page.WaitForAssertion(() => page.Find(".picker__list button").Click());
         page.Find("input[aria-label='Cantidad de Costilla']").Change("0");
         Button(page, "Transferir").Click();
-        page.Find(".esc-field__error").TextContent.ShouldContain("mayor que cero");
+        page.WaitForAssertion(() => page.Find(".esc-field__error").TextContent.ShouldContain("mayor que cero")); // the click handler is async
 
         page.Find("input[aria-label='Cantidad de Costilla']").Change("8");
         Button(page, "Transferir").Click();
