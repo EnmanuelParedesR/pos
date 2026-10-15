@@ -564,6 +564,38 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("ClosedShifts", "replica");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Persistence.ReplicaCustomer", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("CreditBalance")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<decimal>("Debt")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("TenantId", "Id");
+
+                    b.ToTable("Customers", "replica");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Persistence.ReplicaCustomerCharge", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -1103,6 +1135,10 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.Property<decimal>("Total")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
                     b.Property<decimal>("UnitCost")
                         .HasPrecision(19, 4)

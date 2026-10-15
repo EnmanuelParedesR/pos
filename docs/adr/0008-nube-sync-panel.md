@@ -33,13 +33,14 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 - Las proyecciones hacen *upsert* por id; nunca suman sobre lo ya aplicado.
 - Lo que manda el nodo: `type` es el nombre completo del evento en .NET (por ejemplo `Toki.Sales.Contracts.SaleRecordedV1`), `payload` es el JSON del evento como objeto (camelCase, enums como texto), no como texto escapado, y `occurredUtc` va en ISO 8601 con `Z`. El cuerpo va comprimido (`Content-Encoding: gzip`), así que la nube lo descomprime (`UseRequestDecompression`). Solo se marca como subido lo que viene en `accepted`; una respuesta que no sea 200 deja todo el lote pendiente.
 
-**Réplica (V1)**: ventas (cabecera, líneas, pagos), anulaciones, devoluciones con sus líneas, turnos abiertos y cerrados (Z), movimientos de caja, movimientos de inventario, cambios de precio, documentos fiscales, compras y sus anulaciones, cargos a crédito (fiado) y abonos de clientes, y los nombres de usuarios y cajas. Toda tabla lleva `TenantId` como primera columna de sus índices. `SupplierPaymentRecordedV1` todavía se guarda sin aplicar.
+**Réplica (V1)**: ventas (cabecera, líneas, pagos), anulaciones, devoluciones con sus líneas, turnos abiertos y cerrados (Z), movimientos de caja, movimientos de inventario, cambios de precio, documentos fiscales, compras y sus anulaciones, cargos a crédito (fiado) y abonos de clientes, el saldo y el nombre de cada cliente, y los nombres de usuarios y cajas. Toda tabla lleva `TenantId` como primera columna de sus índices. `SupplierPaymentRecordedV1` todavía se guarda sin aplicar.
 
 **Eventos que proyecta la nube** (nombre completo en .NET → tabla de `replica`):
 
 | Evento | Tabla | Notas |
 |---|---|---|
-| `Toki.Sales.Contracts.SaleRecordedV1` | `Sales`, `SaleLines`, `SalePayments` | |
+| `Toki.Sales.Contracts.SaleRecordedV1` | `Sales`, `SaleLines`, `SalePayments` | Ya no se emite; se sigue aplicando (líneas sin unidad). |
+| `Toki.Sales.Contracts.SaleRecordedV2` | `Sales`, `SaleLines`, `SalePayments` | V1 + `unit` en cada línea (`Pound` o `Unit`, como en el recibo; TK-180). Los más vendidos traen `unit` (la de la venta más reciente que la tenga). |
 | `Toki.Sales.Contracts.SaleVoidedV1` | `SaleVoids` | |
 | `Toki.Sales.Contracts.ReturnRecordedV1` | `Returns` | Sin líneas. Ya no se emite; se sigue aplicando por lo que ya se subió. |
 | `Toki.Sales.Contracts.ReturnRecordedV2` | `Returns`, `ReturnLines` | V1 + `lines: [{ productId, presentationId, description, quantity, total, itbis, cost }]` (cantidad en la unidad de la línea vendida, `total` con ITBIS, `cost` unitario como en `SaleLineV1`). Los más vendidos restan lo devuelto el día de la devolución. |
@@ -54,15 +55,16 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 | `Toki.Purchasing.Contracts.PurchasePostedV1` / `PurchaseVoidedV1` | `Purchases`, `PurchaseVoids` | |
 | `Toki.Customers.Contracts.OnAccountChargeRecordedV1` | `CustomerCharges` | Uno por venta. |
 | `Toki.Customers.Contracts.CustomerPaymentRecordedV1` | `CustomerPayments` | |
+| `Toki.Customers.Contracts.CustomerBalanceChangedV1` | `Customers` | `{ customerId, name, debt, creditBalance }` con las cifras de la propia tienda (TK-174): al crear o editar un cliente, y tras cada fiado, abono, abono anulado, venta anulada, devolución a la cuenta o uso del saldo a favor. Gana el más reciente según `occurredUtc`. También va en la foto inicial. |
 | `Toki.Sync.Contracts.NodeHeartbeatV1` | `NodeHeartbeats`, `DailyUsage` | El latido del nodo (TK-190): el más reciente por nodo y por tienda y día. Ver abajo. |
 
 - Los nombres (usuarios y cajas) se quedan con el evento más reciente según `occurredUtc`: uno viejo que llegue tarde no deshace un cambio.
-- **Foto inicial**: al conectar la tienda (`/api/sync/connect`), en la misma transacción, Identity y CashRegister escriben en el outbox un `UserProfileChangedV1` por cada usuario y un `RegisterChangedV1` por cada caja (`ICloudSnapshot` en `Toki.Sync.Contracts`). Así una tienda que se conecta tarde también manda los nombres que ya existían. Se repite en cada conexión; no hace daño.
+- **Foto inicial**: al conectar la tienda (`/api/sync/connect`), en la misma transacción, Identity, CashRegister y Customers escriben en el outbox un `UserProfileChangedV1` por cada usuario, un `RegisterChangedV1` por cada caja y un `CustomerBalanceChangedV1` por cada cliente (`ICloudSnapshot` en `Toki.Sync.Contracts`). Así una tienda que se conecta tarde también manda los nombres que ya existían. Se repite en cada conexión; no hace daño.
 - Un evento publicado no se cambia: si su forma cambia, se crea `V2` y la nube proyecta las dos versiones.
 
 **Panel**: ASP.NET Core Identity con *bearer tokens* (`MapIdentityApi`) para los usuarios del panel. Cada usuario pertenece a un tenant, y todas las consultas filtran por el tenant del token.
 - Nombres: `GET /api/panel/sales/by-cashier` trae `cashierName`; `GET /api/panel/shifts` trae `registerName` y `cashierName`; los avisos de `GET /api/panel/summary` (`issues`) de tipo `ShiftDifference` traen `cashierName` y `registerName`, y el mensaje incluye el nombre del cajero. Son `null` mientras la tienda no haya mandado el nombre.
-- `GET /api/panel/receivables?storeId=&limit=10` → `{ total, customerCount, topDebtors: [{ customerId, storeId, debt }] }`: el fiado de hoy (cargos de ventas no anuladas, menos devoluciones a la cuenta de esas ventas, menos abonos). `shortcut:` un abono anulado no manda evento, así que después de uno la deuda sale más baja; los clientes salen por id (no hay evento con su nombre).
+- `GET /api/panel/receivables?storeId=&limit=10` → `{ total, customerCount, topDebtors: [{ customerId, storeId, debt, customerName }] }`: el fiado de hoy. Un cliente con `CustomerBalanceChangedV1` debe la cifra de la tienda y sale con su nombre (TK-174), así que un abono anulado ya cuenta. Para los demás (tiendas con una versión anterior) se reconstruye: cargos de ventas no anuladas, menos devoluciones a la cuenta de esas ventas, menos abonos; `customerName` es `null`. `shortcut:` esa reconstrucción no ve los abonos anulados; desaparece cuando todas las tiendas actualicen.
 
 **Latido del nodo (TK-190)**
 - Al arrancar y cada hora (`Sync:HeartbeatMinutes`), mientras la tienda está conectada, Sync escribe en el outbox un `NodeHeartbeatV1`: versión, sistema operativo, minutos encendido, cajas con turnos en 30 días, turnos abiertos, eventos por subir, tipo del último error al subir (`http_503`, `unreachable`, `other`), funciones (fiado, proveedor e-CF; balanza e impresora quedan `null` porque las conoce la caja), puesta en marcha (nombre y RNC guardados como sí/no, productos activos) y los totales de ayer y hoy (facturas, monto, cajeros, anulaciones, devuelto).

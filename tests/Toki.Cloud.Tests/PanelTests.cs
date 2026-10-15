@@ -14,9 +14,9 @@ public sealed class PanelTests(CloudApp app) : IClassFixture<CloudApp>
     private static readonly Guid Steak = Guid.CreateVersion7();
     private static readonly Guid Ground = Guid.CreateVersion7();
 
-    public static SaleRecordedV1 Sale(decimal total, Guid cashier, Guid product, string description, params SalePaymentV1[] payments) =>
+    public static SaleRecordedV2 Sale(decimal total, Guid cashier, Guid product, string description, params SalePaymentV1[] payments) =>
         new(Guid.CreateVersion7(), 1, Guid.CreateVersion7(), cashier, null, "E320000000001", total, Math.Round(total * 18 / 118, 2), 0,
-            [new SaleLineV1(product, null, description, 2, total, Math.Round(total * 18 / 118, 2), 100)],
+            [new SaleLineV2(product, null, description, 2, "Pound", total, Math.Round(total * 18 / 118, 2), 100)],
             payments.Length == 0 ? [new SalePaymentV1("Cash", total)] : payments);
 
     [Fact]
@@ -81,6 +81,7 @@ public sealed class PanelTests(CloudApp app) : IClassFixture<CloudApp>
         var product = top.EnumerateArray().ShouldHaveSingleItem(); // the voided ground beef is left out
         product.GetProperty("description").GetString().ShouldBe("Bistec de res");
         product.GetProperty("quantity").GetDecimal().ShouldBe(2);
+        product.GetProperty("unit").GetString().ShouldBe("Pound"); // TK-180
 
         var shifts = await a.Client.GetFromJsonAsync<JsonElement>("/api/panel/shifts?onlyDifferences=true");
         shifts.EnumerateArray().ShouldHaveSingleItem().GetProperty("zNumber").GetInt32().ShouldBe(12);

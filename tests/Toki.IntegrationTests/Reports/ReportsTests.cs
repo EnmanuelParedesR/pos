@@ -96,6 +96,23 @@ public sealed class ReportsTests(TokiApp app) : IClassFixture<TokiApp>, IAsyncLi
     }
 
     [Fact]
+    public async Task Payment_mix_and_sales_by_hour_come_from_the_sales()
+    {
+        // TK-179: A (448) and C (177) in cash, B voided; the return gave 59 back in cash.
+        var cash = (await Get($"sales/by-payment-method?{_period}")).EnumerateArray().ShouldHaveSingleItem();
+        cash.GetProperty("method").GetString().ShouldBe("Cash");
+        (cash.GetProperty("saleCount").GetInt32(), cash.GetProperty("paid").GetDecimal(), cash.GetProperty("refunded").GetDecimal(), cash.GetProperty("net").GetDecimal())
+            .ShouldBe((2, 625m, 59m, 566m));
+        (await _admin.GetStringAsync($"/api/reports/sales/by-payment-method?{_period}&format=csv")).ShouldContain("MedioPago,Ventas,Pagado,Devuelto,Neto");
+
+        var hours = (await Get($"sales/by-hour?{_period}")).EnumerateArray().ToList();
+        hours.Sum(h => h.GetProperty("saleCount").GetInt32()).ShouldBe(2);
+        hours.Sum(h => h.GetProperty("salesWithItbis").GetDecimal()).ShouldBe(625m);
+        var storeHour = app.Clock.GetUtcNow().UtcDateTime.AddHours(-4).Hour;
+        hours.ShouldAllBe(h => h.GetProperty("hour").GetInt32() == storeHour);
+    }
+
+    [Fact]
     public async Task Shifts_inventory_and_607()
     {
         var shift = (await Get($"shifts?{_period}")).EnumerateArray().Single();

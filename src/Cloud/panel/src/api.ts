@@ -204,9 +204,11 @@ export interface Summary {
   lastEventUtc: string | null;
 }
 export interface DaySales { date: string; count: number; total: number; discount: number; itbis: number; returns: number; net: number; voidedCount: number }
-export interface ProductSales { productId: string; description: string; quantity: number; total: number; profit: number }
+/** `unit`: "Pound" or "Unit"; null for sales the store uploaded before TK-180. */
+export interface ProductSales { productId: string; description: string; quantity: number; total: number; profit: number; unit?: string | null }
 export interface CashierSales { cashierId: string; count: number; total: number; voidedCount: number; cashierName?: string | null }
-export interface Receivables { total: number; customerCount: number; topDebtors: { customerId: string; storeId: string; debt: number }[] }
+/** `customerName`: null until the store sends the customer's account (TK-174). */
+export interface Receivables { total: number; customerCount: number; topDebtors: { customerId: string; storeId: string; debt: number; customerName?: string | null }[] }
 export interface Shift {
   shiftId: string;
   storeId: string;

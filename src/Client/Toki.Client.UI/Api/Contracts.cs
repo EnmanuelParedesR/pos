@@ -88,6 +88,8 @@ public sealed record NewCustomer(string Name, string? TaxId, string? Phone, stri
 public sealed record DailySales(DateOnly Day, int SaleCount, decimal SalesWithItbis, decimal Discount, decimal Returns, decimal Itbis,
     decimal NetWithoutItbis, decimal Cost, decimal Profit);
 public sealed record ProductSales(Guid ProductId, string Product, decimal Quantity, decimal NetWithoutItbis, decimal Profit);
+public sealed record PaymentMethodSales(PaymentMethod Method, int SaleCount, decimal Paid, decimal Refunded, decimal Net);
+public sealed record HourlySales(DateOnly Day, int Hour, int SaleCount, decimal SalesWithItbis);
 public sealed record ShiftSummary(Guid ShiftId, string Register, string Cashier, DateTime OpenedUtc, DateTime? ClosedUtc, long? ZNumber, decimal OpeningFloat,
     decimal? ExpectedCash, decimal? CountedCash, decimal? Difference);
 public sealed record Receivable(Guid CustomerId, string Customer, decimal Over90, decimal Total, decimal CreditLimit);

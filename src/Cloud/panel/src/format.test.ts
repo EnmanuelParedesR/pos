@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, ago, cashierLabel, isStale, money, storeDay } from "./format";
+import { addDays, ago, cashierLabel, customerLabel, isStale, money, quantity, storeDay } from "./format";
 
 describe("format", () => {
   it("writes amounts like the register: RD$ 1,234.50", () => {
@@ -28,5 +28,13 @@ describe("format", () => {
   it("names a cashier by name, or by the end of the id until the store sends it", () => {
     expect(cashierLabel("0199e3a1-0000-7000-8000-00000000a1b2", "Yudelka Martínez")).toBe("Yudelka Martínez");
     expect(cashierLabel("0199e3a1-0000-7000-8000-00000000a1b2", null)).toBe("Cajero …a1b2");
+    expect(customerLabel("0199e3a1-0000-7000-8000-00000000c3d4", null)).toBe("Cliente …c3d4");
+  });
+
+  it("says the unit of a quantity when the store sent it", () => {
+    expect(quantity(26.5, "Pound")).toBe("26.5 lb");
+    expect(quantity(12, "Unit")).toBe("12 unidades");
+    expect(quantity(1, "Unit")).toBe("1 unidad");
+    expect(quantity(1.25, null)).toBe("1.25");
   });
 });

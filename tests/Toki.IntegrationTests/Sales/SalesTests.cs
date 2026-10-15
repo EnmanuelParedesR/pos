@@ -47,7 +47,8 @@ public sealed class SalesTests(TokiApp app) : IClassFixture<TokiApp>
         var x = await app.XReportAsync(cashier.ShiftId);
         x.GetProperty("expectedCash").GetDecimal().ShouldBe(1506m);
         x.GetProperty("rounding").GetDecimal().ShouldBe(0.25m);
-        (await CountAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox.Where(m => m.Type.EndsWith("SaleRecordedV1")))).ShouldBeGreaterThan(0);
+        (await CountAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox.Where(m => m.Type.EndsWith("SaleRecordedV2") && m.Payload.Contains("\"unit\":\"Pound\""))))
+            .ShouldBeGreaterThan(0); // TK-180: the cloud says "lb"
         (await app.KardexMismatchesAsync()).ShouldBeEmpty();
         (await app.VerifyAuditAsync()).ShouldBeNull();
     }

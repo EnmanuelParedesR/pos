@@ -95,7 +95,7 @@ export function SalesPage() {
               items={(products.data ?? []).map((p) => ({
                 key: p.productId,
                 name: p.description,
-                detail: `${quantity(p.quantity)} · gana ${money(p.profit)}`,
+                detail: `${quantity(p.quantity, p.unit)} · gana ${money(p.profit)}`,
                 value: p.total,
                 share: productMax === 0 ? 0 : p.total / productMax,
               }))}

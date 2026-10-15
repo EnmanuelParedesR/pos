@@ -23,8 +23,23 @@ public sealed record Report607Row(
     decimal SelectiveTax, decimal OtherTaxes, decimal LegalTip,
     decimal Cash, decimal CheckTransfer, decimal Card, decimal CreditSale, decimal GiftVouchers, decimal Barter, decimal OtherForms);
 
+/// <summary>How the period's sales were paid (TK-179), straight from the sales: not from the Z, so it also covers shifts still open.</summary>
+/// <param name="Method">Payment method name (Cash, Card, Transfer, OnAccount, CreditBalance).</param>
+/// <param name="SaleCount">Completed sales paid, in full or in part, this way.</param>
+/// <param name="Paid">Paid this way by the period's completed sales.</param>
+/// <param name="Refunded">Given back this way by the period's returns (on the day they happened, like every report).</param>
+public sealed record PaymentMethodSales(string Method, int SaleCount, decimal Paid, decimal Refunded, decimal Net);
+
+/// <summary>Completed sales of one store hour (TK-179), so today so far can be compared with the same hours of another day.</summary>
+/// <param name="Hour">Store hour, 0–23 (UTC−4): 14 is from 2:00 to 2:59 p. m.</param>
+/// <param name="SalesWithItbis">Before returns (returns are not per hour).</param>
+public sealed record HourlySales(DateOnly Day, int Hour, int SaleCount, decimal SalesWithItbis);
+
 public interface ISalesReports
 {
+    Task<IReadOnlyList<PaymentMethodSales>> ByPaymentMethodAsync(DateOnly from, DateOnly to, CancellationToken ct);
+    /// <summary>Only the hours with sales, by day and hour.</summary>
+    Task<IReadOnlyList<HourlySales>> ByHourAsync(DateOnly from, DateOnly to, CancellationToken ct);
     Task<IReadOnlyList<DailySales>> ByDayAsync(DateOnly from, DateOnly to, CancellationToken ct);
     Task<IReadOnlyList<ProductSales>> ByProductAsync(DateOnly from, DateOnly to, CancellationToken ct);
     Task<IReadOnlyList<CashierSales>> ByCashierAsync(DateOnly from, DateOnly to, CancellationToken ct);

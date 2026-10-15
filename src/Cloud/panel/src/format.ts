@@ -11,7 +11,11 @@ export const money = (value: number) => (value < 0 ? "-" : "") + "RD$ " + amount
 /** Short amount for chart labels: 950, 12.5k. */
 export const shortMoney = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(value)));
 
-export const quantity = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 3 });
+/** "26.5 lb", "12 unidades", "1 unidad"; just the number when the unit is unknown (sales uploaded before TK-180). */
+export const quantity = (value: number, unit?: string | null) => {
+  const n = value.toLocaleString("en-US", { maximumFractionDigits: 3 });
+  return unit === "Pound" ? `${n} lb` : unit === "Unit" ? `${n} ${value === 1 ? "unidad" : "unidades"}` : n;
+};
 
 export const paymentMethodNames: Record<PaymentMethod, string> = {
   Cash: "Efectivo",
@@ -74,3 +78,6 @@ export const isStale = (utc: string | null, now = Date.now()) => utc === null ||
 
 /** The cashier's name (TK-165); until the store sends it, the end of the id, since ids created the same day share their start (version 7). */
 export const cashierLabel = (id: string, name?: string | null) => name?.trim() || `Cajero …${id.slice(-4)}`;
+
+/** The customer's name (TK-174); a store on an older version does not send it yet. */
+export const customerLabel = (id: string, name?: string | null) => name?.trim() || `Cliente …${id.slice(-4)}`;

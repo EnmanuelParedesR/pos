@@ -7,6 +7,7 @@ using Toki.BuildingBlocks.Security;
 using Toki.Customers.Contracts;
 using Toki.Customers.Domain;
 using Toki.SharedKernel;
+using Toki.Sync.Contracts;
 
 namespace Toki.Customers;
 
@@ -17,6 +18,7 @@ public static class CustomersModule
         services.AddModuleDbContext<CustomersDbContext>();
         services.AddScoped<ICustomerAccounts, CustomerAccounts>();
         services.AddScoped<ICustomerReports, Features.CustomerReports>();
+        services.AddScoped<ICloudSnapshot, CustomerSnapshot>();
         return services;
     }
 }
@@ -55,6 +57,16 @@ internal sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> op
 
     public Task<decimal> CreditBalanceAsync(Guid customerId, CancellationToken ct) =>
         BalanceMovements.Where(m => m.CustomerId == customerId).SumAsync(m => m.Amount, ct);
+
+    /// <summary>TK-174: saves this module's changes so far (inside the command's transaction, like a sale's receipt number) and writes
+    /// the customer's account as it now stands to the outbox. Call it after every change to that customer in the command.</summary>
+    public async Task PublishBalanceAsync(IOutbox outbox, Guid customerId, CancellationToken ct)
+    {
+        await SaveChangesAsync(ct);
+        var name = await Customers.Where(c => c.Id == customerId).Select(c => c.Name).SingleAsync(ct);
+        var debt = (await OpenChargesAsync(customerId, ct)).Sum(x => x.Balance);
+        outbox.Add(new CustomerBalanceChangedV1(customerId, name, debt, await CreditBalanceAsync(customerId, ct)));
+    }
 }
 
 internal sealed class CustomersConfiguration :
@@ -130,6 +142,7 @@ internal sealed class CustomerAccounts(CustomersDbContext db, IUserContext user,
             Id = Guid.CreateVersion7(), CustomerId = customerId, SaleId = saleId, Document = document, DateUtc = clock.GetUtcNow().UtcDateTime, Amount = amount,
         });
         outbox.Add(new OnAccountChargeRecordedV1(customerId, saleId, amount));
+        await db.PublishBalanceAsync(outbox, customerId, ct);
         return Result.Success();
     }
 
@@ -138,6 +151,7 @@ internal sealed class CustomerAccounts(CustomersDbContext db, IUserContext user,
         if (await db.LockAsync(customerId, ct) == 0) return CustomersErrors.CustomerNotFound;
         if (await db.CreditBalanceAsync(customerId, ct) < amount) return CustomersErrors.InsufficientCreditBalance;
         AddBalance(customerId, CreditBalanceMovementType.UsedInSale, -amount, saleId);
+        await db.PublishBalanceAsync(outbox, customerId, ct);
         return Result.Success();
     }
 
@@ -161,6 +175,7 @@ internal sealed class CustomerAccounts(CustomersDbContext db, IUserContext user,
         }
         var used = await db.BalanceMovements.Where(m => m.ReferenceId == saleId && m.Type == CreditBalanceMovementType.UsedInSale).ToListAsync(ct);
         foreach (var m in used) AddBalance(m.CustomerId, CreditBalanceMovementType.UseVoided, -m.Amount, saleId);
+        await db.PublishBalanceAsync(outbox, customerId.Value, ct);
     }
 
     public async Task CreditReturnAsync(Guid customerId, Guid saleId, Guid returnId, decimal amount, CancellationToken ct)
@@ -170,6 +185,7 @@ internal sealed class CustomerAccounts(CustomersDbContext db, IUserContext user,
         var open = (await db.OpenChargesAsync(customerId, ct)).OrderBy(x => x.Charge.SaleId == saleId ? 0 : 1).ToList();
         var rest = amount - ApplyPayment(customerId, CustomerPaymentSource.Return, returnId, amount, open);
         if (rest > 0) AddBalance(customerId, CreditBalanceMovementType.Return, rest, returnId);
+        await db.PublishBalanceAsync(outbox, customerId, ct);
     }
 
     /// <summary>Applies an amount to open charges in the given order with one payment record. Returns what was applied.</summary>
@@ -192,6 +208,19 @@ internal sealed class CustomerAccounts(CustomersDbContext db, IUserContext user,
         {
             Id = Guid.CreateVersion7(), CustomerId = customerId, Type = type, Amount = amount, ReferenceId = referenceId, DateUtc = clock.GetUtcNow().UtcDateTime,
         });
+}
+
+/// <summary>Every customer's name and account for the cloud when the store connects (TK-174), so debts from before the connection show too.</summary>
+internal sealed class CustomerSnapshot(CustomersDbContext db, IOutbox outbox) : ICloudSnapshot
+{
+    public async Task EnqueueAsync(CancellationToken ct)
+    {
+        var debts = (await db.OpenChargesAsync(null, ct)).GroupBy(x => x.Charge.CustomerId).ToDictionary(g => g.Key, g => g.Sum(x => x.Balance));
+        var balances = await db.BalanceMovements.GroupBy(m => m.CustomerId).Select(g => new { g.Key, Amount = g.Sum(m => m.Amount) })
+            .ToDictionaryAsync(x => x.Key, x => x.Amount, ct);
+        foreach (var c in await db.Customers.AsNoTracking().Select(c => new { c.Id, c.Name }).ToListAsync(ct))
+            outbox.Add(new CustomerBalanceChangedV1(c.Id, c.Name, debts.GetValueOrDefault(c.Id), balances.GetValueOrDefault(c.Id)));
+    }
 }
 
 /// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>

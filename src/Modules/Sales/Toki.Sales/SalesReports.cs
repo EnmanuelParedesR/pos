@@ -51,6 +51,31 @@ internal sealed class SalesReports(SalesDbContext db, Toki.Fiscal.Contracts.IFis
         }).OrderByDescending(p => p.NetWithoutItbis).ToList();
     }
 
+    public async Task<IReadOnlyList<PaymentMethodSales>> ByPaymentMethodAsync(DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        var (f, t) = BusinessDay.UtcRange(from, to);
+        var paid = await (from p in db.Payments
+                          join s in db.Sales on p.SaleId equals s.Id
+                          where s.DateUtc >= f && s.DateUtc < t && s.Status == SaleStatus.Completed
+                          select new { p.Method, p.SaleId, p.Amount }).AsNoTracking().ToListAsync(ct);
+        var refunded = await db.Returns.Where(x => x.DateUtc >= f && x.DateUtc < t).Select(x => new { x.Method, x.Total }).AsNoTracking().ToListAsync(ct);
+        return paid.Select(p => p.Method).Concat(refunded.Select(r => r.Method)).Distinct().Select(m =>
+        {
+            var mine = paid.Where(p => p.Method == m).ToList();
+            var back = refunded.Where(r => r.Method == m).Sum(r => r.Total);
+            return new PaymentMethodSales(m.ToString(), mine.Select(p => p.SaleId).Distinct().Count(), mine.Sum(p => p.Amount), back, mine.Sum(p => p.Amount) - back);
+        }).OrderByDescending(x => x.Net).ToList();
+    }
+
+    public async Task<IReadOnlyList<HourlySales>> ByHourAsync(DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        var (f, t) = BusinessDay.UtcRange(from, to);
+        var sales = await db.Sales.Where(s => s.DateUtc >= f && s.DateUtc < t && s.Status == SaleStatus.Completed).Select(s => new { s.DateUtc, s.Total })
+            .AsNoTracking().ToListAsync(ct);
+        return sales.GroupBy(s => (Day: BusinessDay.Of(s.DateUtc), (s.DateUtc + BusinessDay.Offset).Hour)).OrderBy(g => g.Key.Day).ThenBy(g => g.Key.Hour)
+            .Select(g => new HourlySales(g.Key.Day, g.Key.Hour, g.Count(), g.Sum(s => s.Total))).ToList();
+    }
+
     public async Task<IReadOnlyList<CashierSales>> ByCashierAsync(DateOnly from, DateOnly to, CancellationToken ct)
     {
         var (f, t) = BusinessDay.UtcRange(from, to);

@@ -46,10 +46,65 @@
   --ring: 0 0 0 3px rgba(31, 116, 194, 0.35);
   --touch: 44px;
 
+  /* Surfaces that are not plain tokens elsewhere (redefined in dark mode) */
+  --primary-hover: var(--brand-700);
+  --danger-line: #F2C4BF;
+  --row-hover: #FAF9F7;
+  --topbar-bg: rgba(246, 245, 242, 0.92);
+  --hover-tint: rgba(31, 116, 194, 0.06);
+  --tip-bg: var(--text); --tip-text: #FFFFFF; --tip-muted: #CFC9BF;
+
+  color-scheme: light;
   background: var(--background);
   color: var(--text);
   line-height: 1.4;
 }
+
+/* Dark mode (TK-183). escuadra.js (the panel: theme.ts) sets data-theme on <html> from the device's choice, or from prefers-color-scheme
+   when the user chose "Sistema". Only the admin goes dark: the register keeps its high-contrast light screens.
+   Contrast (WCAG AA) on --surface: text 13.9:1, text-2 7.9:1, text-3 5.7:1, links (--brand) 5.7:1; semantic text on its tint ≥ 6.7:1;
+   white on the primary button 5.1:1; brand-700 on brand-50 (selected items) 7.7:1. */
+:root[data-theme="dark"] .esc-admin {
+  --brand-50: #132A42; --brand-100: #1A3758; --brand-200: #24497A; --brand-300: #3A6FAD; --brand-400: #4A86CC;
+  --brand-500: #5A9BE0; --brand-600: #2A6FC0; --brand-700: #8EC1F5; --brand-800: #CFE3FA; --brand-900: #E6F0FB;
+
+  --background: #131416;
+  --surface: #1C1E21;
+  --surface-2: #24272B;
+  --surface-3: #2E3237;
+  --line: #2C3035;
+  --line-strong: #3D4248;
+  --text: #ECEAE6;
+  --text-2: #B8B2A8;
+  --text-3: #9C968C;
+
+  --brand: var(--brand-500);
+  --brand-hover: var(--brand-700);
+  --control-border: #76706A;
+
+  --success: #6FD49A; --success-bg: #13301F; --success-dot: #3CB873;
+  --warning: #F2B866; --warning-bg: #36260F; --warning-dot: #E39A2B;
+  --error: #FF8A80;   --error-bg: #3D1A16;   --error-dot: #E5483B;
+
+  --data-1: #4C93E0; --data-2: #2BB3A3; --data-3: #E39A4A; --data-4: #A78BFA;
+  --data-ghost: #4A4F56;
+
+  --elev-1: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --elev-2: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 4px 16px rgba(0, 0, 0, 0.45);
+  --elev-pop: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 40px rgba(0, 0, 0, 0.6);
+  --ring: 0 0 0 3px rgba(90, 155, 224, 0.45);
+
+  --primary-hover: #235FA6;
+  --danger-line: #6B2A25;
+  --row-hover: #212428;
+  --topbar-bg: rgba(19, 20, 22, 0.92);
+  --hover-tint: rgba(90, 155, 224, 0.1);
+  --tip-bg: #3A3E44; --tip-text: #FFFFFF; --tip-muted: #CFC9BF;
+
+  color-scheme: dark;
+}
+/* Behind the admin (overscroll, short pages) */
+:root[data-theme="dark"] body:has(.esc-admin) { background: #131416; }
 
 .esc-admin :focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
 
@@ -96,7 +151,7 @@
   .esc-side { display: none; }
   .esc-topbar {
     position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 8px 0 16px;
-    background: rgba(246, 245, 242, 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+    background: var(--topbar-bg); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
   }
   .esc-topbar__store { flex: 1 1 auto; min-width: 0; font-size: var(--t-13); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .esc-tabbar {
@@ -212,7 +267,7 @@
 .esc-chart__grid div:last-child { border-top: 1px solid var(--line-strong); }
 .esc-chart__grid span { position: absolute; left: 0; top: -9px; width: 42px; font-size: 12px; color: var(--text-3); text-align: right; }
 .esc-chart__col { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: flex-end; justify-content: center; gap: 3px; border-radius: var(--r-small); outline-offset: 0; }
-.esc-chart__col:hover, .esc-chart__col:focus-visible { background: rgba(31, 116, 194, 0.06); }
+.esc-chart__col:hover, .esc-chart__col:focus-visible { background: var(--hover-tint); }
 .esc-chart__bar, .esc-chart__ghost { width: min(40%, 26px); border-radius: 4px 4px 0 0; min-height: 2px; }
 .esc-chart__bar { background: var(--brand-500); }
 .esc-chart__col--current .esc-chart__bar { background: var(--brand-700); }
@@ -222,11 +277,11 @@
 .esc-chart__x span.is-current { color: var(--text); font-weight: 600; }
 .esc-chart__tip {
   position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); z-index: 5; min-width: 168px;
-  padding: 10px 12px; border-radius: var(--r-control); background: var(--text); color: #FFFFFF; font-size: var(--t-13); line-height: 1.45;
+  padding: 10px 12px; border-radius: var(--r-control); background: var(--tip-bg); color: var(--tip-text); font-size: var(--t-13); line-height: 1.45;
   box-shadow: var(--elev-pop); pointer-events: none; opacity: 0; visibility: hidden; transition: opacity 120ms; white-space: nowrap; text-align: left;
 }
 .esc-chart__tip b { display: block; font-size: var(--t-15); }
-.esc-chart__tip span { color: #CFC9BF; }
+.esc-chart__tip span { color: var(--tip-muted); }
 .esc-chart__col:first-child .esc-chart__tip { left: 0; transform: none; }
 .esc-chart__col:last-child .esc-chart__tip { left: auto; right: 0; transform: none; }
 .esc-chart__col:hover .esc-chart__tip, .esc-chart__col:focus-visible .esc-chart__tip { opacity: 1; visibility: visible; }
@@ -280,8 +335,8 @@
 }
 .esc-admin .esc-button:hover:not(:disabled) { background: var(--surface-2); }
 .esc-admin .esc-button--primary { background: var(--brand-600); color: #FFFFFF; box-shadow: 0 1px 2px rgba(11, 45, 82, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
-.esc-admin .esc-button--primary:hover:not(:disabled) { background: var(--brand-700); }
-.esc-admin .esc-button--danger { color: var(--error); box-shadow: 0 0 0 1px #F2C4BF; }
+.esc-admin .esc-button--primary:hover:not(:disabled) { background: var(--primary-hover); }
+.esc-admin .esc-button--danger { color: var(--error); box-shadow: 0 0 0 1px var(--danger-line); }
 .esc-admin .esc-button--danger:hover:not(:disabled) { background: var(--error-bg); }
 .esc-admin .esc-button--ghost { background: transparent; box-shadow: none; color: var(--text-2); }
 .esc-admin .esc-button--ghost:hover:not(:disabled) { background: var(--surface-3); color: var(--text); }
@@ -350,7 +405,7 @@
 .esc-admin .esc-table th.esc-num, .esc-admin .esc-table td.esc-num { text-align: right; font-variant-numeric: tabular-nums; }
 .esc-admin .esc-table td { height: 52px; padding: 0 16px; border-bottom: 1px solid var(--line); }
 .esc-admin .esc-table tbody tr { transition: background-color 80ms; }
-.esc-admin .esc-table tbody tr:hover { background: #FAF9F7; }
+.esc-admin .esc-table tbody tr:hover { background: var(--row-hover); }
 .esc-admin .esc-table tbody tr.selectable:hover { background: var(--brand-50); }
 .esc-admin .esc-table tbody tr.selectable:focus-visible { outline: 2px solid var(--brand-500); outline-offset: -2px; }
 .esc-table--wide { min-width: 760px; }

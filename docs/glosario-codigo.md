@@ -52,6 +52,9 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | cuenta por pagar / por cobrar, antigüedad | `Payable` / `Receivable`, `Aging` |
 | cliente, límite de crédito, estado de cuenta | `Customer`, `CreditLimit`, `Statement` |
 | fiado (cargo), abono | `OnAccountCharge`, `CustomerPayment` |
+| deuda, saldo a favor (cuenta del cliente) | `Debt`, `CreditBalance` (`CustomerBalanceChangedV1`) |
+| mezcla de medios de pago, ventas por hora | `PaymentMethodSales`, `HourlySales` |
+| tema (automático, claro, oscuro) | `Theme` (`system`, `light`, `dark`; `data-theme` en `<html>`) |
 | RNC o cédula | `TaxId` |
 | comprobante fiscal, secuencia | `FiscalDocument`, `NcfSequence` |
 | tipo de e-CF: crédito fiscal 31, consumo 32, nota de débito 33, nota de crédito 34 | `EcfType`: `FiscalCredit31`, `Consumer32`, `DebitNote33`, `CreditNote34` |

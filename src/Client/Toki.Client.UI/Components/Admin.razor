@@ -36,6 +36,7 @@
                 <span class="esc-avatar" aria-hidden="true">@Names.Initials(Session.Name)</span>
                 <div><b>@Session.Name</b>@(Session.Online ? "En línea" : "Sin conexión · reintentando")</div>
             </div>
+            <ThemeToggle />
             <a href="" title="Salir" @onclick="SignOutAsync" @onclick:preventDefault="true"><Icon Name="sign-out" /><span class="esc-side__label">Salir</span></a>
         </div>
     </aside>
@@ -44,6 +45,7 @@
         <Logo Size="26" />
         <span class="esc-topbar__store">@BackOffice.BusinessName</span>
         <a href="sale" class="esc-button esc-button--small"><Icon Name="cart" Size="16" /> Vender</a>
+        <ThemeToggle Class="esc-button esc-button--ghost esc-button--small" ShowLabel="false" Size="18" />
         <a href="" class="esc-button esc-button--ghost esc-button--small" aria-label="Salir" @onclick="SignOutAsync" @onclick:preventDefault="true"><Icon Name="sign-out" Size="18" /></a>
     </header>
 

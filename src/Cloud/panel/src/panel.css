@@ -1,6 +1,7 @@
 /* Owner's panel: only what is the panel's own. Tokens, shell and pieces come from Escuadra (escuadra.css + escuadra-admin.css). */
 
 html, body { background: #F6F5F2; }
+:root[data-theme="dark"], :root[data-theme="dark"] body { background: #131416; } /* TK-183: Escuadra Admin's dark --background */
 .esc-admin .esc-table td { white-space: nowrap; }
 
 /* Stores */

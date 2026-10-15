@@ -115,4 +115,51 @@ public sealed class ReplicaTests(CloudApp app) : IClassFixture<CloudApp>
         (await app.InDbAsync(db => db.OpenedShifts.SingleAsync(s => s.ShiftId == shift.ShiftId))).OpeningFloat.ShouldBe(2000);
         (await app.InDbAsync(db => db.CashMovements.SingleAsync(m => m.ShiftId == shift.ShiftId))).Method.ShouldBe("Cash");
     }
+
+    [Fact]
+    public async Task A_customer_balance_event_gives_the_stores_own_debt_with_the_name_and_an_older_one_never_wins()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        var (ana, luis) = (Guid.CreateVersion7(), Guid.CreateVersion7());
+        var sale = Guid.CreateVersion7();
+
+        (await node.SendAsync(
+            Events.Envelope(new OnAccountChargeRecordedV1(ana, sale, 500), now),
+            Events.Envelope(new CustomerPaymentRecordedV1(ana, Guid.CreateVersion7(), 200), now.AddMinutes(1)),
+            // The payment was voided: no other event says so, the balance does.
+            Events.Envelope(new CustomerBalanceChangedV1(ana, "Ana Pérez", 500, 0), now.AddMinutes(2)),
+            Events.Envelope(new CustomerBalanceChangedV1(ana, "Ana", 300, 0), now.AddMinutes(1)), // arrives late
+            Events.Envelope(new OnAccountChargeRecordedV1(luis, Guid.CreateVersion7(), 120), now))).StatusCode.ShouldBe(HttpStatusCode.OK); // older store: no balance
+        (await app.ApplyAsync()).ShouldBe(5);
+
+        var receivables = await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/receivables");
+        receivables.GetProperty("total").GetDecimal().ShouldBe(620);
+        var top = receivables.GetProperty("topDebtors").EnumerateArray().ToList();
+        (top[0].GetProperty("customerName").GetString(), top[0].GetProperty("debt").GetDecimal()).ShouldBe(("Ana Pérez", 500m));
+        (top[1].GetProperty("customerId").GetGuid(), top[1].GetProperty("debt").GetDecimal()).ShouldBe((luis, 120m));
+        top[1].GetProperty("customerName").ValueKind.ShouldBe(JsonValueKind.Null);
+
+        // Paid off: the customer leaves the list.
+        await node.SendAsync(Events.Envelope(new CustomerBalanceChangedV1(ana, "Ana Pérez", 0, 25), now.AddMinutes(3)));
+        await app.ApplyAsync();
+        (await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/receivables")).GetProperty("total").GetDecimal().ShouldBe(120);
+    }
+
+    [Fact]
+    public async Task A_sale_uploaded_as_V1_still_counts_in_top_products_without_a_unit()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        var sale = new SaleRecordedV1(Guid.CreateVersion7(), 1, Guid.CreateVersion7(), Guid.CreateVersion7(), null, "E320000000001", 300, 0, 0,
+            [new SaleLineV1(Guid.CreateVersion7(), null, "Chuleta", 1.5m, 300, 0, 150)], [new SalePaymentV1("Cash", 300)]);
+
+        await node.SendAsync(Events.Envelope(sale, app.Clock.GetUtcNow().UtcDateTime));
+        (await app.ApplyAsync()).ShouldBe(1);
+
+        var product = (await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/sales/top-products")).EnumerateArray().ShouldHaveSingleItem();
+        product.GetProperty("quantity").GetDecimal().ShouldBe(1.5m);
+        product.GetProperty("unit").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
 }

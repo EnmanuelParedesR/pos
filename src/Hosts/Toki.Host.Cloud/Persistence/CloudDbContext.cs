@@ -38,6 +38,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<ReplicaPurchaseVoid> PurchaseVoids => Set<ReplicaPurchaseVoid>();
     public DbSet<ReplicaCustomerCharge> CustomerCharges => Set<ReplicaCustomerCharge>();
     public DbSet<ReplicaCustomerPayment> CustomerPayments => Set<ReplicaCustomerPayment>();
+    public DbSet<ReplicaCustomer> Customers => Set<ReplicaCustomer>();
     public DbSet<ReplicaOpenedShift> OpenedShifts => Set<ReplicaOpenedShift>();
     public DbSet<ReplicaCashMovement> CashMovements => Set<ReplicaCashMovement>();
     public DbSet<ReplicaNodeHeartbeat> NodeHeartbeats => Set<ReplicaNodeHeartbeat>();
@@ -122,6 +123,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.ToTable("SaleLines", "replica");
             e.HasKey(l => new { l.TenantId, l.SaleId, l.LineNumber });
             e.Property(l => l.Description).HasMaxLength(200);
+            e.Property(l => l.Unit).HasMaxLength(10);
         });
         builder.Entity<ReplicaSalePayment>(e =>
         {
@@ -236,6 +238,12 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(h => h.Os).HasMaxLength(200);
             e.Property(h => h.LastErrorCode).HasMaxLength(30);
             e.Property(h => h.FiscalProvider).HasMaxLength(30);
+        });
+        builder.Entity<ReplicaCustomer>(e =>
+        {
+            e.ToTable("Customers", "replica");
+            e.HasKey(c => new { c.TenantId, c.Id });
+            e.Property(c => c.Name).HasMaxLength(150);
         });
         builder.Entity<ReplicaDailyUsage>(e =>
         {
@@ -408,6 +416,8 @@ public sealed class ReplicaSaleLine : IReplicaRow
     public Guid? PresentationId { get; set; }
     public string Description { get; set; } = "";
     public decimal Quantity { get; set; }
+    /// <summary>"Pound" or "Unit" (SaleRecordedV2 on, TK-180); null for sales uploaded as V1.</summary>
+    public string? Unit { get; set; }
     public decimal Total { get; set; }
     public decimal Itbis { get; set; }
     public decimal UnitCost { get; set; }
@@ -570,6 +580,19 @@ public sealed class ReplicaCustomerPayment : IReplicaRow
     public Guid CustomerId { get; set; }
     public decimal Amount { get; set; }
     public DateTime PaidUtc { get; set; }
+}
+
+/// <summary>A customer's name and account as the store last sent them (CustomerBalanceChangedV1, TK-174).</summary>
+public sealed class ReplicaCustomer : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid Id { get; set; }
+    public Guid StoreId { get; set; }
+    public string Name { get; set; } = "";
+    public decimal Debt { get; set; }
+    public decimal CreditBalance { get; set; }
+    /// <summary>When the applied event happened: an older one arriving later never overwrites newer figures.</summary>
+    public DateTime ChangedUtc { get; set; }
 }
 
 public sealed class ReplicaOpenedShift : IReplicaRow

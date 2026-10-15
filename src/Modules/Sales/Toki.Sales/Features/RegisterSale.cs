@@ -197,8 +197,8 @@ internal static class RegisterSale
             db.Sales.Add(sale);
             await db.SaveChangesAsync(ct); // assigns the receipt number
 
-            outbox.Add(new SaleRecordedV1(sale.Id, sale.Number, sale.ShiftId, sale.CashierId, sale.CustomerId, sale.ENcf, sale.Total, sale.Itbis,
-                sale.Discount, sale.Lines.Select(l => new SaleLineV1(l.ProductId, l.PresentationId, l.Description, l.Quantity, l.Total, l.Itbis, l.UnitCost)).ToList(),
+            outbox.Add(new SaleRecordedV2(sale.Id, sale.Number, sale.ShiftId, sale.CashierId, sale.CustomerId, sale.ENcf, sale.Total, sale.Itbis, sale.Discount,
+                sale.Lines.Select(l => new SaleLineV2(l.ProductId, l.PresentationId, l.Description, l.Quantity, l.Unit.ToString(), l.Total, l.Itbis, l.UnitCost)).ToList(),
                 sale.Payments.Select(p => new SalePaymentV1(p.Method.ToString(), p.Amount)).ToList()));
             await audit.RecordAsync("sales.create", "Sale", sale.Id,
                 new { sale.Number, sale.ENcf, sale.Total, sale.Discount, DiscountPercent = t.DiscountPercent, Permissions = permissions }, ct);

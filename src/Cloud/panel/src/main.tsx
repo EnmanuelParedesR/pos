@@ -6,6 +6,9 @@ import "../../../Client/Toki.Escuadra/wwwroot/escuadra.css";
 import "../../../Client/Toki.Escuadra/wwwroot/escuadra-admin.css";
 import "./panel.css";
 import { App } from "./App";
+import { startTheme } from "./theme";
+
+startTheme();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
