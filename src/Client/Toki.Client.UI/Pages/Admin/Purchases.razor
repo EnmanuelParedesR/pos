@@ -1,0 +1,324 @@
+@page "/admin/purchasing"
+@inject TokiApi Api
+@inject Session Session
+
+<Admin Title="Compras" Subtitle="Mercancía que entra con factura. Al recibirla sube la existencia y se actualiza el costo promedio.">
+    <Actions>
+        <Segmented Label="Periodo" Options="Periods.Options" Value="@_period" ValueChanged="ChangePeriodAsync" />
+        <Button Variant="Button.Variants.Primary" OnClick="NewAsync"><Icon Name="plus" /> Nueva compra</Button>
+    </Actions>
+    <ChildContent>
+        <SectionTabs Label="Compras" Tabs="SectionTabs.Purchasing(Session)" />
+        @if (_notice is not null)
+        {
+            <Notice Kind="Notice.Kinds.Success" Title="@_notice" />
+        }
+        @if (_purchases is { Count: > 0 })
+        {
+            var posted = _purchases.Where(p => p.Status == "Posted").ToList();
+            var drafts = _purchases.Count(p => p.Status == "Draft");
+            <span class="esc-muted">@posted.Count @(posted.Count == 1 ? "compra recibida" : "compras recibidas") · @Format.WithCurrency(posted.Sum(p => p.Total))@(drafts > 0 ? $" · {drafts} en borrador" : "")</span>
+        }
+        <div class="esc-card esc-table-wrap esc-table-wrap--tall">
+            <table class="esc-table esc-table--wide">
+                <thead><tr><th>Suplidor</th><th class="esc-hide-sm">Fecha</th><th class="esc-hide-sm">NCF</th><th>Estado</th><th class="esc-hide-sm">Pago</th><th class="esc-num">Total</th><th class="esc-table__chev esc-hide-sm"><span class="esc-visually-hidden">Abrir</span></th></tr></thead>
+                <tbody>
+                    @if (_purchases is null)
+                    {
+                        @for (var i = 0; i < 5; i++)
+                        {
+                            <tr><td><Skeleton Width="170px" /></td><td class="esc-hide-sm"><Skeleton Width="80px" /></td><td class="esc-hide-sm"><Skeleton Width="110px" /></td><td><Skeleton Width="80px" /></td><td class="esc-hide-sm"><Skeleton Width="70px" /></td><td><Skeleton /></td><td class="esc-hide-sm"></td></tr>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var p in _purchases)
+                        {
+                            <tr class="selectable" tabindex="0" @onclick="() => OpenAsync(p)" @onkeydown='e => e.Key == "Enter" ? OpenAsync(p) : Task.CompletedTask' style="@(p.Status == "Voided" ? "color:var(--text-3)" : "")">
+                                <td><span style="font-weight:600">@p.Supplier</span><span class="esc-table__sub">Compra #@p.Number<span class="esc-only-sm"> · @AdminNames.Day(p.InvoiceDate)</span></span></td>
+                                <td class="esc-hide-sm" style="white-space:nowrap">@AdminNames.Day(p.InvoiceDate)</td>
+                                <td class="esc-hide-sm" style="font-variant-numeric:tabular-nums">@p.Ncf</td>
+                                <td><span class="esc-pill @(p.Status switch { "Posted" => "esc-pill--success", "Draft" => "esc-pill--warning", _ => "esc-pill--neutral" })">@AdminNames.PurchaseStatus(p.Status)</span></td>
+                                <td class="esc-hide-sm">@AdminNames.Terms(p.Terms)</td>
+                                <td class="esc-num" style="font-weight:600">@Format.Amount(p.Total)</td>
+                                <td class="esc-table__chev esc-hide-sm"><Icon Name="chevron-right" Size="18" /></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            @if (_purchases is { Count: 0 })
+            {
+                <EmptyState Icon="truck" Title="No hay compras en este periodo">@(_message ?? "Registre la factura del suplidor con “Nueva compra”: la mercancía entra al inventario al recibirla.")</EmptyState>
+            }
+        </div>
+
+        @if (_editing is { } f)
+        {
+            <Dialog Title="@(f.Number is { } n ? $"Compra #{n} (borrador)" : "Nueva compra")" Subtitle="Copie la factura del suplidor. Los costos van sin ITBIS." Wide="true" OnClose="() => _editing = null">
+                <ChildContent>
+                    <SupplierFields Suppliers="_suppliers" @bind-SupplierId="f.SupplierId" @bind-Ncf="f.Ncf" @bind-Date="f.Date" Errors="_errors" />
+                    @if (_warehouses.Count > 1)
+                    {
+                        <Field Label="Entra a">
+                            <select class="esc-select" @bind="f.Warehouse">
+                                @foreach (var w in _warehouses.Where(w => w.IsActive)) { <option value="@w.Id">@w.Name</option> }
+                            </select>
+                        </Field>
+                    }
+                    <ProductPicker OnPick="AddAsync" />
+                    <div class="esc-table-wrap">
+                        <table class="esc-table">
+                            <thead><tr><th>Producto</th><th class="esc-num">Cantidad</th><th class="esc-num">Costo sin ITBIS</th><th class="esc-hide-sm">ITBIS</th><th class="esc-num esc-hide-sm">Subtotal</th><th class="esc-table__chev"><span class="esc-visually-hidden">Quitar</span></th></tr></thead>
+                            <tbody>
+                                @foreach (var l in f.Lines)
+                                {
+                                    <tr>
+                                        <td style="font-weight:600">@l.Name
+                                            @if (l.Error is not null) { <span class="esc-field__error" role="alert"><Icon Name="alert" Size="14" />@l.Error</span> }
+                                        </td>
+                                        <td class="esc-num" style="white-space:nowrap"><input class="esc-input cell-input" style="width:90px" inputmode="decimal" aria-label="@($"Cantidad de {l.Name}")" @bind="l.Quantity" @bind:event="oninput" @bind:after="() => l.Error = null" /> @(l.Unit == "Pound" ? "lb" : "")</td>
+                                        <td class="esc-num"><input class="esc-input cell-input" inputmode="decimal" aria-label="@($"Costo de {l.Name}")" @bind="l.Cost" @bind:event="oninput" @bind:after="() => l.Error = null" /></td>
+                                        <td class="esc-hide-sm">
+                                            <select class="esc-select" style="width:auto;min-height:40px" aria-label="@($"ITBIS de {l.Name}")" @bind="l.Rate">
+                                                <option value="@ItbisRate.General18">18 %</option>
+                                                <option value="@ItbisRate.Reduced16">16 %</option>
+                                                <option value="@ItbisRate.Zero">0 %</option>
+                                                <option value="@ItbisRate.Exempt">Exento</option>
+                                            </select>
+                                        </td>
+                                        <td class="esc-num esc-hide-sm">@Format.Amount(l.Subtotal)</td>
+                                        <td class="esc-table__chev"><button type="button" class="esc-button esc-button--ghost esc-button--small" aria-label="@($"Quitar {l.Name}")" @onclick="() => f.Lines.Remove(l)"><Icon Name="x" Size="16" /></button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                        @if (f.Lines.Count == 0)
+                        {
+                            <EmptyState Icon="package" Title="Agregue los productos de la factura">@(_errors.ContainsKey("lines") ? "La compra necesita al menos un producto." : "Búsquelos arriba por nombre, PLU o código de barras.")</EmptyState>
+                        }
+                    </div>
+                    <dl class="totals">
+                        <dt>Subtotal</dt><dd>@Format.Amount(f.Lines.Sum(l => l.Subtotal))</dd>
+                        <dt>ITBIS</dt><dd>@Format.Amount(f.Lines.Sum(l => l.Itbis))</dd>
+                        <dt>Total</dt><dd class="totals__grand">@Format.WithCurrency(f.Lines.Sum(l => l.Subtotal + l.Itbis))</dd>
+                    </dl>
+                    <TermsFields @bind-Terms="f.Terms" @bind-Method="f.Method" @bind-CreditDays="f.CreditDays" Error="@_errors.GetValueOrDefault("days")" />
+                    <div class="esc-form-grid">
+                        <Field Label="Total de la factura" Error="@_errors.GetValueOrDefault("invoiceTotal")" Hint="Opcional: si la factura dice otro total por centavos, escríbalo y se usa ese.">
+                            <input class="esc-input esc-num" inputmode="decimal" @bind="f.InvoiceTotal" @bind:after='() => _errors.Remove("invoiceTotal")' />
+                        </Field>
+                        <Field Label="Nota" Hint="Opcional.">
+                            <input class="esc-input" maxlength="500" @bind="f.Notes" />
+                        </Field>
+                    </div>
+                    @if (_error is not null) { <Notice Title="@_error" /> }
+                </ChildContent>
+                <Footer>
+                    @if (f.Saved)
+                    {
+                        <Button Variant="Button.Variants.Ghost" Disabled="_sending" OnClick="() => DiscardAsync(f)">Descartar borrador</Button>
+                        <span class="esc-spacer"></span>
+                    }
+                    <Button OnClick="() => _editing = null" Shortcut="Esc">Cancelar</Button>
+                    <Button Disabled="_sending" OnClick="() => SaveAsync(post: false)">Guardar borrador</Button>
+                    <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="() => SaveAsync(post: true)">@(_sending ? "Guardando…" : "Recibir mercancía")</Button>
+                </Footer>
+            </Dialog>
+        }
+
+        @if (_shown is { } d)
+        {
+            <Dialog Title="@($"Compra #{d.Number} · {d.SupplierName}")" Subtitle="@($"NCF {d.Ncf} · {AdminNames.Day(d.InvoiceDate)} · {AdminNames.Terms(d.Terms.ToString())}{(d.DueDate is { } due ? $", vence {AdminNames.Day(due)}" : "")}")" Wide="true" OnClose="() => _shown = null">
+                <ChildContent>
+                    @if (d.Status == "Voided") { <Notice Kind="Notice.Kinds.Warning" Title="Anulada">@d.VoidReason</Notice> }
+                    <div class="esc-table-wrap">
+                        <table class="esc-table">
+                            <thead><tr><th>Producto</th><th class="esc-num">Cantidad</th><th class="esc-num esc-hide-sm">Costo</th><th class="esc-hide-sm">ITBIS</th><th class="esc-num">Subtotal</th></tr></thead>
+                            <tbody>
+                                @foreach (var l in d.Lines)
+                                {
+                                    <tr><td style="font-weight:600">@l.Description</td><td class="esc-num">@AdminNames.Number(l.Quantity)</td><td class="esc-num esc-hide-sm">@Format.Amount(l.UnitCost)</td><td class="esc-hide-sm">@Names.Itbis(l.ItbisRate.ToString())</td><td class="esc-num">@Format.Amount(l.Subtotal)</td></tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <dl class="totals">
+                        <dt>Subtotal</dt><dd>@Format.Amount(d.Subtotal)</dd>
+                        <dt>ITBIS</dt><dd>@Format.Amount(d.Itbis)</dd>
+                        <dt>Total</dt><dd class="totals__grand">@Format.WithCurrency(d.Total)</dd>
+                    </dl>
+                    @if (d.Notes is { Length: > 0 }) { <p class="esc-muted">@d.Notes</p> }
+                    @if (_voiding)
+                    {
+                        <Field Label="¿Por qué se anula? *" Hint="La mercancía sale del inventario. No se puede si ya tiene pagos.">
+                            <input class="esc-input" maxlength="200" @bind="_voidReason" @bind:event="oninput" autofocus />
+                        </Field>
+                    }
+                    @if (_error is not null) { <Notice Title="@_error" /> }
+                </ChildContent>
+                <Footer>
+                    <Button OnClick="() => _shown = null" Shortcut="Esc">Cerrar</Button>
+                    @if (d.Status != "Voided")
+                    {
+                        @if (_voiding)
+                        {
+                            <Button Variant="Button.Variants.Danger" Disabled="@(string.IsNullOrWhiteSpace(_voidReason) || _sending)" OnClick="() => VoidAsync(d)">Anular compra</Button>
+                        }
+                        else
+                        {
+                            <Button Variant="Button.Variants.Danger" OnClick="() => _voiding = true">Anular</Button>
+                        }
+                    }
+                </Footer>
+            </Dialog>
+        }
+    </ChildContent>
+</Admin>
+
+@code {
+    private sealed class LineForm
+    {
+        public Guid ProductId; public string Name = "", Unit = "Unit"; public string? Quantity, Cost, Error; public ItbisRate Rate = ItbisRate.General18;
+        public decimal Subtotal => Math.Round((Format.ParseNumber(Quantity) ?? 0) * (Format.ParseNumber(Cost) ?? 0), 2, MidpointRounding.AwayFromZero);
+        public decimal Itbis => Math.Round(Subtotal * (Rate switch { ItbisRate.General18 => 0.18m, ItbisRate.Reduced16 => 0.16m, _ => 0m }), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private sealed class PurchaseForm
+    {
+        public Guid Id = Guid.CreateVersion7(); public long? Number; public bool Saved; public Guid? SupplierId; public string? Ncf, Warehouse, CreditDays, InvoiceTotal, Notes;
+        public DateOnly Date = Format.Today; public PaymentTerms Terms = PaymentTerms.Credit; public SupplierPaymentMethod? Method = SupplierPaymentMethod.Cash;
+        public List<LineForm> Lines = [];
+    }
+
+    private List<PurchaseSummary>? _purchases;
+    private List<Supplier> _suppliers = [];
+    private List<Warehouse> _warehouses = [];
+    private PurchaseForm? _editing;
+    private PurchaseDetail? _shown;
+    private string _period = "month";
+    private string? _message, _error, _notice, _voidReason;
+    private bool _sending, _voiding;
+    private readonly Dictionary<string, string> _errors = [];
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task ChangePeriodAsync(string period)
+    {
+        _period = period;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _purchases = null;
+        var (from, to) = Periods.Range(_period);
+        var r = await Api.GetAsync<List<PurchaseSummary>>($"/api/purchasing/purchases?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}");
+        (_purchases, _message) = (r.Value ?? [], r.Problem?.Message);
+    }
+
+    private async Task LoadChoicesAsync()
+    {
+        _suppliers = (await Api.GetAsync<List<Supplier>>("/api/purchasing/suppliers")).Value ?? [];
+        _warehouses = (await Api.GetAsync<List<Warehouse>>("/api/inventory/warehouses")).Value ?? [];
+    }
+
+    private async Task NewAsync()
+    {
+        (_error, _notice) = (null, null);
+        _errors.Clear();
+        await LoadChoicesAsync();
+        _editing = new PurchaseForm { Warehouse = _warehouses.Find(w => w.IsMain)?.Id.ToString() };
+    }
+
+    private async Task OpenAsync(PurchaseSummary p)
+    {
+        (_error, _notice, _voiding, _voidReason) = (null, null, false, null);
+        var r = await Api.GetAsync<PurchaseDetail>($"/api/purchasing/purchases/{p.Id}");
+        if (r.Value is not { } d) { _message = r.Problem?.Message; return; }
+        if (d.Status != "Draft") { _shown = d; return; }
+        _errors.Clear();
+        await LoadChoicesAsync();
+        _editing = new PurchaseForm
+        {
+            Id = d.Id, Number = d.Number, Saved = true, SupplierId = d.SupplierId, Ncf = d.Ncf, Date = d.InvoiceDate, Terms = d.Terms, Method = d.Method ?? SupplierPaymentMethod.Cash,
+            Warehouse = (d.WarehouseId ?? _warehouses.Find(w => w.IsMain)?.Id)?.ToString(), Notes = d.Notes,
+            Lines = [.. d.Lines.Select(l => new LineForm { ProductId = l.ProductId, Name = l.Description, Quantity = AdminNames.Number(l.Quantity), Cost = AdminNames.Number(l.UnitCost), Rate = l.ItbisRate })],
+        };
+    }
+
+    /// <summary>Adds the product with its last cost and ITBIS; a product already in the list is not repeated.</summary>
+    private async Task AddAsync(ProductSummary p)
+    {
+        if (_editing is not { } f) return;
+        _errors.Remove("lines");
+        if (f.Lines.Any(l => l.ProductId == p.Id)) return;
+        var line = new LineForm { ProductId = p.Id, Name = p.Name, Unit = p.Unit, Rate = Enum.TryParse<ItbisRate>(p.ItbisRate, out var rate) ? rate : ItbisRate.General18 };
+        f.Lines.Add(line);
+        if ((await Api.GetAsync<ProductDetail>($"/api/inventory/products/{p.Id}")).Value is { Cost: > 0 } detail) line.Cost = AdminNames.Number(Math.Round(detail.Cost, 2));
+    }
+
+    private async Task SaveAsync(bool post)
+    {
+        if (_editing is not { } f) return;
+        _errors.Clear();
+        _error = null;
+        SupplierFields.Validate(f.SupplierId, f.Ncf, f.Date, _errors);
+        if (f.Lines.Count == 0) _errors["lines"] = "Agregue al menos un producto.";
+        foreach (var l in f.Lines)
+        {
+            l.Error = Format.ParseNumber(l.Quantity) is not > 0 ? "Escriba la cantidad."
+                : Format.ParseNumber(l.Cost) is not >= 0 ? "Escriba el costo sin ITBIS."
+                : null;
+        }
+        var days = TermsFields.Days(f.Terms, f.CreditDays, _errors);
+        decimal? invoiceTotal = null;
+        if (!string.IsNullOrWhiteSpace(f.InvoiceTotal) && (invoiceTotal = Format.ParseNumber(f.InvoiceTotal)) is not > 0) _errors["invoiceTotal"] = "Escriba un número o déjelo vacío.";
+        if (_errors.Count > 0 || f.Lines.Any(l => l.Error is not null)) return;
+
+        var body = new SavePurchase(f.SupplierId!.Value, f.Ncf!.Trim().ToUpperInvariant(), f.Date, f.Terms,
+            [.. f.Lines.Select(l => new PurchaseLineInput(l.ProductId, null, Format.ParseNumber(l.Quantity)!.Value, Format.ParseNumber(l.Cost)!.Value, l.Rate))],
+            Guid.TryParse(f.Warehouse, out var w) ? w : null, days, string.IsNullOrWhiteSpace(f.Notes) ? null : f.Notes.Trim(), null, invoiceTotal,
+            f.Saved ? null : f.Id, f.Terms == PaymentTerms.Cash ? f.Method : null);
+        _sending = true;
+        var saved = f.Saved ? await Api.PutAsync<PurchaseSaved>($"/api/purchasing/purchases/{f.Id}", body) : await Api.PostAsync<PurchaseSaved>("/api/purchasing/purchases", body);
+        if (saved.Problem is { } p)
+        {
+            _sending = false;
+            if (!SupplierFields.Explain(p, _errors)) _error = p.Code == "Purchasing.InvoiceTotalMismatch" ? $"{p.Message} O deje vacío el total de la factura." : p.Message;
+            return;
+        }
+        f.Saved = true;
+        if (post && (await Api.PostAsync<Empty>($"/api/purchasing/purchases/{f.Id}/post")).Problem is { } notPosted)
+        {
+            _sending = false;
+            _error = $"Se guardó el borrador, pero no se pudo recibir: {notPosted.Message}";
+            return;
+        }
+        _sending = false;
+        var supplier = _suppliers.Find(s => s.Id == f.SupplierId)?.Name;
+        _notice = post ? $"Compra de {supplier} recibida: la mercancía ya está en el inventario." : $"Borrador de {supplier} guardado. Recíbalo cuando llegue la mercancía.";
+        _editing = null;
+        await LoadAsync();
+    }
+
+    private async Task DiscardAsync(PurchaseForm f)
+    {
+        _sending = true;
+        var r = await Api.PostAsync<Empty>($"/api/purchasing/purchases/{f.Id}/void", new VoidReason("Borrador descartado"));
+        _sending = false;
+        if (r.Problem is { } p) { _error = p.Message; return; }
+        (_editing, _notice) = (null, "Borrador descartado.");
+        await LoadAsync();
+    }
+
+    private async Task VoidAsync(PurchaseDetail d)
+    {
+        _sending = true;
+        var r = await Api.PostAsync<Empty>($"/api/purchasing/purchases/{d.Id}/void", new VoidReason(_voidReason!.Trim()));
+        _sending = false;
+        if (r.Problem is { } p) { _error = p.Message; return; }
+        (_shown, _notice) = (null, $"Compra #{d.Number} anulada.");
+        await LoadAsync();
+    }
+}

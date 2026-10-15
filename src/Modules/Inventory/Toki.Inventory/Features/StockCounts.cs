@@ -163,10 +163,19 @@ internal static class GetStockCount
 {
     public sealed record Line(Guid ProductId, string Product, UnitOfMeasure Unit, decimal? Counted);
     public sealed record Response(Guid Id, StockCountStatus Status, Guid WarehouseId, IReadOnlyList<Line> Lines);
+    /// <summary>A count in the list, so an open one can be picked up again (TK-184).</summary>
+    public sealed record Item(Guid Id, StockCountStatus Status, Guid WarehouseId, Guid? CategoryId, DateTime CreatedUtc, DateTime? AppliedUtc,
+        int LineCount, int CountedCount);
 
     internal sealed class Endpoint : IEndpoint
     {
-        public void Map(IEndpointRouteBuilder app) =>
+        public void Map(IEndpointRouteBuilder app)
+        {
+            app.MapGet("/api/inventory/stock-counts", async (InventoryDbContext db, CancellationToken ct) =>
+                    Results.Ok(await db.StockCounts.OrderByDescending(c => c.CreatedUtc).Take(20)
+                        .Select(c => new Item(c.Id, c.Status, c.WarehouseId, c.CategoryId, c.CreatedUtc, c.AppliedUtc, c.Lines.Count, c.Lines.Count(l => l.Counted != null)))
+                        .AsNoTracking().ToListAsync(ct)))
+                .RequirePermission(Permissions.InventoryCount).WithTags("Inventory");
             app.MapGet("/api/inventory/stock-counts/{id:guid}", async (Guid id, InventoryDbContext db, CancellationToken ct) =>
                 {
                     var count = await db.StockCounts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
@@ -179,5 +188,6 @@ internal static class GetStockCount
                     return Results.Ok(new Response(count.Id, count.Status, count.WarehouseId, lines));
                 })
                 .RequirePermission(Permissions.InventoryCount).WithTags("Inventory");
+        }
     }
 }

@@ -1,0 +1,272 @@
+@page "/admin/inventory"
+@inject TokiApi Api
+@inject Session Session
+@inject NavigationManager Nav
+
+<Admin Title="Inventario" Subtitle="Cuánto hay de cada producto y cuánto vale al costo. Toque uno para ver sus movimientos.">
+    <Actions>
+        @if (_warehouses.Count > 1)
+        {
+            <select class="esc-select" style="width:auto;min-width:180px" aria-label="Almacén" @bind="_warehouse" @bind:after="LoadAsync">
+                @foreach (var w in _warehouses)
+                {
+                    <option value="@w.Id">@w.Name</option>
+                }
+            </select>
+        }
+    </Actions>
+    <ChildContent>
+        <SectionTabs Label="Inventario" Tabs="SectionTabs.Inventory(Session)" />
+
+        <div class="esc-card esc-stats">
+            <div class="esc-stat">
+                <span class="esc-stat__label"><Icon Name="package" Size="16" /> Valor al costo</span>
+                <span class="esc-stat__value">@(_loading ? "—" : Format.WithCurrency(_stock.Sum(s => s.Value)))</span>
+                <span class="esc-stat__note">@_stock.Count productos activos · @WarehouseName</span>
+            </div>
+            <div class="esc-stat">
+                <span class="esc-stat__label"><Icon Name="alert" Size="16" /> Bajo el mínimo</span>
+                <span class="esc-stat__value">@_stock.Count(s => s.BelowMinimum)</span>
+                <span class="esc-stat__note">@(_stock.Any(s => s.BelowMinimum) ? "Para pedir al suplidor" : "Nada que pedir")</span>
+            </div>
+            <div class="esc-stat">
+                <span class="esc-stat__label"><Icon Name="clock" Size="16" /> Pendiente de contar</span>
+                <span class="esc-stat__value">@_stock.Count(s => s.NeedsCount)</span>
+                <span class="esc-stat__note">@(_stock.Any(s => s.NeedsCount) ? "Se vendió más de lo que había" : "Todo cuadra con lo vendido")</span>
+            </div>
+        </div>
+
+        <div class="esc-row" style="gap:12px">
+            <label class="esc-search">
+                <Icon Name="search" Size="18" />
+                <input placeholder="Buscar producto" aria-label="Buscar producto" @bind="_search" @bind:event="oninput" />
+            </label>
+            <select class="esc-select" style="width:auto;min-width:200px" aria-label="Categoría" @bind="_category">
+                <option value="">Todas las categorías</option>
+                @foreach (var c in _stock.Select(s => s.Category).Distinct().Order())
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+            <button type="button" class="esc-chip" aria-pressed="@(_belowMinimum ? "true" : "false")" @onclick="() => _belowMinimum = !_belowMinimum">Bajo el mínimo</button>
+            <button type="button" class="esc-chip" aria-pressed="@(_needsCount ? "true" : "false")" @onclick="() => _needsCount = !_needsCount">Por contar</button>
+        </div>
+
+        <div class="esc-card esc-table-wrap esc-table-wrap--tall">
+            <table class="esc-table esc-table--wide">
+                <thead><tr><th>Producto</th><th class="esc-hide-sm">Categoría</th><th class="esc-num">Existencia</th><th class="esc-num esc-hide-sm">Costo promedio</th><th class="esc-num esc-hide-sm">Valor</th><th class="esc-table__chev esc-hide-sm"><span class="esc-visually-hidden">Abrir</span></th></tr></thead>
+                <tbody>
+                    @if (_loading)
+                    {
+                        @for (var i = 0; i < 6; i++)
+                        {
+                            <tr><td><Skeleton Width="160px" /></td><td class="esc-hide-sm"><Skeleton Width="90px" /></td><td><Skeleton /></td><td class="esc-hide-sm"><Skeleton /></td><td class="esc-hide-sm"><Skeleton /></td><td class="esc-hide-sm"></td></tr>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var s in Visible)
+                        {
+                            <tr class="selectable" tabindex="0" @onclick="() => OpenAsync(s)" @onkeydown='e => e.Key == "Enter" ? OpenAsync(s) : Task.CompletedTask'>
+                                <td style="font-weight:600">@s.Name<span class="esc-table__sub esc-only-sm">@s.Category · @Format.WithCurrency(s.Value)</span></td>
+                                <td class="esc-hide-sm">@s.Category</td>
+                                <td class="esc-num" style="white-space:nowrap">
+                                    @if (s.NeedsCount)
+                                    {
+                                        <span class="esc-pill esc-pill--warning" title="Se vendió más de lo registrado: hay que contarlo">@AdminNames.Stock(s.Quantity, s.Unit)</span>
+                                    }
+                                    else if (s.BelowMinimum)
+                                    {
+                                        <span class="esc-pill esc-pill--warning" title="Está en el mínimo o por debajo">@AdminNames.Stock(s.Quantity, s.Unit)</span>
+                                    }
+                                    else
+                                    {
+                                        @AdminNames.Stock(s.Quantity, s.Unit)
+                                    }
+                                    <span class="esc-table__sub">@(s.NeedsCount ? "Pendiente de contar" : s.BelowMinimum ? "Bajo el mínimo" : "")</span>
+                                </td>
+                                <td class="esc-num esc-muted esc-hide-sm">@Format.Amount(s.Cost)</td>
+                                <td class="esc-num esc-hide-sm" style="font-weight:600">@Format.Amount(s.Value)</td>
+                                <td class="esc-table__chev esc-hide-sm"><Icon Name="chevron-right" Size="18" /></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            @if (!_loading && !Visible.Any())
+            {
+                <EmptyState Icon="package" Title="@EmptyTitle">@(_message ?? EmptyText)</EmptyState>
+            }
+        </div>
+
+        @if (_open is { } p)
+        {
+            <Dialog Title="@p.Name" Subtitle="@($"{p.Category} · quedan {AdminNames.Stock(p.Quantity, p.Unit)} en {WarehouseName}")" Wide="true" OnClose="() => _open = null">
+                <ChildContent>
+                    @if (_adjusting)
+                    {
+                        <div class="esc-form-grid">
+                            <Field Label="Motivo">
+                                <select class="esc-select" @bind="_reason" @bind:after="ReasonChanged">
+                                    @foreach (var r in Enum.GetValues<AdjustmentReason>())
+                                    {
+                                        <option value="@r">@AdminNames.Reason(r)</option>
+                                    }
+                                </select>
+                            </Field>
+                            <div class="esc-field">
+                                <span>Qué pasa con la existencia</span>
+                                <Segmented Label="Sacar o agregar" Options="Directions" Value="@(_adding ? "add" : "remove")" ValueChanged='v => _adding = v == "add"' />
+                            </div>
+                            <Field Label="@(p.Unit == UnitOfMeasure.Pound ? "Cantidad (lb) *" : "Cantidad *")" Error="@_quantityError"
+                                   Hint="@($"Quedarían {AdminNames.Stock(Resulting(p), p.Unit)}.")">
+                                <input class="esc-input esc-num" inputmode="decimal" @bind="_quantity" @bind:event="oninput" @bind:after="() => _quantityError = null"
+                                       aria-invalid="@(_quantityError is null ? "false" : "true")" autofocus />
+                            </Field>
+                            <Field Label="Nota" Wide="true" Hint="Opcional. Por ejemplo: se dañó en la nevera.">
+                                <input class="esc-input" maxlength="180" @bind="_note" />
+                            </Field>
+                        </div>
+                        @if (_error is not null) { <Notice Title="@_error" /> }
+                    }
+                    else
+                    {
+                        @if (_saved is not null) { <Notice Kind="Notice.Kinds.Success" Title="@_saved" /> }
+                        <div class="esc-table-wrap" style="max-height:420px">
+                            <table class="esc-table">
+                                <thead><tr><th>Fecha</th><th>Movimiento</th><th class="esc-num">Cantidad</th><th class="esc-num esc-hide-sm">Costo</th><th class="esc-num">Queda</th></tr></thead>
+                                <tbody>
+                                    @if (_kardex is null)
+                                    {
+                                        @for (var i = 0; i < 4; i++)
+                                        {
+                                            <tr><td><Skeleton Width="90px" /></td><td><Skeleton Width="140px" /></td><td><Skeleton /></td><td class="esc-hide-sm"><Skeleton /></td><td><Skeleton /></td></tr>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        @foreach (var m in _kardex)
+                                        {
+                                            <tr>
+                                                <td style="white-space:nowrap">@Format.ShortDate(m.DateUtc)<span class="esc-table__sub">@Format.Time(m.DateUtc)</span></td>
+                                                <td>@AdminNames.Movement(m.Type)
+                                                    @if (AdminNames.KardexReason(m.Reason) is { } why && why != AdminNames.Movement(m.Type)) { <span class="esc-table__sub">@why</span> }
+                                                    @if (_warehouses.Count > 1) { <span class="esc-table__sub">@Name(m.WarehouseId)</span> }
+                                                </td>
+                                                <td class="esc-num" style="font-weight:600;white-space:nowrap;color:@(m.Quantity < 0 ? "var(--text)" : "var(--success)")">@AdminNames.Signed(m.Quantity, p.Unit)</td>
+                                                <td class="esc-num esc-muted esc-hide-sm">@Format.Amount(m.UnitCost)</td>
+                                                <td class="esc-num" style="white-space:nowrap">@AdminNames.Stock(m.ResultingStock, p.Unit)</td>
+                                            </tr>
+                                        }
+                                    }
+                                </tbody>
+                            </table>
+                            @if (_kardex is { Count: 0 })
+                            {
+                                <EmptyState Icon="inbox" Title="Sin movimientos todavía">Aquí salen las ventas, compras, ajustes y conteos de este producto.</EmptyState>
+                            }
+                        </div>
+                        @if (_kardex is { Count: 100 })
+                        {
+                            <div class="esc-table-foot">Se muestran los últimos 100 movimientos.</div>
+                        }
+                    }
+                </ChildContent>
+                <Footer>
+                    @if (_adjusting)
+                    {
+                        <Button OnClick="() => _adjusting = false" Shortcut="Esc">Volver</Button>
+                        <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="() => AdjustAsync(p)">@(_sending ? "Guardando…" : "Guardar ajuste")</Button>
+                    }
+                    else
+                    {
+                        <Button OnClick="() => _open = null" Shortcut="Esc">Cerrar</Button>
+                        @if (Session.Can("inventory.adjust"))
+                        {
+                            <Button Variant="Button.Variants.Primary" OnClick="StartAdjust">Ajustar existencia</Button>
+                        }
+                    }
+                </Footer>
+            </Dialog>
+        }
+    </ChildContent>
+</Admin>
+
+@code {
+    private static readonly IReadOnlyList<(string, string)> Directions = [("remove", "Sacar"), ("add", "Agregar")];
+
+    private List<Warehouse> _warehouses = [];
+    private List<StockLevel> _stock = [];
+    private List<StockMovement>? _kardex;
+    private StockLevel? _open;
+    private string? _warehouse, _search, _category, _message, _quantity, _note, _quantityError, _error, _saved;
+    private bool _loading = true, _belowMinimum, _needsCount, _adjusting, _adding, _sending;
+    private AdjustmentReason _reason = AdjustmentReason.Shrinkage;
+
+    private IEnumerable<StockLevel> Visible => _stock.Where(s =>
+        (string.IsNullOrWhiteSpace(_search) || s.Name.Contains(_search.Trim(), StringComparison.CurrentCultureIgnoreCase))
+        && (string.IsNullOrEmpty(_category) || s.Category == _category)
+        && (!_belowMinimum || s.BelowMinimum) && (!_needsCount || s.NeedsCount));
+
+    private string WarehouseName => _warehouses.Find(w => w.Id.ToString() == _warehouse)?.Name ?? "la tienda";
+    private string Name(Guid warehouse) => _warehouses.Find(w => w.Id == warehouse)?.Name ?? "";
+    private bool Filtered => !string.IsNullOrWhiteSpace(_search) || !string.IsNullOrEmpty(_category) || _belowMinimum || _needsCount;
+    private string EmptyTitle => !Filtered ? "Todavía no hay productos" : _belowMinimum && !_needsCount ? "Nada está bajo el mínimo" : _needsCount ? "Nada pendiente de contar" : "Nada coincide con la búsqueda";
+    private string EmptyText => !Filtered ? "Cree los productos en Productos; su existencia sale aquí." : "Quite un filtro para ver los demás.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.Can("inventory.view"))
+        {
+            // Someone who only counts or transfers lands on what they can do.
+            Nav.NavigateTo(SectionTabs.Inventory(Session) is [var (first, _), ..] ? first : "admin", replace: true);
+            return;
+        }
+        _warehouses = (await Api.GetAsync<List<Warehouse>>("/api/inventory/warehouses")).Value ?? [];
+        _warehouse = (_warehouses.Find(w => w.IsMain) ?? _warehouses.FirstOrDefault())?.Id.ToString();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        var r = await Api.GetAsync<List<StockLevel>>("/api/inventory/stock" + (_warehouse is null ? "" : $"?warehouseId={_warehouse}"));
+        (_stock, _message, _loading) = (r.Value ?? [], r.Problem?.Message, false);
+    }
+
+    private async Task OpenAsync(StockLevel s)
+    {
+        (_open, _kardex, _adjusting, _saved) = (s, null, false, null);
+        var r = await Api.GetAsync<List<StockMovement>>($"/api/inventory/products/{s.ProductId}/movements?last=100");
+        _kardex = r.Value ?? [];
+    }
+
+    private void StartAdjust() => (_adjusting, _reason, _adding, _quantity, _note, _quantityError, _error) = (true, AdjustmentReason.Shrinkage, false, null, null, null, null);
+
+    /// <summary>Merma, daño, consumo and regalo take stock out; a correction is usually adding what was missing.</summary>
+    private void ReasonChanged() => _adding = _reason == AdjustmentReason.Correction;
+
+    private decimal Resulting(StockLevel p) => p.Quantity + (Format.ParseNumber(_quantity) is > 0 and var q ? (_adding ? q : -q) : 0);
+
+    private async Task AdjustAsync(StockLevel p)
+    {
+        var q = Format.ParseNumber(_quantity);
+        if (q is not > 0) { _quantityError = "Escriba una cantidad mayor que cero."; return; }
+        if (p.Unit == UnitOfMeasure.Unit && q != Math.Truncate(q.Value)) { _quantityError = "Este producto se cuenta por unidades enteras."; return; }
+        if (!_adding && q > p.Quantity) { _quantityError = $"No se puede sacar más de lo que hay ({AdminNames.Stock(p.Quantity, p.Unit)}). Si hay menos, haga un conteo físico."; return; }
+        _sending = true;
+        var r = await Api.PostAsync<AdjustmentRecorded>("/api/inventory/adjustments",
+            new AdjustStock(p.ProductId, Guid.TryParse(_warehouse, out var w) ? w : null, _adding ? q.Value : -q.Value, _reason, string.IsNullOrWhiteSpace(_note) ? null : _note.Trim()));
+        _sending = false;
+        if (r.Problem is { } problem)
+        {
+            if (problem.Code == "Inventory.OutOfStock") _quantityError = "No hay tanto en existencia. Si hay menos, haga un conteo físico.";
+            else _error = problem.Message;
+            return;
+        }
+        var saved = $"{AdminNames.Reason(_reason)}: {AdminNames.Signed(_adding ? q.Value : -q.Value, p.Unit)} guardado.";
+        await LoadAsync();
+        await OpenAsync(_stock.Find(s => s.ProductId == p.ProductId) ?? p);
+        _saved = saved;
+    }
+}

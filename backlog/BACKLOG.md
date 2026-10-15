@@ -151,8 +151,8 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-118 | Impresora térmica ESC/POS y gaveta; hoy la factura es una vista previa | 🟡 Falta probar con equipo real. `Toki.Hardware.EscPos`: factura en ESC/POS (58 y 80 mm, PC850, QR modelo 2, corte, gaveta) por la cola de Windows (RAW) o COM; imprime al cobrar si "Imprimir factura" (se recuerda en la PC) y reimprime desde la factura; "Abrir la gaveta sin venta" en Caja pide `register.open-drawer` o un supervisor (falta el endpoint auditado de §6.3); simulada en desarrollo y en el host web |
 | TK-119 | Incluir IBM Plex Sans (OFL) en `wwwroot/fuentes`; hoy usa la instalada o Segoe UI | ✅ Latin-1 de `@ibm/plex-sans` 1.1.0 (400, 500, 600, 700) en `Toki.Escuadra/wwwroot/fonts`, con `OFL.txt` y su origen en `README.md`; el panel lo toma del mismo CSS |
 | TK-120 | Administración que falta (dividido en TK-184..187) | ↪ Reemplazado por TK-184, TK-185, TK-186 y TK-187 |
-| TK-184 | Administración: inventario (existencias, ajustes, conteo físico, transferencias, kardex por producto) | 🔨 |
-| TK-185 | Administración: compras, suplidores, gastos con NCF y pagos a suplidores | 🔨 |
+| TK-184 | Administración: inventario (existencias, ajustes, conteo físico, transferencias, kardex por producto) | ✅ |
+| TK-185 | Administración: compras, suplidores, gastos con NCF y pagos a suplidores | ✅ |
 | TK-186 | Administración: clientes, fiado (estado de cuenta, abonos, anular abono) y roles y permisos | 🔨 |
 | TK-187 | Administración: facturas (buscar, ver, reimprimir) y reportes descargables (CSV/Excel, 606/607) | 🔨 |
 | TK-121 | Abono de un cliente desde la caja | 🔨 |
@@ -233,7 +233,7 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ✅ Vitest 3, jsdom 30, Tiendas se refresca al conectar una caja |
 | TK-174 | Nube: evento de saldo de clientes (incluye anulación de abonos) y nombres de clientes, para que "Te deben" sea exacto y diga nombres | ⬜ |
 | TK-175 | Renombrar cajas desde Configuración (y enviar `RegisterChangedV1`) | 🔨 |
-| TK-178 | Bug: `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 | 🔨 |
+| TK-178 | Bug: `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 | ✅ |
 | TK-179 | Reportes en la tienda: mezcla de medios de pago y ventas por hora (hoy el Resumen suma los Z y no compara a la misma hora) | ⬜ |
 | TK-180 | Nube: unidad (lb/unidad) en más vendidos | ⬜ |
 | TK-181 | Panel: subir Vitest a 5 (aviso de npm audit en tinypool, solo desarrollo) | ⬜ |

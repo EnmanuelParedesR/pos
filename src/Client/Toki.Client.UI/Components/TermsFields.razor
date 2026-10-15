@@ -1,0 +1,44 @@
+@* Cash or credit for a purchase or expense: how it was paid (606 payment form) or in how many days it is due. *@
+
+<div class="esc-form-grid">
+    @* A div, not Field: a label around the buttons would press the first one when its text is clicked. *@
+    <div class="esc-field">
+        <span>Condición</span>
+        <Segmented Label="Condición de pago" Options="Options" Value="@Terms.ToString()" ValueChanged="v => TermsChanged.InvokeAsync(Enum.Parse<PaymentTerms>(v))" />
+    </div>
+    @if (Terms == PaymentTerms.Cash)
+    {
+        <Field Label="Cómo se pagó" Hint="Va al 606.">
+            <select class="esc-select" value="@Method" @onchange="e => MethodChanged.InvokeAsync(Enum.Parse<SupplierPaymentMethod>(e.Value!.ToString()!))">
+                @foreach (var m in Enum.GetValues<SupplierPaymentMethod>()) { <option value="@m">@AdminNames.Method(m)</option> }
+            </select>
+        </Field>
+    }
+    else
+    {
+        <Field Label="Días de crédito" Error="@Error" Hint="Vacío: los días del suplidor.">
+            <input class="esc-input esc-num" inputmode="numeric" value="@CreditDays" @onchange="e => CreditDaysChanged.InvokeAsync(e.Value?.ToString())" aria-invalid="@(Error is null ? "false" : "true")" />
+        </Field>
+    }
+</div>
+
+@code {
+    private static readonly IReadOnlyList<(string, string)> Options = [(nameof(PaymentTerms.Cash), "Al contado"), (nameof(PaymentTerms.Credit), "A crédito")];
+
+    [Parameter] public PaymentTerms Terms { get; set; }
+    [Parameter] public EventCallback<PaymentTerms> TermsChanged { get; set; }
+    [Parameter] public SupplierPaymentMethod? Method { get; set; }
+    [Parameter] public EventCallback<SupplierPaymentMethod?> MethodChanged { get; set; }
+    [Parameter] public string? CreditDays { get; set; }
+    [Parameter] public EventCallback<string?> CreditDaysChanged { get; set; }
+    [Parameter] public string? Error { get; set; }
+
+    /// <summary>The credit days to send (null: the supplier's), or an error under "days".</summary>
+    public static int? Days(PaymentTerms terms, string? text, Dictionary<string, string> errors)
+    {
+        if (terms == PaymentTerms.Cash || string.IsNullOrWhiteSpace(text)) return null;
+        if (int.TryParse(text.Trim(), out var days) && days is >= 0 and <= 365) return days;
+        errors["days"] = "De 0 a 365 días.";
+        return null;
+    }
+}

@@ -65,14 +65,15 @@ internal static class ListStock
             app.MapGet("/api/inventory/stock", async (Guid? warehouseId, bool? belowMinimumOnly, bool? needsCountOnly, InventoryDbContext db, CancellationToken ct) =>
                 {
                     var warehouse = warehouseId ?? Warehouse.MainId;
+                    // Filter before projecting: EF cannot translate a Where on the record's members (TK-178).
                     var q = from e in db.Stock
                             join p in db.Products on e.ProductId equals p.Id
                             join c in db.Categories on p.CategoryId equals c.Id
                             where e.WarehouseId == warehouse && p.IsActive
+                                && (belowMinimumOnly != true || e.Quantity <= p.MinimumStock)
+                                && (needsCountOnly != true || e.NeedsCount)
                             select new Item(p.Id, p.Name, c.Name, p.Unit, e.Quantity, p.Cost, e.Quantity * p.Cost,
                                 e.Quantity <= p.MinimumStock, e.NeedsCount);
-                    if (belowMinimumOnly == true) q = q.Where(i => i.BelowMinimum);
-                    if (needsCountOnly == true) q = q.Where(i => i.NeedsCount);
                     var items = await q.AsNoTracking().ToListAsync(ct);
                     return Results.Ok(items.OrderBy(i => i.Name).Select(i => i with { Value = Money.Round(i.Value) }));
                 })

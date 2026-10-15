@@ -119,7 +119,7 @@ La caja se opera; la administración se **revisa**. Por eso la administración d
 
 **Reglas:** el número más importante es el más grande y siempre trae comparación; lo que hay que revisar va primero, con persona, monto, hora y una acción; las cifras se escriben como se dicen ("Faltaron RD$ 150.00 en Caja 2 · Yudelka Martínez · hoy, 12:48 p. m."); el rojo es solo para faltantes y errores; el modo oscuro queda listo para hacerse redefiniendo los mismos tokens.
 
-**Pendientes de backend (no se cambiaron contratos):** reporte de medios de pago por periodo en la tienda (hoy se suma desde cada Z, hasta 31 turnos); unidad (lb/unidad) en los más vendidos de la nube; ventas por hora en la tienda (para comparar "a esta hora" también en la PC); `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 (el filtro se aplica después de proyectar); nombres de clientes en el fiado de la nube.
+**Pendientes de backend (no se cambiaron contratos):** reporte de medios de pago por periodo en la tienda (hoy se suma desde cada Z, hasta 31 turnos); unidad (lb/unidad) en los más vendidos de la nube; ventas por hora en la tienda (para comparar "a esta hora" también en la PC); nombres de clientes en el fiado de la nube.
 
 ## Pendientes
 

@@ -1,0 +1,209 @@
+@page "/admin/purchasing/expenses"
+@inject TokiApi Api
+@inject Session Session
+
+<Admin Title="Gastos con NCF" Subtitle="Facturas sin mercancía (luz, alquiler, transporte) con su comprobante. Van al 606.">
+    <Actions>
+        <Segmented Label="Periodo" Options="Periods.Options" Value="@_period" ValueChanged="ChangePeriodAsync" />
+        <Button Variant="Button.Variants.Primary" OnClick="New"><Icon Name="plus" /> Nuevo gasto</Button>
+    </Actions>
+    <ChildContent>
+        <SectionTabs Label="Compras" Tabs="SectionTabs.Purchasing(Session)" />
+        @if (_expenses is { Count: > 0 })
+        {
+            var valid = _expenses.Where(e => !e.IsVoided).ToList();
+            <span class="esc-muted">@valid.Count @(valid.Count == 1 ? "gasto" : "gastos") · @Format.WithCurrency(valid.Sum(e => e.Total)) · ITBIS @Format.WithCurrency(valid.Sum(e => e.Itbis))</span>
+        }
+        <div class="esc-card esc-table-wrap esc-table-wrap--tall">
+            <table class="esc-table esc-table--wide">
+                <thead><tr><th>Fecha</th><th>Gasto</th><th class="esc-hide-sm">NCF</th><th class="esc-hide-sm">Pago</th><th class="esc-num esc-hide-sm">ITBIS</th><th class="esc-num">Total</th><th class="esc-table__chev esc-hide-sm"><span class="esc-visually-hidden">Abrir</span></th></tr></thead>
+                <tbody>
+                    @if (_expenses is null)
+                    {
+                        @for (var i = 0; i < 4; i++)
+                        {
+                            <tr><td><Skeleton Width="80px" /></td><td><Skeleton Width="180px" /></td><td class="esc-hide-sm"><Skeleton Width="110px" /></td><td class="esc-hide-sm"><Skeleton Width="70px" /></td><td class="esc-hide-sm"><Skeleton /></td><td><Skeleton /></td><td class="esc-hide-sm"></td></tr>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var e in _expenses.OrderByDescending(e => e.Date))
+                        {
+                            <tr class="selectable" tabindex="0" @onclick="() => Show(e)" @onkeydown='k => { if (k.Key == "Enter") Show(e); }' style="@(e.IsVoided ? "color:var(--text-3)" : "")">
+                                <td style="white-space:nowrap">@AdminNames.Day(e.Date)</td>
+                                <td><span style="font-weight:600">@e.Description</span> @if (e.IsVoided) { <span class="esc-pill esc-pill--neutral" style="margin-left:6px">Anulado</span> }
+                                    <span class="esc-table__sub">@e.SupplierName<span class="esc-only-sm"> · @e.Ncf</span></span></td>
+                                <td class="esc-hide-sm" style="font-variant-numeric:tabular-nums">@e.Ncf</td>
+                                <td class="esc-hide-sm">@AdminNames.Terms(e.Terms.ToString())</td>
+                                <td class="esc-num esc-hide-sm">@Format.Amount(e.Itbis)</td>
+                                <td class="esc-num" style="font-weight:600">@Format.Amount(e.Total)</td>
+                                <td class="esc-table__chev esc-hide-sm"><Icon Name="chevron-right" Size="18" /></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            @if (_expenses is { Count: 0 })
+            {
+                <EmptyState Icon="receipt" Title="No hay gastos en este periodo">@(_message ?? "Registre aquí la luz, el alquiler o el transporte con su NCF para que entren al 606.")</EmptyState>
+            }
+        </div>
+
+        @if (_editing is { } f)
+        {
+            <Dialog Title="Nuevo gasto" Subtitle="Copie los datos de la factura. Los campos con * son obligatorios." Wide="true" OnClose="() => _editing = null">
+                <ChildContent>
+                    <SupplierFields Suppliers="_suppliers" @bind-SupplierId="f.SupplierId" @bind-Ncf="f.Ncf" @bind-Date="f.Date" Errors="_errors" />
+                    <div class="esc-form-grid">
+                        <Field Label="Descripción *" Wide="true" Error="@Err("description")">
+                            <input class="esc-input" maxlength="150" placeholder="Por ejemplo: luz de septiembre" @bind="f.Description" @bind:after='() => _errors.Remove("description")' aria-invalid="@Invalid("description")" />
+                        </Field>
+                        <Field Label="Tipo de gasto (606)">
+                            <select class="esc-select" @bind="f.Type">
+                                @foreach (var t in Enum.GetValues<ExpenseType>().Where(t => t != ExpenseType.CostOfSales)) { <option value="@t">@AdminNames.Expense(t)</option> }
+                            </select>
+                        </Field>
+                        <Field Label="Subtotal sin ITBIS RD$ *" Error="@Err("subtotal")">
+                            <input class="esc-input esc-num" inputmode="decimal" @bind="f.Subtotal" @bind:event="oninput" @bind:after='() => _errors.Remove("subtotal")' aria-invalid="@Invalid("subtotal")" />
+                        </Field>
+                        <Field Label="ITBIS RD$" Error="@Err("itbis")" Hint="Como dice la factura; 0 si no lleva.">
+                            <span class="esc-row" style="gap:8px;flex-wrap:nowrap">
+                                <input class="esc-input esc-num" inputmode="decimal" @bind="f.Itbis" @bind:event="oninput" @bind:after='() => _errors.Remove("itbis")' aria-invalid="@Invalid("itbis")" />
+                                <button type="button" class="esc-button esc-button--small" title="18 % del subtotal" @onclick="() => f.Itbis = AdminNames.Number(Math.Round((Format.ParseNumber(f.Subtotal) ?? 0) * 0.18m, 2))">18 %</button>
+                            </span>
+                        </Field>
+                    </div>
+                    <TermsFields @bind-Terms="f.Terms" @bind-Method="f.Method" @bind-CreditDays="f.CreditDays" Error="@Err("days")" />
+                    <div class="totals"><dt>Total</dt><dd class="totals__grand">@Format.WithCurrency((Format.ParseNumber(f.Subtotal) ?? 0) + (Format.ParseNumber(f.Itbis) ?? 0))</dd></div>
+                    @if (_error is not null) { <Notice Title="@_error" /> }
+                </ChildContent>
+                <Footer>
+                    <Button OnClick="() => _editing = null" Shortcut="Esc">Cancelar</Button>
+                    <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SaveAsync">@(_sending ? "Guardando…" : "Registrar gasto")</Button>
+                </Footer>
+            </Dialog>
+        }
+
+        @if (_shown is { } x)
+        {
+            <Dialog Title="@x.Description" Subtitle="@($"{x.SupplierName} · {AdminNames.Day(x.Date)}")" OnClose="() => _shown = null">
+                <ChildContent>
+                    @if (x.IsVoided) { <Notice Kind="Notice.Kinds.Warning" Title="Anulado">@x.VoidReason</Notice> }
+                    <dl class="esc-dl">
+                        <dt>NCF</dt><dd>@x.Ncf</dd>
+                        <dt>RNC</dt><dd>@x.SupplierRnc</dd>
+                        <dt>Tipo (606)</dt><dd>@AdminNames.Expense(x.Type)</dd>
+                        <dt>Pago</dt><dd>@AdminNames.Terms(x.Terms.ToString())@(x.Method is { } m ? $" · {AdminNames.Method(m)}" : "")@(x.DueDate is { } d ? $" · vence {AdminNames.Day(d)}" : "")</dd>
+                        <dt>Subtotal</dt><dd>@Format.WithCurrency(x.Subtotal)</dd>
+                        <dt>ITBIS</dt><dd>@Format.WithCurrency(x.Itbis)</dd>
+                        <dt>Total</dt><dd>@Format.WithCurrency(x.Total)</dd>
+                    </dl>
+                    @if (_voiding)
+                    {
+                        <Field Label="¿Por qué se anula? *" Hint="Deja de contar en el 606 y su NCF se puede registrar de nuevo.">
+                            <input class="esc-input" maxlength="200" @bind="_voidReason" @bind:event="oninput" autofocus />
+                        </Field>
+                    }
+                    @if (_error is not null) { <Notice Title="@_error" /> }
+                </ChildContent>
+                <Footer>
+                    <Button OnClick="() => _shown = null" Shortcut="Esc">Cerrar</Button>
+                    @if (!x.IsVoided)
+                    {
+                        @if (_voiding)
+                        {
+                            <Button Variant="Button.Variants.Danger" Disabled="@(string.IsNullOrWhiteSpace(_voidReason) || _sending)" OnClick="() => VoidAsync(x)">Anular gasto</Button>
+                        }
+                        else
+                        {
+                            <Button Variant="Button.Variants.Danger" OnClick="() => _voiding = true">Anular</Button>
+                        }
+                    }
+                </Footer>
+            </Dialog>
+        }
+    </ChildContent>
+</Admin>
+
+@code {
+    private sealed class ExpenseForm
+    {
+        public Guid Id = Guid.CreateVersion7(); public Guid? SupplierId; public string? Ncf, Description, Subtotal, Itbis = "0", CreditDays;
+        public DateOnly Date = Format.Today; public ExpenseType Type = ExpenseType.WorkSuppliesAndServices;
+        public PaymentTerms Terms = PaymentTerms.Cash; public SupplierPaymentMethod? Method = SupplierPaymentMethod.Cash;
+    }
+
+    private List<Expense>? _expenses;
+    private List<Supplier> _suppliers = [];
+    private ExpenseForm? _editing;
+    private Expense? _shown;
+    private string _period = "month";
+    private string? _message, _error, _voidReason;
+    private bool _sending, _voiding;
+    private readonly Dictionary<string, string> _errors = [];
+
+    private string? Err(string field) => _errors.GetValueOrDefault(field);
+    private string Invalid(string field) => _errors.ContainsKey(field) ? "true" : "false";
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task ChangePeriodAsync(string period)
+    {
+        _period = period;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _expenses = null;
+        var (from, to) = Periods.Range(_period);
+        var r = await Api.GetAsync<List<Expense>>($"/api/purchasing/expenses?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}");
+        (_expenses, _message) = (r.Value ?? [], r.Problem?.Message);
+    }
+
+    private async Task New()
+    {
+        _errors.Clear();
+        (_editing, _error) = (new ExpenseForm(), null);
+        _suppliers = (await Api.GetAsync<List<Supplier>>("/api/purchasing/suppliers")).Value ?? [];
+    }
+
+    private void Show(Expense e) => (_shown, _voiding, _voidReason, _error) = (e, false, null, null);
+
+    private async Task SaveAsync()
+    {
+        if (_editing is not { } f) return;
+        _errors.Clear();
+        _error = null;
+        SupplierFields.Validate(f.SupplierId, f.Ncf, f.Date, _errors);
+        var subtotal = Format.ParseNumber(f.Subtotal);
+        var itbis = Format.ParseNumber(f.Itbis) ?? (string.IsNullOrWhiteSpace(f.Itbis) ? 0 : null);
+        if (string.IsNullOrWhiteSpace(f.Description)) _errors["description"] = "Escriba qué se pagó.";
+        if (subtotal is not > 0) _errors["subtotal"] = "Escriba un monto mayor que cero.";
+        if (itbis is not >= 0) _errors["itbis"] = "Escriba un número (0 si no lleva).";
+        else if (subtotal > 0 && itbis > subtotal * 0.18m + 0.01m) _errors["itbis"] = "No puede pasar del 18 % del subtotal.";
+        var days = TermsFields.Days(f.Terms, f.CreditDays, _errors);
+        if (_errors.Count > 0) return;
+        _sending = true;
+        var r = await Api.PostAsync<ExpenseRecorded>("/api/purchasing/expenses", new RecordExpense(f.SupplierId!.Value, f.Ncf!.Trim().ToUpperInvariant(), f.Date,
+            f.Description!.Trim(), f.Type, Math.Round(subtotal!.Value, 2), Math.Round(itbis!.Value, 2), f.Terms, days, f.Id, f.Terms == PaymentTerms.Cash ? f.Method : null));
+        _sending = false;
+        if (r.Problem is { } p)
+        {
+            if (!SupplierFields.Explain(p, _errors)) _error = p.Message;
+            return;
+        }
+        _editing = null;
+        await LoadAsync();
+    }
+
+    private async Task VoidAsync(Expense e)
+    {
+        _sending = true;
+        var r = await Api.PostAsync<Empty>($"/api/purchasing/expenses/{e.Id}/void", new VoidReason(_voidReason!.Trim()));
+        _sending = false;
+        if (r.Problem is { } p) { _error = p.Message; return; }
+        _shown = null;
+        await LoadAsync();
+    }
+}

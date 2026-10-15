@@ -46,6 +46,7 @@ public sealed class Approver
         "register.withdraw" => "Sacar efectivo de la caja",
         "register.approve-close" => "Cerrar la caja",
         "register.open-drawer" => "Abrir la gaveta",
+        "inventory.adjust" => "Aplicar un conteo físico",
         _ => permission,
     };
 }

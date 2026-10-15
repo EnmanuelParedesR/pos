@@ -254,7 +254,8 @@ internal static class VoidSupplierPayment
 /// Type and document texts are what the owner reads, so they stay in Spanish.</summary>
 internal static class SupplierStatement
 {
-    public sealed record Line(DateOnly Date, string Type, string Document, decimal Charge, decimal Payment, decimal Balance, DateOnly? DueDate);
+    /// <param name="PaymentId">Set on a payment line, so it can be voided from the statement.</param>
+    public sealed record Line(DateOnly Date, string Type, string Document, decimal Charge, decimal Payment, decimal Balance, DateOnly? DueDate, Guid? PaymentId = null);
     public sealed record Response(Guid SupplierId, string Supplier, decimal Balance, IReadOnlyList<Line> Lines);
 
     private static string TypeText(PayableDocumentType type) => type == PayableDocumentType.Purchase ? "Compra" : "Gasto";
@@ -275,12 +276,12 @@ internal static class SupplierStatement
                     var s = await db.Suppliers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
                     if (s is null) return EndpointExtensions.Problem(PurchasingErrors.SupplierNotFound);
                     var charges = (await db.Payables.Where(x => x.SupplierId == id && !x.IsVoided).AsNoTracking().ToListAsync(ct))
-                        .Select(x => (x.Date, Order: 0, Type: TypeText(x.Type), Doc: x.Ncf, Charge: x.Total, Payment: 0m, DueDate: (DateOnly?)x.DueDate));
+                        .Select(x => (x.Date, Order: 0, Type: TypeText(x.Type), Doc: x.Ncf, Charge: x.Total, Payment: 0m, DueDate: (DateOnly?)x.DueDate, PaymentId: (Guid?)null));
                     var payments = (await db.Payments.Where(p => p.SupplierId == id && !p.IsVoided).AsNoTracking().ToListAsync(ct))
-                        .Select(p => (p.Date, Order: 1, Type: "Pago", Doc: p.Reference ?? MethodText(p.Method), Charge: 0m, Payment: p.Amount, DueDate: (DateOnly?)null));
+                        .Select(p => (p.Date, Order: 1, Type: "Pago", Doc: p.Reference ?? MethodText(p.Method), Charge: 0m, Payment: p.Amount, DueDate: (DateOnly?)null, PaymentId: (Guid?)p.Id));
                     var balance = 0m;
                     var lines = charges.Concat(payments).OrderBy(m => m.Date).ThenBy(m => m.Order)
-                        .Select(m => new Line(m.Date, m.Type, m.Doc, m.Charge, m.Payment, balance += m.Charge - m.Payment, m.DueDate)).ToList();
+                        .Select(m => new Line(m.Date, m.Type, m.Doc, m.Charge, m.Payment, balance += m.Charge - m.Payment, m.DueDate, m.PaymentId)).ToList();
                     return Results.Ok(new Response(s.Id, s.Name, balance, lines));
                 })
                 .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");

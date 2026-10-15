@@ -96,6 +96,29 @@ public sealed class InventoryTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task The_stock_list_filters_what_is_below_its_minimum_and_what_needs_a_count()
+    {
+        // TK-178: filtering after projecting into the record could not be translated (500).
+        var c = await Admin();
+        var cat = await c.CategoryAsync("Bajo mínimo");
+        var r = await c.PostAsJsonAsync("/api/inventory/products", new
+        {
+            Name = "Costilla TK178", CategoryId = cat, Unit = "Pound", ItbisRate = "Exempt", Price = 180m, Cost = 120m, MinimumStock = 10m, InitialStock = 4m,
+        });
+        r.EnsureSuccessStatusCode();
+        var low = (await r.Json()).GetProperty("id").GetGuid();
+        var plenty = await c.ProductAsync(cat, "Longaniza TK178", 150m, stock: 50);
+
+        var below = await c.GetFromJsonAsync<JsonElement>("/api/inventory/stock?belowMinimumOnly=true");
+        var ids = below.EnumerateArray().Select(i => i.GetProperty("productId").GetGuid()).ToList();
+        ids.ShouldContain(low);
+        ids.ShouldNotContain(plenty);
+        below.EnumerateArray().ShouldAllBe(i => i.GetProperty("belowMinimum").GetBoolean());
+
+        (await c.GetAsync("/api/inventory/stock?needsCountOnly=true")).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task Changing_the_price_needs_permission_and_the_version_detects_simultaneous_edits()
     {
         var admin = await Admin();
