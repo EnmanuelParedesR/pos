@@ -277,23 +277,38 @@ internal static class EstadoCuentaSuplidor
 /// <summary>Accounts payable by supplier, aged by due date: current, 1–30, 31–60, 61–90 and over 90 days overdue.</summary>
 internal static class CuentasPorPagarAntiguedad
 {
-    public sealed record Item(Guid SuplidorId, string Suplidor, decimal PorVencer, decimal Vencido1a30, decimal Vencido31a60, decimal Vencido61a90, decimal VencidoMas90, decimal Total);
-
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/compras/por-pagar", async (ComprasDbContext db, TimeProvider reloj, CancellationToken ct) =>
-                {
-                    var hoy = DiaNegocio.De(reloj.GetUtcNow().UtcDateTime);
-                    var suplidores = await db.Suplidores.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Nombre, ct);
-                    var items = (await db.AbiertasAsync(null, ct)).GroupBy(a => a.Cuenta.SuplidorId).Select(g =>
-                    {
-                        decimal Rango(int desde, int hasta) => g.Where(a => hoy.DayNumber - a.Cuenta.Vence.DayNumber is var d && d >= desde && d <= hasta).Sum(a => a.Saldo);
-                        return new Item(g.Key, suplidores.GetValueOrDefault(g.Key, "?"), Rango(int.MinValue, 0), Rango(1, 30), Rango(31, 60), Rango(61, 90),
-                            Rango(91, int.MaxValue), g.Sum(a => a.Saldo));
-                    });
-                    return Results.Ok(items.OrderByDescending(i => i.Total));
-                })
+            app.MapGet("/api/compras/por-pagar", async (IComprasReportes reportes, CancellationToken ct) => Results.Ok(await reportes.PorPagarAsync(ct)))
                 .RequirePermiso(Permisos.ComprasGestionar).WithTags("Compras");
+    }
+}
+
+internal sealed class ComprasReportes(ComprasDbContext db, TimeProvider reloj) : IComprasReportes
+{
+    public async Task<IReadOnlyList<CuentaPorPagarSuplidor>> PorPagarAsync(CancellationToken ct)
+    {
+        var hoy = DiaNegocio.De(reloj.GetUtcNow().UtcDateTime);
+        var suplidores = await db.Suplidores.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.Nombre, ct);
+        return (await db.AbiertasAsync(null, ct)).GroupBy(a => a.Cuenta.SuplidorId).Select(g =>
+        {
+            decimal Rango(int desde, int hasta) => g.Where(a => hoy.DayNumber - a.Cuenta.Vence.DayNumber is var d && d >= desde && d <= hasta).Sum(a => a.Saldo);
+            return new CuentaPorPagarSuplidor(g.Key, suplidores.GetValueOrDefault(g.Key, "?"), Rango(int.MinValue, 0), Rango(1, 30), Rango(31, 60), Rango(61, 90),
+                Rango(91, int.MaxValue), g.Sum(a => a.Saldo));
+        }).OrderByDescending(i => i.Total).ToList();
+    }
+
+    public async Task<IReadOnlyList<Documento606>> Documentos606Async(DateOnly desde, DateOnly hasta, CancellationToken ct)
+    {
+        static int TipoId(string? rnc) => rnc?.Length == 11 ? 2 : 1;
+        var compras = await db.Compras.Where(c => c.Estado == EstadoCompra.Aplicada && c.FechaFactura >= desde && c.FechaFactura <= hasta)
+            .Select(c => new Documento606(c.RncSuplidor, 0, (int)TipoGasto.CostoDeVenta, c.Ncf, c.FechaFactura, c.Subtotal, c.Itbis, c.Total, c.Condicion.ToString()))
+            .AsNoTracking().ToListAsync(ct);
+        var gastos = await db.Gastos.Where(g => !g.Anulado && g.Fecha >= desde && g.Fecha <= hasta)
+            .Select(g => new Documento606(g.RncSuplidor, 0, (int)g.Tipo, g.Ncf, g.Fecha, g.Subtotal, g.Itbis, g.Total, g.Condicion.ToString()))
+            .AsNoTracking().ToListAsync(ct);
+        return compras.Concat(gastos).Select(d => d with { TipoId = TipoId(d.RncCedula) })
+            .OrderBy(d => d.Fecha).ThenBy(d => d.Ncf, StringComparer.Ordinal).ToList();
     }
 }

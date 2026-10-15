@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Routing;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.BuildingBlocks.Security;
 using Toki.Caja.Contracts;
+using Toki.Clientes.Contracts;
+using Toki.Compras.Contracts;
 using Toki.Inventario.Contracts;
 using Toki.SharedKernel;
 using Toki.Ventas.Contracts;
@@ -61,8 +63,15 @@ internal sealed class ReportesEndpoints : IEndpoint
         g.MapGet("/inventario/valor", async (string? formato, IInventarioReportes inventario, TimeProvider reloj, CancellationToken ct) =>
             Exportar.Como(await inventario.ValorAsync(ct), formato, $"inventario-{DiaNegocio.De(reloj.GetUtcNow().UtcDateTime):yyyyMMdd}"));
 
-        // shortcut: rows of the 607 as CSV/Excel to paste into the DGII tool; the official TXT layout comes with the real e-CF provider (TK-055).
+        // shortcut: rows of the 607 and 606 as CSV/Excel to paste into the DGII tool; the official TXT layout comes with the real e-CF provider (TK-055).
         g.MapGet("/dgii/607", async ([AsParameters] Periodo p, IVentasReportes ventas, CancellationToken ct) =>
             p.Invalido() ?? Exportar.Como(await ventas.Documentos607Async(p.Desde, p.Hasta, ct), p.Formato, p.Nombre("607")));
+        g.MapGet("/dgii/606", async ([AsParameters] Periodo p, IComprasReportes compras, CancellationToken ct) =>
+            p.Invalido() ?? Exportar.Como(await compras.Documentos606Async(p.Desde, p.Hasta, ct), p.Formato, p.Nombre("606")));
+
+        g.MapGet("/por-cobrar", async (string? formato, IClientesReportes clientes, TimeProvider reloj, CancellationToken ct) =>
+            Exportar.Como(await clientes.PorCobrarAsync(ct), formato, $"por-cobrar-{DiaNegocio.De(reloj.GetUtcNow().UtcDateTime):yyyyMMdd}"));
+        g.MapGet("/por-pagar", async (string? formato, IComprasReportes compras, TimeProvider reloj, CancellationToken ct) =>
+            Exportar.Como(await compras.PorPagarAsync(ct), formato, $"por-pagar-{DiaNegocio.De(reloj.GetUtcNow().UtcDateTime):yyyyMMdd}"));
     }
 }

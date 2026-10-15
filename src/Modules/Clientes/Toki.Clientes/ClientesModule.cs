@@ -16,6 +16,7 @@ public static class ClientesModule
     {
         services.AddModuleDbContext<ClientesDbContext>();
         services.AddScoped<ICuentasClientes, CuentasClientes>();
+        services.AddScoped<IClientesReportes, Features.ClientesReportes>();
         return services;
     }
 }

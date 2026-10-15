@@ -270,23 +270,26 @@ internal static class EstadoCuentaCliente
 /// <summary>Accounts receivable by customer, aged by the business day of each unpaid charge: 0–30, 31–60, 61–90 and over 90 days.</summary>
 internal static class CuentasPorCobrar
 {
-    public sealed record Item(Guid ClienteId, string Cliente, decimal De0a30, decimal De31a60, decimal De61a90, decimal MasDe90, decimal Total, decimal LimiteCredito);
-
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/clientes/por-cobrar", async (ClientesDbContext db, TimeProvider reloj, CancellationToken ct) =>
-                {
-                    var hoy = DiaNegocio.De(reloj.GetUtcNow().UtcDateTime);
-                    var clientes = await db.Clientes.AsNoTracking().ToDictionaryAsync(c => c.Id, ct);
-                    var items = (await db.CargosAbiertosAsync(null, ct)).GroupBy(a => a.Cargo.ClienteId).Select(g =>
-                    {
-                        decimal Rango(int desde, int hasta) => g.Where(a => hoy.DayNumber - DiaNegocio.De(a.Cargo.FechaUtc).DayNumber is var d && d >= desde && d <= hasta).Sum(a => a.Saldo);
-                        var cliente = clientes[g.Key];
-                        return new Item(g.Key, cliente.Nombre, Rango(int.MinValue, 30), Rango(31, 60), Rango(61, 90), Rango(91, int.MaxValue), g.Sum(a => a.Saldo), cliente.LimiteCredito);
-                    });
-                    return Results.Ok(items.OrderByDescending(i => i.Total));
-                })
+            app.MapGet("/api/clientes/por-cobrar", async (IClientesReportes reportes, CancellationToken ct) => Results.Ok(await reportes.PorCobrarAsync(ct)))
                 .RequirePermiso(Permisos.FiadoGestionar).WithTags("Clientes");
+    }
+}
+
+internal sealed class ClientesReportes(ClientesDbContext db, TimeProvider reloj) : IClientesReportes
+{
+    public async Task<IReadOnlyList<CuentaPorCobrarCliente>> PorCobrarAsync(CancellationToken ct)
+    {
+        var hoy = DiaNegocio.De(reloj.GetUtcNow().UtcDateTime);
+        var clientes = await db.Clientes.AsNoTracking().ToDictionaryAsync(c => c.Id, ct);
+        return (await db.CargosAbiertosAsync(null, ct)).GroupBy(a => a.Cargo.ClienteId).Select(g =>
+        {
+            decimal Rango(int desde, int hasta) => g.Where(a => hoy.DayNumber - DiaNegocio.De(a.Cargo.FechaUtc).DayNumber is var d && d >= desde && d <= hasta).Sum(a => a.Saldo);
+            var cliente = clientes[g.Key];
+            return new CuentaPorCobrarCliente(g.Key, cliente.Nombre, Rango(int.MinValue, 30), Rango(31, 60), Rango(61, 90), Rango(91, int.MaxValue), g.Sum(a => a.Saldo),
+                cliente.LimiteCredito);
+        }).OrderByDescending(i => i.Total).ToList();
     }
 }

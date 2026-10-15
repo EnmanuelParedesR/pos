@@ -12,6 +12,7 @@ public static class ComprasModule
     public static IServiceCollection AddComprasModule(this IServiceCollection services)
     {
         services.AddModuleDbContext<ComprasDbContext>();
+        services.AddScoped<Contracts.IComprasReportes, Features.ComprasReportes>();
         return services;
     }
 }

@@ -72,7 +72,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 | TK-051 | Documento e-CF, firmador y proveedor simulados (`IEcfProvider`), cola de contingencia de 72 h con trabajador en segundo plano | ✅ `IEcfProveedor` simulado, `EnvioEcfWorker` (apagado por defecto: `Fiscal:EnvioAutomatico`), reintentos 1→60 min, `GET /api/fiscal/cola` |
 | TK-052 | Nota de crédito e-CF 34 | ✅ |
 | TK-053 | Consulta de razón social por RNC (padrón importado) | ✅ `POST /api/fiscal/padron` (DGII_RNC.TXT, reemplazo en una transacción), `GET /api/fiscal/contribuyentes/{rnc}` |
-| TK-054 | Reportes 606 y 607 | 🟡 607 listo (`/api/reportes/dgii/607`, CSV/Excel); falta 606 (contrato de Compras) y el TXT oficial (con TK-055) |
+| TK-054 | Reportes 606 y 607 | ✅ `/api/reportes/dgii/607` y `/dgii/606` en JSON, CSV o Excel. El TXT oficial de la DGII queda para TK-055 |
 | TK-055 | Proveedor e-CF real y certificación DGII | ⏸ decisión del dueño |
 
 ## M6 · Movimientos de inventario y compras
@@ -103,7 +103,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 | TK-081 | Utilidad con el costo histórico de cada venta (sin anuladas) | ✅ |
 | TK-082 | Resumen de turnos y cuadres | ✅ |
 | TK-083 | Valor de inventario | ✅ |
-| TK-084 | Cuentas por cobrar y por pagar | 🟡 consultas en `/api/clientes/por-cobrar` y `/api/compras/por-pagar`; falta exportarlas desde Reportes (después de R4) |
+| TK-084 | Cuentas por cobrar y por pagar | ✅ `/api/reportes/por-cobrar` y `/por-pagar` (exportables), con la misma lógica que las pantallas de Clientes y Compras |
 | TK-085 | Exportar a CSV y Excel | ✅ `?formato=csv` o `xlsx` en cada reporte (CSV con BOM y sin fórmulas) |
 
 ## M9 · Plataforma

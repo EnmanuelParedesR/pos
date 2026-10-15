@@ -84,6 +84,8 @@ public sealed class ClientesTests(TokiApp app) : IClassFixture<TokiApp>
         estado.GetProperty("deuda").GetDecimal().ShouldBe(150m);
         var cxc = await (await Admin()).GetFromJsonAsync<JsonElement>("/api/clientes/por-cobrar");
         cxc.EnumerateArray().Single(i => i.GetProperty("clienteId").GetGuid() == cliente).GetProperty("de0a30").GetDecimal().ShouldBe(150m);
+        var reporte = await (await Admin()).GetFromJsonAsync<JsonElement>("/api/reportes/por-cobrar");
+        reporte.EnumerateArray().Single(i => i.GetProperty("clienteId").GetGuid() == cliente).GetProperty("total").GetDecimal().ShouldBe(150m);
     }
 
     [Fact]

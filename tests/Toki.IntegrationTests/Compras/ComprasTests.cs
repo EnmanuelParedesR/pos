@@ -272,6 +272,29 @@ public sealed class ComprasTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task El_606_trae_compras_aplicadas_y_gastos_y_por_pagar_se_exporta()
+    {
+        var c = await Admin();
+        var suplidor = await SuplidorAsync(c);
+        var res = await c.ProductoAsync(await c.CategoriaAsync(), "Res " + Guid.NewGuid().ToString()[..4], 250m, unidad: "Libra", tasa: "Exento");
+        var compra = await CompraAsync(c, suplidor, "Credito", new DateOnly(2026, 10, 14), new { ProductoId = res, Cantidad = 10m, CostoUnitario = 180m });
+        var ncfCompra = (await c.GetFromJsonAsync<JsonElement>($"/api/compras/{compra}")).GetProperty("ncf").GetString();
+        var ncfGasto = NcfNuevo();
+        (await c.PostAsJsonAsync("/api/compras/gastos", new
+        {
+            SuplidorId = suplidor, Ncf = ncfGasto, Fecha = "2026-10-14", Concepto = "Hielo", Tipo = "TrabajosSuministrosServicios", Subtotal = 500m, Itbis = 90m, Condicion = "Contado",
+        })).EnsureSuccessStatusCode();
+
+        var filas = (await c.GetFromJsonAsync<JsonElement>("/api/reportes/dgii/606?desde=2026-10-14&hasta=2026-10-14")).EnumerateArray().ToList();
+        var deCompra = filas.Single(f => f.GetProperty("ncf").GetString() == ncfCompra);
+        (deCompra.GetProperty("tipoBienesServicios").GetInt32(), deCompra.GetProperty("monto").GetDecimal(), deCompra.GetProperty("tipoId").GetInt32()).ShouldBe((9, 1800m, 1));
+        filas.Single(f => f.GetProperty("ncf").GetString() == ncfGasto).GetProperty("itbis").GetDecimal().ShouldBe(90m);
+
+        var csv = await c.GetStringAsync("/api/reportes/por-pagar?formato=csv");
+        csv.ShouldContain(suplidor.ToString());
+    }
+
+    [Fact]
     public async Task Un_cajero_no_puede_registrar_compras()
     {
         var cajero = app.Cliente(await app.UsuarioAsync(Roles.Cajero));
