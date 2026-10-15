@@ -167,6 +167,34 @@
             </div>
             break;
 
+        case Section.Cloud:
+            @if (_sync is { Connected: true } sync)
+            {
+                <div class="esc-card esc-card--padded esc-col" style="gap:8px;max-width:760px">
+                    <div class="esc-row"><span class="esc-label">Estado</span><span class="esc-pill esc-pill--success">Conectada</span></div>
+                    <div>Último envío: <b>@(sync.LastUploadUtc is { } u ? Format.Date(u) : "todavía ninguno")</b></div>
+                    <div>Pendientes por subir: <b>@sync.PendingEvents</b></div>
+                    @if (sync.LastError is { } err)
+                    {
+                        <Notice Kind="Notice.Kinds.Warning" Title="El último envío falló; se reintenta solo.">@err</Notice>
+                    }
+                    <div class="esc-subtitle">Las ventas y los cierres se suben solos. Si no hay internet, se guardan y suben al volver.</div>
+                    <div><Button Variant="Button.Variants.Danger" OnClick="DisconnectCloudAsync">@(_disconnecting ? "¿Desconectar? Toque otra vez" : "Desconectar de la nube")</Button></div>
+                </div>
+            }
+            else
+            {
+                <form class="esc-card esc-card--padded esc-col" style="gap:12px;max-width:760px" @onsubmit="ConnectCloudAsync">
+                    <div style="font-weight:700">Conectar esta tienda a la nube</div>
+                    <div class="esc-subtitle">En el panel de Toki (desde su celular o computadora): Tiendas → Conectar una caja. Escriba aquí el código de 8 dígitos; vale 30 minutos.</div>
+                    <div class="esc-row">
+                        <input class="esc-input esc-input--large" style="width:240px;letter-spacing:0.3em" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="Código de conexión" @bind="_cloudCode" @bind:event="oninput" />
+                        <Button Type="submit" Variant="Button.Variants.Primary" Disabled="@(_cloudCode?.Length != 8 || _sending)">Conectar</Button>
+                    </div>
+                </form>
+            }
+            break;
+
         case Section.License when _features is { } f:
             <div class="esc-card esc-card--padded esc-col" style="gap:8px;max-width:760px">
                 <div class="esc-row"><span class="esc-label">Estado</span><span class="esc-pill @(f.Status == "Active" ? "esc-pill--success" : "esc-pill--warning")">@Names.LicenseStatus(f.Status)</span></div>
@@ -179,7 +207,8 @@
 </Admin>
 
 @code {
-    private enum Section { None, Business, Registers, FiscalSequences, Devices, Users, Backups, License }
+    private enum Section { None, Business, Registers, FiscalSequences, Devices, Users, Backups, Cloud, License }
+    private sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
     private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; }
     private sealed record Sequence(Guid Id, string Type, string From, string To, string Next, long Available, decimal PercentUsed, DateOnly ExpiresOn);
 
@@ -191,6 +220,7 @@
         Section.Devices => "Equipos",
         Section.Users => "Usuarios",
         Section.Backups => "Respaldos",
+        Section.Cloud => "Nube",
         _ => "Licencia",
     };
 
@@ -198,7 +228,7 @@
     {
         Session.Can("settings.manage") ? Section.Business : null, Session.Can("settings.manage") ? Section.Registers : null,
         Session.Can("fiscal.manage") ? Section.FiscalSequences : null, Session.Can("devices.manage") ? Section.Devices : null,
-        Session.Can("users.manage") ? Section.Users : null, Session.Can("settings.manage") ? Section.Backups : null, Section.License,
+        Session.Can("users.manage") ? Section.Users : null, Session.Can("settings.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License,
     }.OfType<Section>()];
 
     private Section _section;
@@ -219,6 +249,8 @@
     private Guid _userRole;
     private List<BackupFile> _backups = [];
     private LicenseFeatures? _features;
+    private SyncStatus? _sync;
+    private string? _cloudCode;
 
     protected override Task OnInitializedAsync() => GoAsync(Sections[0]);
 
@@ -241,7 +273,30 @@
                 break;
             case Section.Backups: _backups = (await Api.GetAsync<List<BackupFile>>("/api/backups")).Value ?? []; break;
             case Section.License: _features = (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value; break;
+            case Section.Cloud: _sync = (await Api.GetAsync<SyncStatus>("/api/sync/status")).Value; break;
         }
+    }
+
+    private bool _disconnecting;
+
+    private async Task ConnectCloudAsync()
+    {
+        _sending = true;
+        var r = await Api.PostAsync<Empty>("/api/sync/connect", new { Code = _cloudCode });
+        _sending = false;
+        _cloudCode = null;
+        await GoAsync(Section.Cloud);
+        ShowResult(r.Problem, "Tienda conectada. Las ventas empiezan a subir a la nube.");
+    }
+
+    private async Task DisconnectCloudAsync()
+    {
+        // Same inline double-tap confirmation as revoking a device.
+        if (!_disconnecting) { _disconnecting = true; return; }
+        _disconnecting = false;
+        var r = await Api.PostAsync<Empty>("/api/sync/disconnect");
+        await GoAsync(Section.Cloud);
+        ShowResult(r.Problem, "La tienda ya no sube datos a la nube.");
     }
 
     private void ShowResult(Problem? p, string success) => (_messageKind, _message) = p is null ? (Notice.Kinds.Success, success) : (p.Kind, p.Message);
