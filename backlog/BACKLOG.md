@@ -213,14 +213,14 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-157 | Contingencia por imposibilidad de emitir (serie B y regularización) | ⬜ |
 | TK-158 | Pruebas de contrato y de punta a punta contra TesteCF | ⬜ |
 | TK-159 | (Después de V1) Receptor sin custodia por túnel y E41 de compras | ⬜ |
-| TK-176 | Importar el `.p12` desde Configuración → Comprobantes y avisar 30 días antes de que venza el certificado (resto de TK-142) | ⬜ |
+| TK-176 | Importar el `.p12` desde Configuración → Comprobantes y avisar 30 días antes de que venza el certificado (resto de TK-142) | ✅ `POST/GET /api/fiscal/certificate`: contraseña una sola vez, nunca guardada; `LocalMachine\My` no exportable (o `CurrentUser\My` de la cuenta del servicio), carpeta de llaves cifrada en desarrollo; aviso a 30 días en el Resumen y en la barra de la caja (`docs/ecf-propio.md` §10.10) |
 | TK-177 | Consultar a la DGII las preguntas abiertas de `docs/ecf-propio.md` §11 (peso con 3 decimales, comprador vacío en la 32, fecha límite de pago, saldo a favor como forma de pago, receptor por tienda) | ⬜ Necesita al dueño |
-| TK-204 | Pantallas (Escuadra Admin) para "Rechazados por la DGII" (reemplazo) y anulación de rangos (ANECF) | ⬜ |
-| TK-205 | Anular e-CF firmados que nunca se enviaron | ⬜ |
-| TK-206 | El cargo de fiado debe mostrar el e-NCF de reemplazo tras un rechazo | ⬜ |
+| TK-204 | Pantallas (Escuadra Admin) para "Rechazados por la DGII" (reemplazo) y anulación de rangos (ANECF) | ✅ `/admin/ecf` "Comprobantes electrónicos": ambiente, cola, rechazados con Reemplazar, últimos comprobantes y ANECF con vista previa; alerta de rechazados en el Resumen (§10.10) |
+| TK-205 | Anular e-CF firmados que nunca se enviaron | ✅ `POST /api/fiscal/documents/{id}/void`: ANECF de ese número (antes pregunta a la DGII si hubo un envío fallido); el anulado se puede reemplazar (§10.10, §11 #26–27) |
+| TK-206 | El cargo de fiado debe mostrar el e-NCF de reemplazo tras un rechazo | ✅ Clientes escucha `FiscalDocumentReplacedV1`: el cargo y el estado de cuenta pasan al e-NCF nuevo (§10.10) |
 | TK-207 | Archivo frío del relevo en la nube (retención de 10 años) | ⬜ |
 | TK-208 | Decisión del dueño: ¿la caja espera hasta 5 s el resultado de una 31 antes de imprimir? | ⬜ Necesita al dueño |
-| TK-209 | Prueba de las migraciones nuevas de Fiscal sobre SQL Server | ⬜ |
+| TK-209 | Prueba de las migraciones nuevas de Fiscal sobre SQL Server | ✅ `SqlServerUpgradeTests` (V1 con datos → `DgiiDirect`) y todas las pruebas de integración verdes en SQL Express (§10.10) |
 
 ## M14 · Pendientes de las revisiones y de la nube
 

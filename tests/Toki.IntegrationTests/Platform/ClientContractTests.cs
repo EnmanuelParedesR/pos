@@ -95,6 +95,14 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         (await Send<List<C.ProductSales>>(api, HttpMethod.Get, $"/api/reports/sales/by-product?{range}")).ShouldHaveSingleItem().Quantity.ShouldBe(1m);
         (await Send<List<C.ShiftSummary>>(api, HttpMethod.Get, $"/api/reports/shifts?{range}")).ShouldHaveSingleItem().OpeningFloat.ShouldBe(2000m);
 
+        // Electronic receipts (TK-204, TK-205, TK-176)
+        (await Send<C.EcfQueue>(api, HttpMethod.Get, "/api/fiscal/queue")).Environment.ShouldBe("Simulated");
+        (await Send<List<C.EcfDocument>>(api, HttpMethod.Get, "/api/fiscal/documents?last=50")).Select(d => d.ENcf).ShouldContain(sold.ENcf);
+        var notes = (await Send<List<C.EcfSequence>>(api, HttpMethod.Get, "/api/fiscal/sequences")).Single(s => s.Type == "CreditNote34");
+        (await Send<C.EcfVoided>(api, HttpMethod.Post, $"/api/fiscal/sequences/{notes.Id}/void", new { To = 999 })).To.ShouldBe("E340000000999");
+        (await Send<List<C.EcfVoidRow>>(api, HttpMethod.Get, "/api/fiscal/voids")).ShouldHaveSingleItem().Status.ShouldBe("Simulated");
+        (await Send<C.EcfCertificateStatus>(api, HttpMethod.Get, "/api/fiscal/certificate")).Installed.ShouldBeFalse();
+
         // Customers
         var customer = (await Send<C.Created>(api, HttpMethod.Post, "/api/customers", new C.NewCustomer("Ana Pérez", null, "809-555-0102", null, false))).Id;
         (await Send<List<C.CustomerSummary>>(api, HttpMethod.Get, "/api/customers?search=Ana")).ShouldHaveSingleItem().Id.ShouldBe(customer);

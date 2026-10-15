@@ -32,6 +32,11 @@
                 {
                     @* An e-CF waiting more than 24 h is amber (it must reach the DGII within 72 h); never red: principle 3. *@
                     <span class="@(Late(q) ? "esc-offline" : "muted")" role="status">e-CF en cola: @q.Pending</span>
+                    @* TK-176: amber from 30 days before the certificate expires (renewing takes days). *@
+                    @if (q.CertificateExpiresUtc is { } expires && expires < DateTime.UtcNow.AddDays(30))
+                    {
+                        <span class="esc-offline" role="status">@(expires < DateTime.UtcNow ? "Certificado digital vencido" : $"Certificado digital vence en {(int)(expires - DateTime.UtcNow).TotalDays} días")</span>
+                    }
                 }
                 @if (Session.Online)
                 {
