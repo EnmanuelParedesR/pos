@@ -61,11 +61,14 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | enviado (con TrackId, esperando resultado), aceptado, aceptado condicional, rechazado | `SubmissionStatus`: `Sent`, `Accepted`, `AcceptedConditional`, `Rejected` |
 | e-CF de reemplazo de un rechazado | `ReplaceRejected`, `ReplacesENcf` / `ReplacedByENcf` |
 | anulación de e-NCF (ANECF) | `EcfVoid`, `VoidSequence` |
+| e-CF anulado sin enviar (ANECF de un número firmado) | `SubmissionStatus.Voided`, `VoidDocument` |
+| certificado digital (importar, vence) | `EcfCertificate`, `ImportCertificate`, `CertificateStatus` (`ExpiresSoon`) |
 | cliente de los servicios de la DGII, semilla, archivo e-CF en la nube | `DgiiClient`, seed, `/fiscal/v1/archive` |
 | leyenda de contingencia | `ContingencyLegend` |
-| padrón, contribuyente | `TaxpayerRegistry`, `Taxpayer` |
+| padrón, contribuyente, carga del padrón | `TaxpayerRegistry`, `Taxpayer`, `TaxpayerImport` |
 | usuario, rol, permiso | `User`, `Role`, `Permission` |
 | equipo (dispositivo), emparejar, código | `Device`, `Pair`, `PairingCode` |
+| certificado del servidor fijado, huella | `NodeCertificatePin`, `Fingerprint` |
 | sesión, PIN, bloqueado | `Session`, `Pin`, `Locked` |
 | autorización de supervisor | `SupervisorApproval` |
 | instalación | `Setup` |

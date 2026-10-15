@@ -2,6 +2,7 @@
 @inject TokiApi Api
 @inject Session Session
 @inject Peripherals Peripherals
+@inject NodeCertificatePin Pin
 
 <Admin Title="Configuración" Subtitle="Los datos del negocio, las cajas, los comprobantes y quién puede entrar.">
     <div class="esc-tabs" role="tablist" aria-label="Secciones">
@@ -90,8 +91,40 @@
             break;
 
         case Section.FiscalSequences:
+            <form class="esc-card esc-setting" @onsubmit="ImportCertificateAsync" novalidate>
+                <div class="esc-setting__about"><h2>Certificado digital</h2><p>Con él se firman los comprobantes electrónicos. Escriba la contraseña una sola vez: abre el archivo y no se guarda.</p></div>
+                <div class="esc-setting__body">
+                    @if (_certificate is { Installed: true } cert)
+                    {
+                        @if (cert.ExpiresSoon)
+                        {
+                            <Notice Kind="Notice.Kinds.Warning" Title="@(cert.DaysLeft < 0 ? "El certificado venció" : $"El certificado vence en {cert.DaysLeft} {(cert.DaysLeft == 1 ? "día" : "días")}")">Renuévelo con la entidad certificadora e impórtelo aquí. Sin certificado vigente no se pueden firmar comprobantes.</Notice>
+                        }
+                        <dl class="esc-dl">
+                            <dt>Titular</dt><dd>@cert.Subject</dd>
+                            <dt>RNC o cédula</dt><dd>@(cert.TaxId ?? "No aparece en el certificado")</dd>
+                            <dt>Emitido por</dt><dd>@cert.Issuer</dd>
+                            <dt>Vence</dt><dd>@(cert.NotAfterUtc is { } until ? Format.ShortDate(until) : "")</dd>
+                            <dt>En uso</dt><dd>@(cert.InUse ? "Sí: firma los comprobantes" : "Guardado: se usa cuando la tienda pase a la DGII")</dd>
+                        </dl>
+                    }
+                    else
+                    {
+                        <p class="esc-muted">Todavía no hay certificado. Es el archivo .p12 que entrega la entidad certificadora (Avansi, Digifirma) a nombre del titular.</p>
+                    }
+                    <div class="esc-form-grid">
+                        <Field Label="@(_certificate is { Installed: true } ? "Certificado nuevo (.p12 o .pfx)" : "Archivo (.p12 o .pfx)")" Error="@Err("certFile")">
+                            <Microsoft.AspNetCore.Components.Forms.InputFile class="esc-input" accept=".p12,.pfx" OnChange="PickCertificateAsync" />
+                        </Field>
+                        <Field Label="Contraseña del certificado">
+                            <input class="esc-input" type="password" autocomplete="off" maxlength="200" @bind="_certPassword" />
+                        </Field>
+                    </div>
+                    <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Importar certificado</Button></div>
+                </div>
+            </form>
             <section class="esc-card esc-setting">
-                <div class="esc-setting__about"><h2>Comprobantes</h2><p>Las secuencias de e-NCF que autorizó la DGII. Le avisamos en el Resumen cuando queden pocos.</p></div>
+                <div class="esc-setting__about"><h2>Comprobantes</h2><p>Las secuencias de e-NCF que autorizó la DGII. Le avisamos en el Resumen cuando queden pocos. Los envíos, los rechazos y las anulaciones están en <a href="admin/ecf">Comprobantes electrónicos</a>.</p></div>
                 <div class="esc-setting__body">
                     <div class="esc-table-wrap">
                         <table class="esc-table" style="min-width:560px">
@@ -99,9 +132,9 @@
                             <tbody>
                                 @foreach (var s in _sequences)
                                 {
-                                    <tr><td style="font-weight:600">@Names.DocumentType(s.Type)</td><td class="esc-muted">@s.From – @s.To</td><td>@s.Next</td>
+                                    <tr><td style="font-weight:600">@Names.DocumentType(s.Type)@if (!s.Current) { <span class="esc-table__sub esc-muted">@Names.FiscalEnvironment(s.Environment)</span> }</td><td class="esc-muted">@s.From – @s.To</td><td>@s.Next</td>
                                         <td class="esc-num">@if (s.PercentUsed >= 80) { <span class="esc-pill esc-pill--warning">@s.Available</span> } else { @s.Available }</td>
-                                        <td>@s.ExpiresOn.ToString("dd/MM/yyyy")</td></tr>
+                                        <td>@(s.ExpiresOn?.ToString("dd/MM/yyyy") ?? "—")</td></tr>
                                 }
                             </tbody>
                         </table>
@@ -136,6 +169,7 @@
                     <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary">Cargar secuencia</Button></div>
                 </div>
             </form>
+            <TaxpayerRegistryCard />
             break;
 
         case Section.Devices:
@@ -169,6 +203,10 @@
                         <div class="esc-code" role="status">
                             <span class="esc-code__digits">@pc.Code[..4] @pc.Code[4..]</span>
                             <span class="esc-muted">Vence a las @Format.Time(pc.ExpiresUtc) · sirve una vez</span>
+                            @if (NodeCertificatePin.Fingerprint(Pin.Pinned) is { } fingerprint)
+                            {
+                                <span class="esc-muted">Huella del servidor: <strong>@fingerprint</strong> · el equipo nuevo debe mostrar la misma</span>
+                            }
                         </div>
                     }
                 </div>
@@ -344,7 +382,6 @@
     private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, Users, Roles, Backups, Cloud, License }
     private sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
     private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; }
-    private sealed record Sequence(Guid Id, string Type, string From, string To, string Next, long Available, decimal PercentUsed, DateOnly ExpiresOn);
 
     /// <summary>Opens a section from a link (the Resumen's "Cargar secuencia" → ?section=fiscal).</summary>
     [SupplyParameterFromQuery(Name = "section")] public string? Requested { get; set; }
@@ -380,7 +417,10 @@
     private string? _newRegister, _newDevice, _passphrase, _userName, _userCode, _userPin, _seqFrom, _seqTo;
     private string _seqType = "Consumer32";
     private DateOnly _seqExpires = Format.Today.AddYears(1);
-    private List<Sequence> _sequences = [];
+    private List<EcfSequence> _sequences = [];
+    private EcfCertificateStatus? _certificate;
+    private byte[]? _certFile;
+    private string? _certPassword;
     private List<Device> _devices = [];
     private PairingCode? _pairingCode;
     private Guid? _revoking;
@@ -414,7 +454,10 @@
                 _registers = (await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers")).Value ?? [];
                 _features ??= (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value;
                 break;
-            case Section.FiscalSequences: _sequences = (await Api.GetAsync<List<Sequence>>("/api/fiscal/sequences")).Value ?? []; break;
+            case Section.FiscalSequences:
+                _sequences = (await Api.GetAsync<List<EcfSequence>>("/api/fiscal/sequences")).Value ?? [];
+                _certificate = (await Api.GetAsync<EcfCertificateStatus>("/api/fiscal/certificate")).Value;
+                break;
             case Section.Devices: _devices = (await Api.GetAsync<List<Device>>("/api/identity/devices")).Value ?? []; break;
             case Section.Hardware: _hardware = HardwareForm.From(Peripherals.Settings); break;
             case Section.Users:
@@ -575,6 +618,35 @@
         var r = await Api.PostAsync<Created>("/api/fiscal/sequences", new { Type = _seqType, From = from, To = to, ExpiresOn = _seqExpires });
         await GoAsync(Section.FiscalSequences);
         ShowResult(r.Problem?.Code == "Fiscal.OverlappingRange" ? r.Problem with { Message = "Ese rango se cruza con uno ya cargado." } : r.Problem, "Secuencia cargada.");
+    }
+
+    /// <summary>A .p12 is a few KB; 200 KB is plenty.</summary>
+    private async Task PickCertificateAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        Clear("certFile");
+        using var file = new MemoryStream();
+        try
+        {
+            await using var stream = e.File.OpenReadStream(200_000);
+            await stream.CopyToAsync(file);
+            _certFile = file.ToArray();
+        }
+        catch (IOException)
+        {
+            (_certFile, _errors["certFile"]) = (null, "Ese archivo es demasiado grande para ser un certificado.");
+        }
+    }
+
+    /// <summary>TK-176: the password goes with the file once and is forgotten here whatever the answer.</summary>
+    private async Task ImportCertificateAsync()
+    {
+        if (_certFile is null) { _errors["certFile"] = "Elija el archivo .p12 o .pfx del certificado."; return; }
+        _sending = true;
+        var r = await Api.PostAsync<EcfCertificateStatus>("/api/fiscal/certificate", new { File = Convert.ToBase64String(_certFile), Password = _certPassword });
+        (_sending, _certPassword) = (false, null);
+        if (r.Ok) _certFile = null;
+        await GoAsync(Section.FiscalSequences);
+        ShowResult(r.Problem, $"Certificado de {r.Value?.Subject} importado. Vence el {(r.Value?.NotAfterUtc is { } until ? Format.ShortDate(until) : "")}.");
     }
 
     private async Task CreatePairingCodeAsync()

@@ -5,6 +5,7 @@
     "env": { "value": "prod" },
     "location": { "value": "eastus2" },
     "staticWebAppLocation": { "value": "eastus2" },
+    "sqlLocation": { "value": "centralus" },
     "sqlAdminLogin": { "value": "<correo o grupo de Entra del administrador>" },
     "sqlAdminObjectId": { "value": "<object id de ese usuario o grupo>" },
     "openAiModelName": { "value": "gpt-5-nano" },

@@ -12,4 +12,4 @@
 
 ## Pendiente
 
-`arquitectura-v1-vsa.md` §8.1 pide certificados de cliente (mTLS) con una CA de la tienda. Queda en TK-091 antes del piloto. El resto del modelo (sesión, permisos, supervisor) no cambia.
+`arquitectura-v1-vsa.md` §8.1 pide certificados de cliente (mTLS) con una CA de la tienda. Queda en TK-091 antes del piloto. Mientras tanto la caja fija el certificado del servidor al emparejarse (ADR-0009, TK-122), que también trae el plan del mTLS. El resto del modelo (sesión, permisos, supervisor) no cambia.

@@ -246,7 +246,7 @@ Más adelante, si Toki se certifica como **Proveedor de Servicios de FE (NG 10-2
 | Pieza actual | Estado | Falta |
 |---|---|---|
 | `EcfXml` (antes `FiscalDocuments.BuildXml`) | ✅ TK-143: formato oficial, validado contra el XSD antes de firmar (§10.8) | Municipio y provincia (opcionales en el XSD) |
-| `SimulatedEcfSigner` | Hash, no firma; sigue siendo el valor por defecto | ✅ TK-142: `CertificateEcfSigner` con XMLDSig (§4.1, §10.8). Falta la pantalla de importación del `.p12` y el aviso de vencimiento |
+| `SimulatedEcfSigner` | Hash, no firma; sigue siendo el valor por defecto | ✅ TK-142: `CertificateEcfSigner` con XMLDSig (§4.1, §10.8). ✅ TK-176: importación del `.p12` y aviso de vencimiento (§10.10) |
 | `IEcfProvider.SubmitAsync` | Una llamada devuelve el estado final | TrackId → consulta de resultado ("En proceso"), RFCE inmediato, consulta antes de reenviar y anulación |
 | `RelayEcfProvider` y `/relay/v1/ecf` | La nube enviaría a la DGII | Pasa a ser archivo (§10.4) |
 | `SubmissionStatus` | `Pending, Accepted, AcceptedConditional, Rejected, Simulated` | `Sent` (con TrackId, esperando resultado); además, en el documento: ambiente, canal (e-CF o RFCE), código y mensajes de la DGII, `secuenciaUtilizada` y entrega al receptor |
@@ -399,6 +399,34 @@ El **relevo** (`/relay/v1/ecf`) cambia de papel: ya no reenvía, **archiva**. La
 
 **Falta probar en TesteCF** (con TK-141): la forma real de cada respuesta (nombres de campos, `codigo` como número, `mensajes` como lista de `{ valor, codigo }`), que la semilla firmada así sea aceptada, la vida real del token, el RFCE aceptado y su QR `consultatimbrefc`, el nombre de archivo y la respuesta de `anularrango`, el código 0 justo después de recibir un TrackId y los límites de envío por minuto.
 
+### 10.10 Implementado: pantallas, anulación de firmados, fiado y certificado (TK-204 a TK-206, TK-209, TK-176)
+
+> 15 de octubre de 2026. Igual que §10.9: probado con la DGII simulada, nada contra TesteCF todavía.
+
+**TK-204 · Pantalla "Comprobantes electrónicos"** (Escuadra Admin, `/admin/ecf`, en el menú para quien tiene `fiscal.manage`). Arriba, el ambiente (Simulado, Pre-certificación (TesteCF), Certificación (CerteCF) o Producción) y, fuera de producción, el aviso de que esos comprobantes no tienen valor fiscal. La cola en tres cifras: por enviar (pendientes y esperando a la DGII), fuera de plazo de 72 h y rechazados sin reemplazo. **Rechazados por la DGII** con el mensaje de la DGII y **Reemplazar** (llama a `POST /api/fiscal/documents/{id}/replace`); **Últimos comprobantes** (los 50 más recientes) con su estado, el error o el mensaje de la DGII, y **Anular** en los que nunca salieron. **Anular números sin usar** (ANECF): se elige la secuencia del ambiente actual, el "hasta" (vacío = el final), se ve antes cuántos números y cuáles se anulan, y la lista de anulaciones con su respuesta. Toda acción que no se puede deshacer pide un segundo toque, como revocar un equipo. Lo puede hacer quien tenga `fiscal.manage` (dueño o supervisor con ese permiso); no hay aprobación de supervisor aparte porque el cajero no llega a esta pantalla. El Resumen ("Para revisar") avisa en rojo cuando la DGII rechazó comprobantes y lleva a la pantalla. En Configuración → Comprobantes la secuencia sin vencimiento ya no rompe la lista (la 32 y la 34 pueden no tenerlo) y un rango de otro ambiente dice de cuál es.
+
+**TK-205 · Anular un e-CF firmado que nunca salió.** La DGII lo permite con el mismo ANECF de los rangos (§2.5: "e-CF firmados que no se enviaron ni a la DGII ni al receptor"); lo que ya llegó se corrige con nota de crédito. `POST /api/fiscal/documents/{id}/void`:
+- Solo un documento `Pending` (o `Simulated`) sin `SentUtc` ni TrackId; si tiene notas de crédito o débito que lo modifican, no (`Fiscal.HasNotes`).
+- Si un envío anterior falló (`Attempts > 0`), pudo haber llegado: primero pregunta a la DGII (TrackIds por e-NCF, o `consultarfce` para el RFCE), igual que la cola antes de reenviar. Si la DGII lo tiene, `Fiscal.AlreadySent`; si la DGII no responde, `Fiscal.DgiiUnreachable` y no se anula.
+- Pasa a `Voided` en una actualización atómica que exige que siga como se leyó: si la cola lo envió entretanto, falla en vez de anular uno que la DGII tiene. La cola nunca envía un `Voided`.
+- Arma el ANECF de ese único número, lo valida contra el XSD, lo firma y lo deja a la cola (`EcfVoids`, ligado a su secuencia); auditoría `fiscal.void-document`.
+- Si la venta sigue en pie, **Reemplazar** también acepta un `Voided`: e-CF nuevo con los mismos datos, la venta (y el fiado) pasan al número nuevo.
+- Pendiente (§11 #26): el recibo que ya tiene el cliente sigue mostrando el número anulado; el 607 de una venta cuyo e-CF se anuló y no se reemplazó.
+
+**TK-206 · El fiado sigue al reemplazo.** El módulo Clientes escucha `FiscalDocumentReplacedV1`: el cargo a crédito de esa venta (`OnAccountCharges.Document`) pasa del e-NCF rechazado al nuevo, así el estado de cuenta del cliente muestra el comprobante válido, igual que la venta y su recibo.
+
+**TK-209 · Migraciones en SQL Server.** Toda prueba de integración con `TOKI_TEST_DB=sqlserver` (el job `sqlserver` de CI, o un SQL Express local con `TOKI_TEST_SQLSERVER`) ya crea la base aplicando las migraciones de cada módulo. Faltaba la prueba de **actualizar** una tienda con datos: `SqlServerUpgradeTests` migra Fiscal hasta `InitialFiscal`, inserta un rango y un documento como los dejaba la V1, aplica `DgiiDirect` y comprueba que quedan `Simulated`, canal `Ecf`, sin contingencia y con el XML intacto; luego escribe lo nuevo (32 sin vencimiento, RFCE de 20 KB, `Voided`, un ANECF). Pasó contra SQL Express junto con todas las demás pruebas de integración, que aplican también Sales `FiscalReceiptFields`.
+
+**TK-176 · Certificado digital** (Configuración → Comprobantes → "Certificado digital"). El dueño elige el `.p12`/`.pfx` y escribe la contraseña **una vez**: `POST /api/fiscal/certificate` (`{ file: base64, password }`) lo abre, exige llave privada RSA y que no esté vencido, y lo guarda; la contraseña no se guarda en ningún lado ni entra a la auditoría (`fiscal.import-certificate` registra titular, RNC, huella y vencimiento). Dónde queda:
+- **PC de la tienda** (Windows en `Production`, o `Fiscal:Certificate:ImportTo` = `Store`): importado **no exportable** en `LocalMachine\My`. Si la cuenta del servicio no puede escribir ese almacén (lo normal con `NT SERVICE\Toki` sin el paso del instalador), en `CurrentUser\My` de esa cuenta, que también sobrevive reinicios.
+- **Desarrollo y pruebas** (`ImportTo` = `KeysFolder`, el valor fuera de producción): en la carpeta de llaves (`Toki:KeysFolder`), cifrado con Data Protection (`ecf-certificate.pfx.protected`).
+- En los dos casos se escribe `ecf-certificate.json` en la carpeta de llaves con `Fiscal:Certificate:Thumbprint` y `Fiscal:Certificate:Store`; al arrancar, ese archivo manda sobre `appsettings`. El firmador toma el certificado vigente en cada firma: una **renovación** firma desde la venta siguiente, sin reiniciar.
+- Si la tienda sigue con `Fiscal:Signer` = `Simulated`, el certificado queda guardado ("En uso: guardado") y se usa al pasar a la DGII (TK-141); importar no cambia de firmador ni de ambiente.
+
+`GET /api/fiscal/certificate` muestra titular, RNC o cédula (del `SERIALNUMBER` u `organizationIdentifier` del sujeto), emisor, vencimiento, días que quedan y si está en uso. **Aviso a 30 días** (`ExpiresSoon`): en la tarjeta del certificado, en "Para revisar" del Resumen (ámbar, con "Importar certificado") y en la barra de estado de la caja para quien tiene `fiscal.manage` ("Certificado digital vence en N días", ámbar, principio 3); `GET /api/fiscal/queue` trae `certificateExpiresUtc` para que la barra no haga otra llamada.
+
+**Pruebas.** Integración con la DGII simulada (`EcfAdminTests`): anular un e-CF que nunca salió (DGII caída → no se anula; DGII de vuelta → ANECF de un número validado contra el XSD, la cola no lo envía, el reemplazo lleva la venta al número nuevo; uno aceptado no se anula), un envío que llegó aunque se perdió la respuesta no se anula, el estado de cuenta del fiado con el e-NCF de reemplazo, y un certificado renovado que firma la venta siguiente. `EcfCertificateTests`: contraseña equivocada, archivo que no es un certificado, vencido, sin permiso, importado con RNC y aviso a 20 días, `certificateExpiresUtc` en la cola, recargado tras un reinicio y sin la contraseña en disco. Contrato del cliente para las rutas nuevas. bUnit: reemplazar con dos toques, anular un pendiente, vista previa del ANECF y los avisos del Resumen.
+
 ---
 
 ## 11. Riesgos y preguntas abiertas
@@ -430,6 +458,10 @@ El **relevo** (`/relay/v1/ecf`) cambia de papel: ya no reenvía, **archiva**. La
 | 23 | Cuánto esperar con código 0 ("no encontrado") después de recibir un TrackId antes de reenviar. Toki sigue consultando (máximo cada 5 minutos) y no reenvía | Medir en TesteCF |
 | 24 | En CerteCF no hay consulta de TrackIds por e-NCF: un *timeout* durante el set de pruebas obliga a reenviar. ¿Cuenta como envío duplicado en la certificación? | Preguntar a la DGII |
 | 25 | Nota de crédito sobre una venta cuyo e-CF fue reemplazado: Toki la hace sobre el e-CF vigente (el reemplazo). Confirmar | Preguntar a la DGII |
+| 26 | e-CF firmado y anulado con ANECF sin enviarse (TK-205) cuya representación impresa ya tiene el cliente: ¿basta con el ANECF o hay que avisar al comprador? Si la venta sigue en pie, Toki emite un reemplazo con número nuevo; si no se reemplaza, ¿cómo va esa venta en el 607 (hoy sale con el e-NCF anulado)? | Preguntar a la DGII; mientras, la pantalla recomienda reemplazar |
+| 27 | ANECF de un solo número firmado (desde = hasta) dentro de un rango que se sigue usando: ¿lo acepta la DGII, o pide anular solo al final del rango? ¿Y para una 32 enviada por RFCE que falló (la DGII "verifica las dos vías")? | Probar en TesteCF |
+| 28 | Dónde trae el certificado de la entidad (Avansi, Digifirma) el RNC o la cédula del titular: Toki lo lee del `SERIALNUMBER` u `organizationIdentifier` del sujeto. ¿Debe coincidir con el RNC del negocio para firmar e-CF de una persona jurídica? | Ver un certificado real (TK-141); preguntar a la DGII |
+| 29 | La cuenta del servicio (`NT SERVICE\Toki`) no puede escribir `LocalMachine\My`: el certificado importado queda en su `CurrentUser\My`. Para el almacén de la máquina con lectura solo para el servicio hace falta un paso del instalador | TK-160 (VM limpia) |
 
 ---
 

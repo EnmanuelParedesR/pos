@@ -25,11 +25,12 @@ public static class FiscalModule
         services.AddModuleDbContext<FiscalDbContext>();
         services.AddScoped<IFiscalDocuments, FiscalDocuments>();
         services.AddScoped<FiscalDocuments>();
+        services.AddSingleton<EcfCertificate>();
         var signer = config["Fiscal:Signer"] ?? "Simulated";
         _ = signer switch
         {
             "Simulated" => services.AddSingleton<IEcfSigner, SimulatedEcfSigner>(),
-            "Certificate" => services.AddSingleton<IEcfSigner>(_ => CertificateEcfSigner.FromConfiguration(config)),
+            "Certificate" => services.AddSingleton<IEcfSigner>(sp => new CertificateEcfSigner(sp.GetRequiredService<EcfCertificate>())),
             var other => throw new InvalidOperationException($"Unknown Fiscal:Signer '{other}': use Simulated or Certificate."),
         };
         switch (config["Fiscal:Provider"] ?? "Simulated")
@@ -50,6 +51,7 @@ public static class FiscalModule
                 throw new InvalidOperationException($"Unknown Fiscal:Provider '{other}': use Simulated or Dgii.");
         }
         services.AddScoped<EcfSubmissionQueue>();
+        services.AddSingleton<Features.TaxpayerImport>();
         services.AddHostedService<EcfSubmissionWorker>();
         services.AddHealthChecks().AddCheck<EcfQueueHealthCheck>("ecf-queue");
         return services;
@@ -210,12 +212,12 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
     /// <summary>TK-147: a document the DGII rejected is not corrected with a credit note (it never was valid): a new e-CF with the same data and a
     /// new e-NCF replaces it, linked both ways. Sales, voids and returns follow it through <see cref="FiscalDocumentReplacedV1"/>.</summary>
     /// <remarks>shortcut: always a new number, even when the DGII says the rejected one was not used (<c>secuenciaUtilizada</c> = false);
-    /// that number can then be voided with an ANECF.</remarks>
+    /// that number can then be voided with an ANECF. TK-205: one voided before it was sent (<see cref="SubmissionStatus.Voided"/>) is replaced the same way.</remarks>
     public async Task<Result<IssuedDocument>> ReplaceAsync(Guid documentId, CancellationToken ct)
     {
         var rejected = await db.Documents.SingleOrDefaultAsync(d => d.Id == documentId, ct);
         if (rejected is null) return FiscalErrors.NotFound;
-        if (rejected.Status != SubmissionStatus.Rejected) return FiscalErrors.NotRejected;
+        if (rejected.Status is not (SubmissionStatus.Rejected or SubmissionStatus.Voided)) return FiscalErrors.NotRejected;
         if (rejected.ReplacedByENcf is not null) return FiscalErrors.AlreadyReplaced;
         var business = await settings.GetBusinessProfileAsync(ct);
 
