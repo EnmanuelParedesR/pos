@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Toki.BuildingBlocks\Toki.BuildingBlocks.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Toki.UnitTests" />
+    <InternalsVisibleTo Include="Toki.IntegrationTests" />
+  </ItemGroup>
+</Project>

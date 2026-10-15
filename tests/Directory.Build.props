@@ -1,0 +1,10 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <!-- xUnit1051: passing TestContext tokens everywhere adds noise to short tests; CA1861: inline arrays in tests -->
+    <NoWarn>$(NoWarn);xUnit1051;CA1861</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

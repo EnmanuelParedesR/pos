@@ -1,0 +1,11 @@
+{
+  "enabledPlugins": {
+    "code-modernization@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "csharp-lsp@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true
+  }
+}

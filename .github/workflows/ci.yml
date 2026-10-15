@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Pruebas (${{ matrix.db }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [sqlite, sqlserver]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet build Toki.slnx -c Release
+      - name: Pruebas
+        run: dotnet test --solution Toki.slnx -c Release --no-build
+        env:
+          TOKI_TEST_DB: ${{ matrix.db }}

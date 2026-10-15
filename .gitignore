@@ -1,0 +1,25 @@
+# Never publish: legacy system material (credentials, third-party code and data)
+legacy/
+docs/legacy/
+tools/
+*.rar
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+*.db
+*.db-shm
+*.db-wal
+appsettings.*.local.json
+
+# Claude local settings
+.claude/settings.local.json
+
+# Business strategy (pricing, naming research): kept out of the public repo
+docs/planes.md
+docs/nombres.md
+docs/nombres-mercado.md

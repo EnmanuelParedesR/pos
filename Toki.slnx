@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/Toki.BuildingBlocks/Toki.BuildingBlocks.csproj" />
+    <Project Path="src/BuildingBlocks/Toki.SharedKernel/Toki.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Toki.Host.Local/Toki.Host.Local.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/Identidad/Toki.Identidad/Toki.Identidad.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Toki.ArchitectureTests/Toki.ArchitectureTests.csproj" />
+    <Project Path="tests/Toki.IntegrationTests/Toki.IntegrationTests.csproj" />
+    <Project Path="tests/Toki.UnitTests/Toki.UnitTests.csproj" />
+  </Folder>
+</Solution>
