@@ -24,5 +24,20 @@ public partial class MainWindow
         services.AddBlazorWebViewDeveloperTools();
 #endif
         WebView.Services = services.BuildServiceProvider();
+        WebView.BlazorWebViewInitialized += (_, e) => LockDown(e.WebView.CoreWebView2.Settings);
+    }
+
+    /// <summary>The register is an app, not a browser: a reload (Ctrl+R, F5, swipe back) would start a new DI scope and lose the
+    /// session and the cart mid-sale; zoom would break the 48/72 px touch targets.</summary>
+    private static void LockDown(Microsoft.Web.WebView2.Core.CoreWebView2Settings s)
+    {
+#if !DEBUG
+        s.AreBrowserAcceleratorKeysEnabled = false; // Ctrl+R, Ctrl+F5, Ctrl+P, Ctrl+F, Alt+←; kept in Debug for the dev tools (F12)
+#endif
+        s.IsZoomControlEnabled = false;
+        s.IsPinchZoomEnabled = false;
+        s.IsSwipeNavigationEnabled = false;
+        s.AreDefaultContextMenusEnabled = false;
+        s.IsStatusBarEnabled = false;
     }
 }

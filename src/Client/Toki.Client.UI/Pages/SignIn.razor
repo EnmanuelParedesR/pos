@@ -7,7 +7,7 @@
     <div style="display:flex;flex-wrap:wrap;gap:24px;width:min(1040px,100%);align-items:flex-start;justify-content:center">
         <section class="esc-col" style="flex:1 1 420px;max-width:640px;gap:12px" aria-label="¿Quién entra?">
             <h1 class="esc-title">¿Quién entra?</h1>
-            @if (Expired)
+            @if (Expired || Session.Expired)
             {
                 <Notice Kind="Notice.Kinds.Warning" Title="Su sesión terminó. Entre de nuevo con su PIN." />
             }
@@ -34,7 +34,7 @@
             }
         </section>
 
-        <section class="esc-card esc-card--padded esc-col" style="flex:0 1 360px;gap:16px" @onkeydown="KeyDown" tabindex="0" @ref="_pinArea" aria-label="PIN">
+        <section class="esc-card esc-card--padded esc-col" style="flex:0 1 360px;gap:16px" @onkeydown="KeyDown" tabindex="0" data-no-scan @ref="_pinArea" aria-label="PIN">
             <div>
                 <div style="font-size:var(--t-20);font-weight:700">@(_chosen?.Name ?? "Elija su nombre")</div>
                 <div class="esc-subtitle">Escriba su PIN</div>
@@ -42,7 +42,7 @@
             <PinDots Length="_pin.Length" Max="Math.Max(4, _pin.Length)" />
             @if (_error is not null)
             {
-                <Notice Title="@_error" />
+                <Notice Kind="_errorKind" Title="@_error" />
             }
             <Keypad OnKey="Key" />
             <Button Variant="Button.Variants.Primary" Money="true" Shortcut="Enter" Disabled="@(_chosen is null || _pin.Length < 4 || _sending)" OnClick="SignInAsync">Entrar</Button>
@@ -51,12 +51,14 @@
 </div>
 
 @code {
+    /// <summary><c>sign-in?expired=true</c> (Blazor reads only true/false here: "1" would throw while rendering).</summary>
     [SupplyParameterFromQuery] public bool Expired { get; set; }
 
     private List<ActiveUser>? _users;
     private ActiveUser? _chosen;
     private string _pin = "";
     private string? _error, _listError;
+    private Notice.Kinds _errorKind;
     private bool _sending;
     private ElementReference _pinArea;
 
@@ -92,14 +94,15 @@
 
     private async Task SignInAsync()
     {
-        if (_chosen is null) return;
+        if (_chosen is null || _sending) return;
         _sending = true;
         var r = await Api.PostAsync<OpenedSession>("/api/identity/sessions", new { _chosen.Code, Pin = _pin });
         if (r.Value is not { } s)
         {
             _sending = false;
             _pin = "";
-            _error = r.Problem!.Code switch
+            _errorKind = r.Problem!.Kind;
+            _error = r.Problem.Code switch
             {
                 "Identity.InvalidCredentials" => "PIN incorrecto.",
                 "Identity.UserLocked" => "Demasiados intentos. Espere unos minutos o pida a un supervisor que lo desbloquee.",

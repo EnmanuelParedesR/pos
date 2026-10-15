@@ -160,11 +160,11 @@ internal sealed class CashRegisterOperations(CashRegisterDbContext db, IUserCont
     }
 
     public CashMovement Add(Guid shiftId, CashMovementType type, PaymentMethod method, decimal amount, Guid? referenceId, string? reference,
-        MovementReason? reason = null, string? note = null)
+        MovementReason? reason = null, string? note = null, Guid? id = null)
     {
         var m = new CashMovement
         {
-            Id = Guid.CreateVersion7(), ShiftId = shiftId, Type = type, Method = method, Amount = amount, ReferenceId = referenceId,
+            Id = id ?? Guid.CreateVersion7(), ShiftId = shiftId, Type = type, Method = method, Amount = amount, ReferenceId = referenceId,
             Reference = reference, Reason = reason, Note = note, UserId = user.UserId == Guid.Empty ? null : user.UserId,
             SupervisorId = user.SupervisorId, DateUtc = clock.GetUtcNow().UtcDateTime,
         };

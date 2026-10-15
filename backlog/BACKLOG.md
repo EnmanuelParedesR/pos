@@ -144,21 +144,23 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-111 | Ventas del turno: ver, reimprimir, anular y devolver líneas con supervisor | ✅ |
 | TK-112 | Cerrar caja ciego por denominación, cierre con supervisor y resultado (cuadró/sobró/faltó, por medio) | ✅ |
 | TK-113 | Administración: Resumen (hoy, 7 días, más vendidos, cajas, alertas de comprobantes), Productos y categorías, Turnos y Z, Configuración (negocio, cajas, comprobantes, equipos, usuarios, respaldos, licencia) | ✅ |
-| TK-114 | App de la tienda: WPF + BlazorWebView, token del equipo cifrado con DPAPI | 🟡 Compila; falta abrirla una vez en una PC de caja (y en la VM limpia) |
+| TK-114 | App de la tienda: WPF + BlazorWebView, token del equipo cifrado con DPAPI (escritura atómica), WebView2 cerrado (sin recargar, zoom, deslizar ni menú), errores no manejados al registro | 🟡 Compila; falta abrirla una vez en una PC de caja (y en la VM limpia) y comprobar a mano que Ctrl+R y deslizar no hacen nada (R7 #11) |
 | TK-115 | Host web de desarrollo (`Toki.Client.Web`) para ver y probar las pantallas en el navegador | ✅ |
-| TK-116 | Pruebas bUnit: carrito, cobro con total corregido, supervisor, PIN equivocado, F7 | ✅ |
+| TK-116 | Pruebas bUnit: carrito, cobro con total corregido, supervisor, PIN equivocado, F7; y de R7: sesión vencida, cobro incierto, devolución y cierre reintentados, conteo sin salir del campo, presentación, doble confirmación, F3, pantalla que falla | ✅ |
 | TK-117 | Balanza (`IScale`) por marca; hoy el peso se escribe | ⬜ |
 | TK-118 | Impresora térmica ESC/POS y gaveta; hoy la factura es una vista previa | ⬜ |
 | TK-119 | Incluir IBM Plex Sans (OFL) en `wwwroot/fuentes`; hoy usa la instalada o Segoe UI | ⬜ |
 | TK-120 | Administración que falta: inventario (ajustes, conteo, transferencias), compras, suplidores y gastos, clientes y abonos, facturas, reportes descargables, roles | ⬜ |
 | TK-121 | Abono de un cliente desde la caja | ⬜ |
 | TK-122 | Fijar el certificado del nodo en el cliente al emparejar (con TK-091) | ⬜ |
-| TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real | ⬜ |
+| TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real; incluye las de R7 #5 (escaneo ignorado en efectivo/PIN) y #8 (el foco nunca se pierde) | ⬜ |
+| TK-124 | Prueba de contratos en `Toki.IntegrationTests`: llamar a los endpoints reales y deserializar cada respuesta con `TokiApi.Json` en los records de `Contracts.cs` (R7 #13b) | ⬜ |
 
 ## Revisiones
 
 | Revisión | Hito | Estado |
 |---|---|---|
+| R7 (`backlog/reviews/R7-M11.md`) | M11 (frontend) | ✅ Corregidos 1–12, 14–17, 19–25, 28–31; 13, 18, 26 y 27 en parte. Sesión vencida → PIN sin perder el carrito; cobro incierto bloquea el carrito hasta consultar `GET /api/sales/{id}`; ids estables en devoluciones y movimientos (`movementId` nuevo en el servidor); conteo con `oninput` y cierre en dos pasos; lector ignorado en efectivo/cantidad/PIN; foco que no se pierde; `ErrorBoundary`; WebView2 cerrado; `errors.permission` en `Approval.Required`. Pendiente: contratos (TK-124), Playwright (TK-123), cola de e-CF en la barra, "Salir" de administración con carrito, recargar precios tras `Sales.TotalChanged` |
 | R1 (`backlog/reviews/R1-M0-M1.md`) | M0 + M1 | ✅ Corregidos 1–8, 10–17 y 18 en parte. Pendiente: 9 (HTTPS, ver TK-093), fijar la imagen de SQL Server de CI con etiqueta fechada |
 | R2 (`backlog/reviews/R2-M2.md`) | M2 | ✅ Corregidos 1–13, 15–17 (14 colación solo en SQL Server). Pruebas nuevas: conteo con ventas en medio, costo promedio, última libra en paralelo, kardex = existencia |
 | R6 (`backlog/reviews/R6-M9.md`) | M9 (migraciones, outbox, respaldos) + R5 | ✅ Corregidos 1–15. Respaldo también al arrancar si el último tiene más de 20 h; SQL Server escribe el `.bak` en `respaldos\trabajo` (el instalador le da permiso), que se limpia en cada corrida; archivo `.parcial` hasta estar completo; 1 h de tiempo límite; error claro si la clave guardada no se puede leer (anillo de Data Protection en `C:\ProgramData\Toki\claves`); la copia fuera de la PC tiene su propia retención y no frena nada; formato de respaldo v2 (clave por archivo con HKDF, encabezado autenticado); el outbox lee cada mensaje una vez por corrida y usa un scope por mensaje; semillas literales y prueba que impide reescribir datos del dueño; migraciones en `StartingAsync` con 30 min; el 606 usa el medio de pago registrado; el e2e cuadra también el ITBIS del 607. Pendiente: verificar 2, 5 y 10 en la VM Windows limpia con el instalador |

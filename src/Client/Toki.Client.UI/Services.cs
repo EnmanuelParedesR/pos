@@ -11,7 +11,8 @@ public static class Services
     {
         // One connection pool for the whole app, however many scopes (the web host makes one per browser tab).
         var shared = handler ?? new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) };
-        services.AddScoped(_ => new HttpClient(shared, disposeHandler: false) { BaseAddress = api, Timeout = TimeSpan.FromSeconds(30) });
+        // TokiApi puts the time limit on each call (30 s, longer for a backup).
+        services.AddScoped(_ => new HttpClient(shared, disposeHandler: false) { BaseAddress = api, Timeout = Timeout.InfiniteTimeSpan });
         services.AddScoped<Session>();
         services.AddScoped<TokiApi>();
         services.AddScoped<Approver>();

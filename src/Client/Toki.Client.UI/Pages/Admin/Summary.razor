@@ -1,7 +1,7 @@
 @page "/admin"
 @inject TokiApi Api
 
-<Admin Title="Resumen" Subtitle="@($"Hoy, {DateTime.Now.ToString("dddd d 'de' MMMM", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))}")">
+<Admin Title="Resumen" Subtitle="@($"Hoy, {Format.Today.ToString("dddd d 'de' MMMM", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))}")">
     @foreach (var a in _alerts)
     {
         <Notice Kind="Notice.Kinds.Warning" Title="@a" />
@@ -57,7 +57,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var today = DateOnly.FromDateTime(DateTime.Now);
+        var today = Format.Today;
         var days = (await Api.GetAsync<List<DailySales>>($"/api/reports/sales/by-day?from={today.AddDays(-6):yyyy-MM-dd}&to={today:yyyy-MM-dd}")).Value ?? [];
         // Days without sales are missing from the report: fill them so the chart has 7 bars.
         _week = [.. Enumerable.Range(0, 7).Select(i => today.AddDays(i - 6)).Select(d => days.Find(x => x.Day == d) ?? new DailySales(d, 0, 0, 0, 0, 0, 0, 0, 0))];

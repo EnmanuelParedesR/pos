@@ -16,9 +16,19 @@ public static class Format
         ? value.ToString("0.000", Invariant) + " lb"
         : value.ToString("0.###", Invariant);
 
-    public static string Time(DateTimeOffset moment) => moment.ToLocalTime().ToString("h:mm tt", Local);
+    /// <summary>The store's clock: Dominican Republic time, UTC−4 all year. A copy of SharedKernel's <c>BusinessDay.Offset</c>
+    /// (Escuadra does not reference it), so a PC with the wrong time zone still shows the server's hours and days.</summary>
+    public static readonly TimeSpan StoreOffset = TimeSpan.FromHours(-4);
 
-    public static string Date(DateTimeOffset moment) => moment.ToLocalTime().ToString("d MMM yyyy, h:mm tt", Local);
+    public static DateOnly Today => DateOnly.FromDateTime(DateTime.UtcNow + StoreOffset);
+
+    public static DateTime StoreTime(DateTimeOffset moment) => moment.UtcDateTime + StoreOffset;
+
+    public static string Time(DateTimeOffset moment) => StoreTime(moment).ToString("h:mm tt", Local);
+
+    public static string Date(DateTimeOffset moment) => StoreTime(moment).ToString("d MMM yyyy, h:mm tt", Local);
+
+    public static string ShortDate(DateTimeOffset moment) => StoreTime(moment).ToString("dd/MM/yyyy", Invariant);
 
     /// <summary>Reads what a cashier types ("1,250.5" or "1250.50"); null when it is not a number.</summary>
     public static decimal? ParseNumber(string? text) =>
