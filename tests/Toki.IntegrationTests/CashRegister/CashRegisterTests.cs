@@ -47,25 +47,51 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
     {
         var (cashier, shift) = await ShiftAsync(openingFloat: 1000m);
 
-        var withoutApproval = await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementType = "Withdrawal", Amount = 500m, Reason = "CashPickup" });
-        (await withoutApproval.ErrorCode()).ShouldBe("Approval.Required");
+        var withoutApproval = await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementId = Guid.NewGuid(), MovementType = "Withdrawal", Amount = 500m, Reason = "CashPickup" });
+        var problem = await withoutApproval.Json();
+        problem.GetProperty("code").GetString().ShouldBe("Approval.Required");
+        // The register reads the permission from this field, not from the text.
+        problem.GetProperty("errors").GetProperty("permission")[0].GetString().ShouldBe("register.withdraw");
 
         // No "not enough cash" answer: it would let the cashier probe the expected cash and defeat the blind count.
         (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements",
-            new { MovementType = "Withdrawal", Amount = 600m, Reason = "CashPickup", SupervisorApprovalId = await ApproveAsync(cashier, "register.withdraw", shift) }))
+            new { MovementId = Guid.NewGuid(), MovementType = "Withdrawal", Amount = 600m, Reason = "CashPickup", SupervisorApprovalId = await ApproveAsync(cashier, "register.withdraw", shift) }))
             .StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementType = "CashIn", Amount = 100m, Reason = "ExtraChange" }))
+        (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementId = Guid.NewGuid(), MovementType = "CashIn", Amount = 100m, Reason = "ExtraChange" }))
             .StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var other = new { MovementType = "Expense", Amount = 10m, Reason = "Other" };
+        var other = new { MovementId = Guid.NewGuid(), MovementType = "Expense", Amount = 10m, Reason = "Other" };
         (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", other)).StatusCode.ShouldBe(HttpStatusCode.BadRequest); // "Other" needs a note
+    }
+
+    [Fact]
+    public async Task A_movement_sent_twice_with_the_same_id_is_recorded_once()
+    {
+        var (cashier, shift) = await ShiftAsync(openingFloat: 1000m);
+        var cashIn = new { MovementId = Guid.CreateVersion7(), MovementType = "CashIn", Amount = 300m, Reason = "ExtraChange" };
+        var first = await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", cashIn)).Json();
+        var retry = await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", cashIn)).Json();
+        retry.GetProperty("movementId").GetGuid().ShouldBe(first.GetProperty("movementId").GetGuid());
+        first.GetProperty("movementId").GetGuid().ShouldBe(cashIn.MovementId);
+
+        // A withdrawal retried after a timeout: the supervisor approves again, but the cash leaves the drawer once.
+        var drop = Guid.CreateVersion7();
+        foreach (var _ in new[] { 1, 2 })
+            (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements",
+                new { MovementId = drop, MovementType = "Withdrawal", Amount = 500m, Reason = "CashPickup", SupervisorApprovalId = await ApproveAsync(cashier, "register.withdraw", shift) }))
+                .StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var x = await app.Client(await app.AdminAsync()).GetFromJsonAsync<JsonElement>($"/api/cash/shifts/{shift}/z");
+        x.GetProperty("cashIn").GetDecimal().ShouldBe(300m);
+        x.GetProperty("withdrawals").GetDecimal().ShouldBe(500m);
+        x.GetProperty("expectedCash").GetDecimal().ShouldBe(800m);
     }
 
     [Fact]
     public async Task Closing_is_blind_a_supervisor_approves_it_and_it_gives_the_Z_report()
     {
         var (cashier, shift) = await ShiftAsync(openingFloat: 2000m);
-        (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementType = "CashIn", Amount = 500m, Reason = "ExtraChange" }))
+        (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementId = Guid.NewGuid(), MovementType = "CashIn", Amount = 500m, Reason = "ExtraChange" }))
             .EnsureSuccessStatusCode();
 
         // The cashier cannot see the expected cash while the shift is open (blind count).
@@ -86,7 +112,7 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
         z.GetProperty("zNumber").GetInt32().ShouldBe(1);
 
         // After closing: nothing else can happen on the shift, and the cashier may read their Z.
-        (await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementType = "CashIn", Amount = 1m, Reason = "ExtraChange" }))
+        (await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementId = Guid.NewGuid(), MovementType = "CashIn", Amount = 1m, Reason = "ExtraChange" }))
             .ErrorCode()).ShouldBe("CashRegister.ShiftClosed");
         (await cashier.GetAsync($"/api/cash/shifts/{shift}/z")).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await app.VerifyAuditAsync()).ShouldBeNull();
@@ -118,7 +144,7 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
         // Moving the register to the other device: the old one can no longer operate the shift.
         (await admin.PutAsJsonAsync($"/api/cash/registers/{register}/device", new { DeviceId = device2.GetProperty("deviceId").GetGuid() }))
             .StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementType = "CashIn", Amount = 1m, Reason = "ExtraChange" }))
+        (await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementId = Guid.NewGuid(), MovementType = "CashIn", Amount = 1m, Reason = "ExtraChange" }))
             .ErrorCode()).ShouldBe("CashRegister.OtherDevice");
     }
 
@@ -127,7 +153,7 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
     {
         var (_, shift) = await ShiftAsync();
         var other = app.Client(await app.UserAsync(Roles.Cashier));
-        var r = await other.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementType = "CashIn", Amount = 1m, Reason = "ExtraChange" });
+        var r = await other.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementId = Guid.NewGuid(), MovementType = "CashIn", Amount = 1m, Reason = "ExtraChange" });
         (await r.ErrorCode()).ShouldBe("CashRegister.NotYourShift");
     }
 }

@@ -57,7 +57,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var today = DateOnly.FromDateTime(DateTime.Now);
+        var today = Format.Today;
         var r = await Api.GetAsync<List<ShiftSummary>>($"/api/reports/shifts?from={today.AddDays(-6):yyyy-MM-dd}&to={today:yyyy-MM-dd}");
         _shifts = [.. (r.Value ?? []).OrderByDescending(t => t.OpenedUtc)];
         _message = r.Problem?.Message;

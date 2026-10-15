@@ -26,8 +26,9 @@
                 @if (l.Discount > 0) { <div class="row"><span>&nbsp;&nbsp;Descuento</span><span>−@Format.Amount(l.Discount)</span></div> }
             }
             <hr />
-            <div class="row"><span>Subtotal</span><span>@Format.Amount(Receipt.Subtotal)</span></div>
-            @if (Receipt.Discount > 0) { <div class="row"><span>Descuento</span><span>−@Format.Amount(Receipt.Discount)</span></div> }
+            @* Subtotal is the base without ITBIS after the discount, so the discount goes first and the base + ITBIS lines add up to the total. *@
+            @if (Receipt.Discount > 0) { <div class="row"><span>Descuento aplicado</span><span>−@Format.Amount(Receipt.Discount)</span></div> }
+            <div class="row"><span>Base sin ITBIS</span><span>@Format.Amount(Receipt.Subtotal)</span></div>
             @foreach (var i in Receipt.Itbis)
             {
                 <div class="row"><span>@i.Rate</span><span>@Format.Amount(i.Itbis)</span></div>

@@ -70,13 +70,14 @@ public sealed record Receipt(string BusinessName, string? Rnc, string? Address, 
 public sealed record SaleRegistered(Guid SaleId, long Number, string ENcf, decimal Total, decimal Change, Receipt Receipt);
 public sealed record SaleSummary(Guid Id, long Number, string ENcf, DateTime DateUtc, string Status, string Cashier, string? Customer, decimal Total);
 public sealed record SaleDetailLine(Guid Id, string Description, decimal Quantity, decimal UnitPrice, decimal Discount, decimal Total, decimal Itbis,
-    decimal ReturnedQuantity, string? Note);
+    decimal ReturnedQuantity, string? Note, string Unit = "Unit");
 public sealed record SaleDetailPayment(PaymentMethod Method, decimal Amount, decimal? Received, string? Reference);
 public sealed record SaleDetailReturn(Guid Id, DateTime DateUtc, decimal Total, PaymentMethod Method, string ENcf, string Reason);
 public sealed record SaleDetail(Guid Id, long Number, string ENcf, string DocumentType, DateTime DateUtc, string Status, string Register, string Cashier,
     Guid? CustomerId, string? Customer, decimal Discount, decimal Itbis, decimal Total, decimal Change, string? VoidReason,
     SaleDetailLine[] Lines, SaleDetailPayment[] Payments, SaleDetailReturn[] Returns);
 public sealed record ReturnLine(Guid SaleLineId, decimal Quantity, bool Restock = true);
+public sealed record ReturnRecorded(Guid ReturnId, string CreditNoteENcf, decimal Total, decimal Itbis, PaymentMethod Method);
 public sealed record HeldSale(Guid Id, string Label, decimal Total, DateTime CreatedUtc, System.Text.Json.JsonElement Content);
 
 // Customers

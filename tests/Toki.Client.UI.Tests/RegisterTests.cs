@@ -12,9 +12,9 @@ namespace Toki.Client.UI.Tests;
 
 public sealed class RegisterTests
 {
-    private static readonly ProductByCode Salami = new(Guid.NewGuid(), null, "Salami 1 lb", "Unit", "General18", 210m, null, 1m, null, null, [], 24m);
+    internal static readonly ProductByCode Salami = new(Guid.NewGuid(), null, "Salami 1 lb", "Unit", "General18", 210m, null, 1m, null, null, [], 24m);
 
-    private static Receipt ReceiptFor(decimal total) => new("Carnicería", null, null, null, "Factura de Consumo Electrónica", "E320000000001", 1,
+    internal static Receipt ReceiptFor(decimal total) => new("Carnicería", null, null, null, "Factura de Consumo Electrónica", "E320000000001", 1,
         DateTime.UtcNow, "Caja 1", "Yudelka M.", null, null, [], total, 0, [], total, [], 0, "abc123", "", null, false);
 
     [Fact]
@@ -73,7 +73,8 @@ public sealed class RegisterTests
         var approval = Guid.NewGuid();
         api.Respond("POST", "/api/sales", body => body.Contains(approval.ToString(), StringComparison.Ordinal)
                 ? FakeApi.Response(HttpStatusCode.Created, new SaleRegistered(cart.SaleId, 1, "E320000000001", 210m, 0m, ReceiptFor(210m)))
-                : FakeApi.Problem(HttpStatusCode.Forbidden, "Approval.Required", "Esta acción necesita la autorización de un supervisor (sales.large-discount)."))
+                : FakeApi.Problem(HttpStatusCode.Forbidden, "Approval.Required", "Esta acción necesita la autorización de un supervisor.",
+                    new { permission = new[] { "sales.large-discount" } }))
            .Json("GET", "/api/identity/users/active", new[] { new ActiveUser(Guid.NewGuid(), "Ramón D.", "ramon") })
            .Json("POST", "/api/identity/approvals", new ApprovalGranted(approval, "Ramón D.", DateTime.UtcNow.AddMinutes(2)));
         SaleRegistered? sold = null;

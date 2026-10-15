@@ -24,7 +24,7 @@
                 }
             </div>
             <div class="esc-status-bar__group">
-                @if (_online)
+                @if (Session.Online)
                 {
                     <span class="muted">En línea</span>
                 }
@@ -32,11 +32,20 @@
                 {
                     <span class="esc-offline" role="status">Sin conexión con el servidor · reintentando</span>
                 }
-                <span style="font-weight:600">@Format.Time(DateTimeOffset.Now)</span>
+                <span style="font-weight:600">@Format.Time(DateTimeOffset.UtcNow)</span>
             </div>
         </header>
         <main style="flex:1 1 auto;display:flex;flex-direction:column;min-height:0">
-            @Body
+            @* A failure in one screen never freezes the register: the cart lives in a scoped service, so it survives. *@
+            <ErrorBoundary @ref="_boundary">
+                <ChildContent>@Body</ChildContent>
+                <ErrorContent>
+                    <div class="esc-page">
+                        <Notice Title="Algo falló en esta pantalla.">La venta en curso no se perdió.</Notice>
+                        <div><Button Variant="Button.Variants.Primary" OnClick="BackToSale">Volver a la venta</Button></div>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
         </main>
     </div>
     <ApprovalDialog />
@@ -44,8 +53,9 @@
 
 @code {
     private static readonly string[] Public = ["setup", "sign-in"];
-    private bool _ready, _online = true;
+    private bool _ready;
     private Timer? _clock;
+    private ErrorBoundary? _boundary;
 
     protected override async Task OnInitializedAsync()
     {
@@ -54,18 +64,21 @@
         Nav.LocationChanged += OnLocationChanged;
         Guard();
         _ready = true;
-        // Every 15 s: the clock and whether the store server answers (amber, never red: principle 3).
+        // Every 15 s: the clock and whether the store server answers (TokiApi keeps Session.Online; amber, never red: principle 3).
         _clock = new Timer(_ => InvokeAsync(CheckAsync), null, TimeSpan.Zero, TimeSpan.FromSeconds(15));
     }
 
     private async Task CheckAsync()
     {
-        var r = await Api.GetAsync<Empty>("/health");
-        _online = r.Problem?.Code != Problem.NoServer;
+        await Api.GetAsync<Empty>("/health");
         StateHasChanged();
     }
 
-    private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => Guard();
+    private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(() =>
+    {
+        _boundary?.Recover();
+        Guard();
+    });
 
     private void Guard()
     {
@@ -74,9 +87,15 @@
         else if (Session.IsPaired && !Session.IsOpen && !Public.Contains(route)) Nav.NavigateTo("sign-in");
     }
 
+    private void BackToSale()
+    {
+        _boundary?.Recover();
+        Nav.NavigateTo("sale");
+    }
+
     private void OnSessionChanged() => InvokeAsync(() =>
     {
-        if (Session.Expired) Nav.NavigateTo("sign-in?expired=1");
+        if (Session.Expired && !Nav.Uri.Contains("sign-in", StringComparison.Ordinal)) Nav.NavigateTo("sign-in?expired=true");
         StateHasChanged();
     });
 

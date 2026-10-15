@@ -137,7 +137,12 @@ public sealed class LabelFormatTests(TokiApp app) : IClassFixture<TokiApp>
         var c = app.Client(await app.AdminAsync());
         (await c.PutAsJsonAsync("/api/inventory/label-formats", new
         {
-            Formats = new[] { new { Prefix = "20", PluLength = 5, IsPrice = false, Decimals = 3 }, new { Prefix = "29", PluLength = 4, IsPrice = true, Decimals = 2 } },
+            // Keeps the default 20/21/22 formats: the class shares one database and xUnit runs its tests in any order (the PLU test reads a 22 label).
+            Formats = new[]
+            {
+                new { Prefix = "20", PluLength = 5, IsPrice = false, Decimals = 3 }, new { Prefix = "21", PluLength = 5, IsPrice = false, Decimals = 3 },
+                new { Prefix = "22", PluLength = 4, IsPrice = true, Decimals = 2 }, new { Prefix = "29", PluLength = 4, IsPrice = true, Decimals = 2 },
+            },
         })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         var id = await c.ProductAsync(await c.CategoryAsync(), "Queso de hoja", 260m, unit: "Pound", plu: "88");
         var label = "290088031250";

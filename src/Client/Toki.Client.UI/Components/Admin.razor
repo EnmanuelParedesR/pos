@@ -3,7 +3,8 @@
 @inject TokiApi Api
 @inject NavigationManager Nav
 
-<div class="esc-admin" @onkeydown="KeyDown">
+@* data-keys: escuadra.js sends here the keys pressed while nothing has the focus (F1 right after the page loads). *@
+<div class="esc-admin" data-keys @onkeydown="KeyDown">
     <nav class="esc-menu" aria-label="Secciones">
         <a href="sale" class="esc-menu__sell"><span>Vender</span><Keycap>F1</Keycap></a>
         <NavLink href="admin" Match="NavLinkMatch.All">Resumen</NavLink>

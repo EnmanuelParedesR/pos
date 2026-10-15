@@ -11,6 +11,7 @@ using Toki.BuildingBlocks.Security;
 using Toki.CashRegister.Contracts;
 using Toki.Settings.Contracts;
 using Toki.Fiscal.Contracts;
+using Toki.Inventory.Contracts;
 using Toki.SharedKernel;
 using Toki.Sales.Domain;
 
@@ -33,7 +34,7 @@ internal static class GetReceipt
 internal static class GetSale
 {
     public sealed record LineDto(Guid Id, string Description, decimal Quantity, decimal UnitPrice, decimal Discount, decimal Total,
-        decimal Itbis, decimal ReturnedQuantity, string? Note);
+        decimal Itbis, decimal ReturnedQuantity, string? Note, UnitOfMeasure Unit);
     public sealed record PaymentDto(PaymentMethod Method, decimal Amount, decimal? Received, string? Reference);
     public sealed record ReturnDto(Guid Id, DateTime DateUtc, decimal Total, PaymentMethod Method, string ENcf, string Reason);
     public sealed record Response(Guid Id, long Number, string ENcf, EcfType DocumentType, DateTime DateUtc, string Status, string Register, string Cashier,
@@ -51,7 +52,7 @@ internal static class GetSale
                         .Select(r => new ReturnDto(r.Id, r.DateUtc, r.Total, r.Method, r.ENcf, r.Reason)).AsNoTracking().ToListAsync(ct);
                     return Results.Ok(new Response(s.Id, s.Number, s.ENcf, s.DocumentType, s.DateUtc, s.Status.ToString(), s.Register, s.Cashier, s.CustomerId,
                         s.CustomerName, s.Discount, s.Itbis, s.Total, s.Change, s.VoidReason, s.VoidENcf,
-                        s.Lines.Select(l => new LineDto(l.Id, l.Description, l.Quantity, l.UnitPrice, l.Discount, l.Total, l.Itbis, l.ReturnedQuantity, l.Note)).ToList(),
+                        s.Lines.Select(l => new LineDto(l.Id, l.Description, l.Quantity, l.UnitPrice, l.Discount, l.Total, l.Itbis, l.ReturnedQuantity, l.Note, l.Unit)).ToList(),
                         s.Payments.Select(p => new PaymentDto(p.Method, p.Amount, p.Received, p.Reference)).ToList(), returns));
                 })
                 .RequirePermission(Permissions.SalesCreate).WithTags("Sales");

@@ -1,15 +1,16 @@
 @page "/sale"
+@implements IDisposable
 @inject TokiApi Api
 @inject Session Session
 @inject Cart Cart
 @inject NavigationManager Nav
 
-<div class="sale" @onkeydown="KeyAsync">
+<div class="sale" data-keys @onkeydown="KeyAsync">
     <section class="sale__left" aria-label="Productos">
         <form class="esc-row" style="flex-wrap:nowrap" @onsubmit="ScanAsync">
-            <label class="esc-card" style="flex:1 1 auto;display:flex;align-items:center;gap:10px;padding:0 12px;border-color:var(--control-border);border-width:2px">
+            <label class="esc-card sale__scan-frame">
                 <Icon Name="barcode" />
-                <input @ref="_scanner" class="sale__scanner" placeholder="Escanee o escriba el código o PLU" aria-label="Código de barras o PLU"
+                <input @ref="_scanner" class="sale__scanner" data-scanner placeholder="Escanee o escriba el código o PLU" aria-label="Código de barras o PLU"
                        autocomplete="off" @bind="_code" @bind:event="oninput" />
                 <Keycap>F2</Keycap>
             </label>
@@ -20,7 +21,7 @@
         {
             <Notice Kind="a.Kind" Title="@a.Title">
                 <ChildContent>@a.Detail</ChildContent>
-                <Action><Button Variant="Button.Variants.Ghost" aria-label="Cerrar aviso" OnClick="() => _notice = null"><Icon Name="x" /></Button></Action>
+                <Action><Button Variant="Button.Variants.Ghost" aria-label="Cerrar aviso" OnClick="CloseNotice"><Icon Name="x" /></Button></Action>
             </Notice>
         }
 
@@ -34,7 +35,7 @@
         <div class="sale__tiles">
             @foreach (var p in _products)
             {
-                <button type="button" class="esc-tile" @onclick="() => Tap(p)">
+                <button type="button" class="esc-tile" @onclick="() => TapAsync(p)">
                     <span class="esc-tile__name">@p.Name</span>
                     <span class="esc-tile__price">@Format.WithCurrency(p.Price)@(p.Unit == "Pound" ? " / lb" : "")</span>
                 </button>
@@ -44,11 +45,15 @@
                 <div class="esc-muted">@(_categories.Count == 0 ? "No hay productos todavía. Agréguelos en Administración → Productos." : "Esta categoría no tiene productos.")</div>
             }
         </div>
+        @if (_products.Count >= TilesPerCategory)
+        {
+            <div class="esc-subtitle">Se muestran los primeros @TilesPerCategory de esta categoría. Los demás, por código o PLU.</div>
+        }
     </section>
 
     <section class="sale__cart esc-card" aria-label="Venta actual">
         <div class="sale__customer">
-            <button type="button" class="esc-button esc-button--ghost" style="justify-content:flex-start;flex:1 1 auto;min-width:0" @onclick="() => Open(Panel.Customer)">
+            <button type="button" class="esc-button esc-button--ghost" style="justify-content:flex-start;flex:1 1 auto;min-width:0" @onclick="() => OpenAsync(Panel.Customer)">
                 <Icon Name="user" />
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@(Cart.Customer?.Name ?? Cart.ManualName ?? "Cliente de contado")</span>
                 <span class="esc-pill esc-pill--neutral">@(Cart.DocumentType == EcfType.FiscalCredit31 ? "Crédito fiscal" : "Consumo")</span>
@@ -59,7 +64,8 @@
         <ol class="sale__lines" aria-label="Líneas">
             @foreach (var l in Cart.Lines)
             {
-                <li class="sale__line @(l.Id == Cart.Selected ? "selected" : "")" @onclick="() => Cart.Selected = l.Id" aria-current="@(l.Id == Cart.Selected)">
+                <li class="sale__line @(l.Id == Cart.Selected ? "selected" : "") @(l.DiscountTooBig ? "invalid" : "")" @onclick="() => SelectLine(l.Id)"
+                    aria-current="@(l.Id == Cart.Selected ? "true" : null)">
                     <div style="min-width:0">
                         <div style="font-weight:600">@l.Name</div>
                         <div class="esc-subtitle">
@@ -68,6 +74,10 @@
                             @if (l.DiscountAmount > 0) { <span> · desc. −@Format.Amount(l.DiscountAmount)</span> }
                             @if (l.ScaleLabel is not null) { <span> · etiqueta</span> }
                         </div>
+                        @if (l.DiscountTooBig)
+                        {
+                            <div class="esc-error-help">El descuento es mayor que la línea. Cámbielo con F7.</div>
+                        }
                     </div>
                     <div class="esc-num" style="font-size:var(--t-17);font-weight:700">@Format.Amount(l.Total)</div>
                 </li>
@@ -83,7 +93,7 @@
                     <div class="esc-label">Devuelta</div>
                     <Money Value="v.Change" Size="52" />
                 }
-                <Button OnClick="() => Open(Panel.Receipt)"><Icon Name="printer" /> Ver factura</Button>
+                <Button OnClick="() => OpenAsync(Panel.Receipt)"><Icon Name="printer" /> Ver factura</Button>
             </div>
         }
         else if (Cart.IsEmpty)
@@ -100,19 +110,20 @@
                 <span class="esc-label">Total · @Cart.LineCount @(Cart.LineCount == 1 ? "línea" : "líneas")</span>
                 <Money Value="Cart.Total" Size="44" />
             </div>
-            <Button Variant="Button.Variants.Primary" Money="true" Shortcut="F12" Disabled="@(Cart.IsEmpty || Session.Shift is null)" OnClick="() => Open(Panel.Checkout)">Cobrar</Button>
+            <Button Variant="Button.Variants.Primary" Money="true" Shortcut="F12" Disabled="@(!CanCharge || !Session.Online)" OnClick="() => OpenAsync(Panel.Checkout)">Cobrar</Button>
         </div>
     </section>
 </div>
 
 <nav class="esc-key-bar" aria-label="Teclas">
-    <button type="button" @onclick="() => OpenLine(Panel.Quantity)" disabled="@(Cart.SelectedLine is null)"><Keycap>F3</Keycap> Cantidad</button>
-    <button type="button" @onclick="() => OpenLine(Panel.Price)" disabled="@(Cart.SelectedLine is null)"><Keycap>F4</Keycap> Precio</button>
-    <button type="button" @onclick="() => Open(Panel.Hold)"><Keycap>F5</Keycap> Espera</button>
-    <button type="button" @onclick="() => OpenLine(Panel.Discount)" disabled="@(Cart.SelectedLine is null)"><Keycap>F7</Keycap> Descuento</button>
-    <button type="button" @onclick="RemoveLine" disabled="@(Cart.SelectedLine is null)"><Keycap>Supr</Keycap> Quitar línea</button>
-    <button type="button" @onclick="() => Open(Panel.Void)" disabled="@Cart.IsEmpty"><Keycap>F8</Keycap> Anular venta</button>
-    <button type="button" @onclick="() => Open(Panel.Register)"><Keycap>F9</Keycap> Caja</button>
+    <button type="button" @onclick="() => OpenLineAsync(Panel.Quantity)" disabled="@(Cart.SelectedLine is null or { ScaleLabel: not null })"
+            title="@(Cart.SelectedLine?.ScaleLabel is not null ? "El peso viene de la etiqueta" : null)"><Keycap>F3</Keycap> Cantidad</button>
+    <button type="button" @onclick="() => OpenLineAsync(Panel.Price)" disabled="@(Cart.SelectedLine is null)"><Keycap>F4</Keycap> Precio</button>
+    <button type="button" @onclick="() => OpenAsync(Panel.Hold)"><Keycap>F5</Keycap> Espera</button>
+    <button type="button" @onclick="() => OpenLineAsync(Panel.Discount)" disabled="@(Cart.SelectedLine is null)"><Keycap>F7</Keycap> Descuento</button>
+    <button type="button" @onclick="RemoveLineAsync" disabled="@(Cart.SelectedLine is null)"><Keycap>Supr</Keycap> Quitar línea</button>
+    <button type="button" @onclick="() => OpenAsync(Panel.Void)" disabled="@Cart.IsEmpty"><Keycap>F8</Keycap> Anular venta</button>
+    <button type="button" @onclick="() => OpenAsync(Panel.Register)"><Keycap>F9</Keycap> Caja</button>
 </nav>
 
 @switch (_panel)
@@ -151,6 +162,9 @@
 @code {
     private enum Panel { None, Checkout, Quantity, Price, Discount, Weight, Customer, Hold, Register, Receipt, Void }
     private sealed record SaleNotice(Notice.Kinds Kind, string Title, string? Detail = null);
+    /// <summary>The API's page size for products.</summary>
+    // shortcut: one page of tiles per category; add "Ver más" (page=2) when a category grows past 50 products.
+    private const int TilesPerCategory = 50;
 
     private Panel _panel;
     private string? _code;
@@ -163,8 +177,11 @@
     private ElementReference _scanner;
     private bool _focusScanner = true;
 
+    private bool CanCharge => !Cart.IsEmpty && Session.Shift is not null && !Cart.HasInvalidLine;
+
     protected override async Task OnInitializedAsync()
     {
+        Session.Changed += OnSessionChanged;
         if (!Session.IsOpen) return;
         Session.Shift ??= (await Api.GetAsync<CurrentShift>("/api/cash/shifts/current")).Value;
         if (Session.Shift is null)
@@ -175,6 +192,8 @@
         _categories = (await Api.GetAsync<List<Category>>("/api/inventory/categories")).Value?.Where(c => c.IsActive).ToList() ?? [];
         if (_categories.Count > 0) await CategoryAsync(_categories[0].Id);
     }
+
+    private void OnSessionChanged() => InvokeAsync(StateHasChanged); // online / offline: Cobrar follows
 
     // The scanner never gets lost (principle 2): focus goes back to it after every action.
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -194,15 +213,36 @@
         _focusScanner = true;
     }
 
+    /// <summary>False while the last checkout's outcome is unknown and the server still cannot tell: the cart must not change,
+    /// or the sale the server may have saved would not match what the customer takes.</summary>
+    private async Task<bool> EditableAsync()
+    {
+        if (!Cart.CheckoutUncertain) return true;
+        var saved = await Api.SavedSaleAsync(Cart.SaleId);
+        if (saved.Value is { } sale)
+        {
+            await SoldAsync(sale);
+            _notice = new(Notice.Kinds.Info, "El cobro anterior sí se guardó.", "Siga con la próxima venta.");
+            return false;
+        }
+        if (saved.Ok)
+        {
+            Cart.CheckoutUncertain = false; // never saved: the cart can change again
+            return true;
+        }
+        _notice = new(Notice.Kinds.Warning, "No se sabe si el último cobro se guardó.", "Cuando vuelva la conexión, cobre de nuevo con F12: no se cobra dos veces.");
+        return false;
+    }
+
     private async Task ScanAsync()
     {
         var code = _code?.Trim();
         _code = "";
         _focusScanner = true;
-        if (string.IsNullOrEmpty(code)) return;
+        if (string.IsNullOrEmpty(code) || !await EditableAsync()) return;
         if (Cart.HasLabel(code))
         {
-            _notice = new(Notice.Kinds.Warning, "Esta etiqueta ya está en la venta.", "Cada etiqueta de peso se cobra una sola vez. Si es otro paquete, pese de nuevo.");
+            RepeatedLabel();
             return;
         }
         var r = await Api.GetAsync<ProductByCode>($"/api/inventory/products/by-code/{Uri.EscapeDataString(code)}");
@@ -213,17 +253,27 @@
                 "Inventory.CodeNotFound" => new(Notice.Kinds.Error, $"No se encontró el código {code}.", "Búsquelo en las categorías o escriba su PLU."),
                 "Inventory.LabelMisread" => new(Notice.Kinds.Error, "La etiqueta se leyó mal.", "Vuelva a escanearla o escriba el PLU."),
                 "Inventory.ProductInactive" => new(Notice.Kinds.Warning, "Ese producto está desactivado.", "Un supervisor puede activarlo en Productos."),
-                _ => new(Notice.Kinds.Error, r.Problem.Message),
+                _ => new(r.Problem.Kind, r.Problem.Message),
             };
+            return;
+        }
+        // The scanner may read the same label twice in a row: the first one can land while this lookup was in flight.
+        if (Cart.HasLabel(code))
+        {
+            RepeatedLabel();
             return;
         }
         Add(p, code);
     }
 
+    private void RepeatedLabel() =>
+        _notice = new(Notice.Kinds.Warning, "Esta etiqueta ya está en la venta.", "Cada etiqueta de peso se cobra una sola vez. Si es otro paquete, pese de nuevo.");
+
     private void Add(ProductByCode p, string? code)
     {
         var withLabel = p.LabelQuantity is not null || p.LabelAmount is not null;
-        if (p.Unit == "Pound" && !withLabel)
+        // A presentation (a 2 lb pack) carries its own price and is sold by the piece: only a bare by-the-pound product asks for the weight.
+        if (p.Unit == "Pound" && p.PresentationId is null && !withLabel)
         {
             // shortcut: the weight is typed (no scale driver yet, Toki.Hardware.Scales); read IScale here when it exists.
             _pending = p;
@@ -236,8 +286,11 @@
         _focusScanner = true;
     }
 
-    private void Tap(ProductSummary p) =>
+    private async Task TapAsync(ProductSummary p)
+    {
+        if (!await EditableAsync()) return;
         Add(new ProductByCode(p.Id, null, p.Name, p.Unit, p.ItbisRate, p.Price, p.WholesalePrice, 1m, null, null, [], p.Stock), null);
+    }
 
     private void AddWeighed(CartLine l)
     {
@@ -256,10 +309,14 @@
         Close();
     }
 
-    private void RemoveLine()
+    private void SelectLine(Guid id) => (Cart.Selected, _focusScanner) = (id, true);
+
+    private void CloseNotice() => (_notice, _focusScanner) = (null, true);
+
+    private async Task RemoveLineAsync()
     {
-        if (Cart.Selected is { } id) Cart.Remove(id);
         _focusScanner = true;
+        if (Cart.Selected is { } id && await EditableAsync()) Cart.Remove(id);
     }
 
     private void VoidSale()
@@ -269,16 +326,33 @@
         Close();
     }
 
-    private void Open(Panel p)
+    private async Task OpenAsync(Panel p)
     {
-        if (p == Panel.Checkout && (Cart.IsEmpty || Session.Shift is null)) return;
+        if (p == Panel.Checkout)
+        {
+            if (!CanCharge) return;
+            if (!Session.Online) await Api.GetAsync<Empty>("/health"); // maybe it is back already
+            if (!Session.Online)
+            {
+                _notice = new(Notice.Kinds.Warning, "Sin conexión con el servidor de la tienda.", "Espere a que vuelva para cobrar. La venta sigue aquí.");
+                return;
+            }
+        }
         if (p == Panel.Void && Cart.IsEmpty) return;
+        if (p is Panel.Hold or Panel.Customer or Panel.Void && !await EditableAsync()) return;
         _panel = p;
     }
 
-    private void OpenLine(Panel p)
+    private async Task OpenLineAsync(Panel p)
     {
-        if (Cart.SelectedLine is not null) _panel = p;
+        if (Cart.SelectedLine is not { } line) return;
+        if (p == Panel.Quantity && line.ScaleLabel is not null)
+        {
+            // The server takes the weight from the label and ignores the quantity.
+            _notice = new(Notice.Kinds.Info, "El peso viene de la etiqueta.", "Para otro peso, quite la línea y escanee una etiqueta nueva.");
+            return;
+        }
+        if (await EditableAsync()) _panel = p;
     }
 
     private void Close()
@@ -301,21 +375,23 @@
         switch (e.Key)
         {
             case "F2": _focusScanner = true; break;
-            case "F3": OpenLine(Panel.Quantity); break;
-            case "F4": OpenLine(Panel.Price); break;
-            case "F5": Open(Panel.Hold); break;
-            case "F6": Open(Panel.Customer); break;
-            case "F7": OpenLine(Panel.Discount); break;
-            case "F8": Open(Panel.Void); break;
-            case "F9": Open(Panel.Register); break;
-            case "F12": Open(Panel.Checkout); break;
-            case "Delete": RemoveLine(); break;
+            case "F3": await OpenLineAsync(Panel.Quantity); break;
+            case "F4": await OpenLineAsync(Panel.Price); break;
+            case "F5": await OpenAsync(Panel.Hold); break;
+            case "F6": await OpenAsync(Panel.Customer); break;
+            case "F7": await OpenLineAsync(Panel.Discount); break;
+            case "F8": await OpenAsync(Panel.Void); break;
+            case "F9": await OpenAsync(Panel.Register); break;
+            case "F12": await OpenAsync(Panel.Checkout); break;
+            // Supr inside a scanner with text edits the text; on an empty scanner it removes the selected line.
+            case "Delete" when string.IsNullOrEmpty(_code): await RemoveLineAsync(); break;
             case "ArrowUp" or "ArrowDown" when Cart.Lines.Count > 0:
                 var i = Cart.Lines.ToList().FindIndex(l => l.Id == Cart.Selected);
                 i = Math.Clamp(i + (e.Key == "ArrowUp" ? -1 : 1), 0, Cart.Lines.Count - 1);
                 Cart.Selected = Cart.Lines[i].Id;
                 break;
         }
-        await Task.CompletedTask;
     }
+
+    public void Dispose() => Session.Changed -= OnSessionChanged;
 }

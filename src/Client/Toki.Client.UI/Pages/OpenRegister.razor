@@ -3,7 +3,7 @@
 @inject Session Session
 @inject NavigationManager Nav
 
-<div class="esc-page" @onkeydown="KeyAsync">
+<div class="esc-page" data-keys @onkeydown="KeyAsync">
     <div class="esc-row" style="justify-content:space-between">
         <div>
             <h1 class="esc-title">Abrir caja</h1>
@@ -24,8 +24,9 @@
             {
                 <label style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr;gap:16px;align-items:center;min-height:48px;padding:0 16px;border-bottom:1px solid var(--card-border)">
                     <span style="font-size:var(--t-20);font-weight:600">@d.ToString("#,##0")</span>
-                    <input class="esc-input esc-num" inputmode="numeric" style="font-size:var(--t-20);font-weight:600" aria-label="@($"Cantidad de {d:#,##0}")"
-                           value="@(_count.GetValueOrDefault(d) is var c and > 0 ? c : "")" @onchange="e => SetCount(d, e.Value)" />
+                    @* oninput, not onchange: F12 pressed without leaving the last field still counts what it shows. *@
+                    <input class="esc-input esc-num" data-no-scan inputmode="numeric" style="font-size:var(--t-20);font-weight:600" aria-label="@($"Cantidad de {d:#,##0}")"
+                           value="@(_count.GetValueOrDefault(d) is var c and > 0 ? c : "")" @oninput="e => SetCount(d, e.Value)" />
                     <span class="esc-num" style="font-size:var(--t-20);font-weight:600">@Format.Amount(d * _count.GetValueOrDefault(d))</span>
                 </label>
             }
@@ -58,7 +59,7 @@
             </div>
             @if (_error is not null)
             {
-                <Notice Title="@_error" />
+                <Notice Kind="_errorKind" Title="@_error" />
             }
             <Button Variant="Button.Variants.Primary" Money="true" Shortcut="F12" Disabled="@(_register is null || _sending)" OnClick="OpenAsync">Abrir caja y vender</Button>
         </section>
@@ -71,6 +72,7 @@
     private List<RegisterInfo>? _registers;
     private Guid? _register;
     private string? _error;
+    private Notice.Kinds _errorKind;
     private bool _sending;
 
     private decimal OpeningFloat => _count.Sum(c => c.Key * c.Value);
@@ -82,7 +84,8 @@
         var c = await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers");
         _registers = c.Value?.Where(x => x.IsActive && x.OpenShiftId is null).ToList() ?? [];
         if (_registers.Count == 1) _register = _registers[0].Id;
-        _error = d.Problem?.Message ?? c.Problem?.Message;
+        var p = d.Problem ?? c.Problem;
+        (_errorKind, _error) = (p?.Kind ?? Notice.Kinds.Error, p?.Message);
     }
 
     private void SetCount(decimal denomination, object? value) =>
@@ -90,21 +93,26 @@
 
     private async Task KeyAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "F12" && _register is not null && !_sending) await OpenAsync();
+        if (e.Key == "F12") await OpenAsync();
     }
 
     private async Task OpenAsync()
     {
+        if (_register is null || _sending) return;
         _sending = true;
         var r = await Api.PostAsync<ShiftOpened>("/api/cash/shifts", new { RegisterId = _register, OpeningFloat });
-        if (r.Ok)
+        // A retry after a timeout finds the shift the first try opened on this same register: that is a success.
+        var current = r.Ok || r.Problem!.Code is "CashRegister.RegisterInUse" or "CashRegister.CashierHasShift"
+            ? (await Api.GetAsync<CurrentShift>("/api/cash/shifts/current")).Value : null;
+        if (r.Ok || current?.RegisterId == _register)
         {
-            Session.Shift = (await Api.GetAsync<CurrentShift>("/api/cash/shifts/current")).Value;
+            Session.Shift = current;
             Nav.NavigateTo("sale");
             return;
         }
         _sending = false;
-        _error = r.Problem!.Code switch
+        _errorKind = r.Problem!.Kind;
+        _error = r.Problem.Code switch
         {
             "CashRegister.CashierHasShift" => "Usted ya tiene un turno abierto en otra caja.",
             "CashRegister.RegisterInUse" => "Esa caja ya tiene un turno abierto.",

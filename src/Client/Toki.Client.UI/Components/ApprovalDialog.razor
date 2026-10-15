@@ -21,13 +21,13 @@
                     }
                 </div>
             }
-            <div tabindex="0" @ref="_pinArea" style="outline:none;display:flex;flex-direction:column;gap:12px">
+            <div tabindex="0" data-no-scan @ref="_pinArea" style="outline:none;display:flex;flex-direction:column;gap:12px">
                 <PinDots Length="_pin.Length" Max="Math.Max(4, _pin.Length)" />
                 <Keypad OnKey="Key" />
             </div>
             @if (_error is not null)
             {
-                <Notice Title="@_error" />
+                <Notice Kind="_errorKind" Title="@_error" />
             }
         </ChildContent>
         <Footer>
@@ -42,6 +42,7 @@
     private string? _code, _error;
     private string _pin = "";
     private bool _sending;
+    private Notice.Kinds _errorKind;
     private ElementReference _pinArea;
 
     protected override void OnInitialized() => Approver.Changed += OnChanged;
@@ -76,7 +77,8 @@
 
     private async Task ApproveAsync()
     {
-        if (Approver.Current is not { } s || _code is null) return;
+        // Guarded: a second Enter or click while the first is in flight would count as another PIN attempt.
+        if (Approver.Current is not { } s || _code is null || _sending) return;
         _sending = true;
         var r = await Api.PostAsync<ApprovalGranted>("/api/identity/approvals", new { Code = _code, Pin = _pin, s.Permission, s.ResourceId });
         _sending = false;
@@ -85,7 +87,7 @@
             Approver.Respond(a.ApprovalId);
             return;
         }
-        (_pin, _error) = ("", r.Problem!.Code switch
+        (_pin, _errorKind, _error) = ("", r.Problem!.Kind, r.Problem.Code switch
         {
             "Identity.SupervisorLacksPermission" => "Esa persona no puede autorizar esto. Llame a otro supervisor.",
             "Identity.InvalidCredentials" => "PIN incorrecto.",

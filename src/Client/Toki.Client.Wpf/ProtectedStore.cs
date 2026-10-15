@@ -10,6 +10,7 @@ namespace Toki.Client.Wpf;
 /// Another Windows user, or the file copied to another PC, cannot read it.</summary>
 internal sealed class ProtectedStore : ILocalStore
 {
+    // Not a secret (the repo is public): it only keeps this blob apart from other DPAPI data. The protection is the Windows user.
     private static readonly byte[] Entropy = "Toki.Client.v1"u8.ToArray();
     private readonly string _file = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Toki", "client.dat");
     private readonly Lock _lock = new();
@@ -27,7 +28,10 @@ internal sealed class ProtectedStore : ILocalStore
             if (value is null) data.Remove(key);
             else data[key] = value;
             Directory.CreateDirectory(Path.GetDirectoryName(_file)!);
-            File.WriteAllBytes(_file, ProtectedData.Protect(JsonSerializer.SerializeToUtf8Bytes(data), Entropy, DataProtectionScope.CurrentUser));
+            // Written aside and then moved over: a power cut mid-write never leaves a file DPAPI cannot read (that would unpair the PC).
+            var temp = _file + ".tmp";
+            File.WriteAllBytes(temp, ProtectedData.Protect(JsonSerializer.SerializeToUtf8Bytes(data), Entropy, DataProtectionScope.CurrentUser));
+            File.Move(temp, _file, overwrite: true);
         }
         return Task.CompletedTask;
     }

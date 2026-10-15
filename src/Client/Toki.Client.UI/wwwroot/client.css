@@ -3,12 +3,17 @@
 .sale { flex: 1 1 auto; min-height: 0; display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; align-items: stretch; }
 .sale__left { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .sale__scanner { flex: 1 1 auto; min-width: 0; height: 56px; border: 0; outline: 0; background: transparent; font-size: var(--t-20); font-weight: 600; }
+/* The scanner's frame shows when it has the focus (the field itself has no outline). */
+.sale__scan-frame { flex: 1 1 auto; display: flex; align-items: center; gap: 10px; padding: 0 12px; border: 2px solid var(--control-border); }
+.sale__scan-frame:focus-within { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand-tint); }
 .sale__tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; align-content: start; overflow: auto; }
 .sale__cart { flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; min-height: 420px; }
 .sale__customer { padding: 8px; border-bottom: 1px solid var(--card-border); display: flex; }
 .sale__lines { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; overflow: auto; min-height: 120px; }
 .sale__line { display: flex; justify-content: space-between; gap: 12px; align-items: center; min-height: 56px; padding: 6px 16px; border-bottom: 1px solid var(--card-border); cursor: pointer; }
 .sale__line.selected { background: var(--brand-tint); box-shadow: inset 4px 0 0 var(--brand); }
+.sale__line.invalid { box-shadow: inset 4px 0 0 var(--error); }
+.sale__line.invalid .esc-num { color: var(--error); }
 .sale__list { padding: 16px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; }
 .sale__totals { padding: 16px; border-top: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 12px; background: var(--surface-2); border-radius: 0 0 6px 6px; }
 

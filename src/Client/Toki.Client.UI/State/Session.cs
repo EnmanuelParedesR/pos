@@ -23,6 +23,8 @@ public sealed class Session(ILocalStore store)
     public CurrentShift? Shift { get; set; }
     /// <summary>The session ended on the server (12 h, PIN change, revoked device).</summary>
     public bool Expired { get; private set; }
+    /// <summary>Whether the last call reached the store server (the status bar shows it; Cobrar waits for it).</summary>
+    public bool Online { get; private set; } = true;
 
     public event Action? Changed;
 
@@ -62,6 +64,13 @@ public sealed class Session(ILocalStore store)
     public void Close()
     {
         (Token, UserId, Name, _permissions, Shift) = (null, Guid.Empty, null, [], null);
+        Changed?.Invoke();
+    }
+
+    internal void SetOnline(bool online)
+    {
+        if (Online == online) return;
+        Online = online;
         Changed?.Invoke();
     }
 

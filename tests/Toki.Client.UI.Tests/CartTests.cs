@@ -46,8 +46,13 @@ public sealed class CartTests
         var l = c.Add(Product("Unit", 210m), null);
         c.Update(l with { Discount = new Discount(true, 20m) });
         c.Total.ShouldBe(168m);
+        // Not capped to the line: the server refuses a fixed discount bigger than the line, so the screen must show it as an error.
         c.Update(c.Lines[0] with { Discount = new Discount(false, 500m) });
-        c.Total.ShouldBe(0m); // a fixed discount never goes below zero
+        c.Lines[0].DiscountTooBig.ShouldBeTrue();
+        c.HasInvalidLine.ShouldBeTrue();
+        c.Update(c.Lines[0] with { Discount = new Discount(false, 210m) });
+        c.Total.ShouldBe(0m);
+        c.HasInvalidLine.ShouldBeFalse();
         var id = c.SaleId;
         c.Clear();
         c.SaleId.ShouldNotBe(id);
@@ -87,9 +92,31 @@ public sealed class CartTests
     }
 
     [Fact]
-    public void The_permission_the_api_asks_for_is_read_from_the_detail()
+    public void The_permission_the_api_asks_for_is_read_from_its_field_not_the_text()
     {
-        new Problem(403, "Approval.Required", "Esta acción necesita la autorización de un supervisor (sales.void).").PermissionRequired.ShouldBe("sales.void");
-        new Problem(403, "Other", "x (y)").PermissionRequired.ShouldBeNull();
+        var errors = new Dictionary<string, string[]> { ["permission"] = ["sales.void"] };
+        new Problem(403, "Approval.Required", "Cualquier texto, traducido o no.", errors).PermissionRequired.ShouldBe("sales.void");
+        new Problem(403, "Approval.Required", "Esta acción necesita la autorización de un supervisor (sales.void).").PermissionRequired.ShouldBeNull();
+        new Problem(403, "Other", "x", errors).PermissionRequired.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_presentation_of_a_by_the_pound_product_is_sold_by_the_piece()
+    {
+        var c = new Cart();
+        var pack = new ProductByCode(Guid.NewGuid(), Guid.NewGuid(), "Chuleta, paquete 2 lb", "Pound", "Exempt", 450m, null, 2m, null, null, [], null);
+        c.Add(pack, null);
+        c.Add(pack, null);
+        c.Lines.Count.ShouldBe(1);
+        c.Lines[0].Quantity.ShouldBe(2m);
+        c.Lines[0].ByWeight.ShouldBeFalse();
+        c.Total.ShouldBe(900m);
+    }
+
+    [Fact]
+    public void Times_are_shown_in_store_time_whatever_the_pc_zone()
+    {
+        Format.Time(new DateTimeOffset(2026, 10, 15, 16, 30, 0, TimeSpan.Zero)).ShouldContain("12:30");
+        Format.ShortDate(new DateTimeOffset(2026, 10, 16, 2, 0, 0, TimeSpan.Zero)).ShouldBe("15/10/2026"); // 10 pm the day before in Santo Domingo
     }
 }

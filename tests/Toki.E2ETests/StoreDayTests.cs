@@ -174,10 +174,10 @@ public sealed class StoreDayTests
 
         // A cash drop and a petty expense, both with the supervisor; a supplier paid by transfer.
         await Ok(await r1.Client.PostAsJsonAsync($"/api/cash/shifts/{r1.ShiftId}/movements",
-            new { MovementType = "Withdrawal", Amount = 1500m, Reason = "CashPickup", SupervisorApprovalId = await ApproveAsync(r1, "register.withdraw", r1.ShiftId) }));
+            new { MovementId = Guid.NewGuid(), MovementType = "Withdrawal", Amount = 1500m, Reason = "CashPickup", SupervisorApprovalId = await ApproveAsync(r1, "register.withdraw", r1.ShiftId) }));
         r1.Cash -= 1500m;
         await Ok(await r2.Client.PostAsJsonAsync($"/api/cash/shifts/{r2.ShiftId}/movements",
-            new { MovementType = "Expense", Amount = 150m, Reason = "PettyExpense", Note = "Hielo", SupervisorApprovalId = await ApproveAsync(r2, "register.withdraw", r2.ShiftId) }));
+            new { MovementId = Guid.NewGuid(), MovementType = "Expense", Amount = 150m, Reason = "PettyExpense", Note = "Hielo", SupervisorApprovalId = await ApproveAsync(r2, "register.withdraw", r2.ShiftId) }));
         r2.Cash -= 150m;
         await Ok(await admin.PostAsJsonAsync("/api/purchasing/payments", new { SupplierPaymentId = Guid.CreateVersion7(), SupplierId = supplier, Amount = 20000m, Method = "Transfer", Date = today }));
 

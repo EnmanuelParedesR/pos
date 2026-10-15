@@ -12,12 +12,22 @@ namespace Toki.Client.UI.Tests;
 /// <summary>The local API as the screens see it: each test answers the routes it cares about and reads what was sent.</summary>
 internal sealed class FakeApi : HttpMessageHandler
 {
-    private readonly List<(string Method, string Route, Func<string, HttpResponseMessage> Respond)> _routes = [];
-    public List<(string Method, string Route, string Body)> Requests { get; } = [];
+    private readonly List<(string Method, string Route, Func<string, Task<HttpResponseMessage>> Respond)> _routes = [];
+    private readonly List<(string Method, string Route, string Body)> _requests = [];
 
-    public FakeApi Respond(string method, string route, Func<string, HttpResponseMessage> respond)
+    /// <summary>What the screens sent, in order (a copy: the frame's health check may add to it meanwhile).</summary>
+    public List<(string Method, string Route, string Body)> Requests
     {
-        _routes.Insert(0, (method, route, respond)); // the latest wins, so a test can change an answer midway
+        get { lock (_requests) return [.. _requests]; }
+    }
+
+    /// <summary>A throwing answer (<c>throw new TaskCanceledException()</c>) is a timeout: the request may or may not have been saved.</summary>
+    public FakeApi Respond(string method, string route, Func<string, HttpResponseMessage> respond) =>
+        RespondAsync(method, route, body => Task.FromResult(respond(body)));
+
+    public FakeApi RespondAsync(string method, string route, Func<string, Task<HttpResponseMessage>> respond)
+    {
+        lock (_routes) _routes.Insert(0, (method, route, respond)); // the latest wins, so a test can change an answer midway
         return this;
     }
 
@@ -34,10 +44,12 @@ internal sealed class FakeApi : HttpMessageHandler
     {
         var route = request.RequestUri!.PathAndQuery;
         var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
-        Requests.Add((request.Method.Method, route, body));
-        foreach (var r in _routes)
+        lock (_requests) _requests.Add((request.Method.Method, route, body));
+        (string Method, string Route, Func<string, Task<HttpResponseMessage>> Respond)[] routes;
+        lock (_routes) routes = [.. _routes];
+        foreach (var r in routes)
             if (r.Method == request.Method.Method && (route == r.Route || route.StartsWith(r.Route + "?", StringComparison.Ordinal)))
-                return r.Respond(body);
+                return await r.Respond(body);
         return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 }

@@ -52,6 +52,11 @@
                     }
                 </tbody>
             </table>
+            @* shortcut: one page of 50 (the API's page size); add "Ver más" (page=2) when the catalog makes searching tiresome. *@
+            @if (_products.Count >= 50)
+            {
+                <div class="esc-subtitle" style="padding:8px 16px">Se muestran los primeros 50. Busque por nombre o PLU para encontrar los demás.</div>
+            }
         </div>
     </ChildContent>
 </Admin>
@@ -84,15 +89,17 @@
                 </label>
                 <label class="esc-field"><span>Se vende</span>
                     <select class="esc-select" @bind="f.Unit">
-                        <option value="@UnitOfMeasure.Pound">Por libra</option>
                         <option value="@UnitOfMeasure.Unit">Por unidad</option>
+                        <option value="@UnitOfMeasure.Pound">Por libra</option>
                     </select>
                 </label>
                 <label class="esc-field"><span>PLU (balanza, opcional)</span><input class="esc-input" inputmode="numeric" maxlength="6" @bind="f.Plu" /></label>
                 <label class="esc-field"><span>ITBIS</span>
-                    <select class="esc-select" @bind="f.ItbisRate">
-                        <option value="@ItbisRate.Exempt">Exento</option>
+                    @* No default: a careless "Exento" would declare ITBIS 0 in the 607. *@
+                    <select class="esc-select" @bind="f.ItbisRate" aria-invalid="@(_error is not null && f.ItbisRate is null)">
+                        <option value="">Elija…</option>
                         <option value="@ItbisRate.General18">18 %</option>
+                        <option value="@ItbisRate.Exempt">Exento</option>
                         <option value="@ItbisRate.Reduced16">16 %</option>
                         <option value="@ItbisRate.Zero">0 %</option>
                     </select>
@@ -124,9 +131,9 @@
 @code {
     private sealed class ProductForm
     {
-        public Guid? Id; public int Version; public string Name = ""; public Guid CategoryId; public UnitOfMeasure Unit = UnitOfMeasure.Pound;
+        public Guid? Id; public int Version; public string Name = ""; public Guid CategoryId; public UnitOfMeasure Unit = UnitOfMeasure.Unit;
         public string? Plu, Barcode, Price, WholesalePrice, Cost = "0", InitialStock = "0", MinimumStock = "0";
-        public ItbisRate ItbisRate = ItbisRate.Exempt; public bool SellWithoutStock = true, IsActive = true;
+        public ItbisRate? ItbisRate; public bool SellWithoutStock = true, IsActive = true;
     }
 
     private List<Category> _categories = [];
@@ -176,6 +183,7 @@
     {
         if (_editing is not { } f) return;
         if (Format.ParseNumber(f.Price) is not > 0 || string.IsNullOrWhiteSpace(f.Name)) { _error = "Escriba el nombre y un precio mayor que cero."; return; }
+        if (f.ItbisRate is not { } rate) { _error = "Elija el ITBIS del producto."; return; }
         var price = Format.ParseNumber(f.Price)!.Value;
         var wholesale = Format.ParseNumber(f.WholesalePrice);
         var minimum = Format.ParseNumber(f.MinimumStock) ?? 0;
@@ -185,12 +193,12 @@
         if (f.Id is null)
         {
             var barcodes = string.IsNullOrWhiteSpace(f.Barcode) ? null : new[] { f.Barcode.Trim() };
-            p = (await Api.PostAsync<Created>("/api/inventory/products", new CreateProduct(f.Name.Trim(), f.CategoryId, f.Unit, plu, f.ItbisRate, price, wholesale,
+            p = (await Api.PostAsync<Created>("/api/inventory/products", new CreateProduct(f.Name.Trim(), f.CategoryId, f.Unit, plu, rate, price, wholesale,
                 Format.ParseNumber(f.Cost) ?? 0, f.SellWithoutStock, minimum, barcodes, Format.ParseNumber(f.InitialStock) ?? 0))).Problem;
         }
         else
         {
-            p = (await Api.PutAsync<Empty>($"/api/inventory/products/{f.Id}", new UpdateProduct(f.Version, f.Name.Trim(), f.CategoryId, f.Unit, plu, f.ItbisRate,
+            p = (await Api.PutAsync<Empty>($"/api/inventory/products/{f.Id}", new UpdateProduct(f.Version, f.Name.Trim(), f.CategoryId, f.Unit, plu, rate,
                 price, wholesale, f.SellWithoutStock, minimum, f.IsActive))).Problem;
         }
         _sending = false;

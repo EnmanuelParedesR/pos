@@ -104,7 +104,7 @@ h1, h2, h3, p { margin: 0; }
 .esc-field { display: flex; flex-direction: column; gap: var(--s-1); }
 .esc-field > span { font-size: var(--t-13); font-weight: 600; color: var(--text-2); }
 .esc-input, .esc-select {
-  min-height: 44px; padding: 0 var(--s-3); width: 100%;
+  min-height: var(--touch); padding: 0 var(--s-3); width: 100%;
   border: 1px solid var(--control-border); border-radius: var(--r-2); background: var(--surface);
 }
 .esc-input--large { min-height: 56px; font-size: var(--t-24); font-weight: 600; }
@@ -161,7 +161,7 @@ h1, h2, h3, p { margin: 0; }
 .esc-table-wrap { overflow-x: auto; }
 .esc-table { width: 100%; border-collapse: collapse; }
 .esc-table th { padding: 10px var(--s-4); border-bottom: 1px solid var(--card-border); font-size: var(--t-12); font-weight: 600; letter-spacing: 0.04em; color: var(--text-2); text-align: left; text-transform: uppercase; white-space: nowrap; }
-.esc-table td { height: 44px; padding: 0 var(--s-4); border-bottom: 1px solid var(--card-border); }
+.esc-table td { height: var(--touch); padding: 0 var(--s-4); border-bottom: 1px solid var(--card-border); }
 .esc-table tr:last-child td { border-bottom: 0; }
 .esc-table tbody tr.selectable { cursor: pointer; }
 .esc-table tbody tr.selectable:hover { background: var(--surface-2); }
@@ -210,12 +210,21 @@ h1, h2, h3, p { margin: 0; }
 /* Admin shell */
 .esc-admin { display: flex; min-height: calc(100vh - 40px); }
 .esc-menu { flex: 0 0 220px; padding: var(--s-3) var(--s-2); display: flex; flex-direction: column; gap: 2px; background: var(--surface); border-right: 1px solid var(--card-border); }
-.esc-menu a { min-height: 44px; padding: 0 var(--s-3); display: flex; align-items: center; border-radius: var(--r-2); color: var(--text); text-decoration: none; }
+.esc-menu a { min-height: var(--touch); padding: 0 var(--s-3); display: flex; align-items: center; border-radius: var(--r-2); color: var(--text); text-decoration: none; }
 .esc-menu a:hover { background: var(--surface-2); }
 .esc-menu a.active { background: var(--brand-tint); font-weight: 700; }
 .esc-menu a.esc-menu__sell { background: var(--brand); color: #FFFFFF; font-weight: 700; font-size: var(--t-17); justify-content: space-between; margin-bottom: var(--s-2); }
 .esc-menu a.esc-menu__sell .esc-keycap { border-color: #FFFFFF; color: #FFFFFF; }
 .esc-page { flex: 1 1 auto; min-width: 0; padding: 20px var(--s-5); display: flex; flex-direction: column; gap: var(--s-4); }
+.esc-page:focus { outline: 0; }
+
+/* Short amber message from escuadra.js (an ignored scan); above dialogs, never blocks the screen. */
+.esc-toast { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); z-index: 60; padding: var(--s-3) var(--s-4); border-radius: var(--r-2);
+  background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning); font-weight: 600; box-shadow: 0 4px 16px rgba(20, 24, 29, 0.25); }
+
+/* Blazor shows it when the app itself fails (the screens' failures are caught by the ErrorBoundary in the frame). */
+#blazor-error-ui { display: none; position: fixed; inset: auto 0 0 0; z-index: 70; padding: var(--s-3) var(--s-4); background: var(--error-bg); color: var(--error); border-top: 2px solid var(--error); font-weight: 600; }
+#blazor-error-ui a { margin-left: var(--s-3); }
 
 @media (max-width: 760px) {
   .esc-admin { flex-direction: column; }

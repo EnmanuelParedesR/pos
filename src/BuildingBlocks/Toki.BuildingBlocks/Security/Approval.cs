@@ -20,6 +20,10 @@ public interface ISupervisorApprovals
 
 public static class ApprovalErrors
 {
+    /// <summary>The permission also travels as <c>errors.permission</c>: the register opens the supervisor dialog from it, never from the text.</summary>
     public static Error Required(string permission) =>
-        Error.Forbidden("Approval.Required", $"Esta acción necesita la autorización de un supervisor ({permission}).");
+        Error.Forbidden("Approval.Required", $"Esta acción necesita la autorización de un supervisor ({permission}).") with
+        {
+            Details = new Dictionary<string, string[]> { ["permission"] = [permission] },
+        };
 }

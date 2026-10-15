@@ -92,7 +92,7 @@
                         {
                             <tr><td style="font-weight:600">@d.Name</td><td>@Format.Date(d.CreatedUtc)</td>
                                 <td><span class="esc-pill @(d.IsRevoked ? "esc-pill--error" : "esc-pill--success")">@(d.IsRevoked ? "Revocado" : "Activo")</span></td>
-                                <td class="esc-num">@if (!d.IsRevoked) { <Button Variant="Button.Variants.Danger" OnClick="() => RevokeAsync(d)">Revocar</Button> }</td></tr>
+                                <td class="esc-num">@if (!d.IsRevoked) { <Button Variant="Button.Variants.Danger" OnClick="() => RevokeAsync(d)">@(_revoking == d.Id ? $"¿Revocar {d.Name}? Toque otra vez" : "Revocar")</Button> }</td></tr>
                         }
                     </tbody>
                 </table>
@@ -152,7 +152,7 @@
                     <Button OnClick="SavePassphraseAsync">Guardar frase</Button>
                 </div>
             </div>
-            <div class="esc-row"><Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="BackUpAsync">Respaldar ahora</Button></div>
+            <div class="esc-row"><Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="BackUpAsync">@(_sending ? "Respaldando… puede tardar unos minutos" : "Respaldar ahora")</Button></div>
             <div class="esc-card esc-table-wrap" style="max-width:760px">
                 <table class="esc-table">
                     <thead><tr><th>Archivo</th><th>Fecha</th><th class="esc-num">Tamaño</th></tr></thead>
@@ -170,7 +170,7 @@
         case Section.License when _features is { } f:
             <div class="esc-card esc-card--padded esc-col" style="gap:8px;max-width:760px">
                 <div class="esc-row"><span class="esc-label">Estado</span><span class="esc-pill @(f.Status == "Active" ? "esc-pill--success" : "esc-pill--warning")">@Names.LicenseStatus(f.Status)</span></div>
-                <div>Plan: <b>@(f.Plan ?? "Prueba")</b>@(f.ExpiresUtc is { } v ? $" · vence el {v.ToLocalTime():dd/MM/yyyy}" : "")</div>
+                <div>Plan: <b>@(f.Plan ?? "Prueba")</b>@(f.ExpiresUtc is { } v ? $" · vence el {Format.ShortDate(v)}" : "")</div>
                 <div>Cajas permitidas: <b>@f.Registers</b></div>
                 <div class="esc-subtitle">Funciones: @(f.Enabled.Length == 0 ? "las básicas" : string.Join(", ", f.Enabled.Select(Names.Feature)))</div>
             </div>
@@ -209,10 +209,11 @@
     private List<RegisterInfo> _registers = [];
     private string? _newRegister, _newDevice, _passphrase, _userName, _userCode, _userPin, _seqFrom, _seqTo;
     private string _seqType = "Consumer32";
-    private DateOnly _seqExpires = DateOnly.FromDateTime(DateTime.Today.AddYears(1));
+    private DateOnly _seqExpires = Format.Today.AddYears(1);
     private List<Sequence> _sequences = [];
     private List<Device> _devices = [];
     private PairingCode? _pairingCode;
+    private Guid? _revoking;
     private List<User> _users = [];
     private List<Role> _roles = [];
     private Guid _userRole;
@@ -243,7 +244,7 @@
         }
     }
 
-    private void ShowResult(Problem? p, string success) => (_messageKind, _message) = p is null ? (Notice.Kinds.Success, success) : (Notice.Kinds.Error, p.Message);
+    private void ShowResult(Problem? p, string success) => (_messageKind, _message) = p is null ? (Notice.Kinds.Success, success) : (p.Kind, p.Message);
 
     private async Task SaveBusinessAsync()
     {
@@ -277,8 +278,15 @@
         if (!r.Ok) ShowResult(r.Problem, "");
     }
 
+    /// <summary>Revoking cannot be undone (the PC must be paired again): the first tap asks, the second revokes.</summary>
     private async Task RevokeAsync(Device d)
     {
+        if (_revoking != d.Id)
+        {
+            _revoking = d.Id;
+            return;
+        }
+        _revoking = null;
         var r = await Api.PostAsync<Empty>($"/api/identity/devices/{d.Id}/revoke");
         await GoAsync(Section.Devices);
         ShowResult(r.Problem?.Code == "Identity.CannotRevokeOwnDevice" ? r.Problem with { Message = "No puede revocar el equipo que está usando." } : r.Problem, $"{d.Name} ya no puede entrar.");
@@ -303,7 +311,8 @@
     private async Task BackUpAsync()
     {
         _sending = true;
-        var r = await Api.PostAsync<BackupFile>("/api/backups");
+        // A backup of several GB takes minutes; the server allows it up to an hour (R6 #3).
+        var r = await Api.PostAsync<BackupFile>("/api/backups", timeout: TimeSpan.FromHours(1));
         _sending = false;
         await GoAsync(Section.Backups);
         ShowResult(r.Problem?.Code == "Backup.NoPassphrase" ? r.Problem with { Message = "Primero guarde la frase de los respaldos." } : r.Problem, "Respaldo creado.");

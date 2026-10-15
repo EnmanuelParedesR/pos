@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Toki.Client.UI.State;
+using Toki.Escuadra.Components;
 
 namespace Toki.Client.UI.Api;
 
@@ -11,10 +12,14 @@ public sealed record Problem(int Status, string Code, string Message, IReadOnlyD
 {
     public const string NoServer = "NoServer";
 
-    /// <summary>The permission a supervisor must grant, from "...supervisor (sales.void)." (the API has no field for it).</summary>
-    public string? PermissionRequired => Code == "Approval.Required" && Message.LastIndexOf('(') is var i and >= 0 && Message.IndexOf(')', i) is var j and > 0
-        ? Message[(i + 1)..j]
-        : null;
+    /// <summary>The permission a supervisor must grant (<c>errors.permission</c> of <c>Approval.Required</c>).</summary>
+    public string? PermissionRequired => Code == "Approval.Required" ? Error("permission") : null;
+
+    /// <summary>No answer or a server failure: the command may have been saved anyway (timeout after the commit).</summary>
+    public bool IsUncertain => Code == NoServer || Status >= 500;
+
+    /// <summary>No connection is amber, never red (principle 3); everything else the API refused is an error.</summary>
+    public Notice.Kinds Kind => Code == NoServer ? Notice.Kinds.Warning : Notice.Kinds.Error;
 
     public string? Error(string field) => Errors?.GetValueOrDefault(field)?.FirstOrDefault();
 }
@@ -28,13 +33,26 @@ public readonly record struct ApiResult<T>(T? Value, Problem? Problem)
 public sealed class TokiApi(HttpClient http, Session session)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
 
-    public Task<ApiResult<T>> GetAsync<T>(string url) => SendAsync<T>(HttpMethod.Get, url, null);
-    public Task<ApiResult<T>> PostAsync<T>(string url, object? body = null) => SendAsync<T>(HttpMethod.Post, url, body);
-    public Task<ApiResult<T>> PutAsync<T>(string url, object? body) => SendAsync<T>(HttpMethod.Put, url, body);
-    public Task<ApiResult<T>> DeleteAsync<T>(string url) => SendAsync<T>(HttpMethod.Delete, url, null);
+    public Task<ApiResult<T>> GetAsync<T>(string url) => SendAsync<T>(HttpMethod.Get, url, null, DefaultTimeout);
+    /// <param name="timeout">Longer than the 30 s default only for slow commands (a backup).</param>
+    public Task<ApiResult<T>> PostAsync<T>(string url, object? body = null, TimeSpan? timeout = null) => SendAsync<T>(HttpMethod.Post, url, body, timeout ?? DefaultTimeout);
+    public Task<ApiResult<T>> PutAsync<T>(string url, object? body) => SendAsync<T>(HttpMethod.Put, url, body, DefaultTimeout);
+    public Task<ApiResult<T>> DeleteAsync<T>(string url) => SendAsync<T>(HttpMethod.Delete, url, null, DefaultTimeout);
 
-    private async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string url, object? body)
+    /// <summary>After an uncertain checkout: the sale when the server saved it, no value and no problem when it did not,
+    /// or a problem when it still cannot tell.</summary>
+    public async Task<ApiResult<SaleRegistered>> SavedSaleAsync(Guid saleId)
+    {
+        var detail = await GetAsync<SaleDetail>($"/api/sales/{saleId}");
+        if (detail.Problem is { Status: 404 }) return new(default, null);
+        if (detail.Value is not { } d) return new(default, detail.Problem);
+        var receipt = await GetAsync<Receipt>($"/api/sales/{saleId}/receipt");
+        return receipt.Value is { } r ? new(new SaleRegistered(d.Id, d.Number, d.ENcf, d.Total, d.Change, r), null) : new(default, receipt.Problem);
+    }
+
+    private async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string url, object? body, TimeSpan timeout)
     {
         using var request = new HttpRequestMessage(method, url);
         if (session.DeviceToken is { } device) request.Headers.Add("X-Device", device);
@@ -44,12 +62,15 @@ public sealed class TokiApi(HttpClient http, Session session)
         HttpResponseMessage r;
         try
         {
-            r = await http.SendAsync(request);
+            using var cts = new CancellationTokenSource(timeout);
+            r = await http.SendAsync(request, cts.Token);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
         {
+            session.SetOnline(false);
             return new(default, new Problem(0, Problem.NoServer, "No hay conexión con el servidor de la tienda. Revise que la PC principal esté encendida."));
         }
+        session.SetOnline(true);
 
         using (r)
         {
@@ -74,7 +95,7 @@ public sealed class TokiApi(HttpClient http, Session session)
             var p = await r.Content.ReadFromJsonAsync<JsonElement>(Json);
             var code = p.TryGetProperty("code", out var c) ? c.GetString() ?? "" : "";
             var detail = p.TryGetProperty("detail", out var d) ? d.GetString() : null;
-            var errors = p.TryGetProperty("errors", out var e) ? e.Deserialize<Dictionary<string, string[]>>(Json) : null;
+            var errors = p.TryGetProperty("errors", out var e) && e.ValueKind == JsonValueKind.Object ? e.Deserialize<Dictionary<string, string[]>>(Json) : null;
             return new(status, code, detail ?? errors?.Values.FirstOrDefault()?.FirstOrDefault() ?? Generic(status), errors);
         }
         catch (JsonException)
