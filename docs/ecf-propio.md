@@ -121,7 +121,7 @@ Otros formatos: `RFCE` (resumen de consumo), `ARECF` (acuse de recibo), `ACECF` 
 - UTF-8. Los caracteres `" ' < > &` (y `© € ®`) se escapan.
 - Montos en DOP, punto decimal y sin separador de miles. Dos decimales, redondeando hacia arriba desde 5. El precio unitario admite 4 decimales.
 - Tolerancia de ±1 por línea y global igual al número de líneas. Un descuadre mayor hace al e-CF **aceptado condicional**.
-- Máximo 1,000 líneas, o 10,000 en la 32 de menos de RD$250,000.
+- Máximo 1,000 líneas, o 10,000 en la 32 de menos de RD$250,000. **Ojo:** el XSD de la 32 limita `Item` a 1,000; las notas 33 y 34 admiten 10,000 (§10.8).
 - `FechaVencimientoSecuencia` es obligatoria en la 31 y la 33, y **no va** en la 32 ni en la 34.
 - `TipoIngresos` (01 = ingresos por operaciones) es obligatorio en la 31, la 32, la 33 y la 34. `IndicadorMontoGravado` (1 si los precios de las líneas incluyen ITBIS) es condicional: va cuando hay ítems gravados. Los precios de Toki incluyen ITBIS, así que irá en 1.
 - `FechaHoraFirma` en formato `dd-MM-AAAA HH:mm:ss`, hora de RD (GMT-4), y nunca posterior a la hora de la DGII: el reloj de la PC importa.
@@ -245,8 +245,8 @@ Más adelante, si Toki se certifica como **Proveedor de Servicios de FE (NG 10-2
 
 | Pieza actual | Estado | Falta |
 |---|---|---|
-| `FiscalDocuments.BuildXml` | XML plano inventado (`ECF/Encabezado/TipoeCF…`) que **no sigue el formato**; escribe etiquetas vacías (`RNCComprador` nulo) | Estructura `IdDoc`/`Emisor`/`Comprador`/`Totales`, `Version`, `FechaVencimientoSecuencia`, `TipoIngresos`, `IndicadorMontoGravado`, montos gravados e ITBIS por tasa, dirección y municipio del emisor, `InformacionReferencia`, sin etiquetas vacías y validado contra el XSD |
-| `SimulatedEcfSigner` | Hash, no firma | `CertStoreEcfSigner` con XMLDSig (§4.1) |
+| `EcfXml` (antes `FiscalDocuments.BuildXml`) | ✅ TK-143: formato oficial, validado contra el XSD antes de firmar (§10.8) | Municipio y provincia (opcionales en el XSD) |
+| `SimulatedEcfSigner` | Hash, no firma; sigue siendo el valor por defecto | ✅ TK-142: `CertificateEcfSigner` con XMLDSig (§4.1, §10.8). Falta la pantalla de importación del `.p12` y el aviso de vencimiento |
 | `IEcfProvider.SubmitAsync` | Una llamada devuelve el estado final | TrackId → consulta de resultado ("En proceso"), RFCE inmediato, consulta antes de reenviar y anulación |
 | `RelayEcfProvider` y `/relay/v1/ecf` | La nube enviaría a la DGII | Pasa a ser archivo (§10.4) |
 | `SubmissionStatus` | `Pending, Accepted, AcceptedConditional, Rejected, Simulated` | `Sent` (con TrackId, esperando resultado); además, en el documento: ambiente, canal (e-CF o RFCE), código y mensajes de la DGII, `secuenciaUtilizada` y entrega al receptor |
@@ -326,6 +326,43 @@ El **relevo** (`/relay/v1/ecf`) cambia de papel: ya no reenvía, **archiva**. La
 6. **No ser PSFE por ahora.** Reevaluar cuando haya más de ~20 tiendas: acorta la certificación de cada cliente, pero trae SLA, mesa de ayuda y la responsabilidad del art. 14.
 7. Mantener `SimulatedEcfProvider` y `SimulatedEcfSigner` como valores por defecto hasta que cada tienda esté certificada, igual que hoy.
 
+### 10.8 Implementado: firma (TK-142) y XML (TK-143)
+
+> 15 de octubre de 2026. Sin llamadas a la DGII (eso es TK-144) y sin cambios en el QR ni en la RI (TK-148).
+
+**XSD.** Los cuatro XSD oficiales (`e-CF 31 v.1.0.xsd` a `e-CF 34 v.1.0.xsd`) están en `src/Modules/Fiscal/Toki.Fiscal/Schemas/`, con su nombre original, la URL de descarga y el SHA-256 en el `README.md` de esa carpeta. Van embebidos y se compilan una vez por tipo (cada XSD repite los mismos tipos globales, así que no caben en un solo `XmlSchemaSet`).
+
+**XML (`EcfXml.Build`).** Sale del mismo `DocumentToIssue` de siempre, con el orden de elementos del XSD y sin etiquetas vacías:
+- `Version` 1.0; `IdDoc` con `FechaVencimientoSecuencia` (solo 31 y 33, del rango usado), `IndicadorNotaCredito` (solo 34: 1 si pasaron más de 30 días desde el e-CF modificado), `IndicadorMontoGravado` = 1 si hay ítems gravados, `TipoIngresos` = 01, `TipoPago` y `TablaFormasPago` (no en la 34).
+- `Emisor`: RNC, razón social, **dirección** (obligatoria en el XSD: se toma de Configuración → Negocio) y `FechaEmision`.
+- `Totales` por tasa (`MontoGravadoI1/I2/I3`, `MontoExento`, `ITBIS1/2/3`, `TotalITBIS1/2/3`). El monto gravado es sin ITBIS. El ITBIS es **el de la venta** y no `gravado × tasa`, para que el e-CF cuadre al centavo con la venta; la diferencia, si existe, es de centavos y cae en la tolerancia de la DGII.
+- Ítems con `IndicadorFacturacion`, `IndicadorBienoServicio` = 1, `PrecioUnitarioItem` hasta 4 decimales y el descuento en `DescuentoMonto` + `TablaSubDescuento` (`$`).
+- 33 y 34: `InformacionReferencia` con `NCFModificado`, `FechaNCFModificado` (se busca en `fiscal.EcfDocuments`; si el e-NCF no existe, error `Fiscal.ReferenceNotFound`) y `CodigoModificacion`.
+- `FechaHoraFirma` = el momento de la emisión en hora de RD (`dd-MM-yyyy HH:mm:ss`), dentro del contenido firmado.
+- Las formas de pago de la venta pasan al e-CF: efectivo 1, transferencia 2, tarjeta 3, fiado 4 y saldo a favor 8 (`DocumentToIssue.Payments`, nuevo).
+- Si la 31 no trae nombre del comprador, se toma del padrón de la DGII (`fiscal.Taxpayers`).
+
+**Validación antes de firmar.** Con el firmador real, un XML que no cumple el XSD devuelve `Fiscal.InvalidXml`: no se firma y la venta hace *rollback* (el número vuelve). Sin dirección del negocio, `Fiscal.MissingIssuerAddress`. Con el firmador simulado no se valida, para que una tienda sin dirección siga vendiendo; sus documentos nunca se envían.
+
+**Firma (`CertificateEcfSigner`).** `Fiscal:Signer` = `Simulated` (por defecto) | `Certificate`. El certificado sale de `LocalMachine\My` por `Fiscal:Certificate:Thumbprint`, o, solo para desarrollo y pruebas, de un `.p12`/`.pfx` con `Fiscal:Certificate:Path` y `Fiscal:Certificate:Password`. Firma XMLDSig envuelta con `SignedXml`: C14N 1.0, RSA-SHA256, digest SHA-256, una `Reference URI=""` con `enveloped-signature`, `KeyInfo/X509Data/X509Certificate`, sin preservar espacios, y agrega la declaración `<?xml version="1.0" encoding="utf-8"?>` (fuera de la canonicalización). El código de seguridad son los 6 primeros caracteres del `SignatureValue`. Falta de TK-142: la pantalla de importación del `.p12` (contraseña una vez, llave no exportable) y el aviso de vencimiento a 30 días.
+
+**Pruebas.** `Toki.UnitTests/Fiscal`: una 32 con exento + 18 % + 16 %, descuento y dos formas de pago; una 32 de RD$250,000 o más con comprador; una 31 con RNC y un peso de 3 decimales; la 34 con 10 y 45 días (indicador 0 y 1) y una anulación sin comprador; una 33; la 31 sin comprador que falla el XSD; escape y corte de textos; firma de una 32 y una 31 con un certificado autofirmado (`CertificateRequest`), verificada con `SignedXml.CheckSignature`, con el código de seguridad y el XSD después de firmar; una firma rota al cambiar un monto; carga desde `.pfx`. `Toki.IntegrationTests/Fiscal/CertificateSigningTests`: `IssueAsync` con el firmador real (dirección, firma, fecha del e-NCF modificado y referencia inexistente).
+
+**Diferencias encontradas en los XSD reales** (frente a §3 y al PDF del formato):
+
+| # | Qué dice el XSD | Qué hace Toki |
+|---|---|---|
+| 1 | La firma es **obligatoria** en el XSD: el último elemento es `xs:any minOccurs="1"` (sin namespace fijo). Un XML sin firmar no pasa el XSD | Antes de firmar se valida una copia con un `<Signature>` vacío en su lugar (`EcfXml.ValidateUnsigned`); después de firmar se valida el XML real |
+| 2 | `CantidadItem` admite **2 decimales** (`Decimal18D1or2`). La carnicería pesa con 3 | El peso se redondea a 2 decimales y el precio unitario (4 decimales) se recalcula para que `Precio × Cantidad − Descuento = MontoItem`. El recibo conserva el peso exacto. **Preguntar a la DGII** |
+| 3 | En la 31 y la 32 el área `Comprador` es obligatoria, aunque en la 32 todos sus campos son opcionales | Una 32 a consumidor anónimo lleva `<Comprador />` vacío: la única etiqueta vacía. Esa 32 no viaja completa (va por RFCE, TK-145); de RD$250,000 en adelante el comprador es obligatorio. **Confirmar con la DGII** |
+| 4 | El XSD de la 32 limita `Item` a **1,000** líneas (el formato habla de 10,000 para la 32 de menos de RD$250,000); 33 y 34 admiten 10,000 | Sin cambio: una carnicería no llega a 1,000 líneas |
+| 5 | En la 33 `FechaVencimientoSecuencia` es obligatoria; en la 33 y la 34, `InformacionReferencia` y su `FechaNCFModificado` también (el formato la describe como condicional al reemplazo de contingencia) | Se envían siempre en las notas |
+| 6 | En la 33 y la 34 `TipoIngresos` y `Comprador` son opcionales en el XSD (el PDF marca `TipoIngresos` obligatorio) | `TipoIngresos` = 01 siempre; `Comprador` solo si hay datos |
+| 7 | La 34 no tiene `TablaFormasPago` ni `TerminoPago` | No se envían |
+| 8 | `Municipio` y `Provincia` del emisor son opcionales (Tabla III, 582 códigos); `TelefonoEmisor` exige `xxx-xxx-xxxx` | No se envían todavía: hacen falta para la RI (TK-148), no para el XSD |
+| 9 | `FechaLimitePago` es condicional a `TipoPago` = 2 (crédito) | No se envía: los clientes no tienen plazo de pago. **Preguntar** si su ausencia da aceptado condicional |
+| 10 | Los XSD no tienen `targetNamespace`: los elementos van sin namespace | Así se generan |
+
 ---
 
 ## 11. Riesgos y preguntas abiertas
@@ -348,6 +385,9 @@ El **relevo** (`/relay/v1/ecf`) cambia de papel: ya no reenvía, **archiva**. La
 | 14 | Cambio de versión del XML o de los servicios (la DGII separó la Descripción Técnica en 2026) | Revisar la "Bitácora" de cada documento cada mes; pruebas de contrato contra TesteCF (TK-158) |
 | 15 | Una tienda sin nube (si algún plan lo permitiera) no puede tener servicios de receptor | Para e-CF, la conexión a la nube de Toki es obligatoria. Reflejarlo en `planes.md` |
 | 16 | Retención de la copia en la nube (10 años) y su costo | Almacenamiento frío (Blob *cool/archive*) por tenant; estimarlo en TK-146 |
+| 17 | Ventas por peso con 3 decimales: el XSD solo admite 2 en `CantidadItem` (§10.8, diferencia 2) | Preguntar a la DGII si redondear el peso y recalcular el precio es lo esperado; probar en TesteCF |
+| 18 | `<Comprador />` vacío en la 32 a consumidor anónimo frente a la regla de "no enviar etiquetas vacías" (§10.8, diferencia 3) | Preguntar a la DGII; probar una 32 completa sin comprador en TesteCF |
+| 19 | Venta a crédito sin `FechaLimitePago`, y forma de pago del saldo a favor del cliente (¿7 nota de crédito u 8 otras?) | Preguntar a la DGII |
 
 ---
 
@@ -361,7 +401,7 @@ Conseguir un RNC habilitado en pre-certificación (el de Toki o el de la tienda 
 *Depende de:* nada.
 
 **TK-142 · Firma XMLDSig con el certificado del almacén de Windows** (M)
-`CertStoreEcfSigner`: XMLDSig envuelta, C14N, RSA-SHA256, `Reference URI=""`, `X509Certificate`, sin preservar espacios; código de seguridad = 6 primeros caracteres del `SignatureValue`. Pantalla para importar el `.p12` (contraseña una sola vez, llave no exportable, permiso solo para la cuenta del servicio). Verificar que el SN del sujeto sea una cédula o RNC válidos. Health check de vencimiento a 30 días. `Fiscal:Signer` = `Simulated` | `CertStore`.
+`CertStoreEcfSigner`: XMLDSig envuelta, C14N, RSA-SHA256, `Reference URI=""`, `X509Certificate`, sin preservar espacios; código de seguridad = 6 primeros caracteres del `SignatureValue`. Pantalla para importar el `.p12` (contraseña una sola vez, llave no exportable, permiso solo para la cuenta del servicio). Verificar que el SN del sujeto sea una cédula o RNC válidos. Health check de vencimiento a 30 días. `Fiscal:Signer` = `Simulated` | `Certificate` (implementado como `CertificateEcfSigner`, §10.8).
 *Criterios:* el XML firmado pasa la verificación de `SignedXml.CheckSignature` y la del validador de TesteCF; la llave no se puede exportar; ni la contraseña ni el archivo quedan en disco ni en la base; pruebas unitarias con un certificado autofirmado.
 *Depende de:* nada (TK-141 para validar contra la DGII).
 
@@ -469,7 +509,7 @@ Primarias (DGII), sección "Documentación sobre e-CF":
 - Formato Anulación de e-NCF v1.0: https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/Documentacin%20sobre%20eCF/Formatos%20XML/Formato%20Anulaci%C3%B3n%20de%20e-NCF%20v1.0.pdf
 - Formato Acuse de Recibo v1.0: https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/Documentacin%20sobre%20eCF/Formatos%20XML/Formato%20Acuse%20de%20Recibo%20v%201.0.pdf
 - Formato Aprobación Comercial v1.0: https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/Documentacin%20sobre%20eCF/Formatos%20XML/Formato%20Aprobaci%C3%B3n%20Comercial%20v1.0.pdf
-- XSD (e-CF 31 a 47, RFCE 32, ARECF, ACECF, ANECF y Semilla), carpeta `Documentación Técnica (XSD)`; índice en https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/Paginas/documentacionSobreE-CF.aspx
+- XSD (e-CF 31 a 47, RFCE 32, ARECF, ACECF, ANECF y Semilla), carpeta `Documentación Técnica (XSD)`; índice en https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/Paginas/documentacionSobreE-CF.aspx. Los de 31 a 34 se descargaron el 15-10-2026 (URL directas y SHA-256 en `src/Modules/Fiscal/Toki.Fiscal/Schemas/README.md`), por ejemplo https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/Documentacin%20sobre%20eCF/Documentaci%C3%B3n%20T%C3%A9cnica%20(XSD)/e-CF%2032%20v.1.0.xsd
 - Norma General 10-2021 (Proveedores de Servicios de FE): https://dgii.gov.do/legislacion/normasGenerales/Documents/NG%20sobre%20Comprobantes%20Fiscales/Norma10-21.pdf
 - Aviso 19-25 (certificados gratuitos solo para el Facturador Gratuito): https://dgii.gov.do/publicacionesOficiales/avisosInformativos/Documents/2025/19-25.pdf
 - Prórroga de 6 meses para pequeños, micro y no clasificados (noticia de la DGII; la página pide sesión): https://dgii.gov.do/noticias/Paginas/DGII-otorga-prorroga-seis-meses-Pequeños-Micros-y-no-clasificados.aspx

@@ -188,8 +188,8 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 |---|---|---|
 | TK-140 | Investigación y diseño del camino propio (servicios, formatos, firma, certificación, arquitectura, riesgos) | ✅ `docs/ecf-propio.md` |
 | TK-141 | Acceso a TesteCF, certificado de prueba y ADR-0009 | ⬜ |
-| TK-142 | Firma XMLDSig con el certificado del almacén de Windows (`CertStoreEcfSigner`) e importación del `.p12` | ⬜ |
-| TK-143 | XML de e-CF 31/32/33/34 según el formato oficial, validado contra el XSD | ⬜ |
+| TK-142 | Firma XMLDSig con el certificado del almacén de Windows (`CertStoreEcfSigner`) e importación del `.p12` | ✅ `CertificateEcfSigner` (`Fiscal:Signer` = `Certificate`); pendiente la pantalla de importación del `.p12` y el aviso de vencimiento (`docs/ecf-propio.md` §10.8) |
+| TK-143 | XML de e-CF 31/32/33/34 según el formato oficial, validado contra el XSD | ✅ `EcfXml` y XSD oficiales en `Toki.Fiscal/Schemas`; falta la prueba en TesteCF (TK-141) (`docs/ecf-propio.md` §10.8) |
 | TK-144 | Cliente DGII en el nodo (semilla → token, recepción, RFCE, resultados, TrackIds, anulación, directorio) | ⬜ |
 | TK-145 | Resumen de factura de consumo (RFCE) y umbral de RD$250,000 | ⬜ |
 | TK-146 | Cola de envío directo a la DGII (TrackId → resultado) y relevo convertido en archivo | ⬜ |

@@ -158,7 +158,15 @@ internal static class RegisterSale
             var fiscalLines = inputs.Select((e, i) => new FiscalLine(e.Product.Name, e.Quantity, e.Price, t.Lines[i].Discount,
                 e.Product.ItbisRate, t.Lines[i].Itbis, t.Lines[i].Total)).ToList();
             var document = await fiscal.IssueAsync(new DocumentToIssue(c.DocumentType, c.SaleId, rnc, customerName, fiscalLines, t.Itbis, t.Total,
-                PaymentType: onAccount > 0 ? EcfPaymentType.Credit : EcfPaymentType.Cash), ct);
+                PaymentType: onAccount > 0 ? EcfPaymentType.Credit : EcfPaymentType.Cash,
+                Payments: payments.Value.Payments.Select(p => new FiscalPayment(p.Method switch
+                {
+                    PaymentMethod.Cash => EcfPaymentForm.Cash,
+                    PaymentMethod.Card => EcfPaymentForm.Card,
+                    PaymentMethod.Transfer => EcfPaymentForm.CheckOrTransfer,
+                    PaymentMethod.OnAccount => EcfPaymentForm.OnCredit,
+                    _ => EcfPaymentForm.Other, // shortcut: customer credit balance as "other"; ask the DGII whether it is 7 (credit note)
+                }, p.Amount)).ToList()), ct);
             if (document.IsFailure) return document.Error!;
 
             // The customer's limit is re-checked under the customer's lock.

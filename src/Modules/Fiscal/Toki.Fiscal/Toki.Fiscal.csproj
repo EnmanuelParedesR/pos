@@ -6,6 +6,10 @@
     <ProjectReference Include="..\..\Sync\Toki.Sync.Contracts\Toki.Sync.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.Xml" />
+    <EmbeddedResource Include="Schemas\*.xsd" LogicalName="Toki.Fiscal.Schemas.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Toki.UnitTests" />
     <InternalsVisibleTo Include="Toki.IntegrationTests" />
   </ItemGroup>

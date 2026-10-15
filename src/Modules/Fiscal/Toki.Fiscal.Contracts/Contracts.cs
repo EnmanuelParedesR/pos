@@ -12,6 +12,11 @@ public enum ModificationCode { Void = 1, AmountCorrection = 3 }
 
 public enum EcfPaymentType { Cash = 1, Credit = 2 }
 
+/// <summary>DGII payment form (<c>FormaPago</c>).</summary>
+public enum EcfPaymentForm { Cash = 1, CheckOrTransfer = 2, Card = 3, OnCredit = 4, GiftCertificate = 5, Barter = 6, CreditNote = 7, Other = 8 }
+
+public sealed record FiscalPayment(EcfPaymentForm Form, decimal Amount);
+
 /// <summary>Consumer receipts (32) of this amount or more must identify the buyer.</summary>
 public static class EcfLimits
 {
@@ -19,10 +24,12 @@ public static class EcfLimits
 }
 
 /// <param name="ModifiedENcf">For credit notes: the e-NCF being corrected (required).</param>
+/// <param name="Payments">How the sale was paid; goes in the e-CF payment table (not in credit notes).</param>
 public sealed record DocumentToIssue(
     EcfType Type, Guid ReferenceId, string? BuyerRnc, string? BuyerName,
     IReadOnlyList<FiscalLine> Lines, decimal Itbis, decimal Total, string? ModifiedENcf = null,
-    ModificationCode? ModificationCode = null, EcfPaymentType PaymentType = EcfPaymentType.Cash);
+    ModificationCode? ModificationCode = null, EcfPaymentType PaymentType = EcfPaymentType.Cash,
+    IReadOnlyList<FiscalPayment>? Payments = null);
 
 /// <param name="QrUrl">What the printed QR code points to.</param>
 public sealed record IssuedDocument(Guid DocumentId, string ENcf, string SecurityCode, DateTime SignedUtc, string QrUrl);

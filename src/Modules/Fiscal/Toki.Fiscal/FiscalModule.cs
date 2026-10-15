@@ -18,12 +18,18 @@ namespace Toki.Fiscal;
 
 public static class FiscalModule
 {
-    /// <summary><c>Fiscal:Provider</c> picks who sends the e-CF: <c>Simulated</c> (default, e-CF on hold) or <c>Relay</c> (the cloud relay, ADR-0008).</summary>
+    /// <summary><c>Fiscal:Provider</c> picks who sends the e-CF: <c>Simulated</c> (default, e-CF on hold) or <c>Relay</c> (the cloud relay, ADR-0008).
+    /// <c>Fiscal:Signer</c> picks who signs: <c>Simulated</c> (default, no certificate) or <c>Certificate</c> (XMLDSig, see <see cref="CertificateEcfSigner"/>).</summary>
     public static IServiceCollection AddFiscalModule(this IServiceCollection services, IConfiguration config)
     {
         services.AddModuleDbContext<FiscalDbContext>();
         services.AddScoped<IFiscalDocuments, FiscalDocuments>();
-        services.AddSingleton<IEcfSigner, SimulatedEcfSigner>();
+        _ = (config["Fiscal:Signer"] ?? "Simulated") switch
+        {
+            "Simulated" => services.AddSingleton<IEcfSigner, SimulatedEcfSigner>(),
+            "Certificate" => services.AddSingleton<IEcfSigner>(_ => CertificateEcfSigner.FromConfiguration(config)),
+            var other => throw new InvalidOperationException($"Unknown Fiscal:Signer '{other}': use Simulated or Certificate."),
+        };
         _ = (config["Fiscal:Provider"] ?? "Simulated") switch
         {
             "Simulated" => services.AddSingleton<IEcfProvider, SimulatedEcfProvider>(),
@@ -91,8 +97,8 @@ internal interface IEcfSigner
     (string SignedXml, string SecurityCode) Sign(XDocument xml);
 }
 
-/// <summary>Stand-in until the real certificate and provider are contracted (e-CF on hold, see pos-ecf-deferred).</summary>
-/// <remarks>shortcut: hash instead of XMLDSig with the taxpayer's .p12; replace with CertStoreEcfSigner before certification (TK-055).</remarks>
+/// <summary>Stand-in while the store has no certificate (<c>Fiscal:Signer</c> = <c>Simulated</c>): a hash instead of XMLDSig.
+/// Its documents are never sent; the real one is <see cref="CertificateEcfSigner"/>.</summary>
 internal sealed class SimulatedEcfSigner : IEcfSigner
 {
     public bool IsSimulated => true;
@@ -118,13 +124,30 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
             return FiscalErrors.ReferenceRequired;
         var business = await settings.GetBusinessProfileAsync(ct);
         if (!Rnc.IsValid(business.Rnc)) return FiscalErrors.MissingIssuerRnc;
+        if (!signer.IsSimulated && string.IsNullOrWhiteSpace(business.Address)) return FiscalErrors.MissingIssuerAddress;
+
+        DateOnly? modifiedIssuedOn = null;
+        if (doc.ModifiedENcf is not null)
+        {
+            var original = await db.Documents.Where(d => d.ENcf == doc.ModifiedENcf).Select(d => (DateTime?)d.SignedUtc).FirstOrDefaultAsync(ct);
+            if (original is null) return FiscalErrors.ReferenceNotFound;
+            modifiedIssuedOn = BusinessDay.Of(original.Value);
+        }
+        // The 31 needs the buyer's name: the DGII registry has it when the cashier only typed the RNC.
+        if (doc.BuyerName is null && doc.BuyerRnc is not null)
+            doc = doc with { BuyerName = await db.Taxpayers.Where(t => t.Rnc == doc.BuyerRnc).Select(t => t.Name).FirstOrDefaultAsync(ct) };
 
         var now = clock.GetUtcNow().UtcDateTime;
-        var number = await ReserveAsync(doc.Type, BusinessDay.Of(now), ct);
-        if (number is null) return FiscalErrors.NoSequence(doc.Type);
+        var reserved = await ReserveAsync(doc.Type, BusinessDay.Of(now), ct);
+        if (reserved is not { } r) return FiscalErrors.NoSequence(doc.Type);
+        var (number, expiresOn) = r;
 
-        var encf = ENcf.Format(doc.Type, number.Value);
-        var (xml, code) = signer.Sign(BuildXml(doc, encf, business, now));
+        var encf = ENcf.Format(doc.Type, number);
+        var unsigned = EcfXml.Build(doc, encf, business, now, expiresOn, modifiedIssuedOn);
+        // Validated before signing: an XML the DGII would reject is neither signed nor uses up a number (the sale rolls back).
+        // The simulated signer's documents are never sent, so they skip it (a store without an address can keep selling).
+        if (!signer.IsSimulated && EcfXml.ValidateUnsigned(unsigned, doc.Type) is [var first, ..]) return FiscalErrors.InvalidXml(first);
+        var (xml, code) = signer.Sign(unsigned);
 
         var document = new FiscalDocument
         {
@@ -139,50 +162,18 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
     }
 
     /// <summary>Takes the next number of the oldest valid range. The update locks the range row until commit; a rollback gives the number back.</summary>
-    private async Task<long?> ReserveAsync(EcfType type, DateOnly today, CancellationToken ct)
+    private async Task<(long Number, DateOnly ExpiresOn)?> ReserveAsync(EcfType type, DateOnly today, CancellationToken ct)
     {
         var candidates = await db.Sequences.Where(s => s.Type == type && s.Next <= s.To && s.ExpiresOn >= today)
-            .OrderBy(s => s.From).Select(s => s.Id).ToListAsync(ct);
-        foreach (var id in candidates)
+            .OrderBy(s => s.From).Select(s => new { s.Id, s.ExpiresOn }).ToListAsync(ct);
+        foreach (var c in candidates)
         {
-            var rows = await db.Sequences.Where(s => s.Id == id && s.Next <= s.To)
+            var rows = await db.Sequences.Where(s => s.Id == c.Id && s.Next <= s.To)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.Next, x => x.Next + 1), ct);
-            if (rows == 1) return await db.Sequences.Where(s => s.Id == id).Select(s => s.Next - 1).SingleAsync(ct);
+            if (rows == 1) return (await db.Sequences.Where(s => s.Id == c.Id).Select(s => s.Next - 1).SingleAsync(ct), c.ExpiresOn);
         }
         return null;
     }
-
-    // Element names are the DGII e-CF format: they stay as DGII defines them.
-    private static XDocument BuildXml(DocumentToIssue doc, string encf, BusinessProfile business, DateTime dateUtc)
-    {
-        var local = dateUtc + BusinessDay.Offset;
-        return new XDocument(new XElement("ECF",
-            new XElement("Encabezado",
-                new XElement("TipoeCF", (int)doc.Type),
-                new XElement("eNCF", encf),
-                new XElement("RNCEmisor", business.Rnc),
-                new XElement("RazonSocialEmisor", business.Name),
-                new XElement("FechaEmision", local.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture)),
-                new XElement("RNCComprador", doc.BuyerRnc),
-                new XElement("RazonSocialComprador", doc.BuyerName),
-                new XElement("NCFModificado", doc.ModifiedENcf),
-                new XElement("CodigoModificacion", (int?)doc.ModificationCode),
-                new XElement("TipoPago", (int)doc.PaymentType),
-                new XElement("MontoTotal", doc.Total.ToString("0.00", CultureInfo.InvariantCulture)),
-                new XElement("TotalITBIS", doc.Itbis.ToString("0.00", CultureInfo.InvariantCulture))),
-            new XElement("DetallesItems", doc.Lines.Select((l, i) => new XElement("Item",
-                new XElement("NumeroLinea", i + 1),
-                new XElement("NombreItem", l.Description),
-                new XElement("CantidadItem", l.Quantity.ToString("0.###", CultureInfo.InvariantCulture)),
-                new XElement("PrecioUnitarioItem", l.UnitPrice.ToString("0.00", CultureInfo.InvariantCulture)),
-                new XElement("DescuentoMonto", l.Discount.ToString("0.00", CultureInfo.InvariantCulture)),
-                new XElement("IndicadorFacturacion", BillingIndicator(l.Rate)),
-                new XElement("MontoItem", l.Total.ToString("0.00", CultureInfo.InvariantCulture))))),
-            new XElement("FechaHoraFirma", local.ToString("dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture))));
-    }
-
-    // DGII billing indicator: 1 = 18 %, 2 = 16 %, 3 = 0 %, 4 = exempt.
-    private static int BillingIndicator(ItbisRate r) => r switch { ItbisRate.General18 => 1, ItbisRate.Reduced16 => 2, ItbisRate.Zero => 3, _ => 4 };
 
     private static string QrUrl(string? issuerRnc, DocumentToIssue doc, string encf, DateTime dateUtc, string code)
     {
