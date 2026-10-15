@@ -57,6 +57,9 @@ internal static class GrantSupervisorApproval
                 Permission = c.Permission, ResourceId = c.ResourceId, ExpiresUtc = now + SupervisorApproval.Duration,
             };
             db.Approvals.Add(approval);
+            // The only server trace of actions that happen at the register alone (removing a line, opening the drawer).
+            await audit.RecordAsync("approval.granted", "SupervisorApproval", approval.Id,
+                new { c.Permission, c.ResourceId, Supervisor = supervisor.Id, Requester = me.UserId }, ct);
             return new Response(approval.Id, supervisor.Name, approval.ExpiresUtc, null);
         }
     }

@@ -34,6 +34,8 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         (await Send<List<C.SequenceAlert>>(api, HttpMethod.Get, "/api/fiscal/alerts")).ShouldNotBeEmpty();
         (await Send<C.FiscalQueue>(api, HttpMethod.Get, "/api/fiscal/queue")).Pending.ShouldBe(0);
         await Send<C.LicenseFeatures>(api, HttpMethod.Get, "/api/settings/features");
+        await Send<C.Empty>(api, HttpMethod.Put, "/api/settings/approvals", new C.ApprovalPolicy(["sales.remove-line", "sales.void"]));
+        (await Send<List<C.ApprovalRule>>(api, HttpMethod.Get, "/api/settings/approvals")).Where(r => r.Required).Select(r => r.Permission).ShouldBe(["sales.remove-line", "sales.void"]);
         (await Send<List<C.User>>(api, HttpMethod.Get, "/api/identity/users")).ShouldHaveSingleItem().Role.ShouldNotBeNullOrEmpty();
         (await Send<C.RoleList>(api, HttpMethod.Get, "/api/identity/roles")).AvailablePermissions.ShouldNotBeEmpty();
         (await Send<List<C.Device>>(api, HttpMethod.Get, "/api/identity/devices")).ShouldHaveSingleItem().Name.ShouldBe("PC principal");

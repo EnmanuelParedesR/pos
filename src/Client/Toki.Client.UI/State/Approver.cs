@@ -47,6 +47,8 @@ public sealed class Approver
         "register.approve-close" => "Cerrar la caja",
         "register.open-drawer" => "Abrir la gaveta",
         "inventory.adjust" => "Aplicar un conteo físico",
+        "credit.manage" => "Anular un abono",
+        "sales.remove-line" => "Quitar líneas o anular la venta en curso",
         _ => permission,
     };
 }

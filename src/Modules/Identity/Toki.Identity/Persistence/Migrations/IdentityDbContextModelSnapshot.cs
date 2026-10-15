@@ -107,13 +107,13 @@ namespace Toki.Identity.Persistence.Migrations
                         {
                             Id = new Guid("0199e000-0000-7000-8000-000000000001"),
                             Name = "Administrador",
-                            Permissions = "users.manage,devices.manage,settings.manage,products.manage,prices.change,inventory.view,inventory.adjust,inventory.count,inventory.transfer,register.operate,register.withdraw,register.approve-close,register.open-drawer,sales.create,sales.void,sales.return,sales.large-discount,sales.price-override,purchasing.manage,customers.manage,credit.manage,credit.exceed-limit,fiscal.manage,reports.view"
+                            Permissions = "users.manage,devices.manage,settings.manage,products.manage,prices.change,inventory.view,inventory.adjust,inventory.count,inventory.transfer,register.operate,register.withdraw,register.approve-close,register.open-drawer,sales.create,sales.void,sales.return,sales.large-discount,sales.price-override,sales.remove-line,purchasing.manage,customers.manage,credit.manage,credit.exceed-limit,fiscal.manage,reports.view"
                         },
                         new
                         {
                             Id = new Guid("0199e000-0000-7000-8000-000000000002"),
                             Name = "Supervisor",
-                            Permissions = "products.manage,prices.change,inventory.view,inventory.adjust,inventory.count,inventory.transfer,register.operate,register.withdraw,register.approve-close,register.open-drawer,sales.create,sales.void,sales.return,sales.large-discount,sales.price-override,purchasing.manage,customers.manage,credit.manage,credit.exceed-limit,reports.view"
+                            Permissions = "products.manage,prices.change,inventory.view,inventory.adjust,inventory.count,inventory.transfer,register.operate,register.withdraw,register.approve-close,register.open-drawer,sales.create,sales.void,sales.return,sales.large-discount,sales.price-override,sales.remove-line,purchasing.manage,customers.manage,credit.manage,credit.exceed-limit,reports.view"
                         },
                         new
                         {

@@ -30,6 +30,9 @@ public sealed record RoleList(Role[] Roles, string[] AvailablePermissions);
 // Settings
 public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent);
 public sealed record LicenseFeatures(string Status, string? Plan, DateTime? ExpiresUtc, string[] Enabled, int Registers);
+/// <summary>One action the store may free from the supervisor's PIN (TK-210); the list comes in screen order.</summary>
+public sealed record ApprovalRule(string Permission, bool Required);
+public sealed record ApprovalPolicy(string[] Required);
 public sealed record BackupFile(string FileName, long Bytes, DateTime DateUtc);
 
 // Inventory

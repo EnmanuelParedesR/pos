@@ -88,6 +88,18 @@
                     </form>
                 </div>
             </section>
+            <form class="esc-card esc-setting" @onsubmit="SaveApprovalsAsync" novalidate>
+                <div class="esc-setting__about"><h2>Autorizaciones</h2><p>Pedir autorización de supervisor para… Si nadie supervisa (por ejemplo, un colmado de una persona), apáguelas: quien atiende lo hace solo y queda igual en la auditoría.</p></div>
+                <div class="esc-setting__body">
+                    <fieldset class="esc-col" style="gap:0;border:0;padding:0;margin:0" aria-label="Pedir autorización de supervisor para">
+                        @foreach (var rule in _approvals)
+                        {
+                            <label class="esc-check"><input type="checkbox" role="switch" checked="@rule.Required" @onchange="e => _approvals[_approvals.IndexOf(rule)] = rule with { Required = (bool)e.Value! }" /> @Approver.Explain(rule.Permission)</label>
+                        }
+                    </fieldset>
+                    <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Guardar autorizaciones</Button></div>
+                </div>
+            </form>
             break;
 
         case Section.FiscalSequences:
@@ -414,6 +426,7 @@
     private bool _sending;
     private BusinessForm? _business;
     private List<RegisterInfo> _registers = [];
+    private List<ApprovalRule> _approvals = [];
     private string? _newRegister, _newDevice, _passphrase, _userName, _userCode, _userPin, _seqFrom, _seqTo;
     private string _seqType = "Consumer32";
     private DateOnly _seqExpires = Format.Today.AddYears(1);
@@ -453,6 +466,7 @@
             case Section.Registers:
                 _registers = (await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers")).Value ?? [];
                 _features ??= (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value;
+                _approvals = (await Api.GetAsync<List<ApprovalRule>>("/api/settings/approvals")).Value ?? [];
                 break;
             case Section.FiscalSequences:
                 _sequences = (await Api.GetAsync<List<EcfSequence>>("/api/fiscal/sequences")).Value ?? [];
@@ -568,6 +582,14 @@
         if (_errors.Count > 0) return;
         var r = await Api.PutAsync<Empty>("/api/settings/business", new BusinessProfile(f.Name.Trim(), Clean(f.Rnc), Clean(f.Address), Clean(f.Phone), Clean(f.ReceiptFooter), Format.ParseNumber(f.DiscountCap) ?? 0));
         ShowResult(r.Problem, "Datos del negocio guardados.");
+    }
+
+    private async Task SaveApprovalsAsync()
+    {
+        _sending = true;
+        var r = await Api.PutAsync<Empty>("/api/settings/approvals", new ApprovalPolicy([.. _approvals.Where(a => a.Required).Select(a => a.Permission)]));
+        _sending = false;
+        ShowResult(r.Problem, "Autorizaciones guardadas. Aplican de inmediato en todas las cajas.");
     }
 
     private async Task CreateRegisterAsync()

@@ -26,7 +26,7 @@ internal sealed class Role
             Id = SupervisorId, Name = "Supervisor",
             Permissions = [P.ProductsManage, P.PricesChange, P.InventoryView, P.InventoryAdjust, P.InventoryCount, P.InventoryTransfer,
                 P.RegisterOperate, P.RegisterWithdraw, P.RegisterApproveClose, P.RegisterOpenDrawer,
-                P.SalesCreate, P.SalesVoid, P.SalesReturn, P.SalesLargeDiscount, P.SalesPriceOverride,
+                P.SalesCreate, P.SalesVoid, P.SalesReturn, P.SalesLargeDiscount, P.SalesPriceOverride, P.SalesRemoveLine,
                 P.PurchasingManage, P.CustomersManage, P.CreditManage, P.CreditExceedLimit, P.ReportsView],
         };
         yield return new Role
