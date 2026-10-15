@@ -19,6 +19,9 @@
     <ProjectReference Include="..\..\Modules\CashRegister\Toki.CashRegister.Contracts\Toki.CashRegister.Contracts.csproj" />
     <ProjectReference Include="..\..\Modules\Inventory\Toki.Inventory.Contracts\Toki.Inventory.Contracts.csproj" />
     <ProjectReference Include="..\..\Modules\Fiscal\Toki.Fiscal.Contracts\Toki.Fiscal.Contracts.csproj" />
+    <ProjectReference Include="..\..\Modules\Identity\Toki.Identity.Contracts\Toki.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\Modules\Purchasing\Toki.Purchasing.Contracts\Toki.Purchasing.Contracts.csproj" />
+    <ProjectReference Include="..\..\Modules\Customers\Toki.Customers.Contracts\Toki.Customers.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.Cloud.Tests" />

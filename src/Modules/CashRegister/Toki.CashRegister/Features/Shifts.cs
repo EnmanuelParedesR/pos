@@ -25,12 +25,13 @@ internal static class Registers
         public Validator() => RuleFor(c => c.Name).NotEmpty().MaximumLength(60);
     }
 
-    internal sealed class Handler(CashRegisterDbContext db, IAuditLog audit) : ICommandHandler<Create, Response>
+    internal sealed class Handler(CashRegisterDbContext db, IOutbox outbox, IAuditLog audit) : ICommandHandler<Create, Response>
     {
         public async Task<Result<Response>> Handle(Create c, CancellationToken ct)
         {
             var register = new Register { Id = Guid.CreateVersion7(), Name = c.Name.Trim() };
             db.Registers.Add(register);
+            outbox.Add(new RegisterChangedV1(register.Id, register.Name));
             await audit.RecordAsync("cash.create-register", "Register", register.Id, c, ct);
             return new Response(register.Id);
         }

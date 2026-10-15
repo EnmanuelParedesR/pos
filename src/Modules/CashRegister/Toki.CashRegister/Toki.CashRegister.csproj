@@ -2,6 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\Toki.BuildingBlocks\Toki.BuildingBlocks.csproj" />
     <ProjectReference Include="..\Toki.CashRegister.Contracts\Toki.CashRegister.Contracts.csproj" />
+    <ProjectReference Include="..\..\Sync\Toki.Sync.Contracts\Toki.Sync.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.UnitTests" />

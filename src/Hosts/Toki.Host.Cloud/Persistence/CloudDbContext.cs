@@ -30,6 +30,15 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<ReplicaStockMovement> StockMovements => Set<ReplicaStockMovement>();
     public DbSet<ReplicaPriceChange> PriceChanges => Set<ReplicaPriceChange>();
     public DbSet<ReplicaFiscalDocument> FiscalDocuments => Set<ReplicaFiscalDocument>();
+    public DbSet<ReplicaStoreUser> StoreUsers => Set<ReplicaStoreUser>();
+    public DbSet<ReplicaRegister> Registers => Set<ReplicaRegister>();
+    public DbSet<ReplicaReturnLine> ReturnLines => Set<ReplicaReturnLine>();
+    public DbSet<ReplicaPurchase> Purchases => Set<ReplicaPurchase>();
+    public DbSet<ReplicaPurchaseVoid> PurchaseVoids => Set<ReplicaPurchaseVoid>();
+    public DbSet<ReplicaCustomerCharge> CustomerCharges => Set<ReplicaCustomerCharge>();
+    public DbSet<ReplicaCustomerPayment> CustomerPayments => Set<ReplicaCustomerPayment>();
+    public DbSet<ReplicaOpenedShift> OpenedShifts => Set<ReplicaOpenedShift>();
+    public DbSet<ReplicaCashMovement> CashMovements => Set<ReplicaCashMovement>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -145,6 +154,63 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(d => d.ENcf).HasMaxLength(20);
             e.Property(d => d.Type).HasMaxLength(30);
             e.HasIndex(d => new { d.TenantId, d.IssuedUtc });
+        });
+        builder.Entity<ReplicaStoreUser>(e =>
+        {
+            e.ToTable("StoreUsers", "replica");
+            e.HasKey(u => new { u.TenantId, u.Id });
+            e.Property(u => u.Name).HasMaxLength(100);
+        });
+        builder.Entity<ReplicaRegister>(e =>
+        {
+            e.ToTable("Registers", "replica");
+            e.HasKey(r => new { r.TenantId, r.Id });
+            e.Property(r => r.Name).HasMaxLength(60);
+        });
+        builder.Entity<ReplicaReturnLine>(e =>
+        {
+            e.ToTable("ReturnLines", "replica");
+            e.HasKey(l => new { l.TenantId, l.ReturnId, l.LineNumber });
+            e.Property(l => l.Description).HasMaxLength(200);
+        });
+        builder.Entity<ReplicaPurchase>(e =>
+        {
+            e.ToTable("Purchases", "replica");
+            e.HasKey(p => new { p.TenantId, p.Id });
+            e.Property(p => p.Ncf).HasMaxLength(20);
+            e.HasIndex(p => new { p.TenantId, p.PostedUtc });
+        });
+        builder.Entity<ReplicaPurchaseVoid>(e =>
+        {
+            e.ToTable("PurchaseVoids", "replica");
+            e.HasKey(v => new { v.TenantId, v.PurchaseId });
+            e.Property(v => v.Reason).HasMaxLength(500);
+        });
+        builder.Entity<ReplicaCustomerCharge>(e =>
+        {
+            e.ToTable("CustomerCharges", "replica");
+            e.HasKey(c => new { c.TenantId, c.SaleId });
+            e.HasIndex(c => new { c.TenantId, c.CustomerId });
+        });
+        builder.Entity<ReplicaCustomerPayment>(e =>
+        {
+            e.ToTable("CustomerPayments", "replica");
+            e.HasKey(p => new { p.TenantId, p.Id });
+            e.HasIndex(p => new { p.TenantId, p.CustomerId });
+        });
+        builder.Entity<ReplicaOpenedShift>(e =>
+        {
+            e.ToTable("OpenedShifts", "replica");
+            e.HasKey(s => new { s.TenantId, s.ShiftId });
+            e.HasIndex(s => new { s.TenantId, s.OpenedUtc });
+        });
+        builder.Entity<ReplicaCashMovement>(e =>
+        {
+            e.ToTable("CashMovements", "replica");
+            e.HasKey(m => new { m.TenantId, m.EventId });
+            e.Property(m => m.Type).HasMaxLength(30);
+            e.Property(m => m.Method).HasMaxLength(30);
+            e.HasIndex(m => new { m.TenantId, m.ShiftId });
         });
     }
 
@@ -364,6 +430,113 @@ public sealed class ReplicaPriceChange : IReplicaRow
     public decimal? OldWholesalePrice { get; set; }
     public decimal? NewWholesalePrice { get; set; }
     public DateTime ChangedUtc { get; set; }
+}
+
+/// <summary>A store user's display name (cashiers in the panel). No PIN, code or permissions ever reach the cloud.</summary>
+public sealed class ReplicaStoreUser : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid Id { get; set; }
+    public Guid StoreId { get; set; }
+    public string Name { get; set; } = "";
+    public bool Active { get; set; }
+    /// <summary>When the applied event happened: an older one arriving later never overwrites a newer name.</summary>
+    public DateTime ChangedUtc { get; set; }
+}
+
+public sealed class ReplicaRegister : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid Id { get; set; }
+    public Guid StoreId { get; set; }
+    public string Name { get; set; } = "";
+    public DateTime ChangedUtc { get; set; }
+}
+
+/// <summary>A returned line (ReturnRecordedV2 on). Returns uploaded as V1 have no lines.</summary>
+public sealed class ReplicaReturnLine : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid ReturnId { get; set; }
+    public int LineNumber { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid ProductId { get; set; }
+    public Guid? PresentationId { get; set; }
+    public string Description { get; set; } = "";
+    public decimal Quantity { get; set; }
+    public decimal Total { get; set; }
+    public decimal Itbis { get; set; }
+    public decimal UnitCost { get; set; }
+}
+
+public sealed class ReplicaPurchase : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid Id { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid SupplierId { get; set; }
+    public string Ncf { get; set; } = "";
+    public decimal Subtotal { get; set; }
+    public decimal Itbis { get; set; }
+    public decimal Total { get; set; }
+    public bool OnCredit { get; set; }
+    public DateTime PostedUtc { get; set; }
+}
+
+public sealed class ReplicaPurchaseVoid : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid PurchaseId { get; set; }
+    public Guid StoreId { get; set; }
+    public string Reason { get; set; } = "";
+    public DateTime VoidedUtc { get; set; }
+}
+
+/// <summary>A credit (on account) sale charged to a customer. One per sale.</summary>
+public sealed class ReplicaCustomerCharge : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid SaleId { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid CustomerId { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime ChargedUtc { get; set; }
+}
+
+/// <summary>What a customer paid on their credit at the register (the amount applied to their charges).</summary>
+public sealed class ReplicaCustomerPayment : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid Id { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid CustomerId { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime PaidUtc { get; set; }
+}
+
+public sealed class ReplicaOpenedShift : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid ShiftId { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid RegisterId { get; set; }
+    public Guid CashierId { get; set; }
+    public decimal OpeningFloat { get; set; }
+    public DateTime OpenedUtc { get; set; }
+}
+
+/// <summary>Keyed by the event: the movement has no id in CashMovementRecordedV1.</summary>
+public sealed class ReplicaCashMovement : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid EventId { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid ShiftId { get; set; }
+    public string Type { get; set; } = "";
+    public string Method { get; set; } = "";
+    public decimal Amount { get; set; }
+    public Guid? ReferenceId { get; set; }
+    public DateTime OccurredUtc { get; set; }
 }
 
 public sealed class ReplicaFiscalDocument : IReplicaRow

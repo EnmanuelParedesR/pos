@@ -62,16 +62,16 @@ public sealed class IngestTests(CloudApp app) : IClassFixture<CloudApp>
     public async Task An_event_type_without_projector_is_stored_but_not_applied()
     {
         var node = await app.StoreWithNodeAsync(await app.OwnerAsync());
-        var purchase = new PurchasePostedV1(Guid.CreateVersion7(), Guid.CreateVersion7(), "B0100000001", 1000, 180, 1180, false);
+        var payment = new SupplierPaymentRecordedV1(Guid.CreateVersion7(), Guid.CreateVersion7(), 1180);
 
-        (await node.SendAsync(Events.Envelope(purchase, app.Clock.GetUtcNow().UtcDateTime))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await node.SendAsync(Events.Envelope(payment, app.Clock.GetUtcNow().UtcDateTime))).StatusCode.ShouldBe(HttpStatusCode.OK);
         await app.ApplyAsync();
 
-        var row = await app.InDbAsync(db => db.Inbox.SingleAsync(i => i.EventId == purchase.EventId));
-        row.Type.ShouldBe("Toki.Purchasing.Contracts.PurchasePostedV1");
+        var row = await app.InDbAsync(db => db.Inbox.SingleAsync(i => i.EventId == payment.EventId));
+        row.Type.ShouldBe("Toki.Purchasing.Contracts.SupplierPaymentRecordedV1");
         row.AppliedUtc.ShouldBeNull();
         row.Attempts.ShouldBe(0);
-        JsonDocument.Parse(row.Payload).RootElement.GetProperty("ncf").GetString().ShouldBe("B0100000001");
+        JsonDocument.Parse(row.Payload).RootElement.GetProperty("amount").GetDecimal().ShouldBe(1180);
     }
 
     [Fact]

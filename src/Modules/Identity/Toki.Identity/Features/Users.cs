@@ -7,6 +7,7 @@ using Toki.BuildingBlocks.Endpoints;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
+using Toki.Identity.Contracts;
 using Toki.Identity.Domain;
 using Toki.Identity.Persistence;
 using Toki.SharedKernel;
@@ -28,7 +29,7 @@ internal static class CreateUser
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, IUserContext me) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -39,6 +40,7 @@ internal static class CreateUser
             var user = new User { Id = Guid.CreateVersion7(), Name = c.Name.Trim(), Code = User.NormalizeCode(c.Code), RoleId = c.RoleId };
             user.ChangePin(c.Pin);
             db.Users.Add(user);
+            outbox.Add(new UserProfileChangedV1(user.Id, user.Name, user.IsActive));
             await audit.RecordAsync("identity.create-user", "User", user.Id, new { user.Name, user.Code, user.RoleId }, ct);
             return new Response(user.Id);
         }
@@ -67,7 +69,7 @@ internal static class UpdateUser
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, IUserContext me, TimeProvider clock) : ICommandHandler<Command, Ok>
+    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me, TimeProvider clock) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
@@ -88,6 +90,7 @@ internal static class UpdateUser
                 var now = clock.GetUtcNow().UtcDateTime;
                 await db.Sessions.Where(s => s.UserId == c.Id && s.ClosedUtc == null).ExecuteUpdateAsync(s => s.SetProperty(x => x.ClosedUtc, now), ct);
             }
+            outbox.Add(new UserProfileChangedV1(user.Id, user.Name, user.IsActive));
             await audit.RecordAsync("identity.update-user", "User", user.Id,
                 new { user.Name, user.RoleId, user.IsActive, PinChanged = c.Pin is not null }, ct);
             return Ok.Value;

@@ -7,6 +7,7 @@ using Toki.BuildingBlocks.Security;
 using Toki.CashRegister.Contracts;
 using Toki.CashRegister.Domain;
 using Toki.SharedKernel;
+using Toki.Sync.Contracts;
 
 namespace Toki.CashRegister;
 
@@ -18,7 +19,16 @@ public static class CashRegisterModule
         services.AddScoped<CashRegisterOperations>();
         services.AddScoped<ICashRegisterOperations>(sp => sp.GetRequiredService<CashRegisterOperations>());
         services.AddScoped<ICashRegisterReports, CashRegisterReports>();
+        services.AddScoped<ICloudSnapshot, RegisterSnapshot>();
         return services;
+    }
+}
+
+internal sealed class RegisterSnapshot(CashRegisterDbContext db, IOutbox outbox) : ICloudSnapshot
+{
+    public async Task EnqueueAsync(CancellationToken ct)
+    {
+        foreach (var r in await db.Registers.AsNoTracking().ToListAsync(ct)) outbox.Add(new RegisterChangedV1(r.Id, r.Name));
     }
 }
 

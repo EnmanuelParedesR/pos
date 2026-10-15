@@ -154,7 +154,7 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-121 | Abono de un cliente desde la caja | ⬜ |
 | TK-122 | Fijar el certificado del nodo en el cliente al emparejar (con TK-091) | ⬜ |
 | TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real; incluye las de R7 #5 (escaneo ignorado en efectivo/PIN) y #8 (el foco nunca se pierde) | ⬜ |
-| TK-124 | Prueba de contratos en `Toki.IntegrationTests`: llamar a los endpoints reales y deserializar cada respuesta con `TokiApi.Json` en los records de `Contracts.cs` (R7 #13b) | ⬜ |
+| TK-124 | Prueba de contratos en `Toki.IntegrationTests`: llamar a los endpoints reales y deserializar cada respuesta con `TokiApi.Json` en los records de `Contracts.cs` (R7 #13b) | ✅ `ClientContractTests`: el flujo de la caja de punta a punta con los records del cliente; falla si llega un campo no anulable vacío (también en registros anidados) |
 | TK-125 | Crítica de diseño (`docs/critica-diseno.md`) y canvas actualizado: logo C5, marca fija, 7 pantallas nuevas, fase 2 marcada | ✅ |
 | TK-126 | Reescribir todo el código en inglés (UI en español): glosario `docs/glosario-codigo.md`, mapas `docs/rename-map*.md`, migraciones nuevas | ✅ |
 | TK-127 | Pruebas contra SQL Server Express local (`TOKI_TEST_SQLSERVER`) y arreglo de `AbonosFiado.Origen` (columna corta) con prueba de guarda | ✅ |
@@ -216,9 +216,9 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-162 | Importar el padrón en segundo plano o con `SqlBulkCopy` si con el archivo real tarda más de un minuto (R5 #10) | ⬜ |
 | TK-163 | Fijar la imagen de SQL Server de CI con etiqueta fechada (R1) | ⬜ |
 | TK-164 | Reembolso en efectivo con centavos (R3) | ⬜ |
-| TK-165 | Nombres de cajeros y cajas en la nube (evento desde la tienda) para el panel y el asistente | ⬜ |
-| TK-166 | Devoluciones con líneas en `ReturnRecordedV1` para restarlas en los más vendidos | ⬜ |
-| TK-167 | Proyectar en la réplica compras, clientes, apertura de turno y movimientos de caja | ⬜ |
+| TK-165 | Nombres de cajeros y cajas en la nube (evento desde la tienda) para el panel y el asistente | ✅ `UserProfileChangedV1` y `RegisterChangedV1`, foto inicial al conectar; `cashierName`/`registerName` en el panel y el asistente |
+| TK-166 | Devoluciones con líneas en `ReturnRecordedV1` para restarlas en los más vendidos | ✅ `ReturnRecordedV2` con líneas (V1 se sigue proyectando) |
+| TK-167 | Proyectar en la réplica compras, clientes, apertura de turno y movimientos de caja | ✅ Más `GET /api/panel/receivables` y la herramienta `receivables` del asistente. Pendiente: abonos anulados y nombres de clientes no tienen evento |
 | TK-168 | Precio mayorista en la caja (R7 #16) | ⬜ |
 | TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | ⬜ |
 | TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ⬜ |

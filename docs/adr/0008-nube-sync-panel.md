@@ -33,11 +33,37 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 - Las proyecciones hacen *upsert* por id; nunca suman sobre lo ya aplicado.
 - Lo que manda el nodo: `type` es el nombre completo del evento en .NET (por ejemplo `Toki.Sales.Contracts.SaleRecordedV1`), `payload` es el JSON del evento como objeto (camelCase, enums como texto), no como texto escapado, y `occurredUtc` va en ISO 8601 con `Z`. El cuerpo va comprimido (`Content-Encoding: gzip`), así que la nube lo descomprime (`UseRequestDecompression`). Solo se marca como subido lo que viene en `accepted`; una respuesta que no sea 200 deja todo el lote pendiente.
 
-**Réplica (V1)**: ventas (cabecera, líneas, pagos), anulaciones, devoluciones, turnos cerrados (Z), movimientos de inventario, cambios de precio y documentos fiscales. Toda tabla lleva `TenantId` como primera columna de sus índices.
+**Réplica (V1)**: ventas (cabecera, líneas, pagos), anulaciones, devoluciones con sus líneas, turnos abiertos y cerrados (Z), movimientos de caja, movimientos de inventario, cambios de precio, documentos fiscales, compras y sus anulaciones, cargos a crédito (fiado) y abonos de clientes, y los nombres de usuarios y cajas. Toda tabla lleva `TenantId` como primera columna de sus índices. `SupplierPaymentRecordedV1` todavía se guarda sin aplicar.
+
+**Eventos que proyecta la nube** (nombre completo en .NET → tabla de `replica`):
+
+| Evento | Tabla | Notas |
+|---|---|---|
+| `Toki.Sales.Contracts.SaleRecordedV1` | `Sales`, `SaleLines`, `SalePayments` | |
+| `Toki.Sales.Contracts.SaleVoidedV1` | `SaleVoids` | |
+| `Toki.Sales.Contracts.ReturnRecordedV1` | `Returns` | Sin líneas. Ya no se emite; se sigue aplicando por lo que ya se subió. |
+| `Toki.Sales.Contracts.ReturnRecordedV2` | `Returns`, `ReturnLines` | V1 + `lines: [{ productId, presentationId, description, quantity, total, itbis, cost }]` (cantidad en la unidad de la línea vendida, `total` con ITBIS, `cost` unitario como en `SaleLineV1`). Los más vendidos restan lo devuelto el día de la devolución. |
+| `Toki.CashRegister.Contracts.ShiftOpenedV1` | `OpenedShifts` | |
+| `Toki.CashRegister.Contracts.ShiftClosedV1` | `ClosedShifts` | |
+| `Toki.CashRegister.Contracts.CashMovementRecordedV1` | `CashMovements` | Por `EventId`: el movimiento no trae id propio. |
+| `Toki.CashRegister.Contracts.RegisterChangedV1` | `Registers` | `{ registerId, name }`. Al crear una caja. |
+| `Toki.Identity.Contracts.UserProfileChangedV1` | `StoreUsers` | `{ userId, name, active }`. Al crear o editar un usuario y en el asistente inicial. Nunca lleva PIN, código ni permisos. |
+| `Toki.Inventory.Contracts.StockMovementRecordedV1` | `StockMovements` | |
+| `Toki.Inventory.Contracts.PriceChangedV1` | `PriceChanges` | Por `EventId`. |
+| `Toki.Fiscal.Contracts.FiscalDocumentIssuedV1` | `FiscalDocuments` | |
+| `Toki.Purchasing.Contracts.PurchasePostedV1` / `PurchaseVoidedV1` | `Purchases`, `PurchaseVoids` | |
+| `Toki.Customers.Contracts.OnAccountChargeRecordedV1` | `CustomerCharges` | Uno por venta. |
+| `Toki.Customers.Contracts.CustomerPaymentRecordedV1` | `CustomerPayments` | |
+
+- Los nombres (usuarios y cajas) se quedan con el evento más reciente según `occurredUtc`: uno viejo que llegue tarde no deshace un cambio.
+- **Foto inicial**: al conectar la tienda (`/api/sync/connect`), en la misma transacción, Identity y CashRegister escriben en el outbox un `UserProfileChangedV1` por cada usuario y un `RegisterChangedV1` por cada caja (`ICloudSnapshot` en `Toki.Sync.Contracts`). Así una tienda que se conecta tarde también manda los nombres que ya existían. Se repite en cada conexión; no hace daño.
+- Un evento publicado no se cambia: si su forma cambia, se crea `V2` y la nube proyecta las dos versiones.
 
 **Panel**: ASP.NET Core Identity con *bearer tokens* (`MapIdentityApi`) para los usuarios del panel. Cada usuario pertenece a un tenant, y todas las consultas filtran por el tenant del token.
+- Nombres: `GET /api/panel/sales/by-cashier` trae `cashierName`; `GET /api/panel/shifts` trae `registerName` y `cashierName`; los avisos de `GET /api/panel/summary` (`issues`) de tipo `ShiftDifference` traen `cashierName` y `registerName`, y el mensaje incluye el nombre del cajero. Son `null` mientras la tienda no haya mandado el nombre.
+- `GET /api/panel/receivables?storeId=&limit=10` → `{ total, customerCount, topDebtors: [{ customerId, storeId, debt }] }`: el fiado de hoy (cargos de ventas no anuladas, menos devoluciones a la cuenta de esas ventas, menos abonos). `shortcut:` un abono anulado no manda evento, así que después de uno la deuda sale más baja; los clientes salen por id (no hay evento con su nombre).
 
-**Asistente**: `POST /api/assistant/ask { question, history }`. El modelo recibe herramientas de solo lectura (ventas por día, productos más vendidos, cuadres de turnos, ventas por cajero, mezcla de pagos y documentos fiscales pendientes), cada una con un rango de fechas máximo. Contesta en español con cifras en RD$. Sin datos personales en los logs.
+**Asistente**: `POST /api/assistant/ask { question, history }`. El modelo recibe herramientas de solo lectura (ventas por día, productos más vendidos, cuadres de turnos, ventas por cajero, mezcla de pagos, estado de la sincronización y cuentas por cobrar), cada una con un rango de fechas máximo. Las respuestas de las herramientas traen los nombres de cajeros y cajas, así que el asistente dice "Yudelka" y no un id. Contesta en español con cifras en RD$. Sin datos personales en los logs.
 
 **Relevo e-CF (DGII)**
 - El nodo tiene dos proveedores de `IEcfProvider`: `Simulated` (por defecto) y `Relay`, que manda el documento firmado a `POST /relay/v1/ecf` en la nube.

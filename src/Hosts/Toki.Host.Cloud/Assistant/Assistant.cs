@@ -104,6 +104,12 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries)
         Tool("payment_mix", "Cómo pagaron los clientes: efectivo, tarjeta, transferencia, fiado o saldo a favor, con cantidad y monto."),
         new("sync_status", "Hora del último dato recibido de cada tienda y si hay datos pendientes de procesar.",
             new JsonObject { ["type"] = "object", ["properties"] = new JsonObject() }),
+        new("receivables", "Cuentas por cobrar (fiado) de hoy: total que deben los clientes, cuántos deben y los que más deben (por id de cliente).",
+            new JsonObject
+            {
+                ["type"] = "object",
+                ["properties"] = new JsonObject { ["storeId"] = new JsonObject { ["type"] = "string", ["description"] = "Id de una tienda; vacío para todas." } },
+            }),
     ];
 
     public async Task<string> AskAsync(Guid tenantId, string question, IReadOnlyList<AssistantTurn> history, CancellationToken ct)
@@ -142,6 +148,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries)
 
         return call.Name switch
         {
+            "receivables" => Serialize(await queries.ReceivablesAsync(tenantId, storeId, 10, ct)),
             "sales_by_day" => Serialize(await queries.SalesByDayAsync(f, ct)),
             "top_products" => Serialize(await queries.TopProductsAsync(f, args.TryGetProperty("limit", out var l) && l.TryGetInt32(out var n) ? n : 10, ct)),
             "shift_differences" => Serialize(await queries.ShiftsAsync(f, onlyDifferences: false, ct)),
@@ -163,7 +170,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries)
             Las fechas son días de la tienda (hora de República Dominicana, UTC−4). Hoy es {today.ToString("dddd d 'de' MMMM 'de' yyyy", es)} ({today:yyyy-MM-dd}).
             Cada consulta cubre como máximo {MaxDays} días. Sin storeId se suman todas las tiendas.
             Tiendas: {list}.
-            Los cajeros y las cajas solo se conocen por su id: no tienes sus nombres.
+            Nombra a los cajeros y las cajas por su nombre (cashierName, registerName). Si el nombre viene vacío, la tienda todavía no lo envió: di "un cajero" o "una caja", nunca el id.
             """;
     }
 

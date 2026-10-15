@@ -11,15 +11,22 @@ public sealed record PanelFilter(Guid TenantId, Guid? StoreId, DateOnly From, Da
 
 public sealed record HourSales(int Hour, int Count, decimal Total);
 public sealed record PaymentMix(string Method, int Count, decimal Amount);
-public sealed record PanelIssue(string Kind, Guid StoreId, string StoreName, Guid? ReferenceId, decimal? Amount, DateTime? OccurredUtc, string Message);
+/// <param name="CashierName">Shift issues only, once the store sent the user's name (UserProfileChangedV1); otherwise null.</param>
+public sealed record PanelIssue(string Kind, Guid StoreId, string StoreName, Guid? ReferenceId, decimal? Amount, DateTime? OccurredUtc, string Message,
+    string? CashierName = null, string? RegisterName = null);
 public sealed record Summary(
     DateOnly Date, decimal SalesTotal, int SalesCount, decimal AverageTicket, decimal DiscountTotal, decimal ItbisTotal, decimal ReturnsTotal, decimal NetTotal,
     int VoidedCount, IReadOnlyList<HourSales> ByHour, IReadOnlyList<PaymentMix> PaymentMix, IReadOnlyList<PanelIssue> Issues, DateTime? LastEventUtc);
 public sealed record DaySales(DateOnly Date, int Count, decimal Total, decimal Discount, decimal Itbis, decimal Returns, decimal Net, int VoidedCount);
 public sealed record ProductSales(Guid ProductId, string Description, decimal Quantity, decimal Total, decimal Profit);
+/// <param name="CashierName">Null until the store sent the name (names come from UserProfileChangedV1 and RegisterChangedV1).</param>
 public sealed record ShiftDifference(
-    Guid ShiftId, Guid StoreId, string StoreName, Guid RegisterId, Guid CashierId, int ZNumber, decimal ExpectedCash, decimal CountedCash, decimal Difference, DateTime ClosedUtc);
-public sealed record CashierSales(Guid CashierId, int Count, decimal Total, int VoidedCount);
+    Guid ShiftId, Guid StoreId, string StoreName, Guid RegisterId, Guid CashierId, int ZNumber, decimal ExpectedCash, decimal CountedCash, decimal Difference, DateTime ClosedUtc,
+    string? RegisterName = null, string? CashierName = null);
+public sealed record CashierSales(Guid CashierId, int Count, decimal Total, int VoidedCount, string? CashierName = null);
+public sealed record CustomerDebt(Guid CustomerId, Guid StoreId, decimal Debt);
+/// <param name="Total">What all customers owe on credit (fiado) right now.</param>
+public sealed record Receivables(decimal Total, int CustomerCount, IReadOnlyList<CustomerDebt> TopDebtors);
 public sealed record NodeStatus(Guid NodeId, string Name, DateTime? LastEventUtc, DateTime? LastSyncUtc);
 public sealed record StoreSyncStatus(Guid StoreId, string StoreName, DateTime? LastEventUtc, DateTime? LastSyncUtc, int PendingEvents, int FailedEvents, IReadOnlyList<NodeStatus> Nodes);
 
@@ -44,7 +51,8 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
 
         var shifts = await ShiftsAsync(f, onlyDifferences: true, ct);
         var issues = shifts.Select(s => new PanelIssue("ShiftDifference", s.StoreId, s.StoreName, s.ShiftId, s.Difference, s.ClosedUtc,
-            $"Z #{s.ZNumber}: {(s.Difference < 0 ? "faltante" : "sobrante")} de {Rd(Math.Abs(s.Difference))}")).ToList();
+            $"Z #{s.ZNumber}{(s.CashierName is null ? "" : $" ({s.CashierName})")}: {(s.Difference < 0 ? "faltante" : "sobrante")} de {Rd(Math.Abs(s.Difference))}",
+            s.CashierName, s.RegisterName)).ToList();
         var sync = await SyncStatusAsync(tenantId, ct);
         var now = clock.GetUtcNow().UtcDateTime;
         issues.AddRange(sync.Where(s => (storeId is null || s.StoreId == storeId) && s.Nodes.Count > 0 && (s.LastSyncUtc is null || now - s.LastSyncUtc > SyncStaleAfter))
@@ -80,14 +88,21 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
         return days;
     }
 
-    /// <remarks>shortcut: returns carry no lines in ReturnRecordedV1, so products are ranked by what was sold (voids excluded, returns not subtracted).</remarks>
+    /// <summary>Sold minus returned in the range (returns on the day they happened, like the store's reports).</summary>
+    /// <remarks>Returns uploaded as ReturnRecordedV1 have no lines, so they are not subtracted.</remarks>
     public async Task<IReadOnlyList<ProductSales>> TopProductsAsync(PanelFilter f, int limit, CancellationToken ct)
     {
-        var lines = await (from l in Rows(db.SaleLines, f)
-                           join s in CompletedSales(f) on l.SaleId equals s.Id
-                           select new { l.ProductId, l.Description, l.Quantity, l.Total, l.Itbis, l.UnitCost, s.SoldUtc }).ToListAsync(ct);
-        return [.. lines.GroupBy(l => l.ProductId)
-            .Select(g => new ProductSales(g.Key, g.MaxBy(l => l.SoldUtc)!.Description, g.Sum(l => l.Quantity), g.Sum(l => l.Total),
+        var (start, end) = BusinessDay.UtcRange(f.From, f.To);
+        var sold =await (from l in Rows(db.SaleLines, f)
+                          join s in CompletedSales(f) on l.SaleId equals s.Id
+                          select new { l.ProductId, l.Description, l.Quantity, l.Total, l.Itbis, l.UnitCost, At = s.SoldUtc }).ToListAsync(ct);
+        var returned = await (from l in Rows(db.ReturnLines, f)
+                              join r in Rows(db.Returns, f) on l.ReturnId equals r.Id
+                              where r.ReturnedUtc >= start && r.ReturnedUtc < end
+                              select new { l.ProductId, l.Description, Quantity = -l.Quantity, Total = -l.Total, Itbis = -l.Itbis, l.UnitCost, At = r.ReturnedUtc })
+            .ToListAsync(ct);
+        return [.. sold.Concat(returned).GroupBy(l => l.ProductId)
+            .Select(g => new ProductSales(g.Key, g.MaxBy(l => l.At)!.Description, g.Sum(l => l.Quantity), g.Sum(l => l.Total),
                 Money.Round(g.Sum(l => l.Total - l.Itbis - l.UnitCost * l.Quantity))))
             .OrderByDescending(p => p.Total).Take(Math.Clamp(limit, 1, 50))];
     }
@@ -96,20 +111,45 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
     {
         var (from, to) = BusinessDay.UtcRange(f.From, f.To);
         var stores = await StoreNamesAsync(f.TenantId, ct);
+        var users = await UserNamesAsync(f.TenantId, ct);
+        var registers = await db.Registers.AsNoTracking().Where(r => r.TenantId == f.TenantId).ToDictionaryAsync(r => r.Id, r => r.Name, ct);
         var shifts = await Rows(db.ClosedShifts, f).Where(s => s.ClosedUtc >= from && s.ClosedUtc < to).ToListAsync(ct);
         return [.. shifts.Where(s => !onlyDifferences || s.Difference != 0).OrderByDescending(s => s.ClosedUtc)
             .Select(s => new ShiftDifference(s.ShiftId, s.StoreId, stores.GetValueOrDefault(s.StoreId, "?"), s.RegisterId, s.CashierId, s.ZNumber,
-                s.ExpectedCash, s.CountedCash, s.Difference, s.ClosedUtc))];
+                s.ExpectedCash, s.CountedCash, s.Difference, s.ClosedUtc, registers.GetValueOrDefault(s.RegisterId), users.GetValueOrDefault(s.CashierId)))];
     }
 
-    /// <remarks>shortcut: events carry the cashier's id only; names need a user event from the store (or the panel shows the id).</remarks>
     public async Task<IReadOnlyList<CashierSales>> SalesByCashierAsync(PanelFilter f, CancellationToken ct)
     {
         var sales = await CompletedSales(f).Select(s => new { s.CashierId, s.Total }).ToListAsync(ct);
         var voided = await VoidedSales(f).Select(s => s.CashierId).ToListAsync(ct);
+        var users = await UserNamesAsync(f.TenantId, ct);
         return [.. sales.GroupBy(s => s.CashierId).Select(g => new CashierSales(g.Key, g.Count(), g.Sum(s => s.Total), voided.Count(v => v == g.Key)))
             .Concat(voided.Distinct().Where(v => sales.All(s => s.CashierId != v)).Select(v => new CashierSales(v, 0, 0, voided.Count(x => x == v))))
+            .Select(c => c with { CashierName = users.GetValueOrDefault(c.CashierId) })
             .OrderByDescending(c => c.Total)];
+    }
+
+    /// <summary>Credit (fiado) owed right now: charges of sales not voided, minus returns credited to the account on those sales (up to the charge),
+    /// minus payments. A customer whose payments cover more owes nothing.</summary>
+    /// <remarks>shortcut: voided customer payments raise no event, so after one the debt shows too low; add a balance event from Customers
+    /// (CustomerBalanceChangedV1 with the store's own figure) if owners see the gap.</remarks>
+    public async Task<Receivables> ReceivablesAsync(Guid tenantId, Guid? storeId, int limit, CancellationToken ct)
+    {
+        var f = new PanelFilter(tenantId, storeId, default, default);
+        var voids = Rows(db.SaleVoids, f).Select(v => v.SaleId);
+        var charges = await Rows(db.CustomerCharges, f).Where(c => !voids.Contains(c.SaleId)).ToListAsync(ct);
+        var chargedSales = charges.Select(c => c.SaleId).ToList();
+        var credited = await Rows(db.Returns, f).Where(r => r.Method == "CreditBalance" && chargedSales.Contains(r.SaleId))
+            .Select(r => new { r.SaleId, r.Total }).ToListAsync(ct);
+        var payments = await Rows(db.CustomerPayments, f).Select(p => new { p.CustomerId, p.Amount }).ToListAsync(ct);
+
+        var debts = charges
+            .Select(c => new { c.CustomerId, c.StoreId, Owed = c.Amount - Math.Min(c.Amount, credited.Where(r => r.SaleId == c.SaleId).Sum(r => r.Total)) })
+            .GroupBy(c => c.CustomerId)
+            .Select(g => new CustomerDebt(g.Key, g.First().StoreId, Math.Max(0, g.Sum(c => c.Owed) - payments.Where(p => p.CustomerId == g.Key).Sum(p => p.Amount))))
+            .Where(d => d.Debt > 0).OrderByDescending(d => d.Debt).ToList();
+        return new Receivables(debts.Sum(d => d.Debt), debts.Count, [.. debts.Take(Math.Clamp(limit, 1, 50))]);
     }
 
     public async Task<IReadOnlyList<PaymentMix>> PaymentMixAsync(PanelFilter f, CancellationToken ct)
@@ -139,6 +179,9 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
 
     public Task<Dictionary<Guid, string>> StoreNamesAsync(Guid tenantId, CancellationToken ct) =>
         db.Stores.AsNoTracking().Where(s => s.TenantId == tenantId).ToDictionaryAsync(s => s.Id, s => s.Name, ct);
+
+    private Task<Dictionary<Guid, string>> UserNamesAsync(Guid tenantId, CancellationToken ct) =>
+        db.StoreUsers.AsNoTracking().Where(u => u.TenantId == tenantId).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
 
     /// <summary>"RD$ 1,234.50", the way the owner reads amounts.</summary>
     public static string Rd(decimal amount) => "RD$ " + amount.ToString("#,##0.00", CultureInfo.InvariantCulture);
