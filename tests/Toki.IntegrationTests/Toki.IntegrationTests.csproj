@@ -11,6 +11,9 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\SqlServerImage.cs" Link="SqlServerImage.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Hosts\Toki.Host.Local\Toki.Host.Local.csproj" />
     <!-- Read-only: the register app's wire records and JSON options, for the contract test (TK-124). -->
     <ProjectReference Include="..\..\src\Client\Toki.Client.UI\Toki.Client.UI.csproj" />

@@ -42,7 +42,7 @@ public sealed class TokiServer : IAsyncDisposable
         }
         else if (Environment.GetEnvironmentVariable("TOKI_TEST_DB") == "sqlserver")
         {
-            container = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest").Build();
+            container = new MsSqlBuilder(Toki.Tests.SqlServerImage.Name).Build();
             await container.StartAsync();
             (provider, connectionString) = ("SqlServer", container.GetConnectionString().Replace("Database=master", "Database=toki_e2e", StringComparison.Ordinal));
         }
@@ -87,7 +87,8 @@ public sealed class TokiServer : IAsyncDisposable
         return c;
     }
 
-    private async Task LaunchAsync()
+    /// <summary>Starts the process (again, after <see cref="StopAsync"/>) on the same database and waits for /health.</summary>
+    public async Task LaunchAsync()
     {
         var info = new ProcessStartInfo("dotnet", $"\"{_dll}\"")
         {
@@ -117,7 +118,8 @@ public sealed class TokiServer : IAsyncDisposable
         throw new TimeoutException($"The API did not answer /health within 90 s:\n{Output()}");
     }
 
-    private async Task StopAsync()
+    /// <summary>Kills the process (as a power cut would); the database stays.</summary>
+    public async Task StopAsync()
     {
         if (_process is null) return;
         if (!_process.HasExited) _process.Kill(entireProcessTree: true);

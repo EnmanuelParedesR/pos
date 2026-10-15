@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- TK-123: the register (Toki.Client.Web) and the owner's panel driven by Chromium against the real API processes.
+       Not in Toki.slnx: it needs browsers (bin/<config>/net10.0/playwright.ps1 install chromium) and Node, so CI runs it as its own job. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Microsoft.Playwright" />
+    <!-- For the borrowed TokiServer (SQL Server when TOKI_TEST_DB=sqlserver). -->
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\Toki.E2ETests\TokiServer.cs" Link="TokiServer.cs" />
+    <Compile Include="..\SqlServerImage.cs" Link="SqlServerImage.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Only to build them first: the tests start their real processes, they never load them. -->
+    <ProjectReference Include="..\..\src\Hosts\Toki.Host.Local\Toki.Host.Local.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\Hosts\Toki.Host.Cloud\Toki.Host.Cloud.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\Client\Toki.Client.Web\Toki.Client.Web.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

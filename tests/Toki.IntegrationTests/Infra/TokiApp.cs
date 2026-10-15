@@ -54,7 +54,7 @@ public sealed class TestSqlServer : IAsyncLifetime
             ServiceAccount = (string?)await cmd.ExecuteScalarAsync();
             return;
         }
-        _container = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest").Build();
+        _container = new MsSqlBuilder(Toki.Tests.SqlServerImage.Name).Build();
         await _container.StartAsync();
         BaseConnectionString = _container.GetConnectionString();
     }
