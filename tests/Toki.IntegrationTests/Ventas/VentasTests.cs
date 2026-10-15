@@ -278,4 +278,20 @@ public sealed class VentasTests(TokiApp app) : IClassFixture<TokiApp>
         (await cajero.Cliente.DeleteAsync($"/api/ventas/en-espera/{espera}?turnoId={cajero.TurnoId}")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await cajero.Cliente.GetFromJsonAsync<JsonElement>($"/api/ventas/en-espera?turnoId={cajero.TurnoId}")).GetArrayLength().ShouldBe(0);
     }
+
+    [Fact]
+    public async Task Al_cerrar_el_turno_sus_ventas_en_espera_se_borran_por_el_outbox()
+    {
+        var cajero = await app.CajeroConTurnoAsync(fondo: 0m);
+        (await cajero.Cliente.PutAsJsonAsync("/api/ventas/en-espera", new { Id = Guid.CreateVersion7(), TurnoId = cajero.TurnoId, Etiqueta = "Olvidada", Total = 10m, Contenido = new { } }))
+            .EnsureSuccessStatusCode();
+        (await cajero.Cliente.PostAsJsonAsync($"/api/caja/turnos/{cajero.TurnoId}/cerrar",
+            new { Conteo = Array.Empty<object>(), AutorizacionSupervisorId = await cajero.Cliente.AutorizarAsync("caja.aprobar-cierre", cajero.TurnoId) })).EnsureSuccessStatusCode();
+
+        var procesador = Toki.BuildingBlocks.Messaging.ProcesadorOutbox.Lote;
+        while (procesador == Toki.BuildingBlocks.Messaging.ProcesadorOutbox.Lote) // the whole backlog of this app, not just the first batch
+            procesador = await app.EnScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Messaging.ProcesadorOutbox>().ProcesarAsync(CancellationToken.None));
+        (await cajero.Cliente.GetFromJsonAsync<JsonElement>($"/api/ventas/en-espera?turnoId={cajero.TurnoId}")).GetArrayLength().ShouldBe(0);
+        (await ContarAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox.Where(m => m.Tipo.EndsWith("TurnoCerradoV1") && m.ProcesadoUtc == null))).ShouldBe(0);
+    }
 }

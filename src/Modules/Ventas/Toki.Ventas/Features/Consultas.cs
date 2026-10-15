@@ -125,7 +125,12 @@ internal static class VentasEnEspera
         }
     }
 
-    /// <remarks>shortcut: carts of a closed shift stay in the table (Caja cannot reach Ventas tables); purge them on TurnoCerradoV1 when the outbox dispatcher exists.</remarks>
+    /// <summary>A closed shift's parked carts are no longer usable: they go when Caja publishes the closing.</summary>
+    internal sealed class PurgarAlCerrarTurno(VentasDbContext db) : IManejadorEvento<TurnoCerradoV1>
+    {
+        public Task ManejarAsync(TurnoCerradoV1 evento, CancellationToken ct) => db.EnEspera.Where(e => e.TurnoId == evento.TurnoId).ExecuteDeleteAsync(ct);
+    }
+
     internal sealed class QuitarHandler(VentasDbContext db, ICajaOperaciones caja) : ICommandHandler<Quitar, Ok>
     {
         public async Task<Result<Ok>> Handle(Quitar c, CancellationToken ct)

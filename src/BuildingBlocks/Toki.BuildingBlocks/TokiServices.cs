@@ -27,10 +27,17 @@ public static class TokiServices
         services.AddModuleDbContext<InfraDbContext>();
         services.AddScoped<IOutbox, Outbox>();
         services.AddScoped<IAuditoria, Auditoria>();
-        services.AddHealthChecks().AddCheck<RelojHealthCheck>("reloj");
+        services.AddHealthChecks().AddCheck<RelojHealthCheck>("reloj").AddCheck<OutboxHealthCheck>("outbox");
+        services.AddScoped<ProcesadorOutbox>();
+        services.AddHostedService<ProcesadorOutboxWorker>();
 
         services.Scan(s => s.FromAssemblies(modulos)
             .AddClasses(c => c.AssignableTo(typeof(ICommandHandler<,>)), publicOnly: false).AsImplementedInterfaces().WithScopedLifetime());
+        services.Scan(s => s.FromAssemblies(modulos)
+            .AddClasses(c => c.AssignableTo(typeof(IManejadorEvento<>)), publicOnly: false).AsImplementedInterfaces().WithScopedLifetime());
+        foreach (var tipo in modulos.SelectMany(a => a.GetTypes()).SelectMany(t => t.GetInterfaces())
+                     .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IManejadorEvento<>)).Select(i => i.GetGenericArguments()[0]))
+            ProcesadorOutbox.Tipos[tipo.FullName!] = tipo;
         services.AddValidatorsFromAssemblies(modulos, includeInternalTypes: true);
 
         services.TryDecorate(typeof(ICommandHandler<,>), typeof(AutorizacionDecorator<,>));
