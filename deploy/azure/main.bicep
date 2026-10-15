@@ -12,6 +12,9 @@ param location string = 'eastus2'
 @description('Static Web Apps exist in a few regions only (eastus2, centralus, westus2, westeurope, eastasia).')
 param staticWebAppLocation string = 'eastus2'
 
+@description('Azure SQL region. Some regions stop accepting new servers (eastus2 did in 2026-10); keep it close to the API.')
+param sqlLocation string = location
+
 @description('Entra ID login (user or group name) that administers Azure SQL. SQL logins are disabled.')
 param sqlAdminLogin string
 
@@ -77,8 +80,8 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
 }
 
 resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
-  name: 'sql-${name}-${take(suffix, 6)}'
-  location: location
+  name: 'sql-${name}-${take(uniqueString(resourceGroup().id, sqlLocation), 6)}' // region in the hash: ARM keeps a failed server's name tied to its old region
+  location: sqlLocation
   tags: tags
   properties: {
     minimalTlsVersion: '1.2'
@@ -104,7 +107,7 @@ resource sqlAllowAzure 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' 
 resource database 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: 'toki'
-  location: location
+  location: sqlLocation
   tags: tags
   sku: { name: 'GP_S_Gen5', tier: 'GeneralPurpose', family: 'Gen5', capacity: 1 }
   properties: {
@@ -179,19 +182,6 @@ resource api 'Microsoft.Web/sites@2023-12-01' = {
       minTlsVersion: '1.2'
       ftpsState: 'Disabled'
       healthCheckPath: '/health' // liveness only: it never touches the database, so the database can pause
-      appSettings: [
-        { name: 'ASPNETCORE_ENVIRONMENT', value: 'Production' }
-        { name: 'ASPNETCORE_FORWARDEDHEADERS_ENABLED', value: 'true' }
-        { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: insights.properties.ConnectionString }
-        { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
-        { name: 'Database__Provider', value: 'SqlServer' }
-        { name: 'Database__ConnectionString', value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${database.name};Authentication=Active Directory Managed Identity;Encrypt=True;Connect Timeout=120' }
-        { name: 'AzureOpenAI__Endpoint', value: openAi.properties.endpoint }
-        { name: 'AzureOpenAI__Deployment', value: chatDeployment.name }
-        { name: 'AzureOpenAI__ApiVersion', value: openAiApiVersion }
-        { name: 'AzureOpenAI__ApiKey', value: '@Microsoft.KeyVault(SecretUri=${openAiKey.properties.secretUri})' }
-        { name: 'Panel__Origins__0', value: 'https://${panel.properties.defaultHostname}' }
-      ]
     }
   }
 }
@@ -204,6 +194,26 @@ resource apiReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
     principalId: api.identity.principalId
     principalType: 'ServicePrincipal'
+  }
+}
+
+// Set after the Key Vault role exists: App Service resolves Key Vault references once and caches a denial for up to a day.
+resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
+  parent: api
+  name: 'appsettings'
+  dependsOn: [apiReadsSecrets]
+  properties: {
+    ASPNETCORE_ENVIRONMENT: 'Production'
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
+    APPLICATIONINSIGHTS_CONNECTION_STRING: insights.properties.ConnectionString
+    ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
+    Database__Provider: 'SqlServer'
+    Database__ConnectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${database.name};Authentication=Active Directory Managed Identity;Encrypt=True;Connect Timeout=120'
+    AzureOpenAI__Endpoint: openAi.properties.endpoint
+    AzureOpenAI__Deployment: chatDeployment.name
+    AzureOpenAI__ApiVersion: openAiApiVersion
+    AzureOpenAI__ApiKey: '@Microsoft.KeyVault(SecretUri=${openAiKey.properties.secretUri})'
+    Panel__Origins__0: 'https://${panel.properties.defaultHostname}'
   }
 }
 
