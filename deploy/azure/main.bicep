@@ -22,12 +22,15 @@ param sqlAdminObjectId string
 param openAiLocation string = location
 
 // Pick the cheapest chat model with function calling available in the region:
-//   az cognitiveservices model list -l eastus2 --query "[?model.name=='gpt-4.1-nano']" -o table
+//   az cognitiveservices model list -l eastus2 --query "[?model.name=='gpt-5-nano']" -o table
 @description('Chat model name (cheapest one with function calling in the region).')
-param openAiModelName string = 'gpt-4.1-nano'
+param openAiModelName string = 'gpt-5-nano'
 
 @description('Model version, from az cognitiveservices model list.')
-param openAiModelVersion string = '2025-04-14'
+param openAiModelVersion string = '2025-08-07'
+
+@description('Chat completions api-version. GPT-5 models need 2025-04-01-preview or newer.')
+param openAiApiVersion string = '2025-04-01-preview'
 
 @description('Deployment SKU: GlobalStandard is the cheapest pay-per-token option where available.')
 param openAiDeploymentSku string = 'GlobalStandard'
@@ -185,6 +188,7 @@ resource api 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'Database__ConnectionString', value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=${database.name};Authentication=Active Directory Managed Identity;Encrypt=True;Connect Timeout=120' }
         { name: 'AzureOpenAI__Endpoint', value: openAi.properties.endpoint }
         { name: 'AzureOpenAI__Deployment', value: chatDeployment.name }
+        { name: 'AzureOpenAI__ApiVersion', value: openAiApiVersion }
         { name: 'AzureOpenAI__ApiKey', value: '@Microsoft.KeyVault(SecretUri=${openAiKey.properties.secretUri})' }
         { name: 'Panel__Origins__0', value: 'https://${panel.properties.defaultHostname}' }
       ]

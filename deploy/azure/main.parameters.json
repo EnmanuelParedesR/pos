@@ -7,8 +7,9 @@
     "staticWebAppLocation": { "value": "eastus2" },
     "sqlAdminLogin": { "value": "<correo o grupo de Entra del administrador>" },
     "sqlAdminObjectId": { "value": "<object id de ese usuario o grupo>" },
-    "openAiModelName": { "value": "gpt-4.1-nano" },
-    "openAiModelVersion": { "value": "2025-04-14" },
+    "openAiModelName": { "value": "gpt-5-nano" },
+    "openAiModelVersion": { "value": "2025-08-07" },
+    "openAiApiVersion": { "value": "2025-04-01-preview" },
     "openAiDeploymentSku": { "value": "GlobalStandard" },
     "openAiCapacity": { "value": 10 }
   }
