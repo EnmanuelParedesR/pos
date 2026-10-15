@@ -61,7 +61,7 @@ internal static class EmparejarDispositivo
         public Validator() => RuleFor(c => c.Codigo).NotEmpty().MaximumLength(20);
     }
 
-    internal sealed class Handler(IdentidadDbContext db, IAuditoria auditoria, TimeProvider reloj) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentidadDbContext db, IFeatureService licencia, IAuditoria auditoria, TimeProvider reloj) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -72,6 +72,10 @@ internal static class EmparejarDispositivo
             // Claim it with a conditional update: two registers racing with the same code cannot both pair.
             if (codigo is null || await vigente.ExecuteUpdateAsync(s => s.SetProperty(x => x.UsadoUtc, ahora), ct) == 0)
                 return IdentidadErrors.CodigoEmparejamientoInvalido;
+            // The main PC (paired at installation) is not a register.
+            // shortcut: two pairings at the same instant may pass the limit by one; pairing is rare and done by the owner.
+            if (await db.Dispositivos.CountAsync(d => !d.Revocado, ct) - 1 >= licencia.LimiteDe(Limite.Cajas))
+                return Error.Forbidden("Licencia.LimiteCajas", $"La licencia permite {licencia.LimiteDe(Limite.Cajas)} cajas. Revoque una que no use o amplíe el plan.");
 
             var token = Token.Nuevo();
             var dispositivo = new Dispositivo { Id = Guid.CreateVersion7(), Nombre = codigo.NombreDispositivo, TokenHash = Token.Hash(token), CreadoUtc = ahora };

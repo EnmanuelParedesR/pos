@@ -19,6 +19,9 @@ public sealed class ServidorToki : IAsyncDisposable
     private Process? _proceso;
 
     public Uri Base { get; }
+
+    /// <summary>Signs the day's license; the E2E host trusts its public key instead of Toki's (allowed outside Production only).</summary>
+    public System.Security.Cryptography.ECDsa ClaveLicencias { get; } = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
     public ConcurrentQueue<string> Errores500 { get; } = new();
 
     private ServidorToki(string dll, Dictionary<string, string> entorno, Uri @base, MsSqlContainer? contenedor, string? archivoSqlite)
@@ -53,8 +56,11 @@ public sealed class ServidorToki : IAsyncDisposable
             ["Database__ConnectionString"] = conexion,
             ["Database__CrearAlIniciar"] = "true",
             ["Serilog__MinimumLevel__Default"] = "Warning",
+            ["Licencia__Archivo"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_licencia_{Guid.NewGuid():N}.jws"),
+            ["Respaldo__Carpeta"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_respaldos_{Guid.NewGuid():N}"),
         };
         var servidor = new ServidorToki(BuscarDll(), entorno, new Uri($"http://127.0.0.1:{puerto}"), contenedor, archivo);
+        entorno["Licencia__ClavePublica"] = servidor.ClaveLicencias.ExportSubjectPublicKeyInfoPem();
         await servidor.ArrancarAsync();
         return servidor;
     }

@@ -63,6 +63,13 @@ public sealed partial class ReglasDeArquitectura
             .WithoutRequiringPositiveResults()
             .Check(Arquitectura);
 
+    /// <summary>planes.md §6: selling, issuing e-CF and their queue never depend on the license or on payment.</summary>
+    [Fact]
+    public void Vender_y_facturar_nunca_dependen_de_la_licencia() =>
+        Types().That().ResideInAssemblyMatching(@"^Toki\.(Ventas|Fiscal|Caja),")
+            .Should().NotDependOnAny(Types().That().Are(typeof(Toki.BuildingBlocks.Security.IFeatureService)))
+            .Check(Arquitectura);
+
     [Fact]
     public void No_hay_procedimientos_almacenados_ni_triggers()
     {

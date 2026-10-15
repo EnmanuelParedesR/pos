@@ -27,6 +27,8 @@ public static class ConfiguracionModule
         services.AddHealthChecks().AddCheck<UltimaVerificacionAuditoria>("auditoria").AddCheck<RespaldoHealthCheck>("respaldo");
         services.AddDataProtection().SetApplicationName("Toki");
         services.AddScoped<Respaldos>();
+        services.AddSingleton<ServicioLicencia>();
+        services.AddSingleton<IFeatureService>(sp => sp.GetRequiredService<ServicioLicencia>());
         services.AddHostedService<RespaldoNocturno>();
         return services;
     }

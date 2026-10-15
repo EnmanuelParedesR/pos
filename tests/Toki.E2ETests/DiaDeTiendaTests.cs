@@ -39,6 +39,8 @@ public sealed class DiaDeTiendaTests
         var admin = servidor.Cliente(equipoOficina, await SesionAsync(servidor, equipoOficina, "admin", PinAdmin));
         await Ok(await admin.PostAsJsonAsync("/api/identidad/usuarios", new { Nombre = "Supervisora", Codigo = "sup", Pin = PinSupervisor, RolId = RolSupervisor }));
         await Ok(await admin.PutAsJsonAsync("/api/configuracion/negocio", new { Nombre = "Carnicería La Esquina", Rnc = "131245678", TopeDescuentoPct = 10m }));
+        // Three registers need a license (a trial allows two).
+        await Ok(await admin.PutAsJsonAsync("/api/configuracion/licencia", new { Licencia = LicenciaFirmada(servidor.ClaveLicencias, cajas: 3) }));
         foreach (var tipo in new[] { 31, 32, 34 })
             await Ok(await admin.PostAsJsonAsync("/api/fiscal/secuencias", new { Tipo = tipo, Desde = 1, Hasta = 10_000, VenceEl = hoy.AddYears(1) }));
 
@@ -325,6 +327,19 @@ public sealed class DiaDeTiendaTests
         }
         monto.ShouldBe(0m, "el efectivo esperado debe ser contable en pesos enteros");
         return [.. conteo];
+    }
+
+    /// <summary>A license as the vendor signs it: compact JWS, ES256.</summary>
+    private static string LicenciaFirmada(System.Security.Cryptography.ECDsa clave, int cajas)
+    {
+        static string B64(byte[] b) => Convert.ToBase64String(b).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var encabezado = B64("""{"alg":"ES256","typ":"JWT"}"""u8.ToArray());
+        var cuerpo = B64(JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            Tienda = "Carnicería La Esquina", Plan = "Negocio", Funciones = Array.Empty<string>(), Limites = new Dictionary<string, int> { ["Cajas"] = cajas },
+            EmitidaUtc = DateTime.UtcNow, VenceUtc = DateTime.UtcNow.AddDays(30),
+        }, JsonSerializerOptions.Web));
+        return $"{encabezado}.{cuerpo}.{B64(clave.SignData(System.Text.Encoding.ASCII.GetBytes($"{encabezado}.{cuerpo}"), System.Security.Cryptography.HashAlgorithmName.SHA256))}";
     }
 
     /// <summary>A scale price label: "22" + 4-digit PLU + amount in centavos (6 digits) + EAN-13 check digit.</summary>

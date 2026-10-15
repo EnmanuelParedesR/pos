@@ -111,7 +111,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 | Ticket | Qué | Estado |
 |---|---|---|
 | TK-088 | Procesador del outbox y subida a la nube (Sync) | 🟡 Procesador en proceso (en orden, al menos una vez, `IManejadorEvento<T>`), health `outbox`; primer consumidor: borra las ventas en espera del turno cerrado. ⏸ La subida a la nube espera el backend en la nube (fase 2) |
-| TK-089 | Licencia firmada y funciones por plan (`IFeatureService`) | ⬜ |
+| TK-089 | Licencia firmada y funciones por plan (`IFeatureService`) | ✅ ADR-0006: JWS ES256 verificado con la clave pública embebida, estados Prueba/Activa/Gracia (15 días)/Restringida, límite de cajas al emparejar, `GET /api/configuracion/funciones`, regla de arquitectura: Ventas, Fiscal y Caja no dependen de la licencia |
 | TK-090 | Migraciones EF por módulo para SQL Server y guardia de migraciones | ✅ ADR-0005: `Persistence/Migraciones` por módulo, `MigrateAsync` al arrancar en SQL Server, prueba que falla si falta una migración |
 | TK-091 | Emparejamiento con certificados (mTLS) en lugar del secreto de dispositivo | ⬜ |
 | TK-092 | Respaldo programado y cifrado | ✅ Nocturno (23:30) y a pedido; AES-256-GCM con la frase del dueño (PBKDF2), se conservan 14, copia opcional fuera de la PC, health `respaldo`, `descifrar-respaldo` por línea de comandos |

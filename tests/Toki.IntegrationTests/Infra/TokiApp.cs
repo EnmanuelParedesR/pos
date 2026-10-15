@@ -71,6 +71,8 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         builder.UseSetting("Outbox:Procesar", "false");
         builder.UseSetting("Auditoria:VerificacionNocturna", "false");
         builder.UseSetting("Respaldo:Automatico", "false");
+        builder.UseSetting("Licencia:ClavePublica", ClaveLicencias.ExportSubjectPublicKeyInfoPem());
+        builder.UseSetting("Licencia:Archivo", Path.Combine(Path.GetTempPath(), $"toki_licencia_{Guid.NewGuid():N}.jws"));
         builder.UseSetting("Respaldo:Carpeta", Path.Combine(Path.GetTempPath(), $"toki_respaldos_{Guid.NewGuid():N}"));
         builder.ConfigureTestServices(s =>
         {
@@ -78,6 +80,9 @@ public sealed class TokiApp : WebApplicationFactory<Program>
             ComandosDePrueba.Registrar(s);
         });
     }
+
+    /// <summary>Signs this app's test licenses; the app trusts its public key instead of Toki's (allowed outside Production only).</summary>
+    public System.Security.Cryptography.ECDsa ClaveLicencias { get; } = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
 
     /// <summary>The application clock. Starts at the real time and only moves when a test advances it.</summary>
     public FakeTimeProvider Reloj { get; } = new(DateTimeOffset.UtcNow);
