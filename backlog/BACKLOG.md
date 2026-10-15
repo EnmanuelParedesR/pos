@@ -73,7 +73,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 | TK-052 | Nota de crédito e-CF 34 | ✅ |
 | TK-053 | Consulta de razón social por RNC (padrón importado) | ✅ `POST /api/fiscal/padron` (DGII_RNC.TXT, reemplazo en una transacción), `GET /api/fiscal/contribuyentes/{rnc}` |
 | TK-054 | Reportes 606 y 607 | ✅ `/api/reportes/dgii/607` y `/dgii/606` en JSON, CSV o Excel. El TXT oficial de la DGII queda para TK-055 |
-| TK-055 | Proveedor e-CF real y certificación DGII | ⏸ decisión del dueño |
+| TK-055 | Proveedor e-CF real y certificación DGII | ↪ Reemplazado por M13 (camino propio con la DGII, sin proveedor) |
 
 ## M6 · Movimientos de inventario y compras
 
@@ -155,6 +155,10 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-122 | Fijar el certificado del nodo en el cliente al emparejar (con TK-091) | ⬜ |
 | TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real; incluye las de R7 #5 (escaneo ignorado en efectivo/PIN) y #8 (el foco nunca se pierde) | ⬜ |
 | TK-124 | Prueba de contratos en `Toki.IntegrationTests`: llamar a los endpoints reales y deserializar cada respuesta con `TokiApi.Json` en los records de `Contracts.cs` (R7 #13b) | ⬜ |
+| TK-125 | Crítica de diseño (`docs/critica-diseno.md`) y canvas actualizado: logo C5, marca fija, 7 pantallas nuevas, fase 2 marcada | ✅ |
+| TK-126 | Reescribir todo el código en inglés (UI en español): glosario `docs/glosario-codigo.md`, mapas `docs/rename-map*.md`, migraciones nuevas | ✅ |
+| TK-127 | Pruebas contra SQL Server Express local (`TOKI_TEST_SQLSERVER`) y arreglo de `AbonosFiado.Origen` (columna corta) con prueba de guarda | ✅ |
+| TK-128 | Corregir los hallazgos de R7 | ✅ Lo que quedó pendiente está en TK-123, TK-124, TK-168 y TK-169 |
 
 ## M12 · Nube
 
@@ -170,6 +174,8 @@ Decisión: ADR-0008. Despliegue: `docs/despliegue-azure.md`.
 | TK-135 | Relevo e-CF en la nube (simulado; DGII en espera) | ✅ `POST /relay/v1/ecf` guarda el XML firmado y responde `Simulated`; un e-NCF repetido devuelve la misma respuesta. El proveedor real es TK-055 |
 | TK-136 | Bicep de Azure | 🟡 `deploy/azure/main.bicep` escrito; falta validarlo con `az bicep build` y desplegarlo |
 | TK-137 | Panel web del dueño (React) | 🟡 `src/Cloud/panel` (Vite 6, React 19, TypeScript estricto, react-router 7, sin librerías de UI ni de gráficas): entrar / crear cuenta (errores de Identity en español), resumen del día por tienda (cifras, ventas por hora, medios de pago, "para revisar", última actualización en ámbar después de 24 h), ventas (por día, más vendidos, por cajero), cuadres con filtro de diferencias, tiendas con estado por caja y código de conexión con cuenta regresiva, asistente con aviso ámbar si no está configurado. Usa `escuadra.css` de la caja tal cual. Token en memoria y refresh en `localStorage`, renueva una vez ante un 401. `npm run check` (tsc + 12 pruebas de Vitest) pasa. Pendiente: `vite build` y `npm run dev` necesitan Node ≥ 18 (la PC tiene Node 16); con Node 22, pasar Vitest 0.34 → 3 y jsdom 22 → 26 (hoy fijados por Node 16); nombres de cajeros (TK-133); publicar en la Static Web App |
+| TK-138 | Caja: Configuración → Nube (conectar con el código del panel, estado, desconectar) | ✅ Probado de punta a punta: caja → API local → nube → panel |
+| TK-139 | Desplegar en Azure (Bicep, base, API nube, panel, modelo del asistente) y probar el asistente con el modelo real | ⬜ Necesita Azure CLI y `az login` del dueño |
 
 ## M13 · e-CF propio con la DGII
 
@@ -198,6 +204,21 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-158 | Pruebas de contrato y de punta a punta contra TesteCF | ⬜ |
 | TK-159 | (Después de V1) Receptor sin custodia por túnel y E41 de compras | ⬜ |
 
+## M14 · Pendientes de las revisiones y de la nube
+
+| Ticket | Qué | Estado |
+|---|---|---|
+| TK-160 | Probar instalador y servicio en una VM Windows limpia: cuenta del servicio, llave del certificado, `backups\work` (R5 #6, R6 2/5/10, TK-093) | ⬜ |
+| TK-161 | Que un contador revise un mes de 606/607 (R5 #3) | ⬜ |
+| TK-162 | Importar el padrón en segundo plano o con `SqlBulkCopy` si con el archivo real tarda más de un minuto (R5 #10) | ⬜ |
+| TK-163 | Fijar la imagen de SQL Server de CI con etiqueta fechada (R1) | ⬜ |
+| TK-164 | Reembolso en efectivo con centavos (R3) | ⬜ |
+| TK-165 | Nombres de cajeros y cajas en la nube (evento desde la tienda) para el panel y el asistente | ⬜ |
+| TK-166 | Devoluciones con líneas en `ReturnRecordedV1` para restarlas en los más vendidos | ⬜ |
+| TK-167 | Proyectar en la réplica compras, clientes, apertura de turno y movimientos de caja | ⬜ |
+| TK-168 | Precio mayorista en la caja (R7 #16) | ⬜ |
+| TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | ⬜ |
+| TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ⬜ |
 ## Revisiones
 
 | Revisión | Hito | Estado |
