@@ -1,0 +1,3 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The register's peripherals as the screens see them (arquitectura §6.3): no drivers here, only the contracts. -->
+</Project>

@@ -11,6 +11,8 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Toki.Client.UI\Toki.Client.UI.csproj" />
+    <ProjectReference Include="..\..\Hardware\Toki.Hardware.Scales\Toki.Hardware.Scales.csproj" />
+    <ProjectReference Include="..\..\Hardware\Toki.Hardware.Simulated\Toki.Hardware.Simulated.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />

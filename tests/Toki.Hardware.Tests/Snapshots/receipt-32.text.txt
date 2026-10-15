@@ -1,0 +1,30 @@
+       Carnicería La Peña
+         RNC 131000001
+    Av. Duarte 25, Santiago
+       Tel. 809-555-0101
+--------------------------------
+ Factura de Consumo Electrónica
+e-NCF              E320000000123
+Factura                     #123
+Fecha         15/10/2026 3:45 PM
+Caja 1          Yudelka Martínez
+--------------------------------
+Chuleta ahumada de cerdo
+  2.345 lb x 185.00       433.83
+Salami súper especial Induveca 1
+lb
+  2 x 210.00              400.00
+  Descuento               -20.00
+--------------------------------
+Descuento aplicado        -20.00
+Base sin ITBIS            706.64
+ITBIS 18%                 127.19
+TOTAL                 RD$ 833.83
+--------------------------------
+Efectivo                1,000.00
+Devuelta                  166.00
+--------------------------------
+  Código de seguridad: Ab3xY9
+[QR] https://ecf.dgii.gov.do/ecf/ConsultaTimbreFC?RncEmisor=131000001&ENCF=E320000000123&MontoTotal=833.83&CodigoSeguridad=Ab3xY9
+ ¡Gracias por su compra! Vuelva
+            pronto.

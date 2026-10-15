@@ -1,12 +1,13 @@
 using Microsoft.Extensions.DependencyInjection;
 using Toki.Client.UI.Api;
 using Toki.Client.UI.State;
+using Toki.Hardware;
 
 namespace Toki.Client.UI;
 
 public static class Services
 {
-    /// <summary>The register's services. Each host adds its own <see cref="ILocalStore"/>.</summary>
+    /// <summary>The register's services. Each host adds its own <see cref="ILocalStore"/> and <see cref="AddTokiHardware"/>.</summary>
     public static IServiceCollection AddTokiClient(this IServiceCollection services, Uri api, HttpMessageHandler? handler = null)
     {
         // One connection pool for the whole app, however many scopes (the web host makes one per browser tab).
@@ -20,4 +21,8 @@ public static class Services
         services.AddScoped<BackOffice>();
         return services;
     }
+
+    /// <summary>The scale and printer drivers of this host (arquitectura §6.3), and the settings a PC starts with before anyone saves its own.</summary>
+    public static IServiceCollection AddTokiHardware(this IServiceCollection services, IHardwareDrivers drivers, HardwareSettings? defaults = null) =>
+        services.AddScoped(sp => new Peripherals(sp.GetRequiredService<ILocalStore>(), drivers, defaults ?? new()));
 }

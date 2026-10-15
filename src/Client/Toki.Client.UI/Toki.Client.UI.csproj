@@ -4,6 +4,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Toki.Escuadra\Toki.Escuadra.csproj" />
+    <ProjectReference Include="..\..\Hardware\Toki.Hardware\Toki.Hardware.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.Client.UI.Tests" />

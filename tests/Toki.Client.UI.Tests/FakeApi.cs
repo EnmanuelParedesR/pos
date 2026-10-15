@@ -5,6 +5,7 @@ using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using Toki.Client.UI;
 using Toki.Client.UI.Api;
+using Toki.Hardware;
 using Toki.Client.UI.State;
 
 namespace Toki.Client.UI.Tests;
@@ -78,10 +79,47 @@ internal static class ScreenContext
         var api = new FakeApi();
         ctx.Services.AddTokiClient(new Uri("http://toki.test"), api);
         ctx.Services.AddSingleton<ILocalStore>(new InMemoryStore());
+        // No scale or printer until a test saves its settings (Peripherals.SaveAsync); TestDrivers lets it drive and watch them.
+        var hardware = new TestDrivers();
+        ctx.Services.AddSingleton(hardware);
+        ctx.Services.AddTokiHardware(hardware);
         var session = ctx.Services.GetRequiredService<Session>();
         session.PairAsync("device").GetAwaiter().GetResult();
         session.Open(new OpenedSession("token", Guid.NewGuid(), "Yudelka M.", DateTime.UtcNow.AddHours(12)), new Me(Guid.NewGuid(), "Yudelka M.", Guid.NewGuid(), permissions));
         session.Shift = Shift;
         return (ctx, api);
+    }
+}
+
+/// <summary>A scale the test moves by hand and a printer that only records what it was sent.</summary>
+internal sealed class TestDrivers : IHardwareDrivers
+{
+    public Toki.Hardware.Simulated.SimulatedScale Scale { get; } = new();
+    public RecordingPrinter Printer { get; } = new();
+    public IScale CreateScale(ScaleSettings settings) => Scale;
+    public IReceiptPrinter CreatePrinter(PrinterSettings settings) => Printer;
+}
+
+internal sealed class RecordingPrinter : IReceiptPrinter
+{
+    private readonly List<(Receipt Receipt, bool OpenDrawer)> _printed = [];
+    private int _drawer;
+
+    public bool Offline { get; set; }
+    public List<(Receipt Receipt, bool OpenDrawer)> Printed { get { lock (_printed) return [.. _printed]; } }
+    public int DrawerOpenings => Volatile.Read(ref _drawer);
+
+    public Task PrintAsync(Receipt receipt, bool openDrawer, CancellationToken ct)
+    {
+        if (Offline) throw new HardwareException("offline", null);
+        lock (_printed) _printed.Add((receipt, openDrawer));
+        return Task.CompletedTask;
+    }
+
+    public Task OpenDrawerAsync(CancellationToken ct)
+    {
+        if (Offline) throw new HardwareException("offline", null);
+        Interlocked.Increment(ref _drawer);
+        return Task.CompletedTask;
     }
 }

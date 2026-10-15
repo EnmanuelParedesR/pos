@@ -1,3 +1,4 @@
 * text=auto
 *.cs text eol=crlf
 src/Modules/Fiscal/Toki.Fiscal/Schemas/*.xsd -text
+tests/Toki.Hardware.Tests/Snapshots/* text eol=lf

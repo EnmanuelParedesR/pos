@@ -4,6 +4,7 @@
 @inject Session Session
 @inject Cart Cart
 @inject NavigationManager Nav
+@inject Peripherals Peripherals
 
 <div class="sale" data-keys @onkeydown="KeyAsync">
     <section class="sale__left" aria-label="Productos">
@@ -137,6 +138,9 @@
     case Panel.Weight when _pending is { } p:
         <LineDialog Line="@(new CartLine(p.ProductId, p.PresentationId, p.Name, p.Unit, p.Price, 0m))" Mode="Weight" OnClose="Close" OnDone="AddWeighed" />
         break;
+    case Panel.Scale when _pending is { } q:
+        <WeighDialog Name="@q.Name" Price="q.Price" OnClose="Close" OnDone="AddScaled" />
+        break;
     case Panel.Customer:
         <CustomerDialog OnClose="Close" />
         break;
@@ -160,7 +164,7 @@
 }
 
 @code {
-    private enum Panel { None, Checkout, Quantity, Price, Discount, Weight, Customer, Hold, Register, Receipt, Void }
+    private enum Panel { None, Checkout, Quantity, Price, Discount, Weight, Scale, Customer, Hold, Register, Receipt, Void }
     private sealed record SaleNotice(Notice.Kinds Kind, string Title, string? Detail = null);
     /// <summary>The API's page size for products.</summary>
     // shortcut: one page of tiles per category; add "Ver más" (page=2) when a category grows past 50 products.
@@ -275,9 +279,9 @@
         // A presentation (a 2 lb pack) carries its own price and is sold by the piece: only a bare by-the-pound product asks for the weight.
         if (p.Unit == "Pound" && p.PresentationId is null && !withLabel)
         {
-            // shortcut: the weight is typed (no scale driver yet, Toki.Hardware.Scales); read IScale here when it exists.
+            // With a scale the weight comes from it; without one it is typed.
             _pending = p;
-            _panel = Panel.Weight;
+            _panel = Peripherals.Scale is null ? Panel.Weight : Panel.Scale;
             return;
         }
         Cart.Add(p, withLabel ? code : null);
@@ -297,6 +301,17 @@
         if (_pending is { } p && l.Quantity > 0)
         {
             Cart.Add(p, null, l.Quantity);
+            _last = null;
+            _notice = null;
+        }
+        Close();
+    }
+
+    private void AddScaled(WeighDialog.Weighed w)
+    {
+        if (_pending is { } p)
+        {
+            Cart.Add(p, null, w.Pounds, w.Note);
             _last = null;
             _notice = null;
         }
@@ -360,13 +375,22 @@
         (_panel, _pending, _focusScanner) = (Panel.None, null, true);
     }
 
-    private Task SoldAsync(SaleRegistered v)
+    private async Task SoldAsync(SaleRegistered v)
     {
         _last = v;
         _notice = null;
         Cart.Clear();
         Close();
-        return Task.CompletedTask;
+        if (Peripherals.Printer is null) return;
+        StateHasChanged(); // the sale shows as saved while the printer works
+
+        // The drawer opens when cash came in (the receipt's methods are the printed Spanish names); with printing on, in the same job.
+        var cash = v.Receipt.Payments.Any(p => p.Method == "Efectivo");
+        var print = Peripherals.Settings.PrintAfterSale;
+        if (!print && !cash) return;
+        if (!await Peripherals.TryAsync(p => print ? p.PrintAsync(v.Receipt, cash, CancellationToken.None) : p.OpenDrawerAsync(CancellationToken.None)))
+            _notice = new(Notice.Kinds.Warning, print ? "No se pudo imprimir la factura." : "No se pudo abrir la gaveta.",
+                "La venta sí se guardó. Revise que la impresora tenga papel y esté encendida; después reimprima con Ver factura.");
     }
 
     private async Task KeyAsync(KeyboardEventArgs e)

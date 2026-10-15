@@ -3,7 +3,8 @@ using Toki.Client.UI.Api;
 namespace Toki.Client.UI.State;
 
 public sealed record CartLine(Guid ProductId, Guid? PresentationId, string Name, string Unit, decimal ListPrice, decimal Quantity,
-    string? ScaleLabel = null, decimal? LabelAmount = null, Discount? Discount = null, decimal? OverriddenPrice = null)
+    string? ScaleLabel = null, decimal? LabelAmount = null, Discount? Discount = null, decimal? OverriddenPrice = null,
+    string? Note = null)
 {
     public Guid Id { get; init; } = Guid.NewGuid();
     public decimal Price => OverriddenPrice ?? ListPrice;
@@ -17,7 +18,7 @@ public sealed record CartLine(Guid ProductId, Guid? PresentationId, string Name,
     public bool ByWeight => Unit == nameof(UnitOfMeasure.Pound);
 
     public SaleLine ToSaleLine() => new(ProductId, PresentationId, Quantity,
-        OverriddenPrice, Discount, null, ScaleLabel);
+        OverriddenPrice, Discount, Note, ScaleLabel);
 }
 
 /// <summary>The sale being rung up. The server recomputes everything; this total is what the cashier sees and what it confirms (ExpectedTotal).</summary>
@@ -48,7 +49,7 @@ public sealed class Cart
     public bool HasLabel(string code) => _lines.Exists(l => l.ScaleLabel == code);
 
     /// <summary>Adds a scanned or tapped product. The same per-unit product without a label adds up on its line.</summary>
-    public CartLine Add(ProductByCode p, string? scaleLabel, decimal quantity = 1m)
+    public CartLine Add(ProductByCode p, string? scaleLabel, decimal quantity = 1m, string? note = null)
     {
         CartLine line;
         // A presentation (a 2 lb pack) is sold by the piece even when its product is sold by the pound.
@@ -68,7 +69,7 @@ public sealed class Cart
         }
         else
         {
-            line = new(p.ProductId, p.PresentationId, p.Name, unit, p.Price, quantity);
+            line = new(p.ProductId, p.PresentationId, p.Name, unit, p.Price, quantity, Note: note);
             _lines.Add(line);
         }
         Selected = line.Id;

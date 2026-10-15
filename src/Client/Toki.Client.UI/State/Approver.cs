@@ -45,6 +45,7 @@ public sealed class Approver
         "credit.exceed-limit" => "Fiar por encima del límite",
         "register.withdraw" => "Sacar efectivo de la caja",
         "register.approve-close" => "Cerrar la caja",
+        "register.open-drawer" => "Abrir la gaveta",
         _ => permission,
     };
 }

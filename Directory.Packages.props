@@ -26,6 +26,8 @@
     <!-- Client (Blazor) -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.110" />
+    <!-- Register peripherals: serial scales and printers (MIT) -->
+    <PackageVersion Include="System.IO.Ports" Version="10.0.13" />
     <PackageVersion Include="bunit" Version="2.11.3" />
     <!-- Tests -->
     <PackageVersion Include="xunit.v3" Version="4.0.2" />

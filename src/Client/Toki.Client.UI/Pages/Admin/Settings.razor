@@ -1,6 +1,7 @@
 @page "/admin/settings"
 @inject TokiApi Api
 @inject Session Session
+@inject Peripherals Peripherals
 
 <Admin Title="Configuración" Subtitle="Los datos del negocio, las cajas, los comprobantes y quién puede entrar.">
     <div class="esc-tabs" role="tablist" aria-label="Secciones">
@@ -158,6 +159,47 @@
             </form>
             break;
 
+        case Section.Hardware:
+            <form class="esc-card esc-setting" @onsubmit="SaveHardwareAsync" novalidate>
+                <div class="esc-setting__about"><h2>Equipos de la caja</h2><p>La impresora, la gaveta y la balanza conectadas a esta PC. Se guardan en esta PC; cada caja tiene los suyos.</p></div>
+                <div class="esc-setting__body">
+                    <div class="esc-form-grid">
+                        <Field Label="Impresora" Wide="true" Hint="El nombre como aparece en Windows, o el puerto (COM4) si es serial. Vacío: sin impresora.">
+                            <input class="esc-input" maxlength="200" @bind="_hardware.Printer" />
+                        </Field>
+                        <Field Label="Papel">
+                            <select class="esc-select" @bind="_hardware.Width">
+                                <option value="80">80 mm (48 letras)</option>
+                                <option value="58">58 mm (32 letras)</option>
+                            </select>
+                        </Field>
+                        <Field Label="Velocidad de la impresora" Hint="Solo si está en un puerto COM.">
+                            <input class="esc-input esc-num" inputmode="numeric" @bind="_hardware.PrinterBaud" />
+                        </Field>
+                        <Field Label="Balanza: puerto" Hint="COM3, por ejemplo. Vacío: el peso se escribe.">
+                            <input class="esc-input" maxlength="20" @bind="_hardware.ScalePort" />
+                        </Field>
+                        <Field Label="Balanza: protocolo">
+                            <select class="esc-select" @bind="_hardware.Protocol">
+                                <option value="@ScaleProtocol.Cas">CAS (PD-II, ER)</option>
+                                <option value="@ScaleProtocol.Toledo8217">Toledo 8217</option>
+                                <option value="@ScaleProtocol.Continuous">Envío continuo</option>
+                            </select>
+                        </Field>
+                        <Field Label="Velocidad de la balanza">
+                            <input class="esc-input esc-num" inputmode="numeric" @bind="_hardware.ScaleBaud" />
+                        </Field>
+                    </div>
+                    <label class="esc-row" style="gap:8px"><input type="checkbox" style="width:22px;height:22px" @bind="_hardware.PrintAfterSale" /> Imprimir la factura al cobrar</label>
+                    <div class="esc-form-actions">
+                        <Button Disabled="_sending" OnClick="TestPrinterAsync"><Icon Name="printer" /> Imprimir prueba</Button>
+                        <Button Disabled="_sending" OnClick="TestScaleAsync">Leer balanza</Button>
+                        <Button Type="submit" Variant="Button.Variants.Primary">Guardar</Button>
+                    </div>
+                </div>
+            </form>
+            break;
+
         case Section.Users:
             <section class="esc-card esc-setting">
                 <div class="esc-setting__about"><h2>Usuarios</h2><p>Quién puede entrar y qué puede hacer. Cada persona entra con su código y su PIN.</p></div>
@@ -279,7 +321,7 @@
 </Admin>
 
 @code {
-    private enum Section { None, Business, Registers, FiscalSequences, Devices, Users, Backups, Cloud, License }
+    private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, Users, Backups, Cloud, License }
     private sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
     private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; }
     private sealed record Sequence(Guid Id, string Type, string From, string To, string Next, long Available, decimal PercentUsed, DateOnly ExpiresOn);
@@ -293,6 +335,7 @@
         Section.Registers => "Cajas",
         Section.FiscalSequences => "Comprobantes",
         Section.Devices => "Equipos",
+        Section.Hardware => "Equipos de la caja",
         Section.Users => "Usuarios",
         Section.Backups => "Respaldos",
         Section.Cloud => "Nube",
@@ -302,7 +345,7 @@
     private Section[] Sections => [.. new Section?[]
     {
         Session.Can("settings.manage") ? Section.Business : null, Session.Can("settings.manage") ? Section.Registers : null,
-        Session.Can("fiscal.manage") ? Section.FiscalSequences : null, Session.Can("devices.manage") ? Section.Devices : null,
+        Session.Can("fiscal.manage") ? Section.FiscalSequences : null, Session.Can("devices.manage") ? Section.Devices : null, Session.Can("settings.manage") ? Section.Hardware : null,
         Session.Can("users.manage") ? Section.Users : null, Session.Can("settings.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License,
     }.OfType<Section>()];
 
@@ -351,6 +394,7 @@
                 break;
             case Section.FiscalSequences: _sequences = (await Api.GetAsync<List<Sequence>>("/api/fiscal/sequences")).Value ?? []; break;
             case Section.Devices: _devices = (await Api.GetAsync<List<Device>>("/api/identity/devices")).Value ?? []; break;
+            case Section.Hardware: _hardware = HardwareForm.From(Peripherals.Settings); break;
             case Section.Users:
                 _users = (await Api.GetAsync<List<User>>("/api/identity/users")).Value ?? [];
                 _roles = [.. (await Api.GetAsync<RoleList>("/api/identity/roles")).Value?.Roles ?? []];
@@ -363,6 +407,68 @@
     }
 
     private bool _disconnecting;
+
+    private sealed class HardwareForm
+    {
+        public string? Printer, ScalePort;
+        public int Width = 80, PrinterBaud = 9600, ScaleBaud = 9600;
+        public ScaleProtocol Protocol = ScaleProtocol.Cas;
+        public bool PrintAfterSale = true;
+
+        public static HardwareForm From(HardwareSettings s) => new()
+        {
+            Printer = s.Printer?.Port, Width = s.Printer?.Width ?? 80, PrinterBaud = s.Printer?.BaudRate ?? 9600, PrintAfterSale = s.PrintAfterSale,
+            ScalePort = s.Scale?.Port, Protocol = s.Scale?.Protocol ?? ScaleProtocol.Cas, ScaleBaud = s.Scale?.BaudRate ?? 9600,
+        };
+
+        public HardwareSettings ToSettings() => new(
+            string.IsNullOrWhiteSpace(Printer) ? null : new PrinterSettings(Printer.Trim(), Width == 58 ? 58 : 80, PrinterBaud > 0 ? PrinterBaud : 9600),
+            string.IsNullOrWhiteSpace(ScalePort) ? null : new ScaleSettings(ScalePort.Trim().ToUpperInvariant(), Protocol, ScaleBaud > 0 ? ScaleBaud : 9600),
+            PrintAfterSale);
+    }
+
+    private HardwareForm _hardware = new();
+
+    private async Task SaveHardwareAsync()
+    {
+        await Peripherals.SaveAsync(_hardware.ToSettings());
+        ShowResult(null, "Equipos guardados en esta PC.");
+    }
+
+    /// <summary>The tests use what is on screen: they save it first.</summary>
+    private async Task TestPrinterAsync()
+    {
+        await Peripherals.SaveAsync(_hardware.ToSettings());
+        if (Peripherals.Printer is null) { (_messageKind, _message) = (Notice.Kinds.Warning, "Escriba primero el nombre o el puerto de la impresora."); return; }
+        _sending = true;
+        var ok = await Peripherals.TryAsync(p => p.PrintAsync(TestReceipt, true, CancellationToken.None));
+        _sending = false;
+        (_messageKind, _message) = ok
+            ? (Notice.Kinds.Success, "Prueba enviada: debe salir una factura de prueba con ñ y acentos, el código QR, el corte, y abrirse la gaveta.")
+            : (Notice.Kinds.Error, "La impresora no respondió. Revise el nombre o el puerto, el cable y que esté encendida.");
+    }
+
+    private async Task TestScaleAsync()
+    {
+        await Peripherals.SaveAsync(_hardware.ToSettings());
+        if (Peripherals.Scale is not { } scale) { (_messageKind, _message) = (Notice.Kinds.Warning, "Escriba primero el puerto de la balanza."); return; }
+        _sending = true;
+        var r = await scale.ReadAsync(CancellationToken.None);
+        _sending = false;
+        var pounds = r.Pounds.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+        (_messageKind, _message) = r.Status switch
+        {
+            ScaleStatus.Stable => (Notice.Kinds.Success, $"La balanza marca {pounds} lb, estable."),
+            ScaleStatus.Unstable => (Notice.Kinds.Info, $"La balanza responde ({pounds} lb) pero el peso todavía se mueve."),
+            ScaleStatus.Overload => (Notice.Kinds.Warning, "La balanza responde: está sobrecargada."),
+            _ => (Notice.Kinds.Error, "La balanza no responde. Revise el puerto, el protocolo, la velocidad y el cable."),
+        };
+    }
+
+    private static readonly Receipt TestReceipt = new("Prueba de impresión · Toki", "000000000", "Calle Duarte, Santo Domingo", null,
+        "Factura de Consumo Electrónica", "E320000000000", 0, DateTime.Now, "Caja", "Técnico", null, null,
+        [new("Chuleta ahumada (ñ á é í ó ú ü ¿¡)", 1.25m, "Pound", 185m, 0m, 231.25m, null)], 195.97m, 0m, [new("ITBIS 18%", 195.97m, 35.28m)],
+        231.25m, [new("Efectivo", 231.25m, 300m)], 68m, "PRUEBA", "https://dgii.gov.do", "Si lee bien esta línea, la impresora está lista.", false);
 
     private async Task ConnectCloudAsync()
     {

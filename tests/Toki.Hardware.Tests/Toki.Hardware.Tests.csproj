@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hardware\Toki.Hardware.Scales\Toki.Hardware.Scales.csproj" />
+    <ProjectReference Include="..\..\src\Hardware\Toki.Hardware.EscPos\Toki.Hardware.EscPos.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Snapshots\**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
