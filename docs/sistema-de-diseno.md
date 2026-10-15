@@ -6,7 +6,7 @@
 
 ## Para qué
 
-Que todas las pantallas (caja, administración, celular del dueño, reportes y tickets) se vean y se comporten igual, que un revendedor pueda poner su marca sin romper nada, y que una pantalla nueva se arme con piezas ya probadas en vez de dibujarse desde cero. Es la respuesta al dolor #2 y #12 del sistema viejo: copias por cliente y pantallas hechas a mano cada vez.
+Que todas las pantallas (caja, administración, celular del dueño, reportes y tickets) se vean y se comporten igual, y que una pantalla nueva se arme con piezas ya probadas en vez de dibujarse desde cero. Es la respuesta al dolor #2 y #12 del sistema viejo: copias por cliente y pantallas hechas a mano cada vez.
 
 ## Principios (los mismos de la hoja del lienzo)
 
@@ -26,7 +26,7 @@ Que todas las pantallas (caja, administración, celular del dueño, reportes y t
 |---|---|
 | MudBlazor | Se ve como Material (sombras, ripple, tipografía); quitarle ese aspecto cuesta más que hacer los componentes. |
 | Fluent UI Blazor | Se ve como Microsoft 365; componentes pensados para oficina, no para una caja de pie con pantalla táctil. |
-| **Escuadra propio** | Son ~25 componentes sencillos (botones, campos, teclado numérico, líneas de carrito). Control total del tamaño táctil, el foco del escáner, el tema por revendedor y el rendimiento en PCs viejas. |
+| **Escuadra propio** | Son ~25 componentes sencillos (botones, campos, teclado numérico, líneas de carrito). Control total del tamaño táctil, el foco del escáner y el rendimiento en PCs viejas. |
 | `QuickGrid` (Microsoft, MIT) | **Sí**, solo para tablas de administración (ordenar, paginar, virtualizar). Se envuelve en un componente Escuadra para que use los tokens. |
 
 ## Partes del sistema
@@ -34,7 +34,7 @@ Que todas las pantallas (caja, administración, celular del dueño, reportes y t
 ### 1. Tokens (la fuente única de verdad)
 
 - Un archivo `tokens.json` → se genera `escuadra.css` con variables CSS (`--color-marca`, `--espacio-3`, `--texto-total`…).
-- **Color:** marco, fondo, superficie, bordes, texto, marca (del revendedor), éxito, aviso, error, sin-internet. Tema claro por defecto; tema oscuro opcional para turnos de noche.
+- **Color:** marco, fondo, superficie, bordes (tarjeta #C9CED4, control #7A838C), texto, marca (azul Toki #0B5CAD, fijo), éxito, aviso, error, sin-internet. Tema claro por defecto; tema oscuro opcional para turnos de noche.
 - **Tipografía:** IBM Plex Sans 400/600/700 **incluida en la app** (licencia OFL; nunca desde internet). Cifras tabulares. Escala: 12 · 13 · 15 · 17 · 20 · 24 · 32 · 44 · 52 · 72.
 - **Espacio y forma:** escala 4 · 8 · 12 · 16 · 24 · 32 · 48; radios 4 / 6 / 8; bordes de 1 px; sin sombras salvo diálogos.
 - **Tamaños táctiles:** mínimo 48 px; 72 px para lo que mueve dinero.
@@ -45,7 +45,7 @@ Que todas las pantallas (caja, administración, celular del dueño, reportes y t
 Decisión del 15 de octubre de 2026: **no es marca blanca a nivel visual**. Los colores y el logo son siempre los de Toki. Un revendedor solo aparece como "Vendido por …" en la factura y en la pantalla de ayuda.
 
 - Colores de marca: Azul Toki `#0B5CAD`, Tinta `#14181D`, Papel `#FFFFFF`, Mostrador `#EEF0F2`, Azul claro `#E4EFFA`, Azul noche `#6DB3F5` (tema oscuro).
-- Logo y mascota: el **ticket con cara** y la sonrisa en ✓ (dirección A). Archivos SVG en el grupo "Logos" del sistema publicado: logo completo, símbolo, símbolo simplificado para 24px o menos y versión de una tinta para la impresora térmica.
+- Logo: **C5, la etiqueta con el ojo que guiña** (símbolo azul #0B5CAD con la "t" blanca y el ojo a la izquierda, junto a "toki" en IBM Plex Sans 700). Variantes: ícono de app (fondo azul, símbolo blanco), 16 px y una tinta para la impresora térmica. Fuente: artboard `CaraGuino` del canvas del logo. Los estados de la mascota (contento, pensando, atento) cambian solo el ojo.
 - La marca nunca se usa para estados.
 
 ### 3. Componentes

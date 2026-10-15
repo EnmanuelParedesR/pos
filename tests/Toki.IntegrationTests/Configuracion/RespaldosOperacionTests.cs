@@ -48,6 +48,7 @@ public sealed class RespaldosOperacionTests(TokiApp app) : IClassFixture<TokiApp
     [Fact]
     public async Task Al_arrancar_respalda_si_hace_falta_la_copia_fallida_no_frena_nada_y_una_clave_ilegible_se_explica()
     {
+        if (!SqlServerDePrueba.RespaldaEnEsteEquipo) Assert.Skip("SQL Server escribe el .bak dentro del contenedor; use Sqlite o TOKI_TEST_SQLSERVER.");
         var admin = app.Cliente(await app.AdminAsync());
         (await admin.PutAsJsonAsync("/api/respaldos/frase", new { Frase })).EnsureSuccessStatusCode();
 
@@ -62,7 +63,7 @@ public sealed class RespaldosOperacionTests(TokiApp app) : IClassFixture<TokiApp
 
         // The off-PC copy fails (here: its path is a file): the local backups go on and keep their retention.
         var noEsCarpeta = Path.GetTempFileName();
-        var otra = Path.Combine(Path.GetTempPath(), $"toki_respaldos_{Guid.NewGuid():N}");
+        var otra = SqlServerDePrueba.CarpetaRespaldos();
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Respaldo:Carpeta"] = otra, ["Respaldo:CopiaEn"] = noEsCarpeta, ["Respaldo:Conservar"] = "2",

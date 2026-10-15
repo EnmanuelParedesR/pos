@@ -8,7 +8,7 @@ using Testcontainers.MsSql;
 namespace Toki.E2ETests;
 
 /// <summary>The real API as a separate process (`dotnet Toki.Host.Local.dll`), on a fresh database: a Sqlite file,
-/// or SQL Server in a container when TOKI_TEST_DB=sqlserver (CI). Every response with status 500 or above is recorded.</summary>
+/// or SQL Server when TOKI_TEST_DB=sqlserver: the server in TOKI_TEST_SQLSERVER (a local SQL Express) or else a container (CI). Every response with status 500 or above is recorded.</summary>
 public sealed class ServidorToki : IAsyncDisposable
 {
     private readonly string _dll;
@@ -16,6 +16,7 @@ public sealed class ServidorToki : IAsyncDisposable
     private readonly StringBuilder _salida = new();
     private readonly MsSqlContainer? _contenedor;
     private readonly string? _archivoSqlite;
+    private string? _baseExterna;
     private Process? _proceso;
 
     public Uri Base { get; }
@@ -32,9 +33,14 @@ public sealed class ServidorToki : IAsyncDisposable
     public static async Task<ServidorToki> IniciarAsync()
     {
         MsSqlContainer? contenedor = null;
-        string? archivo = null;
+        string? archivo = null, baseExterna = null;
         string proveedor, conexion;
-        if (Environment.GetEnvironmentVariable("TOKI_TEST_DB") == "sqlserver")
+        if (Environment.GetEnvironmentVariable("TOKI_TEST_DB") == "sqlserver" && Environment.GetEnvironmentVariable("TOKI_TEST_SQLSERVER") is { } externo)
+        {
+            baseExterna = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(externo) { InitialCatalog = $"toki_e2e_{Guid.NewGuid():N}" }.ConnectionString;
+            (proveedor, conexion) = ("SqlServer", baseExterna);
+        }
+        else if (Environment.GetEnvironmentVariable("TOKI_TEST_DB") == "sqlserver")
         {
             contenedor = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest").Build();
             await contenedor.StartAsync();
@@ -60,7 +66,7 @@ public sealed class ServidorToki : IAsyncDisposable
             ["Respaldo__Carpeta"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_respaldos_{Guid.NewGuid():N}"),
             ["Toki__CarpetaClaves"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_claves_{Guid.NewGuid():N}"),
         };
-        var servidor = new ServidorToki(BuscarDll(), entorno, new Uri($"http://127.0.0.1:{puerto}"), contenedor, archivo);
+        var servidor = new ServidorToki(BuscarDll(), entorno, new Uri($"http://127.0.0.1:{puerto}"), contenedor, archivo) { _baseExterna = baseExterna };
         entorno["Licencia__ClavePublica"] = servidor.ClaveLicencias.ExportSubjectPublicKeyInfoPem();
         await servidor.ArrancarAsync();
         return servidor;
@@ -129,10 +135,25 @@ public sealed class ServidorToki : IAsyncDisposable
     {
         await DetenerAsync();
         if (_contenedor is not null) await _contenedor.DisposeAsync();
+        if (_baseExterna is not null) await BorrarBaseAsync(_baseExterna);
         if (_archivoSqlite is not null)
             foreach (var f in Directory.EnumerateFiles(Path.GetDirectoryName(_archivoSqlite)!, Path.GetFileName(_archivoSqlite) + "*"))
                 try { File.Delete(f); }
                 catch (IOException) { } // best effort: a temp file left behind is harmless
+    }
+
+    /// <summary>A shared server (TOKI_TEST_SQLSERVER) outlives the run, so the throwaway database is dropped here.</summary>
+    private static async Task BorrarBaseAsync(string conexion)
+    {
+        var b = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(conexion);
+        var nombre = b.InitialCatalog;
+        b.InitialCatalog = "master";
+        Microsoft.Data.SqlClient.SqlConnection.ClearAllPools();
+        await using var c = new Microsoft.Data.SqlClient.SqlConnection(b.ConnectionString);
+        await c.OpenAsync();
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = $"ALTER DATABASE [{nombre}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{nombre}];";
+        await cmd.ExecuteNonQueryAsync();
     }
 
     private static int PuertoLibre()

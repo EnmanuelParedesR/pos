@@ -83,7 +83,7 @@ internal sealed class ClientesConfiguration :
     {
         b.ToTable("AbonosFiado");
         b.HasIndex(a => a.ClienteId);
-        b.Property(a => a.Origen).HasConversion<string>().HasMaxLength(12);
+        b.Property(a => a.Origen).HasConversion<string>().HasMaxLength(20);
         b.Property(a => a.Medio).HasConversion<string>().HasMaxLength(20);
         b.Property(a => a.Referencia).HasMaxLength(60);
         b.HasMany(a => a.Aplicaciones).WithOne().HasForeignKey(x => x.AbonoId);

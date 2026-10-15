@@ -12,7 +12,8 @@ using Toki.BuildingBlocks.Persistence;
 
 namespace Toki.IntegrationTests.Infra;
 
-/// <summary>SQL Server in a container when TOKI_TEST_DB=sqlserver (CI); otherwise each app uses its own Sqlite file.</summary>
+/// <summary>SQL Server when TOKI_TEST_DB=sqlserver: the server in TOKI_TEST_SQLSERVER (e.g. a local SQL Express) or else a container (CI);
+/// otherwise each app uses its own Sqlite file.</summary>
 public sealed class SqlServerDePrueba : IAsyncLifetime
 {
     private MsSqlContainer? _contenedor;
@@ -20,9 +21,39 @@ public sealed class SqlServerDePrueba : IAsyncLifetime
     public static bool Activo => Environment.GetEnvironmentVariable("TOKI_TEST_DB") == "sqlserver";
     public static string? ConnectionStringBase { get; private set; }
 
+    /// <summary>The account SQL Server runs as, when it runs on this PC (TOKI_TEST_SQLSERVER).</summary>
+    public static string? CuentaServicio { get; private set; }
+
+    /// <summary>Sqlite, or a SQL Server on this PC: BACKUP writes a .bak the tests can read. A container writes it inside itself.</summary>
+    public static bool RespaldaEnEsteEquipo => !Activo || CuentaServicio is not null;
+
+    /// <summary>A new backup folder SQL Server can write to, as the installer grants in a store (PrepararServicio).</summary>
+    public static string CarpetaRespaldos()
+    {
+        var carpeta = new DirectoryInfo(Path.Combine(Path.GetTempPath(), $"toki_respaldos_{Guid.NewGuid():N}"));
+        if (CuentaServicio is null || !OperatingSystem.IsWindows()) return carpeta.FullName;
+        carpeta.Create();
+        var acl = carpeta.GetAccessControl();
+        acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(CuentaServicio, System.Security.AccessControl.FileSystemRights.Modify,
+            System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit,
+            System.Security.AccessControl.PropagationFlags.None, System.Security.AccessControl.AccessControlType.Allow));
+        carpeta.SetAccessControl(acl);
+        return carpeta.FullName;
+    }
+
     public async ValueTask InitializeAsync()
     {
         if (!Activo) return;
+        ConnectionStringBase = Environment.GetEnvironmentVariable("TOKI_TEST_SQLSERVER");
+        if (ConnectionStringBase is not null)
+        {
+            await using var c = new Microsoft.Data.SqlClient.SqlConnection(ConnectionStringBase);
+            await c.OpenAsync();
+            await using var cmd = c.CreateCommand();
+            cmd.CommandText = "SELECT service_account FROM sys.dm_server_services WHERE servicename LIKE 'SQL Server (%'";
+            CuentaServicio = (string?)await cmd.ExecuteScalarAsync();
+            return;
+        }
         _contenedor = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest").Build();
         await _contenedor.StartAsync();
         ConnectionStringBase = _contenedor.GetConnectionString();
@@ -31,6 +62,25 @@ public sealed class SqlServerDePrueba : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         if (_contenedor is not null) await _contenedor.DisposeAsync();
+        else if (ConnectionStringBase is not null) await BorrarBasesDePruebaAsync(ConnectionStringBase, "toki[_]test[_]%");
+    }
+
+    /// <summary>A shared server outlives the run, so the throwaway databases are dropped here.</summary>
+    public static async Task BorrarBasesDePruebaAsync(string conexion, string patron)
+    {
+        Microsoft.Data.SqlClient.SqlConnection.ClearAllPools();
+        await using var c = new Microsoft.Data.SqlClient.SqlConnection(new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(conexion) { InitialCatalog = "master" }.ConnectionString);
+        await c.OpenAsync();
+        await using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            DECLARE @sql nvarchar(max) = N'';
+            SELECT @sql += N'ALTER DATABASE ' + QUOTENAME(name) + N' SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ' + QUOTENAME(name) + N';'
+            FROM sys.databases WHERE name LIKE @patron;
+            EXEC sp_executesql @sql;
+            """;
+        cmd.Parameters.AddWithValue("@patron", patron);
+        cmd.CommandTimeout = 300;
+        await cmd.ExecuteNonQueryAsync();
     }
 }
 
@@ -50,7 +100,7 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         {
             _provider = "SqlServer";
             _connectionString = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(SqlServerDePrueba.ConnectionStringBase)
-            { InitialCatalog = $"toki_{Guid.NewGuid():N}" }.ConnectionString;
+            { InitialCatalog = $"toki_test_{Guid.NewGuid():N}" }.ConnectionString;
         }
         else
         {
@@ -74,7 +124,7 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         builder.UseSetting("Toki:CarpetaClaves", Path.Combine(Path.GetTempPath(), $"toki_claves_{Guid.NewGuid():N}"));
         builder.UseSetting("Licencia:ClavePublica", ClaveLicencias.ExportSubjectPublicKeyInfoPem());
         builder.UseSetting("Licencia:Archivo", Path.Combine(Path.GetTempPath(), $"toki_licencia_{Guid.NewGuid():N}.jws"));
-        builder.UseSetting("Respaldo:Carpeta", Path.Combine(Path.GetTempPath(), $"toki_respaldos_{Guid.NewGuid():N}"));
+        builder.UseSetting("Respaldo:Carpeta", SqlServerDePrueba.CarpetaRespaldos());
         builder.ConfigureTestServices(s =>
         {
             s.AddSingleton<TimeProvider>(Reloj);

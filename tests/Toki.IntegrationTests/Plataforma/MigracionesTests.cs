@@ -45,6 +45,22 @@ public sealed class MigracionesTests
         static bool Protegida(string tabla) => tabla is "Roles" or "Negocio" or "FormatosEtiqueta";
     }
 
+    /// <summary>Sqlite ignores column lengths, so an enum name longer than its column only failed on SQL Server.</summary>
+    [Theory]
+    [MemberData(nameof(Contextos))]
+    public void Cada_enum_guardado_como_texto_cabe_en_su_columna(string contexto)
+    {
+        using var db = Crear(contexto);
+        var cortas = from e in db.Model.GetEntityTypes()
+                     from p in e.GetProperties()
+                     let tipo = Nullable.GetUnderlyingType(p.ClrType) ?? p.ClrType
+                     where tipo.IsEnum && p.GetProviderClrType() == typeof(string) && p.GetMaxLength() is not null
+                     let larga = Enum.GetNames(tipo).Max(n => n.Length)
+                     where larga > p.GetMaxLength()
+                     select $"{e.GetTableName()}.{p.Name}: {p.GetMaxLength()} < {larga}";
+        cortas.ShouldBeEmpty();
+    }
+
     [Fact]
     public void Todos_los_modulos_tienen_migraciones() => FabricasDeDiseno().Count().ShouldBe(9);
 

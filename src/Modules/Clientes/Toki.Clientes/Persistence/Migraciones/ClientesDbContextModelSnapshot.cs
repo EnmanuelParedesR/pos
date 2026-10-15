@@ -55,8 +55,8 @@ namespace Toki.Clientes.Persistence.Migraciones
 
                     b.Property<string>("Origen")
                         .IsRequired()
-                        .HasMaxLength(12)
-                        .HasColumnType("nvarchar(12)");
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("Referencia")
                         .HasMaxLength(60)
