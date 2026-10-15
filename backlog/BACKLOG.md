@@ -158,6 +158,9 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-125 | Crítica de diseño (`docs/critica-diseno.md`) y canvas actualizado: logo C5, marca fija, 7 pantallas nuevas, fase 2 marcada | ✅ |
 | TK-126 | Reescribir todo el código en inglés (UI en español): glosario `docs/glosario-codigo.md`, mapas `docs/rename-map*.md`, migraciones nuevas | ✅ |
 | TK-127 | Pruebas contra SQL Server Express local (`TOKI_TEST_SQLSERVER`) y arreglo de `AbonosFiado.Origen` (columna corta) con prueba de guarda | ✅ |
+| TK-171 | Investigación de usuarios y crítica de la administración (`docs/investigacion-admin.md`, `docs/critica-admin.md`) | ✅ |
+| TK-172 | Validar con 6 dueños reales (entrevistas y prueba de usabilidad en el celular) | ⬜ Con el piloto |
+| TK-173 | Rediseño de la administración y del panel ("Escuadra Admin"): resumen que cuenta una historia, nueva paleta, navegación moderna | 🔨 |
 | TK-128 | Corregir los hallazgos de R7 | ✅ Lo que quedó pendiente está en TK-123, TK-124, TK-168 y TK-169 |
 
 ## M12 · Nube
