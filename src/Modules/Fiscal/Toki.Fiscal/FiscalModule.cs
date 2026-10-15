@@ -35,10 +35,20 @@ internal sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options)
 
     public DbSet<Secuencia> Secuencias => Set<Secuencia>();
     public DbSet<DocumentoFiscal> Documentos => Set<DocumentoFiscal>();
+    public DbSet<Contribuyente> Contribuyentes => Set<Contribuyente>();
 }
 
-internal sealed class FiscalConfiguration : IEntityTypeConfiguration<Secuencia>, IEntityTypeConfiguration<DocumentoFiscal>
+internal sealed class FiscalConfiguration : IEntityTypeConfiguration<Secuencia>, IEntityTypeConfiguration<DocumentoFiscal>, IEntityTypeConfiguration<Contribuyente>
 {
+    public void Configure(EntityTypeBuilder<Contribuyente> b)
+    {
+        b.ToTable("Contribuyentes");
+        b.HasKey(c => c.Rnc);
+        b.Property(c => c.Rnc).HasMaxLength(11);
+        b.Property(c => c.Nombre).HasMaxLength(250);
+        b.Property(c => c.NombreComercial).HasMaxLength(250);
+    }
+
     public void Configure(EntityTypeBuilder<Secuencia> b)
     {
         b.ToTable("SecuenciasEcf");

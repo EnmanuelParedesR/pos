@@ -49,6 +49,15 @@ internal sealed class DocumentoFiscal
     public string? UltimoError { get; set; }
 }
 
+/// <summary>A row of the DGII taxpayer registry (DGII_RNC.TXT), to fill the buyer's name from an RNC or cédula.</summary>
+internal sealed class Contribuyente
+{
+    public string Rnc { get; set; } = "";
+    public string Nombre { get; set; } = "";
+    public string? NombreComercial { get; set; }
+    public bool Activo { get; set; }
+}
+
 internal static class ENcf
 {
     /// <summary>"E" + 2-digit type + 10-digit sequence, e.g. E320000000001.</summary>
