@@ -262,6 +262,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int?>("DgiiCode")
+                        .HasColumnType("int");
+
                     b.Property<string>("ENcf")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -272,6 +275,11 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.Property<string>("Message")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -281,6 +289,23 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime>("ReceivedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReplacedByENcf")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<string>("ReplacesENcf")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<byte[]>("RfceGzip")
+                        .HasMaxLength(8000)
+                        .HasColumnType("varbinary(8000)");
+
+                    b.Property<DateTime?>("SignedUtc")
                         .HasColumnType("datetime2");
 
                     b.Property<byte[]>("SignedXmlGzip")
@@ -303,6 +328,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("UpdatedUtc")
+                        .HasColumnType("datetime2");
 
                     b.HasKey("Id");
 

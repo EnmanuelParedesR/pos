@@ -27,6 +27,12 @@ internal sealed class Sale
     public string ENcf { get; set; } = "";
     public string SecurityCode { get; set; } = "";
     public string QrUrl { get; set; } = "";
+    /// <summary>When the e-CF was signed (printed under the QR); null on sales recorded before TK-148.</summary>
+    public DateTime? SignedUtc { get; set; }
+    /// <summary>e-NCF range expiry, printed on the 31.</summary>
+    public DateOnly? SequenceExpiresOn { get; set; }
+    /// <summary>Issued while the DGII could not be reached: the receipt carries the contingency legend.</summary>
+    public bool Contingency { get; set; }
     public SalePriceLevel PriceLevel { get; set; }
     public decimal Gross { get; set; }
     public decimal Discount { get; set; }

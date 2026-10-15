@@ -57,7 +57,6 @@ builder.Services.AddSingleton<InboxSignal>();
 builder.Services.AddSingleton<InboxApplier>();
 builder.Services.AddHostedService<InboxApplierWorker>();
 builder.Services.AddScoped<PanelQueries>();
-builder.Services.AddSingleton<ICloudEcfProvider, SimulatedCloudEcfProvider>();
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
 if (openAi.IsConfigured)
@@ -99,7 +98,7 @@ app.MapNodes();
 app.MapIngest();
 app.MapPanel();
 app.MapAssistant();
-app.MapEcfRelay();
+app.MapEcfArchive();
 
 await app.RunAsync();
 

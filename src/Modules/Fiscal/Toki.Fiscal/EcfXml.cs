@@ -60,11 +60,21 @@ internal static class EcfXml
             new XElement("FechaHoraFirma", local.ToString("dd-MM-yyyy HH:mm:ss", Invariant))));
     }
 
+    /// <summary>The official XSD file (in <c>Schemas/</c>) of an e-CF type.</summary>
+    public static string SchemaOf(EcfType type) => $"e-CF {(int)type} v.1.0.xsd";
+
+    public const string RfceSchema = "RFCE 32 v.1.0.xsd";
+    public const string AnecfSchema = "ANECF v.1.0.xsd";
+    public const string SeedSchema = "Semilla v.1.0.xsd";
+
     /// <summary>XSD errors of a signed e-CF (empty when valid).</summary>
-    public static IReadOnlyList<string> Validate(XDocument xml, EcfType type)
+    public static IReadOnlyList<string> Validate(XDocument xml, EcfType type) => Validate(xml, SchemaOf(type));
+
+    /// <summary>XSD errors of a signed document against one of the embedded XSD (empty when valid).</summary>
+    public static IReadOnlyList<string> Validate(XDocument xml, string schema)
     {
         var errors = new List<string>();
-        var schemas = Schemas[type].Value;
+        var schemas = Schemas.GetOrAdd(schema, s => new Lazy<XmlSchemaSet>(() => LoadSchema(s))).Value;
         // shortcut: XmlSchemaSet is not documented as thread-safe for concurrent validation; one lock is plenty for a store.
         lock (schemas) xml.Validate(schemas, (_, e) => errors.Add(e.Message));
         return errors;
@@ -72,21 +82,22 @@ internal static class EcfXml
 
     /// <summary>XSD errors before signing. The XSD requires the signature as the last element (<c>xs:any</c>, minOccurs 1),
     /// so a placeholder takes its place in a copy.</summary>
-    public static IReadOnlyList<string> ValidateUnsigned(XDocument xml, EcfType type)
+    public static IReadOnlyList<string> ValidateUnsigned(XDocument xml, EcfType type) => ValidateUnsigned(xml, SchemaOf(type));
+
+    public static IReadOnlyList<string> ValidateUnsigned(XDocument xml, string schema)
     {
         var copy = new XDocument(xml);
         copy.Root!.Add(new XElement(SignaturePlaceholder));
-        return Validate(copy, type);
+        return Validate(copy, schema);
     }
 
-    private static readonly Dictionary<EcfType, Lazy<XmlSchemaSet>> Schemas = Enum.GetValues<EcfType>()
-        .ToDictionary(t => t, t => new Lazy<XmlSchemaSet>(() => LoadSchema(t)));
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<XmlSchemaSet>> Schemas = new(StringComparer.Ordinal);
 
-    // Each XSD declares the same global types, so each type gets its own set.
-    private static XmlSchemaSet LoadSchema(EcfType type)
+    // Each XSD declares the same global types, so each one gets its own set.
+    private static XmlSchemaSet LoadSchema(string file)
     {
-        using var stream = typeof(EcfXml).Assembly.GetManifestResourceStream($"Toki.Fiscal.Schemas.e-CF {(int)type} v.1.0.xsd")
-            ?? throw new InvalidOperationException($"Missing embedded XSD for e-CF {(int)type}.");
+        using var stream = typeof(EcfXml).Assembly.GetManifestResourceStream($"Toki.Fiscal.Schemas.{file}")
+            ?? throw new InvalidOperationException($"Missing embedded XSD {file}.");
         using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
         var set = new XmlSchemaSet { XmlResolver = null };
         set.Add(XmlSchema.Read(reader, null)!);
@@ -173,4 +184,68 @@ internal static class EcfXml
     }
 
     private static XElement? Optional(string name, string? value) => string.IsNullOrWhiteSpace(value) ? null : new XElement(name, value);
+
+    /// <summary>TK-147: the same e-CF under a new e-NCF, unsigned. Issue date, signing time and range expiry are the new ones; everything else
+    /// (buyer, lines, totals, payments, reference) is the rejected document's.</summary>
+    public static XDocument Reissue(string rejectedSignedXml, string encf, DateTime nowUtc, DateOnly? sequenceExpiresOn)
+    {
+        var local = nowUtc + BusinessDay.Offset;
+        var xml = XDocument.Parse(rejectedSignedXml);
+        xml.Declaration = null;
+        xml.Root!.Elements().Where(e => e.Name.LocalName == "Signature").Remove();
+        var header = xml.Root.Element("Encabezado")!;
+        header.Element("IdDoc")!.Element("eNCF")!.Value = encf;
+        if (header.Element("IdDoc")!.Element("FechaVencimientoSecuencia") is { } expiry) expiry.Value = Date(sequenceExpiresOn!.Value);
+        header.Element("Emisor")!.Element("FechaEmision")!.Value = Date(DateOnly.FromDateTime(local));
+        xml.Root.Element("FechaHoraFirma")!.Value = local.ToString("dd-MM-yyyy HH:mm:ss", Invariant);
+        return xml;
+    }
+
+    // The RFCE totals, in the XSD order (no ITBIS1/2/3 rates).
+    private static readonly string[] RfceTotals =
+    [
+        "MontoGravadoTotal", "MontoGravadoI1", "MontoGravadoI2", "MontoGravadoI3", "MontoExento",
+        "TotalITBIS", "TotalITBIS1", "TotalITBIS2", "TotalITBIS3", "MontoTotal",
+    ];
+
+    /// <summary>TK-145: the consumer-receipt summary (RFCE 32 v1.0) of a signed 32 under RD$250,000. Its fields are copied from the
+    /// signed e-CF, so both always agree; <c>CodigoSeguridadeCF</c> is the e-CF's security code.</summary>
+    public static XDocument Rfce(string signedEcfXml, string securityCode)
+    {
+        var ecf = XDocument.Parse(signedEcfXml).Root!.Element("Encabezado")!;
+        var id = ecf.Element("IdDoc")!;
+        var issuer = ecf.Element("Emisor")!;
+        var buyer = ecf.Element("Comprador");
+        var totals = ecf.Element("Totales")!;
+        XElement? Copy(XElement? from, string name) => from?.Element(name) is { } e ? new XElement(e) : null;
+        return new XDocument(new XElement("RFCE",
+            new XElement("Encabezado",
+                new XElement("Version", "1.0"),
+                new XElement("IdDoc", Copy(id, "TipoeCF"), Copy(id, "eNCF"), Copy(id, "TipoIngresos"), Copy(id, "TipoPago"), Copy(id, "TablaFormasPago")),
+                new XElement("Emisor", Copy(issuer, "RNCEmisor"), Copy(issuer, "RazonSocialEmisor"), Copy(issuer, "FechaEmision")),
+                // Required area with optional fields, as in the e-CF 32.
+                new XElement("Comprador", Copy(buyer, "RNCComprador"), Copy(buyer, "RazonSocialComprador")),
+                new XElement("Totales", RfceTotals.Select(n => Copy(totals, n))),
+                new XElement("CodigoSeguridadeCF", securityCode))));
+    }
+
+    /// <summary>TK-150: an e-NCF void (ANECF v1.0) of one range of one type. Up to 10 lines and 10,000 ranges per line are allowed; Toki sends one.</summary>
+    public static XDocument Anecf(string issuerRnc, EcfType type, long from, long to, DateTime nowUtc)
+    {
+        var count = (to - from + 1).ToString(Invariant);
+        return new XDocument(new XElement("ANECF",
+            new XElement("Encabezado",
+                new XElement("Version", "1.0"),
+                new XElement("RncEmisor", issuerRnc),
+                new XElement("CantidadeNCFAnulados", count),
+                new XElement("FechaHoraAnulacioneNCF", (nowUtc + BusinessDay.Offset).ToString("dd-MM-yyyy HH:mm:ss", Invariant))),
+            new XElement("DetalleAnulacion",
+                new XElement("Anulacion",
+                    new XElement("NoLinea", 1),
+                    new XElement("TipoeCF", (int)type),
+                    new XElement("TablaRangoSecuenciasAnuladaseNCF", new XElement("Secuencias",
+                        new XElement("SecuenciaeNCFDesde", Domain.ENcf.Format(type, from)),
+                        new XElement("SecuenciaeNCFHasta", Domain.ENcf.Format(type, to)))),
+                    new XElement("CantidadeNCFAnulados", count)))));
+    }
 }

@@ -67,7 +67,8 @@ public sealed record ReceiptItbis(string Rate, decimal Base, decimal Itbis);
 public sealed record ReceiptPayment(string Method, decimal Amount, decimal? Received);
 public sealed record Receipt(string BusinessName, string? Rnc, string? Address, string? Phone, string DocumentType, string ENcf, long Number,
     DateTime LocalDateTime, string Register, string Cashier, string? Customer, string? CustomerRnc, ReceiptLine[] Lines, decimal Subtotal, decimal Discount,
-    ReceiptItbis[] Itbis, decimal Total, ReceiptPayment[] Payments, decimal Change, string SecurityCode, string QrUrl, string? Footer, bool IsVoided);
+    ReceiptItbis[] Itbis, decimal Total, ReceiptPayment[] Payments, decimal Change, string SecurityCode, string QrUrl, string? Footer, bool IsVoided,
+    DateTime? SignedAt = null, DateOnly? SequenceExpiresOn = null, string? ContingencyLegend = null);
 public sealed record SaleRegistered(Guid SaleId, long Number, string ENcf, decimal Total, decimal Change, Receipt Receipt);
 public sealed record SaleSummary(Guid Id, long Number, string ENcf, DateTime DateUtc, string Status, string Cashier, string? Customer, decimal Total);
 public sealed record SaleDetailLine(Guid Id, string Description, decimal Quantity, decimal UnitPrice, decimal Discount, decimal Total, decimal Itbis,

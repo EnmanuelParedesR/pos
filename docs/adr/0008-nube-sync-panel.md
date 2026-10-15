@@ -65,6 +65,8 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 
 **Asistente**: `POST /api/assistant/ask { question, history }`. El modelo recibe herramientas de solo lectura (ventas por día, productos más vendidos, cuadres de turnos, ventas por cajero, mezcla de pagos, estado de la sincronización y cuentas por cobrar), cada una con un rango de fechas máximo. Las respuestas de las herramientas traen los nombres de cajeros y cajas, así que el asistente dice "Yudelka" y no un id. Contesta en español con cifras en RD$. Sin datos personales en los logs.
 
+> **Reemplazado (15-10-2026, TK-146):** con el camino propio (`docs/ecf-propio.md` §10.4) la PC principal le habla directo a la DGII. El relevo dejó de enviar: `POST /relay/v1/ecf`, `RelayEcfProvider`, `ICloudEcfProvider` y `Fiscal:Provider` = `Relay` se retiraron. En su lugar, `POST /fiscal/v1/archive` (misma identidad de nodo) guarda el XML firmado, el RFCE y la respuesta de la DGII de cada documento con resultado final; un segundo envío del mismo e-NCF actualiza la fila. Contrato en `docs/ecf-propio.md` §10.9. Lo que sigue es el diseño original, como historia.
+
 **Relevo e-CF (DGII)**
 - El nodo tiene dos proveedores de `IEcfProvider`: `Simulated` (por defecto) y `Relay`, que manda el documento firmado a `POST /relay/v1/ecf` en la nube.
 - La nube lo pasa a su propio `IEcfProvider`, que hoy también es el simulado.

@@ -79,6 +79,10 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(r => r.TrackId).HasMaxLength(100);
             e.Property(r => r.Message).HasMaxLength(1000);
             e.Property(r => r.SignedXmlGzip).HasMaxLength(LongText);
+            e.Property(r => r.RfceGzip).HasMaxLength(LongText);
+            e.Property(r => r.Environment).HasMaxLength(10);
+            e.Property(r => r.ReplacesENcf).HasMaxLength(13);
+            e.Property(r => r.ReplacedByENcf).HasMaxLength(13);
             e.HasIndex(r => new { r.TenantId, r.ENcf }).IsUnique();
         });
 
@@ -282,7 +286,8 @@ public sealed class Node
 
 public enum EcfRelayStatus { Accepted, AcceptedConditional, Rejected, Pending, Simulated }
 
-/// <summary>A signed e-CF a node sent through the cloud. The e-NCF is the natural key: sending it again returns this result.</summary>
+/// <summary>The cloud archive of a signed e-CF and its DGII result (<c>/fiscal/v1/archive</c>; the type and table keep the relay's name).
+/// The e-NCF is the natural key: a later upload updates the row.</summary>
 public sealed class EcfRelayRecord
 {
     public Guid Id { get; set; }
@@ -296,7 +301,17 @@ public sealed class EcfRelayRecord
     public DateTime ReceivedUtc { get; set; }
     public EcfRelayStatus Status { get; set; }
     public string TrackId { get; set; } = "";
+    /// <summary>The DGII messages.</summary>
     public string Message { get; set; } = "";
+    /// <summary>TesteCF, CerteCF or eCF.</summary>
+    public string Environment { get; set; } = "";
+    /// <summary>The signed RFCE (gzip) of a 32 under RD$250,000.</summary>
+    public byte[]? RfceGzip { get; set; }
+    public int? DgiiCode { get; set; }
+    public DateTime? SignedUtc { get; set; }
+    public string ReplacesENcf { get; set; } = "";
+    public string ReplacedByENcf { get; set; } = "";
+    public DateTime? UpdatedUtc { get; set; }
 }
 
 /// <summary>An event as a node uploaded it. Received cheaply; applied later by <see cref="Ingest.InboxApplier"/>.</summary>

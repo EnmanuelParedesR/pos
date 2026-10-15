@@ -23,11 +23,68 @@ namespace Toki.Fiscal.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Toki.Fiscal.Domain.EcfVoid", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<long>("From")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("NextAttemptUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ResultUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("SequenceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("SignedXml")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("varbinary(8000)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<long>("To")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("EcfVoids", "fiscal");
+                });
+
             modelBuilder.Entity("Toki.Fiscal.Domain.FiscalDocument", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ArchivedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<int>("Attempts")
                         .HasColumnType("int");
@@ -40,10 +97,30 @@ namespace Toki.Fiscal.Persistence.Migrations
                         .HasMaxLength(11)
                         .HasColumnType("nvarchar(11)");
 
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<bool>("Contingency")
+                        .HasColumnType("bit");
+
+                    b.Property<int?>("DgiiCode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("DgiiMessages")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
                     b.Property<string>("ENcf")
                         .IsRequired()
                         .HasMaxLength(13)
                         .HasColumnType("nvarchar(13)");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
                     b.Property<decimal>("Itbis")
                         .HasPrecision(19, 4)
@@ -63,10 +140,34 @@ namespace Toki.Fiscal.Persistence.Migrations
                     b.Property<Guid>("ReferenceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("ReplacedByENcf")
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<string>("ReplacesENcf")
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<DateTime?>("ResultUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RfceXml")
+                        .HasMaxLength(8000)
+                        .HasColumnType("varbinary(8000)");
+
                     b.Property<string>("SecurityCode")
                         .IsRequired()
                         .HasMaxLength(6)
                         .HasColumnType("nvarchar(6)");
+
+                    b.Property<DateTime?>("SentUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly?>("SequenceExpiresOn")
+                        .HasColumnType("date");
+
+                    b.Property<bool?>("SequenceUsed")
+                        .HasColumnType("bit");
 
                     b.Property<DateTime>("SignedUtc")
                         .HasColumnType("datetime2");
@@ -116,7 +217,12 @@ namespace Toki.Fiscal.Persistence.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateOnly>("ExpiresOn")
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateOnly?>("ExpiresOn")
                         .HasColumnType("date");
 
                     b.Property<long>("From")

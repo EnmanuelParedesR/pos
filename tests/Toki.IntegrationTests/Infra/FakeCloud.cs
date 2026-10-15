@@ -25,8 +25,6 @@ public sealed class FakeCloud : HttpMessageHandler
     /// <summary>Which received event ids the ingest answers as accepted. Default: all.</summary>
     public Func<Guid, bool> Accept { get; set; } = _ => true;
 
-    /// <summary>What the e-CF relay answers.</summary>
-    public object RelayAnswer { get; set; } = new { status = "Simulated", trackId = (string?)null, message = (string?)null };
 
     public IEnumerable<Received> To(string path)
     {
@@ -54,7 +52,7 @@ public sealed class FakeCloud : HttpMessageHandler
                 Json(new { tenantId = TenantId, storeId = StoreId, nodeId = NodeId, nodeSecret = NodeSecret }),
             "/ingest/v1/events" =>
                 Json(new { accepted = body.GetProperty("events").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).Where(Accept).ToList() }),
-            "/relay/v1/ecf" => Json(RelayAnswer),
+            "/fiscal/v1/archive" => new HttpResponseMessage(HttpStatusCode.OK),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         };
     }

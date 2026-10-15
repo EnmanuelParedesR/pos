@@ -186,7 +186,7 @@ Decisión: ADR-0008. Despliegue: `docs/despliegue-azure.md`.
 
 ## M13 · e-CF propio con la DGII
 
-Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket en su §12). Sin proveedor de terceros: la PC principal firma y envía directo a la DGII; la nube publica los servicios de receptor.
+Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket en su §12; lo implementado de TK-144 a TK-150, en §10.9). Sin proveedor de terceros: la PC principal firma y envía directo a la DGII; la nube publica los servicios de receptor.
 
 | Ticket | Qué | Estado |
 |---|---|---|
@@ -194,13 +194,13 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-141 | Acceso a TesteCF, certificado de prueba y ADR-0009 | ⬜ |
 | TK-142 | Firma XMLDSig con el certificado del almacén de Windows (`CertStoreEcfSigner`) e importación del `.p12` | ✅ `CertificateEcfSigner` (`Fiscal:Signer` = `Certificate`); pendiente la pantalla de importación del `.p12` y el aviso de vencimiento (`docs/ecf-propio.md` §10.8) |
 | TK-143 | XML de e-CF 31/32/33/34 según el formato oficial, validado contra el XSD | ✅ `EcfXml` y XSD oficiales en `Toki.Fiscal/Schemas`; falta la prueba en TesteCF (TK-141) (`docs/ecf-propio.md` §10.8) |
-| TK-144 | Cliente DGII en el nodo (semilla → token, recepción, RFCE, resultados, TrackIds, anulación, directorio) | 🔨 |
-| TK-145 | Resumen de factura de consumo (RFCE) y umbral de RD$250,000 | 🔨 |
-| TK-146 | Cola de envío directo a la DGII (TrackId → resultado) y relevo convertido en archivo | 🔨 |
-| TK-147 | Rechazos de la DGII: e-CF de reemplazo, no nota de crédito | 🔨 |
-| TK-148 | Representación impresa y QR por tipo y ambiente, leyenda de contingencia, PDF para certificación | 🔨 |
-| TK-149 | Secuencias por ambiente y vencimiento opcional (32/34) | 🔨 |
-| TK-150 | Anulación de e-NCF (ANECF) | 🔨 |
+| TK-144 | Cliente DGII en el nodo (semilla → token, recepción, RFCE, resultados, TrackIds, anulación, directorio) | 🟡 Falta probar en TesteCF. `DgiiClient`: semilla firmada → token en caché hasta 5 min antes de `expira` (y ante un 401), recepción, resultado, RFCE, consulta de RFCE, TrackIds, anulación, directorio y aprobación comercial; probado con la DGII simulada (`docs/ecf-propio.md` §10.9) |
+| TK-145 | Resumen de factura de consumo (RFCE) y umbral de RD$250,000 | 🟡 Falta probar en TesteCF. RFCE armado desde el e-CF firmado, validado contra `RFCE 32 v.1.0.xsd`, firmado y guardado junto al e-CF; la 32 de RD$250,000 o más va completa |
+| TK-146 | Cola de envío directo a la DGII (TrackId → resultado) y relevo convertido en archivo | 🟡 Falta probar en TesteCF. Cola `Pending → Sent (TrackId) → resultado`, RFCE inmediato, consulta antes de reenviar tras un fallo, salud 24/60 h; el relevo pasó a `POST /fiscal/v1/archive` (solo archivo); falta almacenamiento frío |
+| TK-147 | Rechazos de la DGII: e-CF de reemplazo, no nota de crédito | 🟡 Falta probar en TesteCF. `GET /api/fiscal/documents?rejectedOnly=true` y `POST /api/fiscal/documents/{id}/replace`: e-CF nuevo con los mismos datos, ligado al rechazado; la venta pasa al nuevo e-NCF. Falta la pantalla "Rechazados por la DGII" y el aviso de aceptado condicional |
+| TK-148 | Representación impresa y QR por tipo y ambiente, leyenda de contingencia, PDF para certificación | 🟡 Falta probar en TesteCF. QR `consultatimbre`/`consultatimbrefc` por ambiente, fecha de firma, "válido hasta" y leyenda de contingencia en el recibo. Falta dibujar el QR en el ESC/POS (TK-118) y el PDF para la certificación |
+| TK-149 | Secuencias por ambiente y vencimiento opcional (32/34) | ✅ `Environment` en secuencias y documentos (lo existente queda `Simulated`), vencimiento opcional en la 32 y la 34, rango de TesteCF cargado solo, el 607 ignora TesteCF/CerteCF. La migración no tiene prueba propia en SQL Server |
+| TK-150 | Anulación de e-NCF (ANECF) | 🟡 Falta probar en TesteCF. `POST /api/fiscal/sequences/{id}/void` arma, valida, firma y encola el ANECF de los números sin usar; `GET /api/fiscal/voids`. Falta la pantalla y anular e-CF firmados que nunca salieron |
 | TK-151 | Copia del certificado en Key Vault con consentimiento y firmador de nube restringido | ⬜ |
 | TK-152 | Servicios de receptor en la nube: Recepción (acuse firmado) y Aprobación Comercial | ⬜ |
 | TK-153 | Entrega de la 31 al comprador electrónico | ⬜ |

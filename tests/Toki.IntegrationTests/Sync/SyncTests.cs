@@ -243,34 +243,3 @@ public sealed class CloudDisconnectTests(TokiApp app) : IClassFixture<TokiApp>
         (status.GetProperty("connected").GetBoolean(), status.GetProperty("pendingEvents").GetInt32()).ShouldBe((false, 2));
     }
 }
-
-/// <summary>TK-131: the e-CF relay provider. Own app: it owns the connection.</summary>
-public sealed class RelayEcfProviderTests(TokiApp app) : IClassFixture<TokiApp>
-{
-    [Fact]
-    public async Task The_relay_sends_the_signed_document_as_the_node_and_maps_the_answer()
-    {
-        await app.AdminAsync();
-        Task<SubmissionResult> Submit() => app.InScopeAsync(sp =>
-            ActivatorUtilities.CreateInstance<RelayEcfProvider>(sp).SubmitAsync("E320000000123", [1, 2, 3], CancellationToken.None));
-
-        // Not connected: an error the queue retries later.
-        (await Should.ThrowAsync<InvalidOperationException>(Submit)).Message.ShouldBe("La tienda no está conectada a la nube.");
-
-        await app.ConnectAsync();
-        app.Cloud.RelayAnswer = new { status = "Accepted", trackId = "TRACK-9", message = (string?)null };
-        (await Submit()).ShouldBe(new SubmissionResult(SubmissionStatus.Accepted, "TRACK-9"));
-        var sent = app.Cloud.To(RelayEcfProvider.Path).Single();
-        sent.Authorization.ShouldBe($"Node {app.Cloud.NodeId}.{FakeCloud.NodeSecret}");
-        sent.Body.GetProperty("encf").GetString().ShouldBe("E320000000123");
-        sent.Body.GetProperty("signedXmlGzip").GetBytesFromBase64().ShouldBe(new byte[] { 1, 2, 3 });
-
-        app.Cloud.RelayAnswer = new { status = "Rejected", trackId = "TRACK-10", message = "RNC del comprador inválido" };
-        (await Submit()).ShouldBe(new SubmissionResult(SubmissionStatus.Rejected, "TRACK-10", "RNC del comprador inválido"));
-
-        // A cloud failure is thrown, so the queue retries it.
-        app.Cloud.Respond = _ => new HttpResponseMessage(HttpStatusCode.BadGateway);
-        await Should.ThrowAsync<HttpRequestException>(Submit);
-        app.Cloud.Respond = null;
-    }
-}
