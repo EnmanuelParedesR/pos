@@ -19,6 +19,7 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | Clientes y fiado | `Toki.Customers` | `customers` | `/api/customers` |
 | Fiscal (e-CF) | `Toki.Fiscal` | `fiscal` | `/api/fiscal` |
 | Reportes | `Toki.Reports` | — | `/api/reports` |
+| Nube (conexión y subida) | `Toki.Sync` | `sync` | `/api/sync` |
 
 ## Términos
 

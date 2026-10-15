@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\Modules\Purchasing\Toki.Purchasing\Toki.Purchasing.csproj" />
     <ProjectReference Include="..\..\Modules\Customers\Toki.Customers\Toki.Customers.csproj" />
     <ProjectReference Include="..\..\Modules\Reports\Toki.Reports\Toki.Reports.csproj" />
+    <ProjectReference Include="..\..\Modules\Sync\Toki.Sync\Toki.Sync.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.IntegrationTests" />

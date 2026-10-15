@@ -62,7 +62,7 @@ public sealed class MigrationsTests
     }
 
     [Fact]
-    public void Every_module_has_migrations() => DesignTimeFactories().Count().ShouldBe(9);
+    public void Every_module_has_migrations() => DesignTimeFactories().Count().ShouldBe(10);
 
     private static DbContext Create(string context)
     {

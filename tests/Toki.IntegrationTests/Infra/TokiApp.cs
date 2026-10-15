@@ -120,6 +120,8 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         // Background work would race the tests when they move the fake clock; tests run it themselves.
         builder.UseSetting("Outbox:Process", "false");
         builder.UseSetting("Audit:NightlyCheck", "false");
+        builder.UseSetting("Sync:Enabled", "false");
+        builder.UseSetting("Cloud:Url", FakeCloud.Url);
         builder.UseSetting("Backup:Automatic", "false");
         builder.UseSetting("Toki:KeysFolder", Path.Combine(Path.GetTempPath(), $"toki_keys_{Guid.NewGuid():N}"));
         builder.UseSetting("License:PublicKey", LicenseKey.ExportSubjectPublicKeyInfoPem());
@@ -129,8 +131,12 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         {
             s.AddSingleton<TimeProvider>(Clock);
             TestCommands.Register(s);
+            s.AddHttpClient(Toki.Sync.CloudClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Cloud);
         });
     }
+
+    /// <summary>The cloud this app talks to (ADR-0008), in memory.</summary>
+    public FakeCloud Cloud { get; } = new();
 
     /// <summary>Signs this app's test licenses; the app trusts its public key instead of Toki's (allowed outside Production only).</summary>
     public System.Security.Cryptography.ECDsa LicenseKey { get; } = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);

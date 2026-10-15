@@ -110,7 +110,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 
 | Ticket | Qué | Estado |
 |---|---|---|
-| TK-088 | Procesador del outbox y subida a la nube (Sync) | 🟡 Procesador en proceso (en orden, al menos una vez, `IManejadorEvento<T>`), health `outbox`; primer consumidor: borra las ventas en espera del turno cerrado. ⏸ La subida a la nube espera el backend en la nube (fase 2) |
+| TK-088 | Procesador del outbox y subida a la nube (Sync) | ✅ Procesador en proceso (en orden, al menos una vez, `IManejadorEvento<T>`), health `outbox`; primer consumidor: borra las ventas en espera del turno cerrado. La subida a la nube es TK-130 |
 | TK-089 | Licencia firmada y funciones por plan (`IFeatureService`) | ✅ ADR-0006: JWS ES256 verificado con la clave pública embebida, estados Prueba/Activa/Gracia (15 días)/Restringida, límite de cajas al emparejar, `GET /api/configuracion/funciones`, regla de arquitectura: Ventas, Fiscal y Caja no dependen de la licencia |
 | TK-090 | Migraciones EF por módulo para SQL Server y guardia de migraciones | ✅ ADR-0005: `Persistence/Migraciones` por módulo, `MigrateAsync` al arrancar en SQL Server, prueba que falla si falta una migración |
 | TK-091 | Emparejamiento con certificados (mTLS) en lugar del secreto de dispositivo | ⏸ Se diseña junto con la app de la caja (el CSR y el almacén de llaves viven en el cliente). Para el piloto: HTTPS con certificado del nodo fijado al emparejar + secreto de dispositivo |
@@ -154,6 +154,15 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-121 | Abono de un cliente desde la caja | ⬜ |
 | TK-122 | Fijar el certificado del nodo en el cliente al emparejar (con TK-091) | ⬜ |
 | TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real | ⬜ |
+
+## M12 · Nube
+
+Decisión: ADR-0008.
+
+| Ticket | Qué | Estado |
+|---|---|---|
+| TK-130 | Sync: conectar la tienda con el código del panel y subir el outbox | ✅ Módulo `Toki.Sync`: `/api/sync/connect`, `/status` y `/disconnect`; secreto del nodo cifrado con Data Protection; lotes de 200 con gzip cada 5 s, marca solo los ids aceptados, reintentos de 1 s a 15 min con jitter y nunca pierde un evento; health `sync` |
+| TK-131 | Relevo e-CF en el nodo | ✅ `RelayEcfProvider` manda el e-CF firmado a `/relay/v1/ecf` como el nodo; `Fiscal:Provider` = `Simulated` (por defecto) o `Relay`; contrato en ADR-0008 |
 
 ## Revisiones
 

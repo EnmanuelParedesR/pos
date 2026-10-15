@@ -1,9 +1,12 @@
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Toki.BuildingBlocks.Persistence;
 using Toki.Fiscal.Domain;
+using Toki.Sync.Contracts;
 
 namespace Toki.Fiscal;
 
@@ -22,6 +25,25 @@ internal sealed class SimulatedEcfProvider : IEcfProvider
 {
     public Task<SubmissionResult> SubmitAsync(string encf, byte[] signedXmlGzip, CancellationToken ct) =>
         Task.FromResult(new SubmissionResult(SubmissionStatus.Simulated, null));
+}
+
+/// <summary>Hands the signed e-CF to the cloud relay (ADR-0008, "Contrato del relevo e-CF"), which talks to the provider: its API key lives only in the cloud.
+/// Any answer other than 200 with a known status throws, so the queue retries it; the cloud dedupes by e-NCF.</summary>
+internal sealed class RelayEcfProvider(ICloudClient cloud) : IEcfProvider
+{
+    public const string Path = "/relay/v1/ecf";
+
+    public async Task<SubmissionResult> SubmitAsync(string encf, byte[] signedXmlGzip, CancellationToken ct)
+    {
+        using var response = await cloud.PostAsJsonAsync(Path, new RelayRequest(encf, signedXmlGzip), ct);
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"El relevo e-CF de la nube respondió {(int)response.StatusCode}.");
+        var r = await response.Content.ReadFromJsonAsync<RelayResponse>(Json.Options, ct) ?? throw new HttpRequestException("El relevo e-CF de la nube respondió vacío.");
+        return new SubmissionResult(r.Status, r.TrackId, r.Message);
+    }
+
+    internal sealed record RelayRequest(string Encf, byte[] SignedXmlGzip);
+
+    internal sealed record RelayResponse(SubmissionStatus Status, string? TrackId, string? Message);
 }
 
 /// <summary>Sends pending e-CF, closest DGII deadline first. A failure waits 1, 2, 4… up to 60 minutes before the next try.

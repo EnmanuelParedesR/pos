@@ -5,6 +5,7 @@ using System.Text;
 using System.Xml.Linq;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Toki.BuildingBlocks;
 using Toki.BuildingBlocks.Persistence;
@@ -17,12 +18,18 @@ namespace Toki.Fiscal;
 
 public static class FiscalModule
 {
-    public static IServiceCollection AddFiscalModule(this IServiceCollection services)
+    /// <summary><c>Fiscal:Provider</c> picks who sends the e-CF: <c>Simulated</c> (default, e-CF on hold) or <c>Relay</c> (the cloud relay, ADR-0008).</summary>
+    public static IServiceCollection AddFiscalModule(this IServiceCollection services, IConfiguration config)
     {
         services.AddModuleDbContext<FiscalDbContext>();
         services.AddScoped<IFiscalDocuments, FiscalDocuments>();
         services.AddSingleton<IEcfSigner, SimulatedEcfSigner>();
-        services.AddSingleton<IEcfProvider, SimulatedEcfProvider>();
+        _ = (config["Fiscal:Provider"] ?? "Simulated") switch
+        {
+            "Simulated" => services.AddSingleton<IEcfProvider, SimulatedEcfProvider>(),
+            "Relay" => services.AddScoped<IEcfProvider, RelayEcfProvider>(),
+            var other => throw new InvalidOperationException($"Unknown Fiscal:Provider '{other}': use Simulated or Relay."),
+        };
         services.AddScoped<EcfSubmissionQueue>();
         services.AddHostedService<EcfSubmissionWorker>();
         services.AddHealthChecks().AddCheck<EcfQueueHealthCheck>("ecf-queue");

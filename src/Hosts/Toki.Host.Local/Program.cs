@@ -14,6 +14,7 @@ using Toki.Sales;
 using Toki.Identity;
 using Toki.Inventory;
 using Toki.Reports;
+using Toki.Sync;
 using Toki.Host.Local;
 
 // Restoring on any PC: Toki.Host.Local decrypt-backup <file.toki-backup> <output>, with the passphrase in TOKI_BACKUP_PASSPHRASE or typed.
@@ -76,6 +77,7 @@ Assembly[] modules =
     typeof(PurchasingModule).Assembly,
     typeof(CustomersModule).Assembly,
     typeof(ReportsModule).Assembly,
+    typeof(SyncModule).Assembly,
 ];
 
 builder.Services.AddToki(builder.Configuration, modules);
@@ -83,10 +85,11 @@ builder.Services.AddIdentityModule();
 builder.Services.AddSettingsModule(builder.Configuration);
 builder.Services.AddInventoryModule();
 builder.Services.AddCashRegisterModule();
-builder.Services.AddFiscalModule();
+builder.Services.AddFiscalModule(builder.Configuration);
 builder.Services.AddSalesModule();
 builder.Services.AddPurchasingModule();
 builder.Services.AddCustomersModule();
+builder.Services.AddSyncModule();
 
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();

@@ -31,6 +31,7 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 - `POST /ingest/v1/events` con `{ events: [{ id, type, aggregateId, occurredUtc, payload }] }`, hasta 200 por lote. Responde `{ accepted: [ids] }`, incluidos los duplicados ya recibidos. Recibir es barato; aplicar va aparte.
 - Un worker de la nube aplica cada evento de `ingest.Inbox` con su proyector en la misma transacción que marca `AppliedUtc`. Un tipo desconocido queda guardado sin aplicar: se proyecta cuando exista su proyector.
 - Las proyecciones hacen *upsert* por id; nunca suman sobre lo ya aplicado.
+- Lo que manda el nodo: `type` es el nombre completo del evento en .NET (por ejemplo `Toki.Sales.Contracts.SaleRecordedV1`), `payload` es el JSON del evento como objeto (camelCase, enums como texto), no como texto escapado, y `occurredUtc` va en ISO 8601 con `Z`. El cuerpo va comprimido (`Content-Encoding: gzip`), así que la nube lo descomprime (`UseRequestDecompression`). Solo se marca como subido lo que viene en `accepted`; una respuesta que no sea 200 deja todo el lote pendiente.
 
 **Réplica (V1)**: ventas (cabecera, líneas, pagos), anulaciones, devoluciones, turnos cerrados (Z), movimientos de inventario, cambios de precio y documentos fiscales. Toda tabla lleva `TenantId` como primera columna de sus índices.
 
@@ -43,6 +44,21 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 - La nube lo pasa a su propio `IEcfProvider`, que hoy también es el simulado.
 - La API key de un proveedor real vive solo en la nube (Key Vault), nunca en la tienda.
 - Cuando el dueño decida el proveedor (TK-055), solo cambia la implementación en la nube.
+
+**Contrato del relevo e-CF**
+
+`POST /relay/v1/ecf` con `Authorization: Node <nodeId>.<nodeSecret>`, la misma identidad que usa la ingesta. El tenant sale de esa identidad.
+
+```
+→ { "encf": "E320000000123", "signedXmlGzip": "<base64>" }
+← 200 { "status": "Accepted" | "AcceptedConditional" | "Rejected" | "Pending" | "Simulated", "trackId": "…" | null, "message": "…" | null }
+```
+
+- `signedXmlGzip` es el XML firmado tal como lo guarda el nodo (comprimido con gzip), en base64.
+- La nube deduplica por `encf`: si el mismo e-NCF llega otra vez, responde el estado que ya tiene y no lo vuelve a mandar al proveedor.
+- `Rejected` es final: el nodo guarda `message` y no reintenta, porque hace falta una nota de crédito. `Pending` quiere decir que la nube todavía no tiene respuesta; el nodo vuelve a preguntar con el mismo e-NCF en su siguiente vuelta.
+- Cualquier otra respuesta (que no sea 200, o un `status` desconocido) es un fallo pasajero: el nodo reintenta con espera creciente (1, 2, 4… hasta 60 minutos) dentro del plazo de 72 horas.
+- En el nodo, `Fiscal:Provider` elige el proveedor: `Simulated` (por defecto) o `Relay`. Hoy la nube responde `Simulated`.
 
 **Despliegue**
 - `deploy/azure/main.bicep` crea un grupo de recursos `rg-toki-<env>` con App Service Linux (B1), Azure SQL serverless con pausa automática, Static Web App (Free), Key Vault, Application Insights y Azure OpenAI con el despliegue del modelo.

@@ -68,6 +68,7 @@ internal sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outb
         b.HasIndex(m => m.Id).IsUnique();
         b.Property(m => m.Payload).HasMaxLength(ModuleDbContext.LongText);
         b.HasIndex(m => m.ProcessedUtc);
+        b.HasIndex(m => m.UploadedUtc); // the cloud uploader reads WHERE UploadedUtc IS NULL every 5 s; rows are never deleted
     }
 }
 

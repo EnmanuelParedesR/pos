@@ -150,6 +150,8 @@ namespace Toki.BuildingBlocks.Persistence.Migrations
 
                     b.HasIndex("ProcessedUtc");
 
+                    b.HasIndex("UploadedUtc");
+
                     b.ToTable("OutboxMessages", "infra");
                 });
 #pragma warning restore 612, 618

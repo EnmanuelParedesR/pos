@@ -20,7 +20,7 @@ public interface IEventHandler<in TEvent> where TEvent : IIntegrationEvent
 /// <summary>Delivers outbox messages in order to the in-process handlers, then marks them processed.
 /// A failing message is logged and retried on the next run; the messages after it still go. Each message has its own DI scope,
 /// so a handler that fails halfway leaves nothing tracked for the next one.</summary>
-/// <remarks>shortcut: no upload to the cloud yet (UploadedUtc stays empty); that comes with the cloud backend (TK-088, phase 2).</remarks>
+/// <remarks>The upload to the cloud is separate (Toki.Sync's CloudUploader, column UploadedUtc); this only sets ProcessedUtc.</remarks>
 public sealed class OutboxProcessor(InfraDbContext db, IServiceScopeFactory scopes, EventTypes types, TimeProvider clock, ILogger<OutboxProcessor> log)
 {
     public const int BatchSize = 100;

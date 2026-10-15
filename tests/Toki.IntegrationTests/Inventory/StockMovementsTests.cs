@@ -126,11 +126,15 @@ public sealed class StockMovementsTests(TokiApp app) : IClassFixture<TokiApp>
         var r = await catalog.PostAsJsonAsync("/api/inventory/products", new { Name = "Chuleta barata", CategoryId = cat, Unit = "Pound", ItbisRate = "General18", Price = 1m, Cost = 0m });
         (await r.ErrorCode()).ShouldBe("Inventory.NoPricePermission");
     }
+}
 
+/// <summary>Own app: replacing the label formats would break the default-format tests that run after it in a shared app.</summary>
+public sealed class LabelFormatTests(TokiApp app) : IClassFixture<TokiApp>
+{
     [Fact]
     public async Task A_custom_label_format_can_be_configured()
     {
-        var c = await Admin();
+        var c = app.Client(await app.AdminAsync());
         (await c.PutAsJsonAsync("/api/inventory/label-formats", new
         {
             Formats = new[] { new { Prefix = "20", PluLength = 5, IsPrice = false, Decimals = 3 }, new { Prefix = "29", PluLength = 4, IsPrice = true, Decimals = 2 } },

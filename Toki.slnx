@@ -30,6 +30,8 @@
     <Project Path="src/Modules/Reports/Toki.Reports/Toki.Reports.csproj" />
     <Project Path="src/Modules/Sales/Toki.Sales.Contracts/Toki.Sales.Contracts.csproj" />
     <Project Path="src/Modules/Sales/Toki.Sales/Toki.Sales.csproj" />
+    <Project Path="src/Modules/Sync/Toki.Sync.Contracts/Toki.Sync.Contracts.csproj" />
+    <Project Path="src/Modules/Sync/Toki.Sync/Toki.Sync.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Toki.ArchitectureTests/Toki.ArchitectureTests.csproj" />
