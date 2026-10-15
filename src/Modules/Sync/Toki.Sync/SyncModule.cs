@@ -33,6 +33,7 @@ public static class SyncModule
         services.AddScoped<ICloudClient>(sp => sp.GetRequiredService<CloudClient>());
         services.AddScoped<CloudUploader>();
         services.AddHostedService<CloudUploaderWorker>();
+        services.AddHostedService<HeartbeatWorker>();
         services.AddHealthChecks().AddCheck<SyncHealthCheck>("sync");
         return services;
     }

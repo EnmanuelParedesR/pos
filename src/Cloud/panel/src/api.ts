@@ -112,7 +112,12 @@ export async function api<T>(path: string, method = "GET", body?: unknown): Prom
 
 export async function signIn(email: string, password: string) {
   const response = await send("/api/auth/login", "POST", { email, password }, false);
-  if (response.status === 401) throw new ApiError(401, "Auth.Failed", "El correo o la contraseña no coinciden.");
+  if (response.status === 401) {
+    // A tenant disabled by Toki staff (TK-189) answers "NotAllowed".
+    const problem = await response.json().catch(() => ({}));
+    if (problem.detail === "NotAllowed") throw new ApiError(401, "Auth.NotAllowed", "Esta cuenta está desactivada. Comuníquese con Toki.");
+    throw new ApiError(401, "Auth.Failed", "El correo o la contraseña no coinciden.");
+  }
   if (!response.ok) throw await toError(response);
   saveTokens(await response.json());
 }
@@ -164,7 +169,8 @@ export function useApi<T>(path: string | null) {
 
 // Shapes returned by the cloud API (camelCase).
 
-export interface Me { email: string | null; tenantId: string; tenantName: string }
+/** `isPlatformAdmin`: Toki staff (TK-189), who also see the "Plataforma" area. */
+export interface Me { email: string | null; tenantId: string; tenantName: string; isPlatformAdmin?: boolean }
 export interface Store { id: string; name: string; createdUtc: string; lastEventUtc: string | null; lastSyncUtc: string | null; nodes: number }
 export interface ConnectionCode { code: string; expiresUtc: string }
 
@@ -225,3 +231,104 @@ export interface StoreSyncStatus {
   failedEvents: number;
   nodes: NodeStatus[];
 }
+
+// Plataforma (Toki staff, TK-189 / TK-190): /api/platform/*.
+
+export type FunnelStage = "account" | "store" | "connected" | "firstSale" | "sevenDays";
+export interface PlatformTenant {
+  id: string;
+  name: string;
+  ownerEmail: string | null;
+  createdUtc: string;
+  disabledUtc: string | null;
+  stores: number;
+  nodes: number;
+  lastActivityUtc: string | null;
+  stage: FunnelStage;
+  appVersion: string | null;
+}
+export interface PlatformNode {
+  id: string;
+  storeId: string;
+  name: string;
+  createdUtc: string;
+  revokedUtc: string | null;
+  lastSyncUtc: string | null;
+  lastEventUtc: string | null;
+  pendingEvents: number;
+  failedEvents: number;
+  heartbeatUtc: string | null;
+  appVersion: string | null;
+  os: string | null;
+  uptimeMinutes: number | null;
+  outboxBacklog: number | null;
+  lastErrorCode: string | null;
+}
+export interface PlatformStore {
+  id: string;
+  name: string;
+  createdUtc: string;
+  registers: number;
+  users: number;
+  firstSaleDay: string | null;
+  lastSaleDay: string | null;
+  nodes: PlatformNode[];
+}
+export interface TenantMetrics {
+  tenantId: string;
+  stage: FunnelStage;
+  daysWithSalesLast30: number;
+  salesLast30Days: number;
+  amountLast30Days: number;
+  firstSaleDay: string | null;
+  lastSaleDay: string | null;
+}
+export interface PlatformTenantDetail {
+  id: string;
+  name: string;
+  createdUtc: string;
+  disabledUtc: string | null;
+  panelUsers: string[];
+  stores: PlatformStore[];
+  connectionCodes: { storeId: string; issuedUtc: string; expiresUtc: string; usedUtc: string | null }[];
+  issues: Issue[];
+  metrics: TenantMetrics;
+}
+export interface PlatformStoreDetail {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  name: string;
+  createdUtc: string;
+  checklist: {
+    connected: boolean;
+    heartbeatReceived: boolean;
+    businessNameSet: boolean | null;
+    rncSet: boolean | null;
+    sequencesLoaded: boolean;
+    activeProducts: number | null;
+    firstSaleDay: string | null;
+    fiscalProvider: string | null;
+  };
+  features: { onAccount: boolean; scaleConfigured: boolean | null; printerConfigured: boolean | null; fiscalProvider: string; activeRegisters: number; openShifts: number } | null;
+  nodes: PlatformNode[];
+  days: { day: string; sales: number; amount: number; reportedSales: number | null; activeCashiers: number | null; voids: number | null }[];
+}
+export interface MetricsOverview {
+  today: string;
+  tenants: number;
+  stores: number;
+  nodes: number;
+  nodesOnline: number;
+  activeToday: number;
+  activeLast7Days: number;
+  activeLast30Days: number;
+  salesLast30Days: number;
+  amountLast30Days: number;
+  funnel: { stage: FunnelStage; tenants: number }[];
+  features: { feature: string; stores: number; reporting: number }[];
+  health: { nodes: number; staleNodes: number; nodesWithErrors: number; nodesWithBacklog: number; failedEvents: number; versions: { version: string; nodes: number }[] };
+  churn: { tenantId: string; tenantName: string; storeId: string; storeName: string; kind: "NoSales" | "Disconnected"; lastSaleDay: string | null; lastSyncUtc: string | null }[];
+}
+export interface DailyActivity { day: string; activeStores: number; sales: number; amount: number }
+export interface RetentionCohort { week: string; tenants: number; activeByWeek: number[] }

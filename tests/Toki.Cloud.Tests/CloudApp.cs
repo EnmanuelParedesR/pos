@@ -37,6 +37,7 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("Ingest:ApplyInBackground", "false");
         builder.UseSetting("Nodes:RegisterPerMinute", "10000");
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
+        builder.UseSetting("Platform:Admins:0", StaffEmail);
         builder.ConfigureTestServices(s =>
         {
             s.AddSingleton<TimeProvider>(Clock);
@@ -53,18 +54,33 @@ public class CloudApp : WebApplicationFactory<Program>
     }
 
     /// <summary>A new panel account (and so a new tenant), signed in.</summary>
-    public async Task<Owner> OwnerAsync()
+    public async Task<Owner> OwnerAsync(string? email = null)
     {
-        var email = $"owner{Guid.NewGuid():N}@example.com";
-        var anonymous = CreateClient();
-        (await anonymous.PostAsJsonAsync("/api/auth/register", new { email, password = "Carniceria2026" })).EnsureSuccessStatusCode();
-        var login = await anonymous.PostAsJsonAsync("/api/auth/login", new { email, password = "Carniceria2026" });
+        email ??= $"owner{Guid.NewGuid():N}@example.com";
+        (await CreateClient().PostAsJsonAsync("/api/auth/register", new { email, password = Password })).EnsureSuccessStatusCode();
+        return await SignInAsync(email);
+    }
+
+    /// <summary>A new token for an existing account (claims are read at sign-in).</summary>
+    public async Task<Owner> SignInAsync(string email)
+    {
+        var login = await CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = Password });
         login.EnsureSuccessStatusCode();
         var client = CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", (await login.Json()).GetProperty("accessToken").GetString());
         var me = await client.GetFromJsonAsync<JsonElement>("/api/me");
         return new Owner(client, me.GetProperty("tenantId").GetGuid(), email);
     }
+
+    public const string Password = "Carniceria2026";
+
+    /// <summary>In <c>Platform:Admins</c>: Toki staff once the account exists.</summary>
+    public const string StaffEmail = "staff@toki.example";
+
+    private Owner? _staff;
+
+    /// <summary>The platform admin of this app (TK-189), registered on first use.</summary>
+    public async Task<Owner> StaffAsync() => _staff ??= await OwnerAsync(StaffEmail);
 
     /// <summary>A store for the owner with its main PC registered as a node.</summary>
     public async Task<StoreNode> StoreWithNodeAsync(Owner owner, string name = "Carnicería La Esquina")

@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\Modules\Identity\Toki.Identity.Contracts\Toki.Identity.Contracts.csproj" />
     <ProjectReference Include="..\..\Modules\Purchasing\Toki.Purchasing.Contracts\Toki.Purchasing.Contracts.csproj" />
     <ProjectReference Include="..\..\Modules\Customers\Toki.Customers.Contracts\Toki.Customers.Contracts.csproj" />
+    <ProjectReference Include="..\..\Modules\Sync\Toki.Sync.Contracts\Toki.Sync.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.Cloud.Tests" />

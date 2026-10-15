@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Shouldly;
+using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
 using Toki.Fiscal;
 using Toki.Fiscal.Domain;
@@ -242,4 +243,81 @@ public sealed class CloudDisconnectTests(TokiApp app) : IClassFixture<TokiApp>
         var status = await app.StatusAsync();
         (status.GetProperty("connected").GetBoolean(), status.GetProperty("pendingEvents").GetInt32()).ShouldBe((false, 2));
     }
+}
+
+/// <summary>TK-190: the node heartbeat. Own app: it owns the connection and counts the day's sales.</summary>
+public sealed class HeartbeatTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    private Task<List<string>> HeartbeatsAsync() => app.InScopeAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox
+        .Where(m => m.Type == typeof(Toki.Sync.Contracts.NodeHeartbeatV1).FullName).OrderBy(m => m.Sequence).Select(m => m.Payload).ToListAsync());
+
+    private async Task SendAsync() => (await app.InScopeAsync(sp =>
+        sp.GetRequiredService<ICommandHandler<SendHeartbeat.Command, Ok>>().Handle(new SendHeartbeat.Command(), CancellationToken.None))).IsSuccess.ShouldBeTrue();
+
+    [Fact]
+    public async Task The_heartbeat_counts_usage_and_carries_no_personal_data()
+    {
+        var admin = app.Client(await app.AdminAsync());
+        var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco Rojo", 59m, cost: 35m, stock: 24);
+        var cashier = await app.CashierWithShiftAsync(); // also sets the business name and RNC
+        (await cashier.SellAsync(Store.Sale(cashier.ShiftId, 118m, 200m, Store.Line(soda, 2)))).EnsureSuccessStatusCode();
+
+        await SendAsync();
+        (await HeartbeatsAsync()).ShouldBeEmpty(); // not connected: nothing to report
+
+        await app.ConnectAsync();
+        await SendAsync();
+
+        var heartbeat = JsonDocument.Parse((await HeartbeatsAsync()).Single()).RootElement;
+        heartbeat.GetProperty("nodeId").GetGuid().ShouldBe(app.Cloud.NodeId);
+        heartbeat.GetProperty("appVersion").GetString().ShouldNotBeNullOrEmpty();
+        heartbeat.GetProperty("os").GetString().ShouldNotBeNullOrEmpty();
+        (heartbeat.GetProperty("activeRegisters").GetInt32(), heartbeat.GetProperty("openShifts").GetInt32()).ShouldBe((1, 1));
+        heartbeat.GetProperty("outboxBacklog").GetInt32().ShouldBeGreaterThan(0);
+        heartbeat.GetProperty("lastErrorCode").ValueKind.ShouldBe(JsonValueKind.Null);
+        var features = heartbeat.GetProperty("features");
+        (features.GetProperty("onAccount").GetBoolean(), features.GetProperty("fiscalProvider").GetString()).ShouldBe((false, "Simulated"));
+        features.GetProperty("scaleConfigured").ValueKind.ShouldBe(JsonValueKind.Null); // the register knows, not the server
+        var setup = heartbeat.GetProperty("setup");
+        (setup.GetProperty("businessNameSet").GetBoolean(), setup.GetProperty("rncSet").GetBoolean()).ShouldBe((true, true));
+        setup.GetProperty("activeProducts").GetInt32().ShouldBeGreaterThanOrEqualTo(1);
+        var today = heartbeat.GetProperty("days")[1];
+        today.GetProperty("day").GetString().ShouldBe(Toki.SharedKernel.BusinessDay.Of(app.Clock.GetUtcNow().UtcDateTime).ToString("yyyy-MM-dd"));
+        (today.GetProperty("sales").GetInt32(), today.GetProperty("salesAmount").GetDecimal(), today.GetProperty("activeCashiers").GetInt32()).ShouldBe((1, 118m, 1));
+
+        // Only counts and flags: no names, codes, PINs, RNC, products or customers.
+        var allowed = new[]
+        {
+            "nodeId", "appVersion", "os", "uptimeMinutes", "activeRegisters", "openShifts", "outboxBacklog", "lastErrorCode", "features", "setup", "days",
+            "eventId", "occurredUtc", "aggregateId", "onAccount", "scaleConfigured", "printerConfigured", "fiscalProvider", "businessNameSet", "rncSet",
+            "activeProducts", "day", "sales", "salesAmount", "activeCashiers", "voids", "returns",
+        };
+        Names(heartbeat).ShouldAllBe(n => allowed.Contains(n));
+        var users = await admin.GetFromJsonAsync<JsonElement>("/api/identity/users");
+        var secrets = users.EnumerateArray().SelectMany(u => new[] { u.GetProperty("name").GetString()!, u.GetProperty("code").GetString()! })
+            .Concat(["Carnicería de prueba", "131245678", "Refresco Rojo", TokiApp.AdminPin, "4321"]);
+        var raw = heartbeat.GetRawText();
+        secrets.ShouldAllBe(s => !raw.Contains(s, StringComparison.OrdinalIgnoreCase));
+
+        // It goes up with the other events.
+        await app.UploadAsync();
+        app.Cloud.To(CloudUploader.IngestPath).SelectMany(r => r.Body.GetProperty("events").EnumerateArray())
+            .Count(e => e.GetProperty("type").GetString() == typeof(Toki.Sync.Contracts.NodeHeartbeatV1).FullName).ShouldBe(1);
+    }
+
+    [Fact]
+    public void Upload_errors_travel_as_a_kind_never_as_text()
+    {
+        CloudUploader.ErrorCode(null).ShouldBeNull();
+        CloudUploader.ErrorCode("La nube respondió 503 al subir los datos.").ShouldBe("http_503");
+        CloudUploader.ErrorCode("No se pudo conectar con la nube: sin internet").ShouldBe("unreachable");
+        CloudUploader.ErrorCode("La clave de la nube no se puede leer en esta PC").ShouldBe("other");
+    }
+
+    private static IEnumerable<string> Names(JsonElement e) => e.ValueKind switch
+    {
+        JsonValueKind.Object => e.EnumerateObject().SelectMany(p => Names(p.Value).Prepend(p.Name)),
+        JsonValueKind.Array => e.EnumerateArray().SelectMany(Names),
+        _ => [],
+    };
 }

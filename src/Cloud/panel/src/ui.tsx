@@ -43,6 +43,9 @@ const paths = {
   register: "M5 7h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z M3 12h18 M8 7V4h8v3",
   package: "M21 8l-9-5-9 5v8l9 5 9-5z M3 8l9 5 9-5 M12 13v8",
   calendar: "M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M16 3v4 M8 3v4 M3 10h18",
+  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  search: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14z M21 21l-4.35-4.35",
+  users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
 } as const;
 
 export type IconName = keyof typeof paths;
@@ -137,9 +140,24 @@ const niceMax = (value: number) => {
   return ([1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].find((f) => value <= f * magnitude) ?? 10) * magnitude;
 };
 
-/** Bars with the previous period as a gray ghost beside each bar; hover or focus a column for its tooltip (same as BarChart.razor). */
-export function BarChart({ points, label, ghostLabel = "Semana anterior", empty }: { points: ChartPoint[]; label: string; ghostLabel?: string; empty: string }) {
-  if (points.every((p) => p.value === 0 && !p.ghost)) return <EmptyState icon="chart" title="Todavía no hay ventas">{empty}</EmptyState>;
+/** Bars with the previous period as a gray ghost beside each bar; hover or focus a column for its tooltip (same as BarChart.razor).
+ * `format` writes the values: money by default, counts in the Plataforma area. */
+export function BarChart({
+  points,
+  label,
+  ghostLabel = "Semana anterior",
+  empty,
+  emptyTitle = "Todavía no hay ventas",
+  format = money,
+}: {
+  points: ChartPoint[];
+  label: string;
+  ghostLabel?: string;
+  empty: string;
+  emptyTitle?: string;
+  format?: (value: number) => string;
+}) {
+  if (points.every((p) => p.value === 0 && !p.ghost)) return <EmptyState icon="chart" title={emptyTitle}>{empty}</EmptyState>;
   const max = niceMax(Math.max(...points.map((p) => Math.max(p.value, p.ghost ?? 0))));
   const pct = (v: number) => `${Math.min(100, (v / max) * 100)}%`;
   const crowded = points.length > 16;
@@ -159,13 +177,13 @@ export function BarChart({ points, label, ghostLabel = "Semana anterior", empty 
             className={`esc-chart__col${p.current ? " esc-chart__col--current" : ""}`}
             role="listitem"
             tabIndex={0}
-            aria-label={`${p.title}: ${money(p.value)}${p.ghost !== undefined ? `, ${ghostLabel}: ${money(p.ghost)}` : ""}`}
+            aria-label={`${p.title}: ${format(p.value)}${p.ghost !== undefined ? `, ${ghostLabel}: ${format(p.ghost)}` : ""}`}
           >
             {p.ghost !== undefined && <div className="esc-chart__ghost" style={{ height: pct(p.ghost) }} />}
             <div className="esc-chart__bar" style={{ height: pct(p.value) }} />
             <div className="esc-chart__tip" aria-hidden="true">
               {p.title}
-              <b>{money(p.value)}</b>
+              <b>{format(p.value)}</b>
               {p.detail && (
                 <span>
                   {p.detail}
@@ -174,7 +192,7 @@ export function BarChart({ points, label, ghostLabel = "Semana anterior", empty 
               )}
               {p.ghost !== undefined && (
                 <span>
-                  {ghostLabel}: {money(p.ghost)}
+                  {ghostLabel}: {format(p.ghost)}
                 </span>
               )}
             </div>
@@ -317,8 +335,8 @@ export function Stat({ icon, label, value, note }: { icon: IconName; label: stri
   );
 }
 
-/** Proportion bars: name, optional detail, amount and a bar relative to the largest. */
-export function BarList({ items }: { items: { key: string; name: string; detail?: string; value: number; share: number }[] }) {
+/** Proportion bars: name, optional detail, amount (or `format`) and a bar relative to the largest. */
+export function BarList({ items, format = money }: { items: { key: string; name: string; detail?: string; value: number; share: number }[]; format?: (value: number) => string }) {
   return (
     <ul className="esc-barlist">
       {items.map((i) => (
@@ -326,7 +344,7 @@ export function BarList({ items }: { items: { key: string; name: string; detail?
           <div className="esc-barlist__row">
             <span className="esc-barlist__name">{i.name}</span>
             {i.detail && <span className="esc-barlist__qty">{i.detail}</span>}
-            <span className="esc-barlist__value">{money(i.value)}</span>
+            <span className="esc-barlist__value">{format(i.value)}</span>
           </div>
           <div className="esc-barlist__track">
             <div style={{ width: `${Math.max(0, Math.min(100, i.share * 100))}%` }} />

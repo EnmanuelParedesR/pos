@@ -18,6 +18,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<ConnectionCode> ConnectionCodes => Set<ConnectionCode>();
     public DbSet<Node> Nodes => Set<Node>();
     public DbSet<EcfRelayRecord> EcfRelays => Set<EcfRelayRecord>();
+    public DbSet<PlatformAuditRecord> PlatformAudit => Set<PlatformAuditRecord>();
 
     public DbSet<InboxEvent> Inbox => Set<InboxEvent>();
 
@@ -39,6 +40,8 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<ReplicaCustomerPayment> CustomerPayments => Set<ReplicaCustomerPayment>();
     public DbSet<ReplicaOpenedShift> OpenedShifts => Set<ReplicaOpenedShift>();
     public DbSet<ReplicaCashMovement> CashMovements => Set<ReplicaCashMovement>();
+    public DbSet<ReplicaNodeHeartbeat> NodeHeartbeats => Set<ReplicaNodeHeartbeat>();
+    public DbSet<ReplicaDailyUsage> DailyUsage => Set<ReplicaDailyUsage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -84,6 +87,15 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(r => r.ReplacesENcf).HasMaxLength(13);
             e.Property(r => r.ReplacedByENcf).HasMaxLength(13);
             e.HasIndex(r => new { r.TenantId, r.ENcf }).IsUnique();
+        });
+        builder.Entity<PlatformAuditRecord>(e =>
+        {
+            e.ToTable("PlatformAudit");
+            e.Property(a => a.UserId).HasMaxLength(450);
+            e.Property(a => a.Email).HasMaxLength(256);
+            e.Property(a => a.Method).HasMaxLength(10);
+            e.Property(a => a.Path).HasMaxLength(1000);
+            e.HasIndex(a => a.AtUtc);
         });
 
         builder.Entity<InboxEvent>(e =>
@@ -216,6 +228,20 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(m => m.Method).HasMaxLength(30);
             e.HasIndex(m => new { m.TenantId, m.ShiftId });
         });
+        builder.Entity<ReplicaNodeHeartbeat>(e =>
+        {
+            e.ToTable("NodeHeartbeats", "replica");
+            e.HasKey(h => new { h.TenantId, h.NodeId });
+            e.Property(h => h.AppVersion).HasMaxLength(50);
+            e.Property(h => h.Os).HasMaxLength(200);
+            e.Property(h => h.LastErrorCode).HasMaxLength(30);
+            e.Property(h => h.FiscalProvider).HasMaxLength(30);
+        });
+        builder.Entity<ReplicaDailyUsage>(e =>
+        {
+            e.ToTable("DailyUsage", "replica");
+            e.HasKey(u => new { u.TenantId, u.StoreId, u.Day });
+        });
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -248,6 +274,8 @@ public sealed class Tenant
     public Guid Id { get; set; }
     public string Name { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
+    /// <summary>Set by Toki staff (TK-189): its nodes cannot upload and its users cannot use the panel.</summary>
+    public DateTime? DisabledUtc { get; set; }
 }
 
 public sealed class Store
@@ -282,6 +310,21 @@ public sealed class Node
     public DateTime? LastSyncUtc { get; set; }
     /// <summary>Newest event time received (how fresh the store's data is).</summary>
     public DateTime? LastEventUtc { get; set; }
+    /// <summary>Set by Toki staff (TK-189): the node's secret stops working; the store connects again with a new code.</summary>
+    public DateTime? RevokedUtc { get; set; }
+}
+
+/// <summary>Every call a Toki staff member makes to /api/platform (TK-189): who, what and when.</summary>
+public sealed class PlatformAuditRecord
+{
+    public long Id { get; set; }
+    public DateTime AtUtc { get; set; }
+    public string UserId { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Method { get; set; } = "";
+    /// <summary>Path and query string.</summary>
+    public string Path { get; set; } = "";
+    public Guid? TenantId { get; set; }
 }
 
 public enum EcfRelayStatus { Accepted, AcceptedConditional, Rejected, Pending, Simulated }
@@ -565,4 +608,41 @@ public sealed class ReplicaFiscalDocument : IReplicaRow
     public decimal Total { get; set; }
     public decimal Itbis { get; set; }
     public DateTime IssuedUtc { get; set; }
+}
+
+/// <summary>The newest <c>NodeHeartbeatV1</c> of a node (TK-190): version, health, features and setup. Counts and flags only.</summary>
+public sealed class ReplicaNodeHeartbeat : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid NodeId { get; set; }
+    public Guid StoreId { get; set; }
+    public DateTime SentUtc { get; set; }
+    public string AppVersion { get; set; } = "";
+    public string Os { get; set; } = "";
+    public int UptimeMinutes { get; set; }
+    public int ActiveRegisters { get; set; }
+    public int OpenShifts { get; set; }
+    public int OutboxBacklog { get; set; }
+    public string? LastErrorCode { get; set; }
+    public bool OnAccount { get; set; }
+    public bool? ScaleConfigured { get; set; }
+    public bool? PrinterConfigured { get; set; }
+    public string FiscalProvider { get; set; } = "";
+    public bool BusinessNameSet { get; set; }
+    public bool RncSet { get; set; }
+    public int ActiveProducts { get; set; }
+}
+
+/// <summary>A store day as its heartbeats reported it (the newest one wins). Sales also reach the replica one by one; this is the store's own count.</summary>
+public sealed class ReplicaDailyUsage : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid StoreId { get; set; }
+    public DateOnly Day { get; set; }
+    public DateTime SentUtc { get; set; }
+    public int Sales { get; set; }
+    public decimal SalesAmount { get; set; }
+    public int ActiveCashiers { get; set; }
+    public int Voids { get; set; }
+    public decimal Returns { get; set; }
 }

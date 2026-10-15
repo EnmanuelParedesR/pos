@@ -97,5 +97,6 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 
 - Encabezado del equipo: `X-Device` (antes `X-Dispositivo`).
 - Códigos de error: `Modulo.Motivo` en inglés, por ejemplo `Sales.TotalChanged` (antes `Ventas.TotalCambio`) y `Approval.Required` (antes `Autorizacion.Requerida`).
-- Comandos de consola: `prepare-service` y `decrypt-backup`.
+- Comandos de consola: `prepare-service` y `decrypt-backup` (tienda); `grant-platform-admin` y `revoke-platform-admin` (nube).
+- Equipo de Toki en la nube (TK-189): superadministrador = `PlatformAdmin` (claim `platform_role`), consola = `/api/platform`, cliente = `Tenant`, desactivar = `disable`, revocar caja = `revoke`. Latido del nodo (TK-190) = `NodeHeartbeatV1`.
 - Datos que ve el dueño, como los nombres de los roles sembrados (Administrador, Supervisor, Cajero), siguen en español: son contenido, no código. En el código, las constantes que los identifican van en inglés (`RoleIds.Administrator`).
