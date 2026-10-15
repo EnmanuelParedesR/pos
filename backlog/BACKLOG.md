@@ -69,7 +69,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 | Ticket | Qué | Estado |
 |---|---|---|
 | TK-050 | Secuencias e-NCF por tipo: cargar rango, asignar sin huecos dentro de la venta, alertas al 80 % y por vencimiento | ✅ |
-| TK-051 | Documento e-CF, firmador y proveedor simulados (`IEcfProvider`), cola de contingencia de 72 h con trabajador en segundo plano | ⬜ |
+| TK-051 | Documento e-CF, firmador y proveedor simulados (`IEcfProvider`), cola de contingencia de 72 h con trabajador en segundo plano | ✅ `IEcfProveedor` simulado, `EnvioEcfWorker` (apagado por defecto: `Fiscal:EnvioAutomatico`), reintentos 1→60 min, `GET /api/fiscal/cola` |
 | TK-052 | Nota de crédito e-CF 34 | ✅ |
 | TK-053 | Consulta de razón social por RNC (padrón importado) | ⬜ |
 | TK-054 | Reportes 606 y 607 | 🟡 607 listo (`/api/reportes/dgii/607`, CSV/Excel); falta 606 (contrato de Compras) y el TXT oficial (con TK-055) |

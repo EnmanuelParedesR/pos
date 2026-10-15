@@ -22,6 +22,9 @@ public static class FiscalModule
         services.AddModuleDbContext<FiscalDbContext>();
         services.AddScoped<IComprobantesFiscales, ComprobantesFiscales>();
         services.AddSingleton<IEcfFirmador, FirmadorSimulado>();
+        services.AddSingleton<IEcfProveedor, ProveedorSimulado>();
+        services.AddScoped<EnvioEcf>();
+        services.AddHostedService<EnvioEcfWorker>();
         return services;
     }
 }

@@ -99,6 +99,29 @@ internal static class AlertasSecuencias
     }
 }
 
+/// <summary>The send queue at a glance: waiting, past the DGII 72-hour deadline (an infraction), rejected (needs a credit note) and simulated.</summary>
+internal static class EstadoCola
+{
+    public sealed record Response(int Pendientes, int Vencidos, DateTime? ProximoLimiteUtc, int Rechazados, int Simulados);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapGet("/api/fiscal/cola", async (FiscalDbContext db, TimeProvider reloj, CancellationToken ct) =>
+                {
+                    var ahora = reloj.GetUtcNow().UtcDateTime;
+                    var porEstado = await db.Documentos.GroupBy(d => d.Estado).Select(g => new { g.Key, Cantidad = g.Count() })
+                        .ToDictionaryAsync(x => x.Key, x => x.Cantidad, ct);
+                    var pendientes = db.Documentos.Where(d => d.Estado == EstadoEnvio.Pendiente);
+                    return Results.Ok(new Response(porEstado.GetValueOrDefault(EstadoEnvio.Pendiente),
+                        await pendientes.CountAsync(d => d.FechaLimiteEnvioUtc < ahora, ct),
+                        await pendientes.MinAsync(d => (DateTime?)d.FechaLimiteEnvioUtc, ct),
+                        porEstado.GetValueOrDefault(EstadoEnvio.Rechazado), porEstado.GetValueOrDefault(EstadoEnvio.Simulado)));
+                })
+                .RequirePermiso(Permisos.FiscalGestionar).WithTags("Fiscal");
+    }
+}
+
 /// <summary>Issued e-CF, newest first, optionally only those still waiting to be sent.</summary>
 internal static class ListarDocumentos
 {
