@@ -80,16 +80,19 @@ public static class CadenaAuditoria
         return SHA256.HashData([.. r.HashPrevio, .. Encoding.UTF8.GetBytes(contenido)]);
     }
 
-    /// <summary>Recomputes the chain. Returns the first broken sequence number, or null when intact.</summary>
+    /// <summary>Recomputes the chain. Returns the first broken sequence number, or null when intact.
+    /// The chain must also end at the head row: deleting the newest records breaks it at the first missing number.</summary>
     public static async Task<long?> VerificarAsync(InfraDbContext db, CancellationToken ct)
     {
+        var cabeza = await db.CabezaAuditoria.AsNoTracking().SingleAsync(c => c.Id == 1, ct);
         var previo = new byte[32];
-        await foreach (var r in db.Auditoria.AsNoTracking().OrderBy(r => r.Secuencia).AsAsyncEnumerable().WithCancellation(ct))
+        long ultima = 0;
+        await foreach (var r in db.Auditoria.AsNoTracking().Where(r => r.Secuencia <= cabeza.Secuencia).OrderBy(r => r.Secuencia).AsAsyncEnumerable().WithCancellation(ct))
         {
-            if (!r.HashPrevio.SequenceEqual(previo) || !Hash(r).SequenceEqual(r.Hash)) return r.Secuencia;
-            previo = r.Hash;
+            if (r.Secuencia != ultima + 1 || !r.HashPrevio.SequenceEqual(previo) || !Hash(r).SequenceEqual(r.Hash)) return ultima + 1;
+            (previo, ultima) = (r.Hash, r.Secuencia);
         }
-        return null;
+        return ultima == cabeza.Secuencia && previo.SequenceEqual(cabeza.Hash) ? null : ultima + 1;
     }
 }
 

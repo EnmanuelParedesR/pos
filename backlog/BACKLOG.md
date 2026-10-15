@@ -116,7 +116,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 | TK-091 | Emparejamiento con certificados (mTLS) en lugar del secreto de dispositivo | ⬜ |
 | TK-092 | Respaldo programado y cifrado | ⬜ |
 | TK-093 | Servicio de Windows escuchando en la red con HTTPS (certificado del nodo), logs a archivo, health checks propios (outbox, cola e-CF, reloj). **Sin HTTPS no hay piloto** (R1 #9) | ⬜ |
-| TK-094 | Verificación de la auditoría por endpoint y tarea nocturna | ⬜ |
+| TK-094 | Verificación de la auditoría por endpoint y tarea nocturna | ✅ `GET /api/auditoria/verificar`, verificación a las 03:00 (log crítico); detecta también registros borrados al final |
 
 ## M10 · Pruebas de punta a punta
 

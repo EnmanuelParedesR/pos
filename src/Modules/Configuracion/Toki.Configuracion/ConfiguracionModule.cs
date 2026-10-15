@@ -21,6 +21,7 @@ public static class ConfiguracionModule
     {
         services.AddModuleDbContext<ConfiguracionDbContext>();
         services.AddScoped<IConfiguracionConsultas, ConfiguracionConsultas>();
+        services.AddHostedService<VerificacionNocturnaAuditoria>();
         return services;
     }
 }
