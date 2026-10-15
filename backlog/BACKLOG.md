@@ -83,10 +83,10 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 | TK-061 | Ajustes con motivo (merma, daño, consumo, corrección) | ✅ |
 | TK-062 | Conteo físico ciego que genera ajustes | ✅ |
 | TK-063 | Transferencias entre almacenes | ✅ |
-| TK-064 | Suplidores (RNC) | ⬜ |
-| TK-065 | Compras: borrador → aplicada → anulada; a crédito genera cuenta por pagar | ⬜ |
-| TK-066 | Gasto con NCF sin productos | ⬜ |
-| TK-067 | Pagos a suplidores (a las facturas más viejas) y estado de cuenta | ⬜ |
+| TK-064 | Suplidores (RNC) | ✅ |
+| TK-065 | Compras: borrador → aplicada → anulada; a crédito genera cuenta por pagar | ✅ |
+| TK-066 | Gasto con NCF sin productos | ✅ |
+| TK-067 | Pagos a suplidores (a las facturas más viejas) y estado de cuenta | ✅ |
 
 ## M7 · Clientes y fiado
 

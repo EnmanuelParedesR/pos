@@ -60,8 +60,9 @@ internal sealed class CatalogoConsultas(InventarioDbContext db) : ICatalogoConsu
 /// Rows are always touched in ProductoId order so concurrent commands lock them in the same order (no deadlocks).</summary>
 internal sealed class MovimientosInventario(InventarioDbContext db, IOutbox outbox, IUserContext usuario, TimeProvider reloj) : IMovimientosInventario
 {
-    public Task<Result> RegistrarSalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, CancellationToken ct, Guid? almacenId = null) =>
-        SalidaAsync(tipo, referenciaId, lineas, permitirNegativoSiProductoLoPermite: true, motivo: null, ct, almacenId);
+    public Task<Result> RegistrarSalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, CancellationToken ct, Guid? almacenId = null,
+        bool soloConExistencia = false) =>
+        SalidaAsync(tipo, referenciaId, lineas, permitirNegativoSiProductoLoPermite: !soloConExistencia, motivo: null, ct, almacenId);
 
     /// <param name="permitirNegativoSiProductoLoPermite">Only sales honour "sell without stock"; adjustments and transfers never go below zero.</param>
     public async Task<Result> SalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas,
