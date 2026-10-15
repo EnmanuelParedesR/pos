@@ -42,3 +42,20 @@ html, body { background: #F6F5F2; }
 .esc-admin .platform-wrap td:first-child { white-space: normal; overflow-wrap: anywhere; }
 .platform-stats--4 .esc-stat:first-child .esc-stat__value { white-space: normal; }
 .esc-admin .esc-page-head h1 { overflow-wrap: anywhere; }
+/* Public catalog (TK-195): phone first, one column, the WhatsApp button always in reach. */
+.catalog { min-height: 100vh; display: flex; flex-direction: column; max-width: 640px; margin: 0 auto; background: var(--surface); }
+.catalog__head { padding: 24px 16px 12px; }
+.catalog__head h1 { font-size: var(--t-28); font-weight: 700; letter-spacing: -0.02em; line-height: 1.15; }
+.catalog__head p { margin-top: 6px; color: var(--text-2); }
+.catalog__list { flex: 1 1 auto; padding: 0 16px 24px; display: flex; flex-direction: column; gap: 20px; }
+.catalog__list ul { list-style: none; margin: 0; padding: 0; }
+.catalog__category { font-size: var(--t-13); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); margin-bottom: 4px; }
+.catalog__item { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; border-top: 1px solid var(--line); }
+.catalog__item > div:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.catalog__item span { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.catalog__stepper { display: flex; align-items: center; gap: 8px; flex: none; }
+.catalog__stepper .esc-button { min-width: 44px; min-height: 44px; justify-content: center; }
+.catalog__stepper output { min-width: 64px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+.catalog__bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
+.catalog__send { flex: 1 1 auto; justify-content: center; min-height: 52px; }

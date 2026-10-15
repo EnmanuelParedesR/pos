@@ -42,6 +42,8 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<ReplicaCashMovement> CashMovements => Set<ReplicaCashMovement>();
     public DbSet<ReplicaNodeHeartbeat> NodeHeartbeats => Set<ReplicaNodeHeartbeat>();
     public DbSet<ReplicaDailyUsage> DailyUsage => Set<ReplicaDailyUsage>();
+    public DbSet<Catalog.ReplicaCatalogItem> CatalogItems => Set<Catalog.ReplicaCatalogItem>();
+    public DbSet<Catalog.ReplicaCatalogSettings> CatalogSettings => Set<Catalog.ReplicaCatalogSettings>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -242,6 +244,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.ToTable("DailyUsage", "replica");
             e.HasKey(u => new { u.TenantId, u.StoreId, u.Day });
         });
+        Catalog.PublicCatalogEndpoints.Configure(builder);
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

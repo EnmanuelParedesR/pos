@@ -9,6 +9,7 @@ public static class SalesModule
     {
         services.AddModuleDbContext<SalesDbContext>();
         services.AddScoped<Contracts.ISalesReports, SalesReports>();
+        services.AddScoped<Toki.Sync.Contracts.ICloudSnapshot, Features.CatalogSnapshot>();
         return services;
     }
 }

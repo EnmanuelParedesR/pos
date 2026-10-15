@@ -32,6 +32,10 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | devolución | `Return` |
 | nota de crédito | `CreditNote` |
 | venta en espera | `HeldSale` |
+| encargo (pedido), cotización; pendiente, listo, entregado, cancelado | `Order` con `OrderKind`: `Order`, `Quote`; `OrderStatus`: `Pending`, `Ready`, `Delivered`, `Cancelled` (`/api/orders`) |
+| abono de un encargo (anticipo) | `Deposit`: entra a la caja como cobro a cliente y queda como saldo a favor (`CreditBalance`) hasta que la venta lo usa |
+| fecha y hora de entrega, vigencia | `PickupDate`, `PickupTime`, `ValidUntil` |
+| catálogo público, en catálogo | `PublicCatalog`, `CatalogItem` (`/api/catalog`; en la nube `/api/public/catalog/{storeId}`, panel `/c/{storeId}`) |
 | descuento, tope de descuento | `Discount`, `DiscountCapPercent` |
 | caja (física), cajero | `Register`, `Cashier` |
 | turno, fondo inicial | `Shift`, `OpeningFloat` |

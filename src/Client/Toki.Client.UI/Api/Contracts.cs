@@ -67,7 +67,8 @@ public sealed record SaleLine(Guid ProductId, Guid? PresentationId, decimal Quan
     string? Note = null, string? ScaleLabel = null);
 public sealed record Payment(PaymentMethod Method, decimal Amount, string? Reference = null);
 public sealed record RegisterSale(Guid SaleId, Guid ShiftId, List<SaleLine> Lines, List<Payment> Payments, decimal ExpectedTotal,
-    EcfType DocumentType, Guid? CustomerId, string? CustomerRnc, string? CustomerName, PriceLevel PriceLevel, Discount? GlobalDiscount, List<Guid> SupervisorApprovals);
+    EcfType DocumentType, Guid? CustomerId, string? CustomerRnc, string? CustomerName, PriceLevel PriceLevel, Discount? GlobalDiscount, List<Guid> SupervisorApprovals,
+    Guid? OrderId = null);
 public sealed record SaleRegistered(Guid SaleId, long Number, string ENcf, decimal Total, decimal Change, Receipt Receipt);
 public sealed record SaleSummary(Guid Id, long Number, string ENcf, DateTime DateUtc, string Status, string Cashier, string? Customer, decimal Total);
 public sealed record SaleDetailLine(Guid Id, string Description, decimal Quantity, decimal UnitPrice, decimal Discount, decimal Total, decimal Itbis,

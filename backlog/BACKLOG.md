@@ -254,9 +254,9 @@ Origen: `docs/competencia-poszy.md` (TK-188). Alcance y criterios de aceptación
 |---|---|---|
 | TK-191 | Mínimos, máximos y pedido sugerido con el último suplidor; crear compra en borrador (M, depende de TK-178) | ⬜ |
 | TK-192 | Reporte 608 de comprobantes anulados (CSV/Excel y TXT oficial) (S) | ⬜ |
-| TK-193 | Encargos: fecha y hora de entrega, abono como anticipo, conversión en venta con el peso real, recordatorio (M) | ⬜ |
-| TK-194 | Cotizaciones que se convierten en venta (primer paso del módulo Mayorista) (M) | ⬜ |
-| TK-195 | Catálogo público con QR y pedido por WhatsApp, desde la réplica de la nube (M) | ⬜ |
+| TK-193 | Encargos: fecha y hora de entrega, abono como anticipo, conversión en venta con el peso real, recordatorio (M) | ✅ `/api/orders` (`sales.Orders`); F10 en la caja guarda el carrito como encargo y lista los de hoy y mañana (también en el Resumen). El abono entra al Z como cobro a cliente y queda como saldo a favor; "Cobrar" carga el encargo a precio de hoy y el cobro usa ese saldo primero; la venta lo marca entregado en la misma transacción. Cancelar pide `sales.void` y devuelve el abono desde la caja. Pruebas de integración (Z, cancelar) y bUnit |
+| TK-194 | Cotizaciones que se convierten en venta (primer paso del módulo Mayorista) (M) | ✅ Mismo `Order` con `Kind = Quote` y vigencia; vista para imprimir o guardar PDF (`/quotes/{id}`); al cobrarla la venta sale a precio de hoy y la caja muestra la diferencia. No mueve inventario ni caja |
+| TK-195 | Catálogo público con QR y pedido por WhatsApp, desde la réplica de la nube (M) | ✅ Administración → Pedidos y catálogo: productos, WhatsApp, enlace y QR (`Cloud:PanelUrl`). `CatalogItemChangedV1` y `CatalogSettingsChangedV1` por el uploader; la nube los proyecta y sigue `PriceChangedV1`; `/api/public/catalog/{storeId}` sin sesión y sin costo ni existencia; página `/c/{storeId}` en el panel con "Pedir por WhatsApp" |
 | TK-196 | Prueba gratis autoservicio: instalador desde la web, asistente de un equipo, datos de ejemplo, 30 días (M) | ⬜ |
 | TK-197 | Sitio: precios públicos y páginas Carnicería, Colmado y Deli con FAQ (S–M, depende de TK-203) | ⬜ |
 | TK-198 | Contenido e-CF: "¿Ya te toca?" y plazo del 15/11/2026 (S) | ⬜ |

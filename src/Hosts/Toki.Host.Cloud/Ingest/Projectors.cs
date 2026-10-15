@@ -4,6 +4,7 @@ using Toki.BuildingBlocks.Persistence;
 using Toki.CashRegister.Contracts;
 using Toki.Customers.Contracts;
 using Toki.Fiscal.Contracts;
+using Toki.Host.Cloud.Catalog;
 using Toki.Host.Cloud.Persistence;
 using Toki.Identity.Contracts;
 using Toki.Inventory.Contracts;
@@ -90,6 +91,26 @@ internal static class Projectors
                 TenantId = e.TenantId, EventId = e.EventId, StoreId = e.StoreId, ProductId = p.ProductId, OldPrice = p.OldPrice, NewPrice = p.NewPrice,
                 OldWholesalePrice = p.OldWholesalePrice, NewWholesalePrice = p.NewWholesalePrice, ChangedUtc = e.OccurredUtc,
             });
+            // The public catalog follows the shelf price (TK-195).
+            await db.CatalogItems.Where(x => x.TenantId == e.TenantId && x.ProductId == p.ProductId && x.ChangedUtc <= e.OccurredUtc)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Price, p.NewPrice).SetProperty(x => x.ChangedUtc, e.OccurredUtc), ct);
+        },
+        [Name<CatalogItemChangedV1>()] = async (db, e, ct) =>
+        {
+            var c = Read<CatalogItemChangedV1>(e);
+            var row = await db.CatalogItems.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.ProductId == c.ProductId, ct);
+            if (row is null) db.CatalogItems.Add(row = new ReplicaCatalogItem { TenantId = e.TenantId, ProductId = c.ProductId });
+            else if (row.ChangedUtc > e.OccurredUtc) return;
+            (row.StoreId, row.Name, row.Category, row.Unit, row.Price, row.Visible, row.ChangedUtc) =
+                (e.StoreId, c.Name, c.Category, c.Unit, c.Price, c.Visible, e.OccurredUtc);
+        },
+        [Name<CatalogSettingsChangedV1>()] = async (db, e, ct) =>
+        {
+            var c = Read<CatalogSettingsChangedV1>(e);
+            var row = await db.CatalogSettings.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.StoreId == e.StoreId, ct);
+            if (row is null) db.CatalogSettings.Add(row = new ReplicaCatalogSettings { TenantId = e.TenantId, StoreId = e.StoreId });
+            else if (row.ChangedUtc > e.OccurredUtc) return;
+            (row.WhatsApp, row.ChangedUtc) = (c.WhatsApp, e.OccurredUtc);
         },
         [Name<FiscalDocumentIssuedV1>()] = async (db, e, ct) =>
         {

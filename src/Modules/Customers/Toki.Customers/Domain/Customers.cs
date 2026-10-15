@@ -67,7 +67,7 @@ internal sealed class CustomerPaymentApplication
     public decimal Amount { get; set; }
 }
 
-internal enum CreditBalanceMovementType { Return, UsedInSale, UseVoided, VoidedChargePaid }
+internal enum CreditBalanceMovementType { Return, UsedInSale, UseVoided, VoidedChargePaid, Deposit, DepositRefund }
 
 /// <summary>Credit balance ledger: positive adds, negative uses. The balance is always the sum.</summary>
 internal sealed class CreditBalanceMovement

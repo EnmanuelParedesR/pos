@@ -26,6 +26,12 @@ public interface ICustomerAccounts
 
     /// <summary>A return credited to the customer: first it pays down that sale's unpaid charge, the rest becomes credit balance.</summary>
     Task CreditReturnAsync(Guid customerId, Guid saleId, Guid returnId, decimal amount, CancellationToken ct);
+
+    /// <summary>An order's deposit (TK-193): kept as the customer's credit balance until the order is charged with it.</summary>
+    Task<Result> AddDepositAsync(Guid customerId, Guid orderId, decimal amount, CancellationToken ct);
+
+    /// <summary>A cancelled order gives its deposit back. Fails with Customers.InsufficientCreditBalance if the customer already spent it.</summary>
+    Task<Result> RefundDepositAsync(Guid customerId, Guid orderId, decimal amount, CancellationToken ct);
 }
 
 public sealed record OnAccountChargeRecordedV1(Guid CustomerId, Guid SaleId, decimal Amount) : IntegrationEvent(CustomerId);

@@ -1,0 +1,80 @@
+@page "/quotes/{Id:guid}"
+@using Microsoft.JSInterop
+@inject TokiApi Api
+@inject NavigationManager Nav
+@inject IJSRuntime Js
+
+@* TK-194: the quote on letter paper (the browser's print dialog also saves it as PDF). shortcut: print view, not a PDF file; reuse TK-200's PDF when it lands. *@
+<div class="esc-page">
+    <div class="esc-row no-print">
+        <Button OnClick="Back"><Icon Name="chevron-left" /> Volver</Button>
+        <Button Variant="Button.Variants.Primary" Disabled="@(_quote is null)" OnClick="PrintAsync"><Icon Name="printer" /> Imprimir o guardar PDF</Button>
+    </div>
+    @if (_error is not null)
+    {
+        <Notice Kind="Notice.Kinds.Error" Title="@_error" />
+    }
+    else if (_quote is { } q)
+    {
+        <article class="esc-card esc-card--padded print-sheet" aria-label="Cotización">
+            <header class="esc-row" style="justify-content:space-between;align-items:flex-start">
+                <div>
+                    <div style="font-size:var(--t-20);font-weight:700">@_business?.Name</div>
+                    @if (_business?.Rnc is { } rnc) { <div>RNC @rnc</div> }
+                    @if (_business?.Address is { } address) { <div>@address</div> }
+                    @if (_business?.Phone is { } phone) { <div>Tel. @phone</div> }
+                </div>
+                <div style="text-align:right">
+                    <div style="font-size:var(--t-20);font-weight:700">@(q.Kind == OrderKind.Quote ? "Cotización" : "Pedido") @Number(q)</div>
+                    <div>Fecha: @Format.ShortDate(q.CreatedUtc)</div>
+                    @if (q.ValidUntil is { } until) { <div>Válida hasta: @until.ToString("dd/MM/yyyy", System.Globalization.CultureInfo.InvariantCulture)</div> }
+                </div>
+            </header>
+            <div>Cliente: <b>@(q.CustomerName ?? "—")</b></div>
+            <table class="esc-table">
+                <thead><tr><th class="esc-num">Cantidad</th><th>Descripción</th><th class="esc-num">Precio</th><th class="esc-num">Total</th></tr></thead>
+                <tbody>
+                    @foreach (var l in q.Lines)
+                    {
+                        <tr>
+                            <td class="esc-num">@Format.Quantity(l.Quantity, l.Unit)</td>
+                            <td>@l.Name@(l.Note is null ? "" : $" ({l.Note})")</td>
+                            <td class="esc-num">@Format.Amount(l.Price)</td>
+                            <td class="esc-num">@Format.Amount(l.Total)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <dl class="totals"><dt class="totals__grand">Total RD$</dt><dd class="totals__grand">@Format.Amount(q.Total)</dd></dl>
+            <p class="esc-subtitle">Precios con ITBIS incluido. Este documento no es una factura; los productos por libra se cobran con el peso real.</p>
+        </article>
+    }
+    else
+    {
+        <div class="esc-muted">Cargando…</div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery] public string? From { get; set; }
+
+    private OrderItem? _quote;
+    private BusinessProfile? _business;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Api.GetAsync<OrderItem>($"/api/orders/{Id}");
+        _quote = r.Value;
+        _error = r.Problem?.Message;
+        _business = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value;
+    }
+
+    /// <summary>A short number to say on the phone: the id's last 6 characters.</summary>
+    private static string Number(OrderItem q) => q.Id.ToString("N")[^6..].ToUpperInvariant();
+
+    private Task PrintAsync() => Js.InvokeVoidAsync("print").AsTask();
+
+    private void Back() => Nav.NavigateTo(From == "admin" ? "admin/orders/quotes" : "sale");
+}

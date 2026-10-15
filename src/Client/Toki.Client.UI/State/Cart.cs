@@ -52,6 +52,10 @@ public sealed class Cart
     public EcfType DocumentType { get; set; } = EcfType.Consumer32;
     public string? ManualRnc { get; set; }
     public string? ManualName { get; set; }
+    /// <summary>The order or quote being charged (TK-193, TK-194): the sale marks it delivered.</summary>
+    public Guid? OrderId { get; set; }
+    /// <summary>The order's deposit, waiting in the customer's credit balance: the checkout uses it first.</summary>
+    public decimal Deposit { get; set; }
 
     public decimal Total => _lines.Sum(l => l.Total);
     public decimal Discounts => _lines.Sum(l => l.DiscountAmount);
@@ -110,6 +114,7 @@ public sealed class Cart
     {
         _lines.Clear();
         (Selected, Customer, DocumentType, ManualRnc, ManualName, CheckoutUncertain) = (null, null, EcfType.Consumer32, null, null, false);
+        (OrderId, Deposit) = (null, 0);
         SaleId = Guid.CreateVersion7();
     }
 
@@ -128,18 +133,20 @@ public sealed class Cart
 
     public RegisterSale ToRegisterSale(Guid shiftId, List<Payment> payments, decimal expectedTotal, List<Guid> approvals) =>
         new(SaleId, shiftId, [.. _lines.Select(l => l.ToSaleLine())], payments, expectedTotal, DocumentType, Customer?.Id,
-            Customer is null ? ManualRnc : null, Customer is null ? ManualName : null, IsWholesale ? PriceLevel.Wholesale : PriceLevel.Retail, null, approvals);
+            Customer is null ? ManualRnc : null, Customer is null ? ManualName : null, IsWholesale ? PriceLevel.Wholesale : PriceLevel.Retail, null, approvals, OrderId);
 
     /// <summary>What a held sale stores on the server, and how it comes back.</summary>
-    public SavedCart Save() => new([.. _lines], Customer, DocumentType, ManualRnc, ManualName);
+    public SavedCart Save() => new([.. _lines], Customer, DocumentType, ManualRnc, ManualName, OrderId, Deposit);
 
     public void Restore(SavedCart saved)
     {
         Clear();
         _lines.AddRange(saved.Lines);
         (Customer, DocumentType, ManualRnc, ManualName) = (saved.Customer, saved.DocumentType, saved.ManualRnc, saved.ManualName);
+        (OrderId, Deposit) = (saved.OrderId, saved.Deposit);
         Selected = _lines.LastOrDefault()?.Id;
     }
 }
 
-public sealed record SavedCart(List<CartLine> Lines, CustomerDetail? Customer, EcfType DocumentType, string? ManualRnc, string? ManualName);
+public sealed record SavedCart(List<CartLine> Lines, CustomerDetail? Customer, EcfType DocumentType, string? ManualRnc, string? ManualName,
+    Guid? OrderId = null, decimal Deposit = 0);

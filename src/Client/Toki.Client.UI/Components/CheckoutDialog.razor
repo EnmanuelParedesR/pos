@@ -156,6 +156,10 @@
     protected override void OnInitialized()
     {
         _total = Cart.Total;
+        // An order's deposit waits in the customer's credit balance (TK-193): it pays first, the rest as usual.
+        var deposit = Cart.Customer is { CreditBalance: > 0 } c ? Math.Min(Cart.Deposit, c.CreditBalance) : 0;
+        if (deposit >= _total && _total > 0) Choose(PaymentMethod.CreditBalance);
+        else if (deposit > 0) _payments.Add(new Payment(PaymentMethod.CreditBalance, deposit));
         Suggest(MinimumCash);
         if (Cart.CheckoutUncertain)
             Fail(Notice.Kinds.Warning, "El último intento de cobro no recibió respuesta. Confirme de nuevo: si ya se guardó, no se cobra dos veces.");

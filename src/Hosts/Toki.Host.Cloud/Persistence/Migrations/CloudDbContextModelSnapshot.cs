@@ -156,6 +156,71 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("AspNetUserTokens", "cloud");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Catalog.ReplicaCatalogItem", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProductId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<bool>("Visible")
+                        .HasColumnType("bit");
+
+                    b.HasKey("TenantId", "ProductId");
+
+                    b.HasIndex("StoreId", "Visible");
+
+                    b.ToTable("CatalogItems", "replica");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Catalog.ReplicaCatalogSettings", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("WhatsApp")
+                        .HasMaxLength(15)
+                        .HasColumnType("nvarchar(15)");
+
+                    b.HasKey("TenantId", "StoreId");
+
+                    b.HasIndex("StoreId");
+
+                    b.ToTable("CatalogSettings", "replica");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Persistence.CloudUser", b =>
                 {
                     b.Property<string>("Id")

@@ -8,6 +8,7 @@ using Scalar.AspNetCore;
 using Serilog;
 using Toki.Host.Cloud.Accounts;
 using Toki.Host.Cloud.Assistant;
+using Toki.Host.Cloud.Catalog;
 using Toki.Host.Cloud.Ingest;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Panel;
@@ -111,6 +112,7 @@ app.MapPanel();
 app.MapAssistant();
 app.MapEcfArchive();
 app.MapPlatform();
+app.MapPublicCatalog();
 
 await app.RunAsync();
 
