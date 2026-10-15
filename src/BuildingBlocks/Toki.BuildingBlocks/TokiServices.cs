@@ -52,12 +52,17 @@ public static class TokiServices
         return services;
     }
 
-    /// <summary>Creates the database and every module's tables when the database is new.</summary>
-    /// <remarks>shortcut: no migrations yet, an existing database is assumed current; add per-module migrations before the pilot (TK-090).</remarks>
+    /// <summary>SQL Server (stores, CI): applies each module's pending migrations, creating the database if needed.
+    /// Sqlite (development and local tests, ADR-0002): creates every module's tables when the database is new.</summary>
     public static async Task CrearBaseDeDatosAsync(IServiceProvider services, CancellationToken ct = default)
     {
         await using var scope = services.CreateAsyncScope();
         var contextos = scope.ServiceProvider.GetServices<ModuleDbContext>().ToList();
+        if (scope.ServiceProvider.GetRequiredService<DatabaseOptions>().Provider == DbProvider.SqlServer)
+        {
+            foreach (var db in contextos) await db.Database.MigrateAsync(ct);
+            return;
+        }
         var creador = (RelationalDatabaseCreator)contextos[0].GetService<IDatabaseCreator>();
         if (await creador.ExistsAsync(ct) && await creador.HasTablesAsync(ct)) return;
         if (!await creador.ExistsAsync(ct)) await creador.CreateAsync(ct);

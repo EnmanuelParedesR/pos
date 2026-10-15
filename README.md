@@ -27,6 +27,7 @@ tests/
   Toki.UnitTests            reglas de dominio
   Toki.IntegrationTests     la API real en memoria, por HTTP, sobre una base nueva
   Toki.ArchitectureTests    dependencias entre módulos, sin SP/triggers, sin paquetes comerciales
+  Toki.E2ETests             el proceso real de la API y un día completo de tienda (3 cajas, reinicio, cierres)
 ```
 
 ## Correr
@@ -42,6 +43,10 @@ dotnet run --project src/Hosts/Toki.Host.Local
 ```
 
 En desarrollo usa SQLite (`toki.dev.db`); la documentación de la API queda en `/scalar`. Para SQL Server, cambie `Database` en `appsettings.json`. Para correr las pruebas contra SQL Server en contenedor: `TOKI_TEST_DB=sqlserver dotnet test` (necesita Docker).
+
+Contra SQL Server la API aplica sola las migraciones de cada módulo al arrancar. Para crear una migración nueva vea docs/adr/0005-migraciones-por-modulo.md (`dotnet tool restore` instala `dotnet-ef`).
+
+En producción (ppsettings.Production.json) escucha solo HTTPS en el puerto 5443 con un certificado propio de la PC principal, y escribe logs diarios en C:\ProgramData\Toki\logs.
 
 Primer uso: `POST /api/identidad/instalacion` crea el administrador y empareja la PC principal; luego `POST /api/identidad/sesiones` con el encabezado `X-Dispositivo`.
 

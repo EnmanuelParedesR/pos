@@ -87,3 +87,6 @@ internal sealed class VentasConfiguration :
         b.Property(v => v.Contenido).HasMaxLength(ModuleDbContext.TextoLargo);
     }
 }
+
+/// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>
+internal sealed class DisenoVentas : Toki.BuildingBlocks.Persistence.DisenoDbContext<VentasDbContext>;

@@ -173,3 +173,6 @@ internal sealed class CajaOperaciones(CajaDbContext db, IUserContext usuario, IO
         return m;
     }
 }
+
+/// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>
+internal sealed class DisenoCaja : Toki.BuildingBlocks.Persistence.DisenoDbContext<CajaDbContext>;

@@ -116,3 +116,6 @@ internal static class ActualizarNegocio
                 .RequirePermiso(Permisos.ConfiguracionGestionar).WithTags("Configuración");
     }
 }
+
+/// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>
+internal sealed class DisenoConfiguracion : Toki.BuildingBlocks.Persistence.DisenoDbContext<ConfiguracionDbContext>;

@@ -66,3 +66,6 @@ internal sealed class IdentidadConfiguration :
 
     public void Configure(EntityTypeBuilder<AutorizacionSupervisor> b) => b.ToTable("AutorizacionesSupervisor");
 }
+
+/// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>
+internal sealed class DisenoIdentidad : Toki.BuildingBlocks.Persistence.DisenoDbContext<IdentidadDbContext>;

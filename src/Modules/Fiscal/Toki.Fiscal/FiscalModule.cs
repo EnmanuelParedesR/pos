@@ -192,3 +192,6 @@ internal sealed class ComprobantesFiscales(FiscalDbContext db, IConfiguracionCon
         return salida.ToArray();
     }
 }
+
+/// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>
+internal sealed class DisenoFiscal : Toki.BuildingBlocks.Persistence.DisenoDbContext<FiscalDbContext>;

@@ -111,3 +111,6 @@ internal sealed class InventarioConfiguration :
         b.HasData(FormatoEtiqueta.Predeterminados());
     }
 }
+
+/// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>
+internal sealed class DisenoInventario : Toki.BuildingBlocks.Persistence.DisenoDbContext<InventarioDbContext>;

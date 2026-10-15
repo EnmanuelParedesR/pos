@@ -193,3 +193,6 @@ internal sealed class CuentasClientes(ClientesDbContext db, IUserContext usuario
             Id = Guid.CreateVersion7(), ClienteId = clienteId, Tipo = tipo, Monto = monto, ReferenciaId = referenciaId, FechaUtc = reloj.GetUtcNow().UtcDateTime,
         });
 }
+
+/// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>
+internal sealed class DisenoClientes : Toki.BuildingBlocks.Persistence.DisenoDbContext<ClientesDbContext>;

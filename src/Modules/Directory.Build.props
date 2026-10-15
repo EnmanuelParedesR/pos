@@ -1,0 +1,7 @@
+<Project>
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <!-- Module projects (not their Contracts) own EF migrations: dotnet-ef runs against each of them through its design-time factory. -->
+  <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('.Contracts'))">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

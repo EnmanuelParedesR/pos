@@ -128,3 +128,6 @@ internal sealed class ComprasConfiguration :
         b.HasIndex(a => a.CuentaId);
     }
 }
+
+/// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>
+internal sealed class DisenoCompras : Toki.BuildingBlocks.Persistence.DisenoDbContext<ComprasDbContext>;

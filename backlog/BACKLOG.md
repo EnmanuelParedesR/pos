@@ -112,7 +112,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 |---|---|---|
 | TK-088 | Procesador del outbox y subida a la nube (Sync) | ⬜ |
 | TK-089 | Licencia firmada y funciones por plan (`IFeatureService`) | ⬜ |
-| TK-090 | Migraciones EF por módulo para SQL Server y guardia de migraciones | ⬜ |
+| TK-090 | Migraciones EF por módulo para SQL Server y guardia de migraciones | ✅ ADR-0005: `Persistence/Migraciones` por módulo, `MigrateAsync` al arrancar en SQL Server, prueba que falla si falta una migración |
 | TK-091 | Emparejamiento con certificados (mTLS) en lugar del secreto de dispositivo | ⬜ |
 | TK-092 | Respaldo programado y cifrado | ⬜ |
 | TK-093 | Servicio de Windows escuchando en la red con HTTPS (certificado del nodo), logs a archivo, health checks propios (outbox, cola e-CF, reloj). **Sin HTTPS no hay piloto** (R1 #9) | 🟡 HTTPS en 5443 con certificado propio del nodo (almacén de Windows; los terminales lo fijan al emparejar), logs diarios en ProgramData, health checks `reloj`, `cola-ecf` y `auditoria`. Falta: instalador del servicio y health del outbox (con TK-088) |
