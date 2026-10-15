@@ -34,6 +34,7 @@ internal sealed class CloudUserStore(CloudDbContext db, TimeProvider clock, Iden
         {
             var tenant = new Tenant { Id = Guid.CreateVersion7(), Name = user.Email ?? user.UserName ?? "", CreatedUtc = clock.GetUtcNow().UtcDateTime };
             Context.Tenants.Add(tenant);
+            Context.TenantMembers.Add(new TenantMember { TenantId = tenant.Id, UserId = user.Id, Role = MemberRole.Owner, JoinedUtc = tenant.CreatedUtc });
             user.TenantId = tenant.Id;
         }
         return base.CreateAsync(user, cancellationToken);
@@ -42,13 +43,17 @@ internal sealed class CloudUserStore(CloudDbContext db, TimeProvider clock, Iden
 
 /// <summary>Puts the tenant in the bearer token, and the platform role (TK-189) for the e-mails in <c>Platform:Admins</c>.
 /// Accounts granted with the CLI carry it as a stored user claim, which the base factory already adds.</summary>
-internal sealed class CloudClaimsFactory(UserManager<CloudUser> users, IOptions<IdentityOptions> options, IConfiguration config)
+/// <remarks>TK-217: if the user is no longer a member of their current tenant, the token takes another tenant they belong to (when there is one).
+/// The role is not in the token: the policies read it from the database on every call, so a change or a removal counts at once.</remarks>
+internal sealed class CloudClaimsFactory(UserManager<CloudUser> users, IOptions<IdentityOptions> options, IConfiguration config, CloudDbContext db)
     : UserClaimsPrincipalFactory<CloudUser>(users, options)
 {
     protected override async Task<ClaimsIdentity> GenerateClaimsAsync(CloudUser user)
     {
         var identity = await base.GenerateClaimsAsync(user);
-        identity.AddClaim(new Claim(TenantClaims.TenantId, user.TenantId.ToString()));
+        var tenants = await db.TenantMembers.AsNoTracking().Where(m => m.UserId == user.Id).OrderBy(m => m.JoinedUtc).Select(m => m.TenantId).ToListAsync();
+        var tenantId = tenants.Count == 0 || tenants.Contains(user.TenantId) ? user.TenantId : tenants[0];
+        identity.AddClaim(new Claim(TenantClaims.TenantId, tenantId.ToString()));
         var admins = config.GetSection("Platform:Admins").Get<string[]>() ?? [];
         if (!identity.HasClaim(PlatformAuth.RoleClaim, PlatformAuth.Admin) && admins.Contains(user.Email, StringComparer.OrdinalIgnoreCase))
             identity.AddClaim(new Claim(PlatformAuth.RoleClaim, PlatformAuth.Admin));
@@ -66,23 +71,35 @@ internal sealed class CloudSignInManager(UserManager<CloudUser> users, IHttpCont
         await base.CanSignInAsync(user) && !await db.Tenants.AnyAsync(t => t.Id == user.TenantId && t.DisabledUtc != null);
 }
 
-/// <summary>Part of the panel policy: a token issued before the tenant was disabled stops working too (403).</summary>
-internal static class ActiveTenant
+/// <summary>The panel policies, checked against the database on every call: the token's tenant must be active (TK-189: a token issued before
+/// the tenant was disabled stops working too) and the user must still be its member (TK-217), an Owner for <see cref="CloudAuth.OwnerPolicy"/>.</summary>
+internal static class PanelAccess
 {
-    public static async Task<bool> IsActiveAsync(AuthorizationHandlerContext context)
+    public static Task<bool> IsMemberAsync(AuthorizationHandlerContext context) => HasRoleAsync(context, ownerOnly: false);
+
+    public static Task<bool> IsOwnerAsync(AuthorizationHandlerContext context) => HasRoleAsync(context, ownerOnly: true);
+
+    private static async Task<bool> HasRoleAsync(AuthorizationHandlerContext context, bool ownerOnly)
     {
-        if (context.Resource is not HttpContext http || context.User.FindFirstValue(TenantClaims.TenantId) is not { } value || !Guid.TryParse(value, out var tenantId))
+        if (context.Resource is not HttpContext http || context.User.FindFirstValue(TenantClaims.TenantId) is not { } value || !Guid.TryParse(value, out var tenantId)
+            || context.User.FindFirstValue(ClaimTypes.NameIdentifier) is not { } userId)
             return false;
         var db = http.RequestServices.GetRequiredService<CloudDbContext>();
-        return !await db.Tenants.AnyAsync(t => t.Id == tenantId && t.DisabledUtc != null, http.RequestAborted);
+        if (await db.Tenants.AnyAsync(t => t.Id == tenantId && t.DisabledUtc != null, http.RequestAborted)) return false;
+        var role = await db.TenantMembers.Where(m => m.TenantId == tenantId && m.UserId == userId).Select(m => (MemberRole?)m.Role).SingleOrDefaultAsync(http.RequestAborted);
+        return role == MemberRole.Owner || (role is not null && !ownerOnly);
     }
 }
 
 public sealed record CreateStoreRequest(string? Name);
 public sealed record StoreResponse(Guid Id, string Name, DateTime CreatedUtc, DateTime? LastEventUtc, DateTime? LastSyncUtc, int Nodes);
 public sealed record ConnectionCodeResponse(string Code, DateTime ExpiresUtc);
+public sealed record MyTenant(Guid TenantId, string Name, MemberRole Role);
 /// <param name="IsPlatformAdmin">Toki staff (TK-189): the panel shows the "Plataforma" area.</param>
-public sealed record MeResponse(string? Email, Guid TenantId, string TenantName, bool IsPlatformAdmin);
+/// <param name="Role">In the current tenant (TK-217): the panel hides what a ReadOnly member cannot do (the API refuses it anyway).</param>
+/// <param name="Tenants">Every tenant the user belongs to; with more than one the panel lets them switch.</param>
+public sealed record MeResponse(string? Email, Guid TenantId, string TenantName, bool IsPlatformAdmin, MemberRole Role, IReadOnlyList<MyTenant> Tenants);
+public sealed record SwitchTenantRequest(Guid TenantId);
 
 internal static class StoreEndpoints
 {
@@ -95,8 +112,25 @@ internal static class StoreEndpoints
         api.MapGet("/me", async (ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
         {
             var tenantId = user.GetTenantId();
-            var tenant = await db.Tenants.AsNoTracking().SingleAsync(t => t.Id == tenantId, ct);
-            return Results.Ok(new MeResponse(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, tenant.Id, tenant.Name, user.IsPlatformAdmin()));
+            var userId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+            var tenants = await db.TenantMembers.AsNoTracking().Where(m => m.UserId == userId)
+                .Join(db.Tenants.Where(t => t.DisabledUtc == null), m => m.TenantId, t => t.Id, (m, t) => new MyTenant(t.Id, t.Name, m.Role))
+                .ToListAsync(ct);
+            var current = tenants.Single(t => t.TenantId == tenantId); // the panel policy already checked the membership
+            return Results.Ok(new MeResponse(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, tenantId, current.Name, user.IsPlatformAdmin(), current.Role,
+                [.. tenants.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)]));
+        });
+
+        // TK-217: the panel then renews its token (POST /api/auth/refresh), which takes the new tenant.
+        api.MapPost("/me/tenant", async (SwitchTenantRequest request, ClaimsPrincipal user, UserManager<CloudUser> users, CloudDbContext db, CancellationToken ct) =>
+        {
+            var account = await users.GetUserAsync(user);
+            if (account is null || !await db.TenantMembers.AnyAsync(m => m.UserId == account.Id && m.TenantId == request.TenantId, ct)
+                || await db.Tenants.AnyAsync(t => t.Id == request.TenantId && t.DisabledUtc != null, ct))
+                return EndpointExtensions.Problem(Error.NotFound("Members.TenantNotFound", "No encontramos ese negocio entre los suyos."));
+            account.TenantId = request.TenantId;
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
         });
 
         api.MapGet("/stores", async (ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
@@ -120,7 +154,7 @@ internal static class StoreEndpoints
             db.Stores.Add(store);
             await db.SaveChangesAsync(ct);
             return Results.Created($"/api/stores/{store.Id}", new StoreResponse(store.Id, store.Name, store.CreatedUtc, null, null, 0));
-        });
+        }).RequireAuthorization(CloudAuth.OwnerPolicy);
 
         api.MapPost("/stores/{id:guid}/connection-codes", async (Guid id, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
@@ -136,6 +170,6 @@ internal static class StoreEndpoints
             db.ConnectionCodes.Add(connection);
             await db.SaveChangesAsync(ct);
             return Results.Ok(new ConnectionCodeResponse(code, connection.ExpiresUtc));
-        });
+        }).RequireAuthorization(CloudAuth.OwnerPolicy);
     }
 }

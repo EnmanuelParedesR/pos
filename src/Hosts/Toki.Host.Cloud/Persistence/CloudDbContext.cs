@@ -14,6 +14,8 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public const int LongText = 8000;
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<TenantMember> TenantMembers => Set<TenantMember>();
+    public DbSet<TenantInvite> TenantInvites => Set<TenantInvite>();
     public DbSet<Store> Stores => Set<Store>();
     public DbSet<ConnectionCode> ConnectionCodes => Set<ConnectionCode>();
     public DbSet<Node> Nodes => Set<Node>();
@@ -56,6 +58,27 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         {
             e.ToTable("Tenants");
             e.Property(t => t.Name).HasMaxLength(256);
+        });
+        builder.Entity<TenantMember>(e =>
+        {
+            e.ToTable("TenantMembers");
+            e.HasKey(m => new { m.TenantId, m.UserId });
+            e.Property(m => m.UserId).HasMaxLength(450);
+            e.Property(m => m.Role).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(m => m.UserId);
+        });
+        builder.Entity<TenantInvite>(e =>
+        {
+            e.ToTable("TenantInvites");
+            e.Property(i => i.Email).HasMaxLength(256);
+            e.Property(i => i.InvitedBy).HasMaxLength(256);
+            e.Property(i => i.Role).HasConversion<string>().HasMaxLength(20);
+            e.Property(i => i.TokenHash).HasMaxLength(32);
+            e.HasIndex(i => i.TokenHash).IsUnique();
+            e.HasIndex(i => i.TenantId);
+            // Accepting saves with WHERE AcceptedUtc IS NULL AND RevokedUtc IS NULL: two people with the same link, or a revoke in between, cannot both win.
+            e.Property(i => i.AcceptedUtc).IsConcurrencyToken();
+            e.Property(i => i.RevokedUtc).IsConcurrencyToken();
         });
         builder.Entity<Store>(e =>
         {
@@ -277,7 +300,36 @@ internal sealed class CloudDesignTimeFactory : IDesignTimeDbContextFactory<Cloud
 /// <summary>A panel user. Each one belongs to exactly one tenant (the owner's business), created on registration.</summary>
 public sealed class CloudUser : IdentityUser
 {
+    /// <summary>The tenant the user works in now (the one put in the token). Access comes from <see cref="TenantMember"/>, never from this alone (TK-217).</summary>
     public Guid TenantId { get; set; }
+}
+
+/// <summary>TK-217: what a panel member may do. Owner: everything. ReadOnly: summary, sales, shifts, stores and the assistant; writes nothing.</summary>
+public enum MemberRole { Owner, ReadOnly }
+
+/// <summary>A panel account's access to a tenant (TK-217). A tenant always keeps at least one Owner.</summary>
+public sealed class TenantMember
+{
+    public Guid TenantId { get; set; }
+    public string UserId { get; set; } = "";
+    public MemberRole Role { get; set; }
+    public DateTime JoinedUtc { get; set; }
+}
+
+/// <summary>A single-use link to join a tenant (TK-217). Only the SHA-256 of the token is kept.</summary>
+public sealed class TenantInvite
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public string Email { get; set; } = "";
+    public MemberRole Role { get; set; }
+    public byte[] TokenHash { get; set; } = [];
+    /// <summary>E-mail of the owner who invited.</summary>
+    public string InvitedBy { get; set; } = "";
+    public DateTime CreatedUtc { get; set; }
+    public DateTime ExpiresUtc { get; set; }
+    public DateTime? AcceptedUtc { get; set; }
+    public DateTime? RevokedUtc { get; set; }
 }
 
 public sealed class Tenant

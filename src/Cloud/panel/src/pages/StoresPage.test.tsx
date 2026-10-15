@@ -36,7 +36,7 @@ it("TK-170: the list refreshes by itself when a register uses the connection cod
     ),
   );
   const reloadStores = vi.fn();
-  const context: PanelContext = { stores: [], reloadStores, storeId: "", setStoreId: () => {} };
+  const context: PanelContext = { stores: [], reloadStores, storeId: "", setStoreId: () => {}, canEdit: true };
   render(
     <MemoryRouter>
       <Routes>
@@ -57,4 +57,22 @@ it("TK-170: the list refreshes by itself when a register uses the connection cod
   expect(screen.getByText("Caja 1")).toBeTruthy();
   expect(screen.queryByText("1234 5678")).toBeNull();
   expect(reloadStores).toHaveBeenCalled();
+});
+
+it("TK-217: a read-only member sees the stores but cannot add one or connect a register", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => json(200, store(1))));
+  const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {}, canEdit: false };
+  render(
+    <MemoryRouter>
+      <Routes>
+        <Route element={<Outlet context={context} />}>
+          <Route index element={<StoresPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("Caja 1")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Nueva tienda/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Conectar una caja/ })).toBeNull();
 });

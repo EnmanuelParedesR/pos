@@ -17,6 +17,8 @@ public static class CloudAuth
     public const string NodeScheme = "Node";
     public const string NodePolicy = "Node";
     public const string PanelPolicy = "Panel";
+    /// <summary>TK-217: every panel write. A ReadOnly member gets 403.</summary>
+    public const string OwnerPolicy = "PanelOwner";
     public const string RegisterNodeRateLimit = "register-node";
 }
 

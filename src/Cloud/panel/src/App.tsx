@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { NavLink, Outlet, Route, Routes, useLocation, useNavigate, useOutletContext } from "react-router";
-import { api, hasSession, setOnSignedOut, signOut, useApi, type Me, type Store } from "./api";
+import { api, hasSession, renewSession, setOnSignedOut, signOut, useApi, roleNames, type Me, type Store } from "./api";
 import { Icon, Logo, ThemeToggle, type IconName } from "./ui";
 import { SignIn } from "./pages/SignIn";
 import { SummaryPage } from "./pages/SummaryPage";
@@ -10,22 +10,28 @@ import { StoresPage } from "./pages/StoresPage";
 import { AssistantPage } from "./pages/AssistantPage";
 import { PlatformMetricsPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
 import { CatalogPage } from "./pages/CatalogPage";
+import { MembersPage } from "./pages/MembersPage";
+import { InvitePage } from "./pages/InvitePage";
 
-/** What every screen gets from the frame: the tenant's stores and the selected one ("" = all). */
+/** What every screen gets from the frame: the tenant's stores, the selected one ("" = all) and whether this member may change things (TK-217: Owner). */
 export interface PanelContext {
   stores: Store[];
   reloadStores: () => void;
   storeId: string;
   setStoreId: (id: string) => void;
+  canEdit: boolean;
 }
 
 export const usePanel = () => useOutletContext<PanelContext>();
 
 export function App() {
   // The public catalog (TK-195) needs no session: a store's customers open it from a QR.
-  const isPublic = useLocation().pathname.startsWith("/c/");
+  const { pathname } = useLocation();
+  const isPublic = pathname.startsWith("/c/");
+  // TK-217: the invite link works signed in or not; the page itself asks for the account.
+  const isInvite = pathname.startsWith("/invite/");
   // undefined = checking a saved session, null = signed out.
-  const [me, setMe] = useState<Me | null | undefined>(hasSession() && !isPublic ? undefined : null);
+  const [me, setMe] = useState<Me | null | undefined>(hasSession() && !isPublic && !isInvite ? undefined : null);
 
   useEffect(() => {
     setOnSignedOut(() => setMe(null));
@@ -40,6 +46,13 @@ export function App() {
       </Routes>
     );
 
+  if (isInvite)
+    return (
+      <Routes>
+        <Route path="/invite/:token" element={<InvitePage onJoined={setMe} />} />
+      </Routes>
+    );
+
   if (me === undefined)
     return (
       <div className="esc-admin" style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
@@ -50,12 +63,13 @@ export function App() {
 
   return (
     <Routes>
-      <Route element={<Shell me={me} />}>
+      <Route element={<Shell key={me.tenantId} me={me} onMe={setMe} />}>
         <Route index element={<SummaryPage />} />
         <Route path="sales" element={<SalesPage />} />
         <Route path="shifts" element={<ShiftsPage />} />
         <Route path="stores" element={<StoresPage />} />
         <Route path="assistant" element={<AssistantPage />} />
+        {me.role === "Owner" && <Route path="members" element={<MembersPage me={me} />} />}
         {/* Toki staff only (TK-189); the API checks the role on every call anyway. */}
         {me.isPlatformAdmin && (
           <>
@@ -79,7 +93,9 @@ const sections: { to: string; label: string; icon: IconName }[] = [
   { to: "/assistant", label: "Asistente", icon: "sparkles" },
 ];
 
+const membersSection = { to: "/members", label: "Equipo", icon: "users" as IconName };
 const platformSection = { to: "/platform", label: "Plataforma", icon: "shield" as IconName };
+
 
 const collapsedKey = "toki.menuCollapsed";
 
@@ -92,13 +108,23 @@ function readCollapsed() {
 }
 
 /** Escuadra Admin shell: icon menu on the left (collapsible) on a computer, top bar and bottom tabs on the phone. */
-function Shell({ me }: { me: Me }) {
+function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   const stores = useApi<Store[]>("/api/stores");
   const [storeId, setStoreId] = useState("");
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const { pathname } = useLocation();
-  const context: PanelContext = { stores: stores.data ?? [], reloadStores: stores.reload, storeId, setStoreId };
-  const nav = me.isPlatformAdmin ? [...sections, platformSection] : sections;
+  const navigate = useNavigate();
+  const canEdit = me.role === "Owner";
+  const context: PanelContext = { stores: stores.data ?? [], reloadStores: stores.reload, storeId, setStoreId, canEdit };
+  const nav = [...sections, ...(canEdit ? [membersSection] : []), ...(me.isPlatformAdmin ? [platformSection] : [])];
+
+  // TK-217: a member of several businesses picks one; the new token carries it.
+  const switchTenant = async (tenantId: string) => {
+    await api("/api/me/tenant", "POST", { tenantId });
+    await renewSession();
+    onMe(await api<Me>("/api/me"));
+    navigate("/");
+  };
   const onPlatform = pathname.startsWith("/platform");
 
   const toggle = () => {
@@ -121,7 +147,17 @@ function Shell({ me }: { me: Me }) {
           </button>
         </div>
         <div className="esc-side__store">
-          <b>{me.tenantName}</b>{me.isPlatformAdmin ? "Panel y plataforma" : "Panel del dueño"}
+          <b>{me.tenantName}</b>
+          {me.isPlatformAdmin ? "Panel y plataforma" : canEdit ? "Panel del dueño" : "Panel de solo lectura"}
+          {me.tenants.length > 1 && (
+            <select className="esc-select" aria-label="Negocio" value={me.tenantId} onChange={(e) => void switchTenant(e.target.value).catch(() => undefined)}>
+              {me.tenants.map((t) => (
+                <option key={t.tenantId} value={t.tenantId}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <nav className="esc-side__nav" aria-label="Secciones">
           {nav.map((s) => (
@@ -138,7 +174,7 @@ function Shell({ me }: { me: Me }) {
             </span>
             <div>
               <b>{me.email ?? me.tenantName}</b>
-              {me.isPlatformAdmin ? "Equipo de Toki" : "Dueño"}
+              {me.isPlatformAdmin ? "Equipo de Toki" : roleNames[me.role]}
             </div>
           </div>
           <ThemeToggle />

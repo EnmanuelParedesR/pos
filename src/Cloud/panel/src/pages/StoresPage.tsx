@@ -5,7 +5,7 @@ import { ago, isStale } from "../format";
 import { EmptyState, Icon, LoadError, Notice, PageHead, Skeleton } from "../ui";
 
 export function StoresPage() {
-  const { reloadStores } = usePanel();
+  const { reloadStores, canEdit } = usePanel();
   const status = useApi<StoreSyncStatus[]>("/api/panel/sync-status");
   const [name, setName] = useState("");
   const [adding, setAdding] = useState(false);
@@ -36,7 +36,7 @@ export function StoresPage() {
   return (
     <>
       <PageHead title="Tiendas" subtitle="Sus tiendas y las cajas que envían datos a este panel.">
-        {!adding && (
+        {canEdit && !adding && (
           <button type="button" className="esc-button esc-button--primary" onClick={() => setAdding(true)}>
             <Icon name="plus" size={18} /> Nueva tienda
           </button>
@@ -91,16 +91,16 @@ export function StoresPage() {
       {status.data?.length === 0 && !adding && (
         <div className="esc-card">
           <EmptyState icon="store" title="Todavía no tiene tiendas">
-            Cree la primera con “Nueva tienda” y conecte su caja.
+            {canEdit ? "Cree la primera con “Nueva tienda” y conecte su caja." : "El dueño del negocio todavía no creó ninguna."}
           </EmptyState>
         </div>
       )}
-      {status.data?.map((s) => <StoreCard key={s.storeId} store={s} onPoll={status.reload} onConnected={connected} />)}
+      {status.data?.map((s) => <StoreCard key={s.storeId} store={s} canEdit={canEdit} onPoll={status.reload} onConnected={connected} />)}
     </>
   );
 }
 
-function StoreCard({ store: s, onPoll, onConnected }: { store: StoreSyncStatus; onPoll: () => void; onConnected: () => void }) {
+function StoreCard({ store: s, canEdit, onPoll, onConnected }: { store: StoreSyncStatus; canEdit: boolean; onPoll: () => void; onConnected: () => void }) {
   return (
     <section className="esc-card esc-card--padded store">
       <div className="store__head">
@@ -130,7 +130,8 @@ function StoreCard({ store: s, onPoll, onConnected }: { store: StoreSyncStatus; 
       )}
       {s.pendingEvents > 0 && <p className="esc-muted">{s.pendingEvents} datos recibidos por procesar.</p>}
       {s.failedEvents > 0 && <Notice kind="warning" title={`${s.failedEvents} datos recibidos no se pudieron procesar.`} />}
-      <ConnectRegister storeId={s.storeId} nodes={s.nodes.length} onPoll={onPoll} onConnected={onConnected} />
+      {/* TK-217: a ReadOnly member sees the stores but cannot connect registers. */}
+      {canEdit && <ConnectRegister storeId={s.storeId} nodes={s.nodes.length} onPoll={onPoll} onConnected={onConnected} />}
     </section>
   );
 }

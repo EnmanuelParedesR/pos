@@ -58,7 +58,7 @@ function renderApp(me: Me, path: string) {
   );
 }
 
-const owner: Me = { email: "dueno@example.com", tenantId: "t0", tenantName: "dueno@example.com", isPlatformAdmin: false };
+const owner: Me = { email: "dueno@example.com", tenantId: "t0", tenantName: "dueno@example.com", isPlatformAdmin: false, role: "Owner", tenants: [{ tenantId: "t0", name: "dueno@example.com", role: "Owner" }] };
 
 it("TK-189: an owner never sees the Plataforma area, not even by its address", async () => {
   renderApp(owner, "/platform");

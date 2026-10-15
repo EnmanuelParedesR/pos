@@ -35,7 +35,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, NodeAuthenticationHandler>(CloudAuth.NodeScheme, null);
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(CloudAuth.NodePolicy, p => p.AddAuthenticationSchemes(CloudAuth.NodeScheme).RequireAuthenticatedUser())
-    .AddPolicy(CloudAuth.PanelPolicy, p => p.RequireAuthenticatedUser().RequireClaim(TenantClaims.TenantId).RequireAssertion(ActiveTenant.IsActiveAsync))
+    .AddPolicy(CloudAuth.PanelPolicy, p => p.RequireAuthenticatedUser().RequireClaim(TenantClaims.TenantId).RequireAssertion(PanelAccess.IsMemberAsync))
+    .AddPolicy(CloudAuth.OwnerPolicy, p => p.RequireAuthenticatedUser().RequireClaim(TenantClaims.TenantId).RequireAssertion(PanelAccess.IsOwnerAsync))
     .AddPolicy(PlatformAuth.Policy, p => p.RequireAuthenticatedUser().RequireClaim(PlatformAuth.RoleClaim, PlatformAuth.Admin));
 builder.Services.AddIdentityApiEndpoints<CloudUser>(o =>
     {
@@ -62,6 +63,7 @@ builder.Services.AddSingleton<InboxApplier>();
 builder.Services.AddHostedService<InboxApplierWorker>();
 builder.Services.AddScoped<PanelQueries>();
 builder.Services.AddScoped<PlatformQueries>();
+builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
 if (openAi.IsConfigured)
@@ -106,6 +108,7 @@ app.MapHealthChecks("/health/ready").AllowAnonymous();
 
 app.MapGroup("/api/auth").MapIdentityApi<CloudUser>();
 app.MapStores();
+app.MapMembers();
 app.MapNodes();
 app.MapIngest();
 app.MapPanel();

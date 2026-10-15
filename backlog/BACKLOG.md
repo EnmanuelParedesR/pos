@@ -279,7 +279,7 @@ Origen: pedido del dueño (15/10/2026): cada negocio maneja sus usuarios y les d
 | TK-214 | Separar compras de pagos: `payables.pay` (pagos a suplidores y gastos con NCF) | 🔨 |
 | TK-215 | Nadie da un permiso que no tiene; siempre un Administrador activo; cambios de rol y usuario en la auditoría con antes y después | 🔨 |
 | TK-216 | Roles de partida: Cajero con apertura, Inventario, Contador | 🔨 |
-| TK-217 | Panel en la nube: miembros del negocio (Dueño, Solo lectura) con invitación por correo | ⬜ |
+| TK-217 | Panel en la nube: miembros del negocio (Dueño, Solo lectura) con invitación por correo | ✅ |
 
 ## Revisiones
 

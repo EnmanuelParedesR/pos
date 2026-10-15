@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
   api,
-  ApiError,
+  roleNames,
   useApi,
   type DailyActivity,
   type FunnelStage,
@@ -14,7 +14,7 @@ import {
   type RetentionCohort,
 } from "../api";
 import { ago, dateTime, dayName, isStale, money } from "../format";
-import { BarChart, BarList, Card, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton, SkeletonRows, Stat } from "../ui";
+import { BarChart, BarList, Card, ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton, SkeletonRows, Stat } from "../ui";
 
 /** Plataforma (TK-189 / TK-190): Toki staff only. Same Escuadra Admin pieces as the owner's panel. */
 
@@ -316,34 +316,6 @@ function SyncPill({ utc }: { utc: string | null }) {
   return <span className={`esc-pill esc-pill--${isStale(utc) ? "warning" : "success"}`}>{utc ? ago(utc) : "Nunca"}</span>;
 }
 
-/** Two steps, inline (never a modal): the first tap asks, the second does it. */
-function ConfirmButton({ label, confirm, danger = false, onConfirm }: { label: string; confirm: string; danger?: boolean; onConfirm: () => Promise<void> }) {
-  const [asking, setAsking] = useState(false);
-  const [error, setError] = useState<ApiError | null>(null);
-  if (!asking)
-    return (
-      <button type="button" className={`esc-button esc-button--small${danger ? " esc-button--danger" : ""}`} onClick={() => setAsking(true)}>
-        {label}
-      </button>
-    );
-  return (
-    <span className="esc-row" style={{ gap: 8 }}>
-      <span className="esc-muted">{confirm}</span>
-      <button
-        type="button"
-        className={`esc-button esc-button--small ${danger ? "esc-button--danger" : "esc-button--primary"}`}
-        onClick={() => onConfirm().then(() => setAsking(false), (e) => setError(e as ApiError))}
-      >
-        Sí, {label.toLowerCase()}
-      </button>
-      <button type="button" className="esc-button esc-button--small esc-button--ghost" onClick={() => (setAsking(false), setError(null))}>
-        Cancelar
-      </button>
-      {error && <Notice kind="error" title={error.detail} />}
-    </span>
-  );
-}
-
 export function PlatformTenantPage() {
   const { tenantId } = useParams();
   const { data: t, error, loading, reload } = useApi<PlatformTenantDetail>(`/api/platform/tenants/${tenantId}`);
@@ -351,7 +323,7 @@ export function PlatformTenantPage() {
   return (
     <>
       <PageHead
-        title={t?.panelUsers[0] ?? t?.name ?? "Cliente"}
+        title={t?.members.find((m) => m.role === "Owner")?.email ?? t?.name ?? "Cliente"}
         subtitle={
           <>
             <Link to="/platform/tenants">Clientes</Link>
@@ -381,9 +353,23 @@ export function PlatformTenantPage() {
               <Stat icon="chart" label="Etapa" value={stageNames[t.metrics.stage]} />
               <Stat icon="calendar" label="Días con ventas" value={count(t.metrics.daysWithSalesLast30)} note="Últimos 30 días" />
               <Stat icon="receipt" label="Ventas en 30 días" value={money(t.metrics.amountLast30Days)} note={`${count(t.metrics.salesLast30Days)} facturas`} />
-              <Stat icon="users" label="Cuentas del panel" value={count(t.panelUsers.length)} note={t.panelUsers.join(", ")} />
+              <Stat icon="users" label="Miembros del panel" value={count(t.members.length)} note={`${count(t.members.filter((m) => m.role === "Owner").length)} dueños`} />
             </div>
           </section>
+
+          {/* TK-217 */}
+          <Card title="Miembros del panel">
+            <ul className="platform-kv" aria-label="Miembros del panel">
+              {t.members.map((m, n) => (
+                <li key={n}>
+                  <span style={{ overflowWrap: "anywhere" }}>{m.email ?? "Sin correo"}</span>
+                  <span className="esc-muted">
+                    {roleNames[m.role]} · desde {dayName(m.joinedUtc.slice(0, 10))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
 
           {t.issues.length > 0 && (
             <section className="esc-card" aria-labelledby="tenant-issues">

@@ -6,7 +6,7 @@ using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Platform;
 
-/// <param name="OwnerEmail">A panel account of the tenant (the first by e-mail; today each tenant has one: the owner who registered).</param>
+/// <param name="OwnerEmail">An Owner of the tenant (the first by e-mail).</param>
 /// <param name="LastActivityUtc">Newest batch received from any of its PCs.</param>
 public sealed record PlatformTenant(Guid Id, string Name, string? OwnerEmail, DateTime CreatedUtc, DateTime? DisabledUtc, int Stores, int Nodes,
     DateTime? LastActivityUtc, string Stage, string? AppVersion);
@@ -17,7 +17,9 @@ public sealed record PlatformStore(Guid Id, string Name, DateTime CreatedUtc, in
     IReadOnlyList<PlatformNode> Nodes);
 /// <summary>A connection code, without the code itself.</summary>
 public sealed record PlatformConnectionCode(Guid StoreId, DateTime IssuedUtc, DateTime ExpiresUtc, DateTime? UsedUtc);
-public sealed record PlatformTenantDetail(Guid Id, string Name, DateTime CreatedUtc, DateTime? DisabledUtc, IReadOnlyList<string> PanelUsers,
+/// <summary>TK-217: a panel member of a tenant.</summary>
+public sealed record PlatformMember(string? Email, MemberRole Role, DateTime JoinedUtc);
+public sealed record PlatformTenantDetail(Guid Id, string Name, DateTime CreatedUtc, DateTime? DisabledUtc, IReadOnlyList<PlatformMember> Members,
     IReadOnlyList<PlatformStore> Stores, IReadOnlyList<PlatformConnectionCode> ConnectionCodes, IReadOnlyList<PanelIssue> Issues, TenantMetrics Metrics);
 /// <param name="SequencesLoaded">The store already issued an e-CF (the cloud learns of e-NCF sequences only through issued documents).</param>
 /// <param name="BusinessNameSet">Null until a heartbeat arrives (the cloud gets no business profile event).</param>
@@ -39,18 +41,18 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
         var tenants = await db.Tenants.AsNoTracking().OrderByDescending(t => t.CreatedUtc).ToListAsync(ct);
         var stores = await db.Stores.AsNoTracking().ToListAsync(ct);
         var nodes = await db.Nodes.AsNoTracking().ToListAsync(ct);
-        var owners = await OwnersAsync(null, ct);
+        var owners = await MembersAsync(null, ct);
         var versions = await db.NodeHeartbeats.AsNoTracking().Select(h => new { h.TenantId, h.SentUtc, h.AppVersion }).ToListAsync(ct);
 
         var term = search?.Trim() ?? "";
         bool Matches(Tenant t) => term.Length == 0
-            || Contains(t.Name) || Contains(owners.GetValueOrDefault(t.Id)?.FirstOrDefault())
+            || Contains(t.Name) || (owners.GetValueOrDefault(t.Id) ?? []).Any(m => Contains(m.Email))
             || stores.Any(s => s.TenantId == t.Id && (Contains(s.Name) || s.Id.ToString() == term))
             || nodes.Any(n => n.TenantId == t.Id && (Contains(n.Name) || n.Id.ToString() == term))
             || t.Id.ToString() == term;
         bool Contains(string? value) => value?.Contains(term, StringComparison.OrdinalIgnoreCase) == true;
 
-        return [.. tenants.Where(Matches).Select(t => new PlatformTenant(t.Id, t.Name, owners.GetValueOrDefault(t.Id)?.FirstOrDefault(), t.CreatedUtc, t.DisabledUtc,
+        return [.. tenants.Where(Matches).Select(t => new PlatformTenant(t.Id, t.Name, owners.GetValueOrDefault(t.Id)?.FirstOrDefault(m => m.Role == MemberRole.Owner)?.Email, t.CreatedUtc, t.DisabledUtc,
             stores.Count(s => s.TenantId == t.Id), nodes.Count(n => n.TenantId == t.Id && n.RevokedUtc is null),
             nodes.Where(n => n.TenantId == t.Id).Max(n => n.LastSyncUtc), metrics.Stage(t.Id),
             versions.Where(v => v.TenantId == t.Id).MaxBy(v => v.SentUtc)?.AppVersion))];
@@ -68,7 +70,7 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
         var codes = await db.ConnectionCodes.AsNoTracking().Where(c => c.TenantId == tenantId).OrderByDescending(c => c.ExpiresUtc).Take(20)
             .Select(c => new PlatformConnectionCode(c.StoreId, c.ExpiresUtc - Accounts.StoreEndpoints.CodeLifetime, c.ExpiresUtc, c.UsedUtc)).ToListAsync(ct);
 
-        return new PlatformTenantDetail(tenant.Id, tenant.Name, tenant.CreatedUtc, tenant.DisabledUtc, (await OwnersAsync(tenantId, ct)).GetValueOrDefault(tenantId) ?? [],
+        return new PlatformTenantDetail(tenant.Id, tenant.Name, tenant.CreatedUtc, tenant.DisabledUtc, (await MembersAsync(tenantId, ct)).GetValueOrDefault(tenantId) ?? [],
             [.. stores.Select(s =>
             {
                 var sales = sold.FirstOrDefault(x => x.Key == s.Id);
@@ -155,10 +157,12 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
         })];
     }
 
-    /// <summary>Panel e-mails by tenant (null = every tenant).</summary>
-    private async Task<Dictionary<Guid, List<string>>> OwnersAsync(Guid? tenantId, CancellationToken ct) =>
-        (await db.Users.AsNoTracking().Where(u => tenantId == null || u.TenantId == tenantId).Select(u => new { u.TenantId, u.Email }).ToListAsync(ct))
-        .Where(u => u.Email != null).GroupBy(u => u.TenantId).ToDictionary(g => g.Key, g => g.Select(u => u.Email!).Order(StringComparer.OrdinalIgnoreCase).ToList());
+    /// <summary>Panel members by tenant (null = every tenant), Owners first (TK-217).</summary>
+    private async Task<Dictionary<Guid, List<PlatformMember>>> MembersAsync(Guid? tenantId, CancellationToken ct) =>
+        (await db.TenantMembers.AsNoTracking().Where(m => tenantId == null || m.TenantId == tenantId)
+            .Join(db.Users, m => m.UserId, u => u.Id, (m, u) => new { m.TenantId, Member = new PlatformMember(u.Email, m.Role, m.JoinedUtc) }).ToListAsync(ct))
+        .GroupBy(x => x.TenantId).ToDictionary(g => g.Key,
+            g => g.Select(x => x.Member).OrderBy(m => m.Role).ThenBy(m => m.Email, StringComparer.OrdinalIgnoreCase).ToList());
 
     private IQueryable<ReplicaSale> CompletedSales(Guid tenantId)
     {

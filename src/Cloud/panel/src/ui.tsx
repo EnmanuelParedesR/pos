@@ -382,3 +382,31 @@ export function BarList({ items, format = money }: { items: { key: string; name:
     </ul>
   );
 }
+
+/** Two steps, inline (never a modal): the first tap asks, the second does it. */
+export function ConfirmButton({ label, confirm, danger = false, onConfirm }: { label: string; confirm: string; danger?: boolean; onConfirm: () => Promise<void> }) {
+  const [asking, setAsking] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+  if (!asking)
+    return (
+      <button type="button" className={`esc-button esc-button--small${danger ? " esc-button--danger" : ""}`} onClick={() => setAsking(true)}>
+        {label}
+      </button>
+    );
+  return (
+    <span className="esc-row" style={{ gap: 8 }}>
+      <span className="esc-muted">{confirm}</span>
+      <button
+        type="button"
+        className={`esc-button esc-button--small ${danger ? "esc-button--danger" : "esc-button--primary"}`}
+        onClick={() => onConfirm().then(() => setAsking(false), (e) => setError(e as ApiError))}
+      >
+        Sí, {label.toLowerCase()}
+      </button>
+      <button type="button" className="esc-button esc-button--small esc-button--ghost" onClick={() => (setAsking(false), setError(null))}>
+        Cancelar
+      </button>
+      {error && <Notice kind="error" title={error.detail} />}
+    </span>
+  );
+}

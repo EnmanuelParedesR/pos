@@ -72,7 +72,7 @@ it("shows the day's numbers, payment methods in Spanish and what to review", asy
           : json(200, summary),
   );
   vi.stubGlobal("fetch", fetch);
-  const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {} };
+  const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {}, canEdit: true };
 
   render(
     <MemoryRouter>

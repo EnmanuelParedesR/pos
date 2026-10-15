@@ -74,7 +74,9 @@ async function toError(response: Response): Promise<ApiError> {
     problem.detail ??
     (response.status === 401
       ? "Su sesión terminó. Vuelva a entrar."
-      : response.status >= 500
+      : response.status === 403
+        ? "Su cuenta no tiene permiso para esto. Pídaselo al dueño del negocio."
+        : response.status >= 500
         ? "El servidor tuvo un problema. Intente de nuevo en un momento."
         : "No se pudo completar la operación.");
   return new ApiError(response.status, problem.code ?? problem.title ?? String(response.status), detail, problem.errors ?? {});
@@ -148,6 +150,18 @@ export async function register(email: string, password: string) {
   await signIn(email, password);
 }
 
+/** TK-217: a new account for the invited e-mail, already a member of the inviting business (no business of its own). */
+export async function registerByInvite(token: string, email: string, password: string) {
+  const response = await send(`/api/invites/${encodeURIComponent(token)}/register`, "POST", { password }, false);
+  if (!response.ok) throw await toError(response);
+  await signIn(email, password);
+}
+
+/** A new access token now (after joining or switching business: the token carries the business). */
+export async function renewSession() {
+  if (!(await refresh())) throw new ApiError(401, "Auth.Expired", "Su sesión terminó. Vuelva a entrar.");
+}
+
 /** Loads `path` (null = wait) and reloads it when the path changes or `reload()` is called. */
 export function useApi<T>(path: string | null) {
   const [state, setState] = useState<{ data?: T; error?: ApiError; loading: boolean }>({ loading: path !== null });
@@ -170,7 +184,16 @@ export function useApi<T>(path: string | null) {
 // Shapes returned by the cloud API (camelCase).
 
 /** `isPlatformAdmin`: Toki staff (TK-189), who also see the "Plataforma" area. */
-export interface Me { email: string | null; tenantId: string; tenantName: string; isPlatformAdmin?: boolean }
+/** `role`: in the current tenant (TK-217); a ReadOnly member sees the panel but cannot change anything (the API refuses it anyway). */
+export type MemberRole = "Owner" | "ReadOnly";
+export const roleNames: Record<MemberRole, string> = { Owner: "Dueño", ReadOnly: "Solo lectura" };
+export interface MyTenant { tenantId: string; name: string; role: MemberRole }
+export interface Me { email: string | null; tenantId: string; tenantName: string; isPlatformAdmin?: boolean; role: MemberRole; tenants: MyTenant[] }
+export interface Member { userId: string; email: string | null; role: MemberRole; joinedUtc: string }
+export interface Invite { id: string; email: string; role: MemberRole; invitedBy: string; createdUtc: string; expiresUtc: string }
+export interface Members { members: Member[]; invites: Invite[] }
+export interface CreatedInvite { invite: Invite; link: string }
+export interface InvitePreview { tenantName: string; email: string; role: MemberRole; expiresUtc: string }
 export interface Store { id: string; name: string; createdUtc: string; lastEventUtc: string | null; lastSyncUtc: string | null; nodes: number }
 export interface ConnectionCode { code: string; expiresUtc: string }
 
@@ -293,7 +316,7 @@ export interface PlatformTenantDetail {
   name: string;
   createdUtc: string;
   disabledUtc: string | null;
-  panelUsers: string[];
+  members: { email: string | null; role: MemberRole; joinedUtc: string }[];
   stores: PlatformStore[];
   connectionCodes: { storeId: string; issuedUtc: string; expiresUtc: string; usedUtc: string | null }[];
   issues: Issue[];
