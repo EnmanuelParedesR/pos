@@ -13,6 +13,9 @@ jobs:
       fail-fast: false
       matrix:
         db: [sqlite, sqlserver]
+    env:
+      # The WPF shell targets Windows; this lets Linux restore and compile it (its tests don't run here).
+      EnableWindowsTargeting: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
