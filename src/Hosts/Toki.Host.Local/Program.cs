@@ -4,16 +4,25 @@ using Scalar.AspNetCore;
 using Serilog;
 using Toki.BuildingBlocks;
 using Toki.BuildingBlocks.Endpoints;
+using Toki.Configuracion;
 using Toki.Identidad;
+using Toki.Inventario;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(o => o.ServiceName = "Toki");
 builder.Host.UseSerilog((ctx, cfg) => cfg.ReadFrom.Configuration(ctx.Configuration).WriteTo.Console());
 
-Assembly[] modulos = [typeof(IdentidadModule).Assembly];
+Assembly[] modulos =
+[
+    typeof(IdentidadModule).Assembly,
+    typeof(ConfiguracionModule).Assembly,
+    typeof(InventarioModule).Assembly,
+];
 
 builder.Services.AddToki(builder.Configuration, modulos);
 builder.Services.AddIdentidadModule();
+builder.Services.AddConfiguracionModule();
+builder.Services.AddInventarioModule();
 
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();

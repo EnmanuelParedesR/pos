@@ -129,7 +129,10 @@ public sealed class TokiApp : WebApplicationFactory<Program>
     {
         base.Dispose(disposing);
         _instalacion.Dispose();
-        if (_archivoSqlite is not null) File.Delete(_archivoSqlite);
+        if (_archivoSqlite is null) return;
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try { File.Delete(_archivoSqlite); }
+        catch (IOException) { } // best effort: a temp file left behind is harmless
     }
 }
 

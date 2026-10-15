@@ -34,13 +34,13 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 
 | Ticket | Qué | Estado |
 |---|---|---|
-| TK-020 | Datos del negocio: nombre, RNC, dirección, teléfono, pie del recibo, tope de descuento sin supervisor | ⬜ |
-| TK-021 | Categorías con color y notas predefinidas ("molida", "sin grasa") | ⬜ |
-| TK-022 | Productos: por unidad o por peso (lb), códigos de barras, ITBIS 18/16/0/exento, precio, costo, vender sin existencia | ⬜ |
-| TK-023 | Presentaciones (libra, paquete, caja) con factor, precio y código propios | ⬜ |
-| TK-024 | Niveles de precio (detalle, mayorista) | ⬜ |
-| TK-025 | Buscar por código, código de barras o nombre; leer etiquetas de balanza EAN-13 (prefijos 20–29, peso o precio, dígito verificador) | ⬜ |
-| TK-026 | Almacenes (tienda, cuarto frío) | ⬜ |
+| TK-020 | Datos del negocio: nombre, RNC, dirección, teléfono, pie del recibo, tope de descuento sin supervisor | ✅ |
+| TK-021 | Categorías con color y notas predefinidas ("molida", "sin grasa") | ✅ |
+| TK-022 | Productos: por unidad o por peso (lb), códigos de barras, ITBIS 18/16/0/exento, precio, costo, vender sin existencia | ✅ |
+| TK-023 | Presentaciones (libra, paquete, caja) con factor, precio y código propios | ✅ |
+| TK-024 | Niveles de precio (detalle, mayorista) | ✅ |
+| TK-025 | Buscar por código, código de barras o nombre; leer etiquetas de balanza EAN-13 (prefijos 20–29, peso o precio, dígito verificador) | ✅ |
+| TK-026 | Almacenes (tienda, cuarto frío) | ✅ |
 
 ## M3 · Caja
 
@@ -79,10 +79,10 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 
 | Ticket | Qué | Estado |
 |---|---|---|
-| TK-060 | Kardex (movimientos que no se borran), existencia actual y costo promedio ponderado | ⬜ |
-| TK-061 | Ajustes con motivo (merma, daño, consumo, corrección) | ⬜ |
-| TK-062 | Conteo físico ciego que genera ajustes | ⬜ |
-| TK-063 | Transferencias entre almacenes | ⬜ |
+| TK-060 | Kardex (movimientos que no se borran), existencia actual y costo promedio ponderado | ✅ |
+| TK-061 | Ajustes con motivo (merma, daño, consumo, corrección) | ✅ |
+| TK-062 | Conteo físico ciego que genera ajustes | ✅ |
+| TK-063 | Transferencias entre almacenes | ✅ |
 | TK-064 | Suplidores (RNC) | ⬜ |
 | TK-065 | Compras: borrador → aplicada → anulada; a crédito genera cuenta por pagar | ⬜ |
 | TK-066 | Gasto con NCF sin productos | ⬜ |

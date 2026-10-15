@@ -8,7 +8,11 @@
     <Project Path="src/Hosts/Toki.Host.Local/Toki.Host.Local.csproj" />
   </Folder>
   <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/Configuracion/Toki.Configuracion.Contracts/Toki.Configuracion.Contracts.csproj" />
+    <Project Path="src/Modules/Configuracion/Toki.Configuracion/Toki.Configuracion.csproj" />
     <Project Path="src/Modules/Identidad/Toki.Identidad/Toki.Identidad.csproj" />
+    <Project Path="src/Modules/Inventario/Toki.Inventario.Contracts/Toki.Inventario.Contracts.csproj" />
+    <Project Path="src/Modules/Inventario/Toki.Inventario/Toki.Inventario.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Toki.ArchitectureTests/Toki.ArchitectureTests.csproj" />
