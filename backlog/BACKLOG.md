@@ -155,6 +155,18 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-122 | Fijar el certificado del nodo en el cliente al emparejar (con TK-091) | ⬜ |
 | TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real | ⬜ |
 
+## M12 · Nube
+
+Decisión: ADR-0008. Despliegue: `docs/despliegue-azure.md`.
+
+| Ticket | Qué | Estado |
+|---|---|---|
+| TK-132 | API nube (registro, tiendas, ingesta, réplica) | ✅ `Toki.Host.Cloud`: cuentas con Identity y tenant propio, tiendas, código de conexión de 8 dígitos (30 min, un solo uso), nodos con secreto (solo el hash), ingesta gzip idempotente por evento, aplicador por evento y proyectores a `replica.*` |
+| TK-133 | API del panel | ✅ Resumen del día, ventas por día, más vendidos, por cajero, medios de pago, cuadres y estado de sincronización, siempre filtrado por el tenant del token. Pendiente: nombres de cajeros (los eventos solo traen el id) |
+| TK-134 | Asistente (Azure OpenAI) | ✅ *Function calling* por HTTP con 6 herramientas de solo lectura (máximo 92 días); sin configuración responde 503. Pendiente: probarlo contra el modelo real y la herramienta de documentos fiscales pendientes |
+| TK-135 | Relevo e-CF en la nube (simulado; DGII en espera) | ✅ `POST /relay/v1/ecf` guarda el XML firmado y responde `Simulated`; un e-NCF repetido devuelve la misma respuesta. El proveedor real es TK-055 |
+| TK-136 | Bicep de Azure | 🟡 `deploy/azure/main.bicep` escrito; falta validarlo con `az bicep build` y desplegarlo |
+
 ## Revisiones
 
 | Revisión | Hito | Estado |

@@ -11,6 +11,7 @@
     <Project Path="src/Client/Toki.Escuadra/Toki.Escuadra.csproj" />
   </Folder>
   <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Toki.Host.Cloud/Toki.Host.Cloud.csproj" />
     <Project Path="src/Hosts/Toki.Host.Local/Toki.Host.Local.csproj" />
   </Folder>
   <Folder Name="/src/Modules/">
@@ -34,6 +35,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Toki.ArchitectureTests/Toki.ArchitectureTests.csproj" />
     <Project Path="tests/Toki.Client.UI.Tests/Toki.Client.UI.Tests.csproj" />
+    <Project Path="tests/Toki.Cloud.Tests/Toki.Cloud.Tests.csproj" />
     <Project Path="tests/Toki.E2ETests/Toki.E2ETests.csproj" />
     <Project Path="tests/Toki.IntegrationTests/Toki.IntegrationTests.csproj" />
     <Project Path="tests/Toki.UnitTests/Toki.UnitTests.csproj" />

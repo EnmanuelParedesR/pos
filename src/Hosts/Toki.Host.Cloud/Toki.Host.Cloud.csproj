@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <UserSecretsId>toki-host-cloud</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Scalar.AspNetCore" />
+    <PackageReference Include="Serilog.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Read-only: the event payloads the stores upload (deserialized with the same JSON options as the node outbox). -->
+    <ProjectReference Include="..\..\BuildingBlocks\Toki.BuildingBlocks\Toki.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\..\Modules\Sales\Toki.Sales.Contracts\Toki.Sales.Contracts.csproj" />
+    <ProjectReference Include="..\..\Modules\CashRegister\Toki.CashRegister.Contracts\Toki.CashRegister.Contracts.csproj" />
+    <ProjectReference Include="..\..\Modules\Inventory\Toki.Inventory.Contracts\Toki.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\Modules\Fiscal\Toki.Fiscal.Contracts\Toki.Fiscal.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Toki.Cloud.Tests" />
+  </ItemGroup>
+</Project>
