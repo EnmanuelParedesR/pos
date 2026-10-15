@@ -265,7 +265,7 @@ Origen: `docs/competencia-poszy.md` (TK-188). Alcance y criterios de aceptación
 | TK-201 | Costo, utilidad y valor de inventario visibles solo con permiso, en caja, administración, panel y exportaciones (S) | ⬜ |
 | TK-202 | Investigación: caja ligera o toma de pedidos en tablet Android contra la PC principal (M, spike → ADR) | ⬜ |
 | TK-203 | Revisar el plan de entrada frente a Poszy (colmado de una caja) (S, decisión del dueño) | ⬜ |
-| TK-210 | Autorizaciones de supervisor opcionales por tienda (issue #179): Configuración → Cajas → "Pedir autorización de supervisor para…", un interruptor por acción (`/api/settings/approvals`, `IApprovalPolicy` en el decorador y en la venta). Por defecto las de hoy encendidas; "Quitar líneas o anular la venta en curso" (`sales.remove-line`, nueva) apagada. Cada autorización concedida queda en la auditoría (`approval.granted`). Pendiente: probar la migración de Identity (SQL a mano) en el job de SQL Server | 🟡 |
+| TK-210 | Autorizaciones de supervisor opcionales por tienda (issue #179): Configuración → Cajas → "Pedir autorización de supervisor para…", un interruptor por acción (`/api/settings/approvals`, `IApprovalPolicy` en el decorador y en la venta). Por defecto las de hoy encendidas; "Quitar líneas o anular la venta en curso" (`sales.remove-line`, nueva) apagada. Cada autorización concedida queda en la auditoría (`approval.granted`). Probado también en SQL Express | ✅ |
 
 ## Revisiones
 
