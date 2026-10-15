@@ -129,6 +129,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 | Revisión | Hito | Estado |
 |---|---|---|
 | R1 (`backlog/reviews/R1-M0-M1.md`) | M0 + M1 | ✅ Corregidos 1–8, 10–17 y 18 en parte. Pendiente: 9 (HTTPS, ver TK-093), fijar la imagen de SQL Server de CI con etiqueta fechada |
+| R2 (`backlog/reviews/R2-M2.md`) | M2 | ✅ Corregidos 1–13, 15–17 (14 colación solo en SQL Server). Pruebas nuevas: conteo con ventas en medio, costo promedio, última libra en paralelo, kardex = existencia |
 
 ## Fuera de V1 (no se construye ahora)
 

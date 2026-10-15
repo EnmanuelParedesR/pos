@@ -132,6 +132,30 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         return await accion(scope.ServiceProvider);
     }
 
+    /// <summary>Runs a test-only command with no user (system context).</summary>
+    internal async Task<Toki.SharedKernel.Result<Toki.BuildingBlocks.Messaging.Ok>> ComandoAsync<TCommand>(TCommand comando)
+        where TCommand : Toki.BuildingBlocks.Messaging.ICommand<Toki.BuildingBlocks.Messaging.Ok>
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<Toki.BuildingBlocks.Messaging.ICommandHandler<TCommand, Toki.BuildingBlocks.Messaging.Ok>>()
+            .Handle(comando, CancellationToken.None);
+    }
+
+    /// <summary>The kardex rule: for every product and warehouse, the movements add up to the stock and the last row's result equals it.</summary>
+    public Task<IReadOnlyList<string>> DescuadresKardexAsync() => EnScopeAsync<IReadOnlyList<string>>(async sp =>
+    {
+        var db = sp.GetRequiredService<Toki.Inventario.Persistence.InventarioDbContext>();
+        var existencias = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.Existencias);
+        var movimientos = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.Movimientos);
+        return existencias
+            .Where(e =>
+            {
+                var propios = movimientos.Where(m => m.ProductoId == e.ProductoId && m.AlmacenId == e.AlmacenId).OrderBy(m => m.Secuencia).ToList();
+                return propios.Sum(m => m.Cantidad) != e.Cantidad || (propios.Count > 0 && propios[^1].ExistenciaResultante != e.Cantidad);
+            })
+            .Select(e => $"{e.ProductoId}/{e.AlmacenId}: {e.Cantidad}").ToList();
+    });
+
     public Task<long?> VerificarAuditoriaAsync() =>
         EnScopeAsync(sp => CadenaAuditoria.VerificarAsync(sp.GetRequiredService<InfraDbContext>(), CancellationToken.None));
 

@@ -25,7 +25,8 @@ internal static class GuardarCategoria
         {
             RuleFor(c => c.Nombre).NotEmpty().MaximumLength(80);
             RuleFor(c => c.Color).Matches("^#[0-9A-Fa-f]{6}$").WithMessage("El color debe ser #RRGGBB.");
-            RuleForEach(c => c.Notas).NotEmpty().MaximumLength(60);
+            RuleFor(c => c.Notas).Must(n => n is null || n.Count <= 20).WithMessage("Máximo 20 notas por categoría.");
+            RuleForEach(c => c.Notas).NotEmpty().MaximumLength(60).Must(n => !n.Contains('\n', StringComparison.Ordinal)).WithMessage("Una nota no puede tener saltos de línea.");
         }
     }
 

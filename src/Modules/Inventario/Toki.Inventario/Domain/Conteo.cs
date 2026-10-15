@@ -1,6 +1,6 @@
 namespace Toki.Inventario.Domain;
 
-internal enum EstadoConteo { Abierto, Aplicado, Cancelado }
+internal enum EstadoConteo { Abierto, Aplicado }
 
 /// <summary>Blind physical count: counters never see the expected quantity; differences appear only when it is applied.</summary>
 internal sealed class ConteoFisico
@@ -20,6 +20,7 @@ internal sealed class ConteoLinea
     public Guid ConteoId { get; set; }
     public Guid ProductoId { get; set; }
     public decimal? Contado { get; set; }
-    /// <summary>Stock the system had when the count was applied (filled on apply).</summary>
-    public decimal? Sistema { get; set; }
+    /// <summary>System stock at the moment the line was counted. Never returned by any endpoint (the count is blind).
+    /// Applying the count adds Contado − SistemaAlContar, so sales made after counting are not erased.</summary>
+    public decimal? SistemaAlContar { get; set; }
 }

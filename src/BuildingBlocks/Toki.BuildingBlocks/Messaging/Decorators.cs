@@ -57,6 +57,11 @@ internal sealed class TransaccionDecorator<TCommand, TResponse>(
         {
             return Error.Conflict("Duplicado", "Ya existe un registro con esos datos.");
         }
+        catch (SqlException e) when (e.Number == 1205)
+        {
+            // Deadlock victim: nothing was saved, the register can simply retry.
+            return Error.Conflict("Ocupado", "El sistema estaba ocupado. Intente de nuevo.");
+        }
         finally
         {
             try { await uow.EndAsync(commit); }
@@ -91,7 +96,10 @@ internal sealed class AutorizacionDecorator<TCommand, TResponse>(
             var supervisor = await autorizaciones.ConsumirAsync(id, req.Permiso, req.RecursoId, ct);
             if (supervisor.IsFailure) return supervisor.Error!;
             usuario.SupervisorId = supervisor.Value;
-            await auditoria.RegistrarAsync("autorizacion.usada", typeof(TCommand).Name, req.RecursoId, new { req.Permiso, Autorizacion = id }, ct);
+            var result = await inner.Handle(command, ct);
+            // Written after the handler: the audit head must be the last lock a command takes (no deadlock with stock rows).
+            if (result.IsSuccess) await auditoria.RegistrarAsync("autorizacion.usada", typeof(TCommand).Name, req.RecursoId, new { req.Permiso, Autorizacion = id }, ct);
+            return result;
         }
         return await inner.Handle(command, ct);
     }

@@ -36,6 +36,21 @@ public sealed class SharedKernelTests
         CadenaAuditoria.Hash(r).ShouldNotBe(copia);
     }
 
+    [Theory]
+    [InlineData(118.00, TasaItbis.General18, 18.00)]
+    [InlineData(116.00, TasaItbis.Reducida16, 16.00)]
+    [InlineData(100.00, TasaItbis.Exento, 0)]
+    [InlineData(100.00, TasaItbis.Cero, 0)]
+    [InlineData(185.00, TasaItbis.General18, 28.22)]
+    public void El_itbis_incluido_se_extrae_del_precio(decimal monto, TasaItbis tasa, decimal itbis) => Itbis.Incluido(monto, tasa).ShouldBe(itbis);
+
+    [Theory]
+    [InlineData("131245678", true)]
+    [InlineData("00112345678", true)]
+    [InlineData("1312456", false)]
+    [InlineData("13124567A", false)]
+    public void Formato_de_RNC_o_cedula(string valor, bool valido) => Rnc.EsValido(valor).ShouldBe(valido);
+
     [Fact]
     public void Un_resultado_fallido_no_entrega_valor()
     {

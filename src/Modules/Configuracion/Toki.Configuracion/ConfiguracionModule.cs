@@ -82,6 +82,8 @@ internal static class ActualizarNegocio
             RuleFor(c => c.Nombre).NotEmpty().MaximumLength(150);
             RuleFor(c => c.Rnc).Must(r => SharedKernel.Rnc.EsValido(SharedKernel.Rnc.Normalizar(r))).When(c => !string.IsNullOrWhiteSpace(c.Rnc))
                 .WithMessage("El RNC debe tener 9 dígitos (o 11 si es cédula).");
+            RuleFor(c => c.Direccion).MaximumLength(200);
+            RuleFor(c => c.Telefono).MaximumLength(30);
             RuleFor(c => c.PieRecibo).MaximumLength(500);
             RuleFor(c => c.TopeDescuentoPct).InclusiveBetween(0, 100);
         }

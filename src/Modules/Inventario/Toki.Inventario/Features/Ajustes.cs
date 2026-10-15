@@ -26,9 +26,9 @@ internal static class AjustarInventario
     {
         public Validator()
         {
-            RuleFor(c => c.Cantidad).NotEqual(0);
+            RuleFor(c => c.Cantidad).NotEqual(0).PrecisionScale(19, 3, true);
             RuleFor(c => c.Motivo).IsInEnum();
-            RuleFor(c => c.Nota).MaximumLength(200);
+            RuleFor(c => c.Nota).MaximumLength(180);
         }
     }
 
@@ -40,9 +40,10 @@ internal static class AjustarInventario
             if (!await db.Almacenes.AnyAsync(a => a.Id == almacen, ct)) return InventarioErrors.AlmacenNoEncontrado;
             var id = Guid.CreateVersion7();
             var linea = new[] { new LineaMovimiento(c.ProductoId, Math.Abs(c.Cantidad)) };
+            var motivo = string.IsNullOrWhiteSpace(c.Nota) ? c.Motivo.ToString() : $"{c.Motivo}: {c.Nota.Trim()}";
             var r = c.Cantidad > 0
-                ? await movimientos.RegistrarEntradaAsync(TipoMovimiento.Ajuste, id, linea, actualizarCosto: false, ct, almacen)
-                : await movimientos.RegistrarSalidaAsync(TipoMovimiento.Ajuste, id, linea, ct, almacen);
+                ? await movimientos.EntradaAsync(TipoMovimiento.Ajuste, id, linea, actualizarCosto: false, motivo, ct, almacen)
+                : await movimientos.SalidaAsync(TipoMovimiento.Ajuste, id, linea, permitirNegativoSiProductoLoPermite: false, motivo, ct, almacen);
             if (r.IsFailure) return r.Error!;
             await auditoria.RegistrarAsync("inventario.ajuste", "Producto", c.ProductoId, c, ct);
             return new Response(id);
@@ -70,7 +71,7 @@ internal static class TransferirInventario
         {
             RuleFor(c => c.Destino).NotEqual(c => c.Origen).WithMessage("El destino debe ser otro almacén.");
             RuleFor(c => c.Lineas).NotEmpty();
-            RuleForEach(c => c.Lineas).ChildRules(l => l.RuleFor(x => x.Cantidad).GreaterThan(0));
+            RuleForEach(c => c.Lineas).ChildRules(l => l.RuleFor(x => x.Cantidad).GreaterThan(0).PrecisionScale(19, 3, true));
         }
     }
 
@@ -81,7 +82,7 @@ internal static class TransferirInventario
             if (await db.Almacenes.CountAsync(a => (a.Id == c.Origen || a.Id == c.Destino) && a.Activo, ct) != 2) return InventarioErrors.AlmacenNoEncontrado;
             var id = Guid.CreateVersion7();
             var lineas = c.Lineas.Select(l => new LineaMovimiento(l.ProductoId, l.Cantidad)).ToList();
-            var salida = await movimientos.RegistrarSalidaAsync(TipoMovimiento.TransferenciaSalida, id, lineas, ct, c.Origen);
+            var salida = await movimientos.SalidaAsync(TipoMovimiento.TransferenciaSalida, id, lineas, permitirNegativoSiProductoLoPermite: false, null, ct, c.Origen);
             if (salida.IsFailure) return salida.Error!;
             var entrada = await movimientos.RegistrarEntradaAsync(TipoMovimiento.TransferenciaEntrada, id, lineas, actualizarCosto: false, ct, c.Destino);
             if (entrada.IsFailure) return entrada.Error!;

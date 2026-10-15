@@ -14,19 +14,22 @@ using Toki.SharedKernel;
 
 namespace Toki.Inventario.Features;
 
-internal static class AgregarCodigo
+/// <summary>Adds or removes a barcode. A barcode decides what a scan rings up, so it needs the prices permission too.</summary>
+internal static class Codigos
 {
-    public sealed record Command(Guid ProductoId, string Codigo, Guid? PresentacionId) : ICommand<Ok>;
+    public sealed record Agregar(Guid ProductoId, string Codigo, Guid? PresentacionId) : ICommand<Ok>;
+    public sealed record Quitar(Guid ProductoId, string Codigo) : ICommand<Ok>;
 
-    internal sealed class Validator : AbstractValidator<Command>
+    internal sealed class Validator : AbstractValidator<Agregar>
     {
         public Validator() => RuleFor(c => c.Codigo).NotEmpty().MaximumLength(50);
     }
 
-    internal sealed class Handler(InventarioDbContext db, IAuditoria auditoria) : ICommandHandler<Command, Ok>
+    internal sealed class AgregarHandler(InventarioDbContext db, IUserContext usuario, IAuditoria auditoria) : ICommandHandler<Agregar, Ok>
     {
-        public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
+        public async Task<Result<Ok>> Handle(Agregar c, CancellationToken ct)
         {
+            if (!usuario.Tiene(Permisos.PreciosCambiar)) return InventarioErrors.SinPermisoPrecios;
             if (!await db.Productos.AnyAsync(p => p.Id == c.ProductoId, ct)) return InventarioErrors.ProductoNoEncontrado;
             if (c.PresentacionId is { } pid && !await db.Presentaciones.AnyAsync(p => p.Id == pid && p.ProductoId == c.ProductoId, ct))
                 return Error.NotFound("Inventario.PresentacionNoEncontrada", "La presentación no existe.");
@@ -38,20 +41,29 @@ internal static class AgregarCodigo
         }
     }
 
+    internal sealed class QuitarHandler(InventarioDbContext db, IUserContext usuario, IAuditoria auditoria) : ICommandHandler<Quitar, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Quitar c, CancellationToken ct)
+        {
+            if (!usuario.Tiene(Permisos.PreciosCambiar)) return InventarioErrors.SinPermisoPrecios;
+            if (await db.Codigos.Where(x => x.ProductoId == c.ProductoId && x.Codigo == c.Codigo).ExecuteDeleteAsync(ct) == 0)
+                return InventarioErrors.CodigoNoEncontrado;
+            await auditoria.RegistrarAsync("inventario.quitar-codigo", "Producto", c.ProductoId, c, ct);
+            return Ok.Valor;
+        }
+    }
+
     internal sealed record Body(string Codigo, Guid? PresentacionId);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app)
         {
-            app.MapPost("/api/inventario/productos/{id:guid}/codigos", async (Guid id, Body b, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
-                    (await h.Handle(new Command(id, b.Codigo, b.PresentacionId), ct)).ToHttp(_ => Results.NoContent()))
+            app.MapPost("/api/inventario/productos/{id:guid}/codigos", async (Guid id, Body b, ICommandHandler<Agregar, Ok> h, CancellationToken ct) =>
+                    (await h.Handle(new Agregar(id, b.Codigo, b.PresentacionId), ct)).ToHttp(_ => Results.NoContent()))
                 .RequirePermiso(Permisos.ProductosGestionar).WithTags("Inventario");
-            app.MapDelete("/api/inventario/productos/{id:guid}/codigos/{codigo}", async (Guid id, string codigo, InventarioDbContext db, CancellationToken ct) =>
-                {
-                    await db.Codigos.Where(x => x.ProductoId == id && x.Codigo == codigo).ExecuteDeleteAsync(ct);
-                    return Results.NoContent();
-                })
+            app.MapDelete("/api/inventario/productos/{id:guid}/codigos/{codigo}", async (Guid id, string codigo, ICommandHandler<Quitar, Ok> h, CancellationToken ct) =>
+                    (await h.Handle(new Quitar(id, codigo), ct)).ToHttp(_ => Results.NoContent()))
                 .RequirePermiso(Permisos.ProductosGestionar).WithTags("Inventario");
         }
     }
@@ -68,18 +80,21 @@ internal static class GuardarPresentacion
         public Validator()
         {
             RuleFor(c => c.Nombre).NotEmpty().MaximumLength(60);
-            RuleFor(c => c.Factor).GreaterThan(0);
-            RuleFor(c => c.Precio).GreaterThan(0);
-            RuleFor(c => c.PrecioMayorista).GreaterThan(0).When(c => c.PrecioMayorista is not null);
+            RuleFor(c => c.Factor).GreaterThan(0).PrecisionScale(19, 3, true);
+            RuleFor(c => c.Precio).GreaterThan(0).PrecisionScale(19, 2, true);
+            RuleFor(c => c.PrecioMayorista).GreaterThan(0).PrecisionScale(19, 2, true).When(c => c.PrecioMayorista is not null);
         }
     }
 
-    internal sealed class Handler(InventarioDbContext db, IUserContext usuario, IAuditoria auditoria) : ICommandHandler<Command, Response>
+    internal sealed class Handler(InventarioDbContext db, IUserContext usuario, IOutbox outbox, IAuditoria auditoria) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            if (!await db.Productos.AnyAsync(p => p.Id == c.ProductoId, ct)) return InventarioErrors.ProductoNoEncontrado;
+            var producto = await db.Productos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == c.ProductoId, ct);
+            if (producto is null) return InventarioErrors.ProductoNoEncontrado;
             if (!usuario.Tiene(Permisos.PreciosCambiar)) return InventarioErrors.SinPermisoPrecios;
+            if (producto.Unidad == UnidadMedida.Unidad && c.Factor != Math.Truncate(c.Factor))
+                return Error.Validation("Inventario.CantidadInvalida", "Un producto por unidad necesita un factor entero.");
             var pr = c.Id is { } id ? await db.Presentaciones.FirstOrDefaultAsync(x => x.Id == id && x.ProductoId == c.ProductoId, ct) : null;
             if (c.Id is not null && pr is null) return Error.NotFound("Inventario.PresentacionNoEncontrada", "La presentación no existe.");
             if (pr is null)
@@ -87,12 +102,17 @@ internal static class GuardarPresentacion
                 pr = new Presentacion { Id = Guid.CreateVersion7(), ProductoId = c.ProductoId };
                 db.Presentaciones.Add(pr);
             }
+            else if (pr.Precio != c.Precio || pr.PrecioMayorista != c.PrecioMayorista)
+            {
+                outbox.Agregar(new PrecioCambiadoV1(c.ProductoId, pr.Precio, c.Precio, pr.PrecioMayorista, c.PrecioMayorista));
+            }
+            var antes = new { pr.Nombre, pr.Factor, pr.Precio, pr.PrecioMayorista, pr.Activa };
             pr.Nombre = c.Nombre.Trim();
             pr.Factor = c.Factor;
             pr.Precio = c.Precio;
             pr.PrecioMayorista = c.PrecioMayorista;
             pr.Activa = c.Activa;
-            await auditoria.RegistrarAsync("inventario.guardar-presentacion", "Producto", c.ProductoId, c, ct);
+            await auditoria.RegistrarAsync("inventario.guardar-presentacion", "Producto", c.ProductoId, new { Presentacion = pr.Id, antes, despues = c }, ct);
             return new Response(pr.Id);
         }
     }
@@ -118,14 +138,15 @@ internal static class BuscarPorCodigo
 {
     /// <param name="CantidadEtiqueta">Pounds read from a weight label.</param>
     /// <param name="MontoEtiqueta">Amount read from a price label (the line total is fixed).</param>
+    /// <param name="Existencia">Only for users who may see inventory (counts stay blind).</param>
     public sealed record Response(
         Guid ProductoId, Guid? PresentacionId, string Nombre, UnidadMedida Unidad, TasaItbis TasaItbis, decimal Precio, decimal? PrecioMayorista,
-        decimal Factor, decimal? CantidadEtiqueta, decimal? MontoEtiqueta, IReadOnlyList<string> Notas, decimal Existencia);
+        decimal Factor, decimal? CantidadEtiqueta, decimal? MontoEtiqueta, IReadOnlyList<string> Notas, decimal? Existencia);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/inventario/productos/por-codigo/{codigo}", async (string codigo, InventarioDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/inventario/productos/por-codigo/{codigo}", async (string codigo, IUserContext usuario, InventarioDbContext db, CancellationToken ct) =>
                 {
                     codigo = codigo.Trim();
                     Guid? productoId = null, presentacionId = null;
@@ -135,27 +156,31 @@ internal static class BuscarPorCodigo
                     if (barras is not null) (productoId, presentacionId) = (barras.ProductoId, barras.PresentacionId);
                     else
                     {
-                        string plu = codigo, pluSinCeros = codigo;
+                        var plu = Producto.NormalizarPlu(codigo);
                         var lectura = EtiquetaBalanza.Leer(codigo, await db.FormatosEtiqueta.AsNoTracking().ToListAsync(ct));
                         if (lectura is { IsFailure: true }) return EndpointExtensions.Problema(lectura.Error!);
                         if (lectura is { IsSuccess: true })
                         {
-                            (plu, pluSinCeros) = (lectura.Value.Plu, lectura.Value.Plu.TrimStart('0'));
+                            plu = Producto.NormalizarPlu(lectura.Value.Plu);
                             (cantidad, monto) = (lectura.Value.Peso, lectura.Value.Precio);
                         }
-                        productoId = await db.Productos.AsNoTracking().Where(p => p.Plu == plu || p.Plu == pluSinCeros)
-                            .Select(p => (Guid?)p.Id).FirstOrDefaultAsync(ct);
+                        productoId = await db.Productos.AsNoTracking().Where(p => p.Plu == plu).Select(p => (Guid?)p.Id).FirstOrDefaultAsync(ct);
                     }
                     if (productoId is null) return EndpointExtensions.Problema(InventarioErrors.CodigoNoEncontrado);
 
                     var p = await db.Productos.AsNoTracking().SingleAsync(x => x.Id == productoId, ct);
                     if (!p.Activo) return EndpointExtensions.Problema(Error.Conflict("Inventario.ProductoInactivo", $"{p.Nombre} está desactivado."));
+                    if (cantidad is not null && p.Unidad != UnidadMedida.Libra)
+                        return EndpointExtensions.Problema(Error.Validation("Inventario.EtiquetaNoAplica", $"{p.Nombre} se vende por unidad; esa etiqueta trae un peso."));
                     var notas = await db.Categorias.Where(c => c.Id == p.CategoriaId).Select(c => c.Notas).SingleAsync(ct);
-                    var existencia = await db.Existencias.Where(e => e.ProductoId == p.Id && e.AlmacenId == Almacen.PrincipalId).Select(e => e.Cantidad).FirstOrDefaultAsync(ct);
+                    decimal? existencia = usuario.Tiene(Permisos.InventarioVer)
+                        ? await db.Existencias.Where(e => e.ProductoId == p.Id && e.AlmacenId == Almacen.PrincipalId).Select(e => e.Cantidad).FirstOrDefaultAsync(ct)
+                        : null;
 
                     if (presentacionId is { } pid)
                     {
                         var pr = await db.Presentaciones.AsNoTracking().SingleAsync(x => x.Id == pid, ct);
+                        if (!pr.Activa) return EndpointExtensions.Problema(Error.Conflict("Inventario.ProductoInactivo", $"{p.Nombre} ({pr.Nombre}) está desactivado."));
                         return Results.Ok(new Response(p.Id, pr.Id, $"{p.Nombre} ({pr.Nombre})", p.Unidad, p.TasaItbis, pr.Precio, pr.PrecioMayorista,
                             pr.Factor, null, null, notas, existencia));
                     }

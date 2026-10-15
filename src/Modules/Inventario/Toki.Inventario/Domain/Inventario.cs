@@ -20,8 +20,10 @@ internal sealed class Producto
     public string Nombre { get; set; } = "";
     public Guid CategoriaId { get; set; }
     public UnidadMedida Unidad { get; set; }
-    /// <summary>Short code the scale prints in weight labels.</summary>
+    /// <summary>Short code the scale prints in weight labels. Stored without leading zeros so "0321" and "321" are the same PLU.</summary>
     public string? Plu { get; set; }
+
+    public static string? NormalizarPlu(string? plu) => string.IsNullOrWhiteSpace(plu) ? null : plu.Trim().TrimStart('0');
     public TasaItbis TasaItbis { get; set; }
     /// <summary>Retail price per base unit, ITBIS included.</summary>
     public decimal Precio { get; set; }

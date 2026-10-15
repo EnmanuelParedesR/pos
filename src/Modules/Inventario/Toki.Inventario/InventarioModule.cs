@@ -56,19 +56,26 @@ internal sealed class CatalogoConsultas(InventarioDbContext db) : ICatalogoConsu
     }
 }
 
+/// <summary>Every stock change goes through here: atomic relative updates on the stock row plus a kardex row.
+/// Rows are always touched in ProductoId order so concurrent commands lock them in the same order (no deadlocks).</summary>
 internal sealed class MovimientosInventario(InventarioDbContext db, IOutbox outbox, IUserContext usuario, TimeProvider reloj) : IMovimientosInventario
 {
-    public async Task<Result> RegistrarSalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, CancellationToken ct, Guid? almacenId = null)
+    public Task<Result> RegistrarSalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, CancellationToken ct, Guid? almacenId = null) =>
+        SalidaAsync(tipo, referenciaId, lineas, permitirNegativoSiProductoLoPermite: true, motivo: null, ct, almacenId);
+
+    /// <param name="permitirNegativoSiProductoLoPermite">Only sales honour "sell without stock"; adjustments and transfers never go below zero.</param>
+    public async Task<Result> SalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas,
+        bool permitirNegativoSiProductoLoPermite, string? motivo, CancellationToken ct, Guid? almacenId = null)
     {
         var almacen = almacenId ?? Almacen.PrincipalId;
         foreach (var linea in Agrupar(lineas))
         {
             var producto = await db.Productos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == linea.ProductoId, ct);
             if (producto is null) return InventarioErrors.ProductoNoEncontrado;
-            await AsegurarExistenciaAsync(linea.ProductoId, almacen, ct);
+            if (ValidarCantidad(producto, linea.Cantidad) is { } error) return error;
 
             var q = linea.Cantidad;
-            var permitir = producto.VenderSinExistencia;
+            var permitir = permitirNegativoSiProductoLoPermite && producto.VenderSinExistencia;
             // Atomic conditional decrement: two registers selling the last pound cannot both succeed.
             var filas = await db.Existencias
                 .Where(e => e.ProductoId == linea.ProductoId && e.AlmacenId == almacen && (permitir || e.Cantidad >= q))
@@ -78,46 +85,54 @@ internal sealed class MovimientosInventario(InventarioDbContext db, IOutbox outb
             var resultante = await CantidadAsync(linea.ProductoId, almacen, ct);
             if (filas == 0) return InventarioErrors.SinExistencia(producto.Nombre, resultante);
 
-            Registrar(tipo, referenciaId, linea.ProductoId, almacen, -q, producto.Costo, resultante, null);
+            Registrar(tipo, referenciaId, linea.ProductoId, almacen, -q, producto.Costo, resultante, motivo);
         }
         return Result.Success();
     }
 
-    public async Task<Result> RegistrarEntradaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, bool actualizarCosto, CancellationToken ct, Guid? almacenId = null)
+    public Task<Result> RegistrarEntradaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, bool actualizarCosto, CancellationToken ct, Guid? almacenId = null) =>
+        EntradaAsync(tipo, referenciaId, lineas, actualizarCosto, motivo: null, ct, almacenId);
+
+    public async Task<Result> EntradaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, bool actualizarCosto,
+        string? motivo, CancellationToken ct, Guid? almacenId = null)
     {
         var almacen = almacenId ?? Almacen.PrincipalId;
-        foreach (var linea in lineas)
+        foreach (var linea in lineas.OrderBy(l => l.ProductoId))
         {
             var producto = await db.Productos.AsNoTracking().FirstOrDefaultAsync(p => p.Id == linea.ProductoId, ct);
             if (producto is null) return InventarioErrors.ProductoNoEncontrado;
-            await AsegurarExistenciaAsync(linea.ProductoId, almacen, ct);
+            if (ValidarCantidad(producto, linea.Cantidad) is { } error) return error;
+
+            // Update the stock row first: it takes the row lock before the cost is read, so two purchases cannot lose a cost update.
+            var q = linea.Cantidad;
+            var filas = await db.Existencias.Where(e => e.ProductoId == linea.ProductoId && e.AlmacenId == almacen)
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.Cantidad, e => e.Cantidad + q), ct);
+            if (filas == 0) return InventarioErrors.AlmacenNoEncontrado;
 
             var costo = producto.Costo;
             if (actualizarCosto && linea.CostoUnitario is { } costoEntrada)
             {
-                var total = await db.Existencias.Where(e => e.ProductoId == linea.ProductoId).SumAsync(e => e.Cantidad, ct);
-                costo = CostoPromedio.Calcular(total, producto.Costo, linea.Cantidad, costoEntrada);
+                var costoActual = await db.Productos.Where(p => p.Id == linea.ProductoId).Select(p => p.Costo).SingleAsync(ct);
+                var totalDespues = await db.Existencias.Where(e => e.ProductoId == linea.ProductoId).SumAsync(e => e.Cantidad, ct);
+                costo = CostoPromedio.Calcular(totalDespues - q, costoActual, q, costoEntrada);
                 await db.Productos.Where(p => p.Id == linea.ProductoId).ExecuteUpdateAsync(s => s.SetProperty(p => p.Costo, costo), ct);
             }
 
-            var q = linea.Cantidad;
-            await db.Existencias.Where(e => e.ProductoId == linea.ProductoId && e.AlmacenId == almacen)
-                .ExecuteUpdateAsync(s => s.SetProperty(e => e.Cantidad, e => e.Cantidad + q), ct);
             var resultante = await CantidadAsync(linea.ProductoId, almacen, ct);
-            Registrar(tipo, referenciaId, linea.ProductoId, almacen, q, linea.CostoUnitario ?? costo, resultante, null);
+            Registrar(tipo, referenciaId, linea.ProductoId, almacen, q, linea.CostoUnitario ?? costo, resultante, motivo);
         }
         return Result.Success();
     }
 
-    /// <summary>Sets the counted quantity (physical count or manual adjustment to an absolute value).</summary>
-    public async Task FijarAsync(TipoMovimiento tipo, Guid referenciaId, Guid productoId, Guid almacen, decimal contado, string? motivo, CancellationToken ct)
+    /// <summary>Applies a counted difference as a relative change (sales after the count stay counted) and clears the count flag.</summary>
+    public async Task<decimal> AplicarDiferenciaAsync(TipoMovimiento tipo, Guid referenciaId, Guid productoId, Guid almacen, decimal diferencia,
+        decimal costo, string? motivo, CancellationToken ct)
     {
-        await AsegurarExistenciaAsync(productoId, almacen, ct);
-        var antes = await CantidadAsync(productoId, almacen, ct);
         await db.Existencias.Where(e => e.ProductoId == productoId && e.AlmacenId == almacen)
-            .ExecuteUpdateAsync(s => s.SetProperty(e => e.Cantidad, contado).SetProperty(e => e.PendienteContar, false), ct);
-        var costo = await db.Productos.Where(p => p.Id == productoId).Select(p => p.Costo).SingleAsync(ct);
-        Registrar(tipo, referenciaId, productoId, almacen, contado - antes, costo, contado, motivo);
+            .ExecuteUpdateAsync(s => s.SetProperty(e => e.Cantidad, e => e.Cantidad + diferencia).SetProperty(e => e.PendienteContar, false), ct);
+        var resultante = await CantidadAsync(productoId, almacen, ct);
+        if (diferencia != 0) Registrar(tipo, referenciaId, productoId, almacen, diferencia, costo, resultante, motivo);
+        return resultante;
     }
 
     private void Registrar(TipoMovimiento tipo, Guid referenciaId, Guid productoId, Guid almacen, decimal cantidad, decimal costo, decimal resultante, string? motivo)
@@ -132,16 +147,14 @@ internal sealed class MovimientosInventario(InventarioDbContext db, IOutbox outb
         outbox.Agregar(new MovimientoInventarioRegistradoV1(m.Id, productoId, almacen, tipo, cantidad, costo, referenciaId));
     }
 
-    private async Task AsegurarExistenciaAsync(Guid productoId, Guid almacen, CancellationToken ct)
-    {
-        if (await db.Existencias.AnyAsync(e => e.ProductoId == productoId && e.AlmacenId == almacen, ct)) return;
-        db.Existencias.Add(new Existencia { ProductoId = productoId, AlmacenId = almacen });
-        await db.SaveChangesAsync(ct);
-    }
-
     private Task<decimal> CantidadAsync(Guid productoId, Guid almacen, CancellationToken ct) =>
-        db.Existencias.Where(e => e.ProductoId == productoId && e.AlmacenId == almacen).Select(e => e.Cantidad).SingleAsync(ct);
+        db.Existencias.Where(e => e.ProductoId == productoId && e.AlmacenId == almacen).Select(e => e.Cantidad).SingleOrDefaultAsync(ct);
+
+    private static Error? ValidarCantidad(Producto p, decimal cantidad) =>
+        cantidad <= 0 || cantidad != Math.Round(cantidad, 3) || (p.Unidad == UnidadMedida.Unidad && cantidad != Math.Truncate(cantidad))
+            ? Error.Validation("Inventario.CantidadInvalida", $"La cantidad de {p.Nombre} no es válida (se vende por {p.Unidad.ToString().ToLowerInvariant()}).")
+            : null;
 
     private static IEnumerable<LineaMovimiento> Agrupar(IReadOnlyList<LineaMovimiento> lineas) =>
-        lineas.GroupBy(l => l.ProductoId).Select(g => new LineaMovimiento(g.Key, g.Sum(l => l.Cantidad)));
+        lineas.GroupBy(l => l.ProductoId).OrderBy(g => g.Key).Select(g => new LineaMovimiento(g.Key, g.Sum(l => l.Cantidad)));
 }

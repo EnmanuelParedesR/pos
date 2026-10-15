@@ -31,6 +31,8 @@ internal static class Almacenes
         {
             var a = new Almacen { Id = Guid.CreateVersion7(), Nombre = c.Nombre.Trim() };
             db.Almacenes.Add(a);
+            var productos = await db.Productos.Select(p => p.Id).ToListAsync(ct);
+            db.Existencias.AddRange(productos.Select(p => new Existencia { ProductoId = p, AlmacenId = a.Id }));
             await auditoria.RegistrarAsync("inventario.crear-almacen", "Almacen", a.Id, c, ct);
             return new Response(a.Id);
         }

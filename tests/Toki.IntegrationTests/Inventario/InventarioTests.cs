@@ -125,8 +125,9 @@ public sealed class InventarioTests(TokiApp app) : IClassFixture<TokiApp>
     {
         var admin = await Admin();
         var cat = await admin.CategoriaAsync("Embutidos");
-        var a = await admin.ProductoAsync(cat, "Jamón", 250m, unidad: "Libra", existencia: 10, costo: 150);
+        var a = await admin.ProductoAsync(cat, "Jamón", 250m, unidad: "Libra", existencia: 10, costo: 150, codigo: "JAMON-" + Guid.NewGuid().ToString()[..6]);
         var b = await admin.ProductoAsync(cat, "Mortadela", 120m, unidad: "Libra", existencia: 4, costo: 80);
+        var codigoJamon = (await admin.GetFromJsonAsync<JsonElement>($"/api/inventario/productos/{a}")).GetProperty("codigos")[0].GetProperty("codigo").GetString();
 
         var rol = await (await admin.PostAsJsonAsync("/api/identidad/roles", new { Nombre = "Contador", Permisos = new[] { "inventario.contar" } })).Json();
         var contador = app.Cliente(await app.UsuarioAsync(rol.GetProperty("id").GetGuid()));
@@ -137,9 +138,15 @@ public sealed class InventarioTests(TokiApp app) : IClassFixture<TokiApp>
 
         var lectura = await contador.GetFromJsonAsync<JsonElement>($"/api/inventario/conteos/{conteoId}");
         lectura.GetRawText().ShouldNotContain("sistema", Case.Insensitive);
+        // Scanning or searching does not reveal the stock to someone who can only count.
+        (await contador.GetFromJsonAsync<JsonElement>($"/api/inventario/productos/por-codigo/{codigoJamon}")).GetProperty("existencia").ValueKind.ShouldBe(JsonValueKind.Null);
+        (await contador.GetFromJsonAsync<JsonElement>("/api/inventario/productos?buscar=Jam"))[0].GetProperty("existencia").ValueKind.ShouldBe(JsonValueKind.Null);
 
         (await contador.PutAsJsonAsync($"/api/inventario/conteos/{conteoId}/lineas", new { Lineas = new[] { new { ProductoId = a, Contado = 9.5m }, new { ProductoId = b, Contado = 4m } } }))
             .EnsureSuccessStatusCode();
+
+        // The store keeps selling after the shelf was counted: 3 lb of jamón go out before the count is applied.
+        (await app.ComandoAsync(new MoverInventario(a, 3m, Entrada: false))).IsSuccess.ShouldBeTrue();
 
         var sinSupervisor = await contador.PostAsJsonAsync($"/api/inventario/conteos/{conteoId}/aplicar", new { });
         sinSupervisor.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -153,7 +160,8 @@ public sealed class InventarioTests(TokiApp app) : IClassFixture<TokiApp>
         resultado.GetProperty("diferencias").GetArrayLength().ShouldBe(1);
         resultado.GetProperty("valorDiferencia").GetDecimal().ShouldBe(-75m);
 
-        (await admin.ExistenciaAsync(a)).ShouldBe(9.5m);
+        (await admin.ExistenciaAsync(a)).ShouldBe(6.5m); // counted 9.5 minus the 3 sold after counting
+        (await app.DescuadresKardexAsync()).ShouldBeEmpty();
 
         // The authorization is single-use.
         var otra = await contador.PostAsJsonAsync($"/api/inventario/conteos/{conteoId}/aplicar", new { AutorizacionSupervisorId = autorizacion.GetProperty("autorizacionId").GetGuid() });

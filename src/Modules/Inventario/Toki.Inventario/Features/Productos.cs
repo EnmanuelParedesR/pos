@@ -19,10 +19,10 @@ internal sealed class DatosProductoValidator : AbstractValidator<IDatosProducto>
     public DatosProductoValidator()
     {
         RuleFor(c => c.Nombre).NotEmpty().MaximumLength(150);
-        RuleFor(c => c.Plu).Matches("^[0-9]{1,6}$").When(c => c.Plu is not null).WithMessage("El PLU son de 1 a 6 dígitos.");
-        RuleFor(c => c.Precio).GreaterThan(0);
-        RuleFor(c => c.PrecioMayorista).GreaterThan(0).When(c => c.PrecioMayorista is not null);
-        RuleFor(c => c.StockMinimo).GreaterThanOrEqualTo(0);
+        RuleFor(c => c.Plu).Matches("^0*[1-9][0-9]{0,5}$").When(c => c.Plu is not null).WithMessage("El PLU son de 1 a 6 dígitos y no puede ser cero.");
+        RuleFor(c => c.Precio).GreaterThan(0).PrecisionScale(19, 2, true);
+        RuleFor(c => c.PrecioMayorista).GreaterThan(0).PrecisionScale(19, 2, true).When(c => c.PrecioMayorista is not null);
+        RuleFor(c => c.StockMinimo).GreaterThanOrEqualTo(0).PrecisionScale(19, 3, true);
         RuleFor(c => c.Unidad).IsInEnum();
         RuleFor(c => c.TasaItbis).IsInEnum();
     }
@@ -57,34 +57,44 @@ internal static class CrearProducto
         public Validator()
         {
             Include(new DatosProductoValidator());
-            RuleFor(c => c.Costo).GreaterThanOrEqualTo(0);
-            RuleFor(c => c.ExistenciaInicial).GreaterThanOrEqualTo(0);
+            RuleFor(c => c.Costo).GreaterThanOrEqualTo(0).PrecisionScale(19, 4, true);
+            RuleFor(c => c.ExistenciaInicial).GreaterThanOrEqualTo(0).PrecisionScale(19, 3, true);
             RuleForEach(c => c.Codigos).NotEmpty().MaximumLength(50);
         }
     }
 
-    internal sealed class Handler(InventarioDbContext db, MovimientosInventario movimientos, IAuditoria auditoria) : ICommandHandler<Command, Response>
+    internal sealed class Handler(InventarioDbContext db, MovimientosInventario movimientos, IUserContext usuario, IAuditoria auditoria)
+        : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
+            // Setting a price on a new product is setting a price: same permission as editing one.
+            if (!usuario.Tiene(Permisos.PreciosCambiar)) return InventarioErrors.SinPermisoPrecios;
             if (!await db.Categorias.AnyAsync(x => x.Id == c.CategoriaId, ct)) return InventarioErrors.CategoriaNoEncontrada;
-            if (c.Plu is not null && await db.Productos.AnyAsync(p => p.Plu == c.Plu, ct)) return InventarioErrors.PluDuplicado;
+            var plu = Producto.NormalizarPlu(c.Plu);
+            if (plu is not null && await db.Productos.AnyAsync(p => p.Plu == plu, ct)) return InventarioErrors.PluDuplicado;
             var codigos = c.Codigos?.Select(x => x.Trim()).Distinct().ToList() ?? [];
             if (await db.Codigos.AnyAsync(x => codigos.Contains(x.Codigo), ct)) return InventarioErrors.CodigoDuplicado;
 
             var producto = new Producto
             {
-                Id = Guid.CreateVersion7(), Nombre = c.Nombre.Trim(), CategoriaId = c.CategoriaId, Unidad = c.Unidad, Plu = c.Plu,
+                Id = Guid.CreateVersion7(), Nombre = c.Nombre.Trim(), CategoriaId = c.CategoriaId, Unidad = c.Unidad, Plu = plu,
                 TasaItbis = c.TasaItbis, Precio = c.Precio, PrecioMayorista = c.PrecioMayorista, Costo = c.Costo,
                 VenderSinExistencia = c.VenderSinExistencia, StockMinimo = c.StockMinimo,
             };
             db.Productos.Add(producto);
             db.Codigos.AddRange(codigos.Select(x => new CodigoBarras { Codigo = x, ProductoId = producto.Id }));
-            db.Existencias.Add(new Existencia { ProductoId = producto.Id, AlmacenId = Almacen.PrincipalId });
+            // One stock row per warehouse up front: stock changes are then always a single relative update.
+            var almacenes = await db.Almacenes.Select(a => a.Id).ToListAsync(ct);
+            db.Existencias.AddRange(almacenes.Select(a => new Existencia { ProductoId = producto.Id, AlmacenId = a }));
             await db.SaveChangesAsync(ct);
 
             if (c.ExistenciaInicial > 0)
-                await movimientos.FijarAsync(TipoMovimiento.Ajuste, producto.Id, producto.Id, Almacen.PrincipalId, c.ExistenciaInicial, "Existencia inicial", ct);
+            {
+                var r = await movimientos.EntradaAsync(TipoMovimiento.Ajuste, producto.Id, [new LineaMovimiento(producto.Id, c.ExistenciaInicial)],
+                    actualizarCosto: false, "Existencia inicial", ct);
+                if (r.IsFailure) return r.Error!;
+            }
 
             await auditoria.RegistrarAsync("inventario.crear-producto", "Producto", producto.Id, c, ct);
             return new Response(producto.Id);
@@ -100,7 +110,8 @@ internal static class CrearProducto
     }
 }
 
-/// <summary>Edits a product. Changing a price also needs the prices permission; <see cref="Command.Version"/> detects concurrent edits.</summary>
+/// <summary>Edits a product. Changing a price or the PLU (which decides what a scale label rings up) also needs the prices permission;
+/// <see cref="Command.Version"/> detects concurrent edits.</summary>
 internal static class ActualizarProducto
 {
     public sealed record Command(
@@ -121,17 +132,18 @@ internal static class ActualizarProducto
             if (p is null) return InventarioErrors.ProductoNoEncontrado;
             if (p.Version != c.Version) return Error.Conflict("Concurrencia", "Otro usuario cambió este producto. Recargue e intente de nuevo.");
             if (!await db.Categorias.AnyAsync(x => x.Id == c.CategoriaId, ct)) return InventarioErrors.CategoriaNoEncontrada;
-            if (c.Plu is not null && await db.Productos.AnyAsync(x => x.Plu == c.Plu && x.Id != c.Id, ct)) return InventarioErrors.PluDuplicado;
+            var plu = Producto.NormalizarPlu(c.Plu);
+            if (plu is not null && await db.Productos.AnyAsync(x => x.Plu == plu && x.Id != c.Id, ct)) return InventarioErrors.PluDuplicado;
 
             var cambiaPrecio = p.Precio != c.Precio || p.PrecioMayorista != c.PrecioMayorista;
-            if (cambiaPrecio && !usuario.Tiene(Permisos.PreciosCambiar)) return InventarioErrors.SinPermisoPrecios;
+            if ((cambiaPrecio || p.Plu != plu || p.TasaItbis != c.TasaItbis) && !usuario.Tiene(Permisos.PreciosCambiar)) return InventarioErrors.SinPermisoPrecios;
             if (cambiaPrecio) outbox.Agregar(new PrecioCambiadoV1(p.Id, p.Precio, c.Precio, p.PrecioMayorista, c.PrecioMayorista));
 
-            var antes = new { p.Nombre, p.Precio, p.PrecioMayorista, p.TasaItbis, p.Activo };
+            var antes = new { p.Nombre, p.Precio, p.PrecioMayorista, p.TasaItbis, p.Plu, p.Activo };
             p.Nombre = c.Nombre.Trim();
             p.CategoriaId = c.CategoriaId;
             p.Unidad = c.Unidad;
-            p.Plu = c.Plu;
+            p.Plu = plu;
             p.TasaItbis = c.TasaItbis;
             p.Precio = c.Precio;
             p.PrecioMayorista = c.PrecioMayorista;
@@ -189,17 +201,19 @@ internal static class ObtenerProducto
     }
 }
 
+/// <summary>Product search for the register and back office. Stock is only shown to users who may see inventory (counts stay blind).</summary>
 internal static class BuscarProductos
 {
     public const int TamanoPagina = 50;
 
     public sealed record Item(Guid Id, string Nombre, string Categoria, UnidadMedida Unidad, TasaItbis TasaItbis, decimal Precio,
-        decimal? PrecioMayorista, decimal Existencia, bool Activo);
+        decimal? PrecioMayorista, decimal? Existencia, bool Activo);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/inventario/productos", async (string? buscar, Guid? categoriaId, bool? incluirInactivos, int? pagina, InventarioDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/inventario/productos", async (string? buscar, Guid? categoriaId, bool? incluirInactivos, int? pagina,
+                    IUserContext usuario, InventarioDbContext db, CancellationToken ct) =>
                 {
                     var q = from p in db.Productos
                             join c in db.Categorias on p.CategoriaId equals c.Id
@@ -211,10 +225,13 @@ internal static class BuscarProductos
                     if (!string.IsNullOrWhiteSpace(buscar))
                     {
                         var patron = $"%{Escapar(buscar.Trim())}%";
-                        q = q.Where(x => EF.Functions.Like(x.p.Nombre, patron, "\\") || x.p.Plu == buscar.Trim());
+                        var plu = Producto.NormalizarPlu(buscar);
+                        q = q.Where(x => EF.Functions.Like(x.p.Nombre, patron, "\\") || x.p.Plu == plu);
                     }
+                    var verExistencia = usuario.Tiene(Permisos.InventarioVer);
                     var items = await q.OrderBy(x => x.p.Nombre).Skip((Math.Max(pagina ?? 1, 1) - 1) * TamanoPagina).Take(TamanoPagina)
-                        .Select(x => new Item(x.p.Id, x.p.Nombre, x.Categoria, x.p.Unidad, x.p.TasaItbis, x.p.Precio, x.p.PrecioMayorista, x.Existencia, x.p.Activo))
+                        .Select(x => new Item(x.p.Id, x.p.Nombre, x.Categoria, x.p.Unidad, x.p.TasaItbis, x.p.Precio, x.p.PrecioMayorista,
+                            verExistencia ? x.Existencia : null, x.p.Activo))
                         .AsNoTracking().ToListAsync(ct);
                     return Results.Ok(items);
                 })

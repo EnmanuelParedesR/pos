@@ -19,6 +19,13 @@ internal sealed class InventarioDbContext(DbContextOptions<InventarioDbContext> 
     public DbSet<Movimiento> Movimientos => Set<Movimiento>();
     public DbSet<FormatoEtiqueta> FormatosEtiqueta => Set<FormatoEtiqueta>();
     public DbSet<ConteoFisico> Conteos => Set<ConteoFisico>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+        // A cashier who types "jamon" finds "Jamón" (SQL Server only; Sqlite has no such collation).
+        if (Database.IsSqlServer()) modelBuilder.Entity<Producto>().Property(p => p.Nombre).UseCollation("Latin1_General_100_CI_AI");
+    }
 }
 
 internal sealed class ConteoConfiguration : IEntityTypeConfiguration<ConteoFisico>, IEntityTypeConfiguration<ConteoLinea>
@@ -93,6 +100,7 @@ internal sealed class InventarioConfiguration :
         b.HasIndex(m => new { m.ProductoId, m.Secuencia });
         b.HasIndex(m => m.ReferenciaId);
         b.Property(m => m.Tipo).HasConversion<string>().HasMaxLength(30);
+        b.Property(m => m.Motivo).HasMaxLength(250);
     }
 
     public void Configure(EntityTypeBuilder<FormatoEtiqueta> b)

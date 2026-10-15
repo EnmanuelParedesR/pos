@@ -41,6 +41,21 @@ internal sealed class EscribirYFallarHandler(InventarioDbContext inventario, Con
     }
 }
 
+/// <summary>Moves stock through the public contract the way a sale (out) or a purchase (in, with cost) will.</summary>
+internal sealed record MoverInventario(Guid ProductoId, decimal Cantidad, bool Entrada, decimal? Costo = null) : ICommand<Ok>;
+
+internal sealed class MoverInventarioHandler(IMovimientosInventario movimientos) : ICommandHandler<MoverInventario, Ok>
+{
+    public async Task<Result<Ok>> Handle(MoverInventario c, CancellationToken ct)
+    {
+        var linea = new[] { new LineaMovimiento(c.ProductoId, c.Cantidad, c.Costo) };
+        var r = c.Entrada
+            ? await movimientos.RegistrarEntradaAsync(TipoMovimiento.Compra, Guid.CreateVersion7(), linea, actualizarCosto: true, ct)
+            : await movimientos.RegistrarSalidaAsync(TipoMovimiento.Venta, Guid.CreateVersion7(), linea, ct);
+        return r.IsFailure ? r.Error! : Ok.Valor;
+    }
+}
+
 internal sealed class AccionSupervisadaHandler : ICommandHandler<AccionSupervisada, Ok>
 {
     public Task<Result<Ok>> Handle(AccionSupervisada c, CancellationToken ct) => Task.FromResult<Result<Ok>>(Ok.Valor);
@@ -52,6 +67,7 @@ internal static class ComandosDePrueba
     {
         Decorado<EscribirYFallar, EscribirYFallarHandler>(s);
         Decorado<AccionSupervisada, AccionSupervisadaHandler>(s);
+        Decorado<MoverInventario, MoverInventarioHandler>(s);
     }
 
     // Same pipeline as production commands: Validacion → Transaccion → Autorizacion → handler.
