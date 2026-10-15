@@ -32,6 +32,14 @@ if (args is ["descifrar-respaldo", var archivo, var salida])
     return;
 }
 
+// Installer step (administrator, Windows): Toki.Host.Local preparar-servicio "NT SERVICE\Toki"
+if (args is ["preparar-servicio", var cuenta] && OperatingSystem.IsWindows())
+{
+    var config = new ConfigurationBuilder().SetBasePath(AppContext.BaseDirectory).AddJsonFile("appsettings.json").AddJsonFile("appsettings.Production.json", optional: true).Build();
+    await PrepararServicio.EjecutarAsync(cuenta, config["Database:ConnectionString"]!);
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(o => o.ServiceName = "Toki");
 builder.Host.UseSerilog((ctx, cfg) => cfg.ReadFrom.Configuration(ctx.Configuration).WriteTo.Console());

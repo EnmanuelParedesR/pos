@@ -52,6 +52,17 @@ Respaldos: el dueño define una frase (PUT /api/respaldos/frase); cada noche a l
 
 Primer uso: `POST /api/identidad/instalacion` crea el administrador y empareja la PC principal; luego `POST /api/identidad/sesiones` con el encabezado `X-Dispositivo`.
 
+## Instalar en la tienda
+
+En la PC principal (Windows, con SQL Server Express), como administrador:
+
+```powershell
+dotnet publish src/Hosts/Toki.Host.Local -c Release -r win-x64 --self-contained -o publicado
+.\deploy\instalar.ps1 -Origen .\publicado
+```
+
+Crea el servicio `Toki` con su propia cuenta virtual (`NT SERVICE\Toki`, sin permisos de administrador), el certificado HTTPS del nodo, la carpeta `C:\ProgramData\Toki` y el login de SQL Server, y abre el puerto 5443 solo en redes privadas. `deploy\desinstalar.ps1` quita el servicio y deja los datos.
+
 ## Reglas
 
 - Toda la lógica en C#: sin procedimientos almacenados ni triggers.
