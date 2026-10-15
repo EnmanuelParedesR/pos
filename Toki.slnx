@@ -25,6 +25,7 @@
     <Project Path="src/Modules/Settings/Toki.Settings/Toki.Settings.csproj" />
     <Project Path="src/Modules/Fiscal/Toki.Fiscal.Contracts/Toki.Fiscal.Contracts.csproj" />
     <Project Path="src/Modules/Fiscal/Toki.Fiscal/Toki.Fiscal.csproj" />
+    <Project Path="src/Modules/Identity/Toki.Identity.Contracts/Toki.Identity.Contracts.csproj" />
     <Project Path="src/Modules/Identity/Toki.Identity/Toki.Identity.csproj" />
     <Project Path="src/Modules/Inventory/Toki.Inventory.Contracts/Toki.Inventory.Contracts.csproj" />
     <Project Path="src/Modules/Inventory/Toki.Inventory/Toki.Inventory.csproj" />

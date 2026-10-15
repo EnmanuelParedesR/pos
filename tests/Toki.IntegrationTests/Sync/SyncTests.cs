@@ -105,6 +105,42 @@ public sealed class SyncConnectTests(TokiApp app) : IClassFixture<TokiApp>
     }
 }
 
+/// <summary>TK-165: users and registers send their names to the cloud, and connecting sends the ones that already existed. Own app: it connects.</summary>
+public sealed class CloudNamesTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    private Task<List<JsonElement>> EventsAsync<T>() => app.InScopeAsync(async sp =>
+        (await sp.GetRequiredService<InfraDbContext>().Outbox.Where(m => m.Type == typeof(T).FullName).OrderBy(m => m.Sequence).Select(m => m.Payload).ToListAsync())
+        .Select(p => JsonDocument.Parse(p).RootElement.Clone()).ToList());
+
+    [Fact]
+    public async Task User_and_register_changes_go_to_the_outbox_without_pins_and_connecting_sends_a_snapshot()
+    {
+        var admin = app.Client(await app.AdminAsync());
+        var cashier = await app.UserAsync(Roles.Cashier);
+        var users = await admin.GetFromJsonAsync<JsonElement>("/api/identity/users");
+        var code = users.EnumerateArray().Single(u => u.GetProperty("id").GetGuid() == cashier.UserId).GetProperty("code").GetString();
+        (await admin.PutAsJsonAsync($"/api/identity/users/{cashier.UserId}", new { Name = "Yudelka", RoleId = Roles.Cashier, IsActive = false, Pin = "9876" }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var register = (await (await admin.PostAsJsonAsync("/api/cash/registers", new { Name = "Caja 1" })).Json()).GetProperty("id").GetGuid();
+
+        var changed = await EventsAsync<Toki.Identity.Contracts.UserProfileChangedV1>();
+        changed.Select(e => e.GetProperty("userId").GetGuid()).ShouldBe([(await app.AdminAsync()).UserId, cashier.UserId, cashier.UserId]);
+        (changed[^1].GetProperty("name").GetString(), changed[^1].GetProperty("active").GetBoolean()).ShouldBe(("Yudelka", false));
+        changed.ShouldAllBe(e => e.EnumerateObject().All(p => new[] { "userId", "name", "active", "eventId", "occurredUtc", "aggregateId" }.Contains(p.Name)));
+        changed.ShouldAllBe(e => !e.GetRawText().Contains("9876") && !e.GetRawText().Contains(code!));
+        var registers = await EventsAsync<Toki.CashRegister.Contracts.RegisterChangedV1>();
+        (registers.Single().GetProperty("registerId").GetGuid(), registers.Single().GetProperty("name").GetString()).ShouldBe((register, "Caja 1"));
+
+        await app.ConnectAsync();
+
+        (await EventsAsync<Toki.Identity.Contracts.UserProfileChangedV1>()).Count.ShouldBe(5); // + admin and cashier, as they are now
+        (await EventsAsync<Toki.CashRegister.Contracts.RegisterChangedV1>()).Count.ShouldBe(2);
+        await app.UploadAsync();
+        app.Cloud.To(CloudUploader.IngestPath).SelectMany(r => r.Body.GetProperty("events").EnumerateArray())
+            .Count(e => e.GetProperty("type").GetString() == typeof(Toki.Identity.Contracts.UserProfileChangedV1).FullName).ShouldBe(5);
+    }
+}
+
 /// <summary>TK-130: the uploader. Own app: it counts every pending event of its database.</summary>
 public sealed class CloudUploadTests(TokiApp app) : IClassFixture<TokiApp>
 {

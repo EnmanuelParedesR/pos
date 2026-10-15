@@ -45,6 +45,25 @@ public sealed class ReturnsTests(TokiApp app) : IClassFixture<TokiApp>
             new { Reason = "Error", SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.void", saleId) });
 
     [Fact]
+    public async Task A_return_goes_to_the_outbox_as_V2_with_its_lines()
+    {
+        var cashier = await app.CashierWithShiftAsync();
+        var steak = await ProductAsync("Bistec", 250m);
+        var (saleId, line) = await SellAsync(cashier, Sale(cashier.ShiftId, 500m, 500m, Line(steak, 2m)));
+        var returnId = Guid.CreateVersion7();
+        (await ReturnAsync(cashier, saleId, line, 1m, returnId: returnId)).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var payload = await app.InScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Persistence.InfraDbContext>().Outbox
+            .Where(m => m.Type == typeof(Toki.Sales.Contracts.ReturnRecordedV2).FullName).Select(m => m.Payload).ToListAsync());
+        var e = payload.Select(p => JsonSerializer.Deserialize<Toki.Sales.Contracts.ReturnRecordedV2>(p, Toki.BuildingBlocks.Persistence.Json.Options)!)
+            .Single(x => x.ReturnId == returnId);
+        e.Total.ShouldBe(250m);
+        var l = e.Lines.ShouldHaveSingleItem();
+        (l.ProductId, l.Quantity, l.Total, l.Itbis).ShouldBe((steak, 1m, 250m, e.Itbis));
+        l.Description.ShouldStartWith("Bistec");
+    }
+
+    [Fact]
     public async Task A_card_sale_is_not_refunded_in_cash()
     {
         var cashier = await app.CashierWithShiftAsync();

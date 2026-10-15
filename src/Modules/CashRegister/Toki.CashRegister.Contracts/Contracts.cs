@@ -32,6 +32,9 @@ public interface ICashRegisterOperations
     Task<Result> VoidMovementsAsync(Guid referenceId, CancellationToken ct);
 }
 
+/// <summary>A register was created (or is in the snapshot sent when the store connects to the cloud), so the panel can show its name.</summary>
+public sealed record RegisterChangedV1(Guid RegisterId, string Name) : IntegrationEvent(RegisterId);
+
 public sealed record ShiftOpenedV1(Guid ShiftId, Guid RegisterId, Guid CashierId, decimal OpeningFloat) : IntegrationEvent(ShiftId);
 
 public sealed record CashMovementRecordedV1(Guid ShiftId, string Type, PaymentMethod Method, decimal Amount, Guid? ReferenceId) : IntegrationEvent(ShiftId);

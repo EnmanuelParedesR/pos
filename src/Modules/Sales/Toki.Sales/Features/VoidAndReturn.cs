@@ -197,7 +197,10 @@ internal static class ReturnSale
             if (c.Method == PaymentMethod.CreditBalance) await customers.CreditReturnAsync(sale.CustomerId!.Value, sale.Id, saleReturn.Id, saleReturn.Total, ct);
 
             db.Returns.Add(saleReturn);
-            outbox.Add(new ReturnRecordedV1(saleReturn.Id, sale.Id, saleReturn.ENcf, c.Method.ToString(), saleReturn.Total, saleReturn.Itbis));
+            outbox.Add(new ReturnRecordedV2(saleReturn.Id, sale.Id, saleReturn.ENcf, c.Method.ToString(), saleReturn.Total, saleReturn.Itbis,
+                [.. from l in saleReturn.Lines
+                    join s in sale.Lines on l.SaleLineId equals s.Id
+                    select new ReturnLineV2(s.ProductId, s.PresentationId, s.Description, l.Quantity, l.Total, l.Itbis, s.UnitCost)]));
             await audit.RecordAsync("sales.return", "Sale", sale.Id,
                 new { Return = saleReturn.Id, saleReturn.Total, c.Method, c.Reason, CreditNote = saleReturn.ENcf }, ct);
             return new Response(saleReturn.Id, saleReturn.ENcf, saleReturn.Total, saleReturn.Itbis, c.Method);

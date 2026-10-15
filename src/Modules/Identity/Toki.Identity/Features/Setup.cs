@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
+using Toki.Identity.Contracts;
 using Toki.Identity.Domain;
 using Toki.Identity.Persistence;
 using Toki.SharedKernel;
@@ -31,7 +32,7 @@ internal static class Setup
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -48,6 +49,7 @@ internal static class Setup
             };
             db.Users.Add(admin);
             db.Devices.Add(device);
+            outbox.Add(new UserProfileChangedV1(admin.Id, admin.Name, admin.IsActive));
             await audit.RecordAsync("identity.setup", "User", admin.Id, new { admin.Name, admin.Code, Device = device.Name }, ct);
             return new Response(admin.Id, device.Id, token);
         }

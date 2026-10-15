@@ -166,7 +166,9 @@ internal static class ConnectToCloud
         return await GetSyncStatus.RunAsync(db, infra, ct);
     }
 
-    internal sealed class Handler(SyncDbContext db, CloudClient cloud, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Ok>
+    /// <remarks>The snapshot goes again on every connect (after a disconnect too): the cloud replaces names by id, so repeating it is harmless.</remarks>
+    internal sealed class Handler(SyncDbContext db, CloudClient cloud, IEnumerable<ICloudSnapshot> snapshots, IAuditLog audit, TimeProvider clock)
+        : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
@@ -177,6 +179,7 @@ internal static class ConnectToCloud
                 TenantId = r.TenantId, StoreId = r.StoreId, NodeId = r.NodeId, NodeSecret = cloud.Protect(r.NodeSecret), CloudUrl = c.CloudUrl,
                 ConnectedUtc = clock.GetUtcNow().UtcDateTime,
             });
+            foreach (var snapshot in snapshots) await snapshot.EnqueueAsync(ct);
             await audit.RecordAsync("sync.connect", "CloudConnection", r.NodeId, new { r.TenantId, r.StoreId, r.NodeId, c.CloudUrl }, ct);
             return Ok.Value;
         }

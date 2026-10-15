@@ -32,6 +32,9 @@ internal static class PanelEndpoints
         panel.MapGet("/shifts", (DateOnly? from, DateOnly? to, Guid? storeId, bool? onlyDifferences, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
             Run(user, q, from, to, storeId, f => q.ShiftsAsync(f, onlyDifferences ?? false, ct)));
 
+        panel.MapGet("/receivables", async (Guid? storeId, int? limit, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
+            Results.Ok(await q.ReceivablesAsync(user.GetTenantId(), storeId, limit ?? 10, ct)));
+
         panel.MapGet("/sync-status", async (ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
             Results.Ok(await q.SyncStatusAsync(user.GetTenantId(), ct)));
     }

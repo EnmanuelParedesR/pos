@@ -7,10 +7,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Toki.BuildingBlocks;
+using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
+using Toki.Identity.Contracts;
 using Toki.Identity.Domain;
 using Toki.Identity.Persistence;
 using Toki.SharedKernel;
+using Toki.Sync.Contracts;
 
 namespace Toki.Identity;
 
@@ -24,6 +27,7 @@ public static class IdentityModule
     {
         services.AddModuleDbContext<IdentityDbContext>();
         services.AddScoped<ISupervisorApprovals, SupervisorApprovals>();
+        services.AddScoped<ICloudSnapshot, UserSnapshot>();
         services.AddAuthentication(Scheme).AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(Scheme, null);
         // Secure by default: an endpoint that forgets its authorization call still requires a session.
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
@@ -70,6 +74,15 @@ internal sealed class SessionAuthenticationHandler(
             .. permissions.Select(p => new Claim(TokiClaims.Permission, p)),
         ];
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)), Scheme.Name));
+    }
+}
+
+internal sealed class UserSnapshot(IdentityDbContext db, IOutbox outbox) : ICloudSnapshot
+{
+    public async Task EnqueueAsync(CancellationToken ct)
+    {
+        foreach (var u in await db.Users.AsNoTracking().Select(u => new { u.Id, u.Name, u.IsActive }).ToListAsync(ct))
+            outbox.Add(new UserProfileChangedV1(u.Id, u.Name, u.IsActive));
     }
 }
 
