@@ -2,6 +2,7 @@
 @inject TokiApi Api
 @inject Session Session
 @inject Peripherals Peripherals
+@inject NodeCertificatePin Pin
 
 <Admin Title="Configuración" Subtitle="Los datos del negocio, las cajas, los comprobantes y quién puede entrar.">
     <div class="esc-tabs" role="tablist" aria-label="Secciones">
@@ -168,6 +169,7 @@
                     <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary">Cargar secuencia</Button></div>
                 </div>
             </form>
+            <TaxpayerRegistryCard />
             break;
 
         case Section.Devices:
@@ -201,6 +203,10 @@
                         <div class="esc-code" role="status">
                             <span class="esc-code__digits">@pc.Code[..4] @pc.Code[4..]</span>
                             <span class="esc-muted">Vence a las @Format.Time(pc.ExpiresUtc) · sirve una vez</span>
+                            @if (NodeCertificatePin.Fingerprint(Pin.Pinned) is { } fingerprint)
+                            {
+                                <span class="esc-muted">Huella del servidor: <strong>@fingerprint</strong> · el equipo nuevo debe mostrar la misma</span>
+                            }
                         </div>
                     }
                 </div>

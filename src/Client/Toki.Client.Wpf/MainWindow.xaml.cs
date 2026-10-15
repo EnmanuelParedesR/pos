@@ -19,7 +19,7 @@ public partial class MainWindow
 
         var services = new ServiceCollection();
         services.AddWpfBlazorWebView();
-        // shortcut: the store API's self-signed node certificate is not pinned yet (TK-091); until then use http on the store LAN or a trusted certificate.
+        // Over https the store server's self-signed certificate is pinned when this PC pairs (TK-122, ADR-0009).
         services.AddTokiClient(api);
         services.AddSingleton<ILocalStore, ProtectedStore>();
         // Simulated scale and printer in Debug builds, the real drivers in Release; appsettings "Hardware": { "Simulated": true|false } overrides it.

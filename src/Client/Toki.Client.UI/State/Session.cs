@@ -10,9 +10,10 @@ public interface ILocalStore
 }
 
 /// <summary>Who is at this PC: the paired device, the logged-in user and their open shift.</summary>
-public sealed class Session(ILocalStore store)
+public sealed class Session(ILocalStore store, NodeCertificatePin pin)
 {
     private const string DeviceKey = "device";
+    private const string NodeCertificateKey = "node-certificate";
     private HashSet<string> _permissions = [];
     private bool _loaded;
 
@@ -37,22 +38,31 @@ public sealed class Session(ILocalStore store)
     public async Task LoadAsync()
     {
         if (_loaded) return;
+        // The pin before the token: no request carries this PC's secret to a server it has not pinned.
+        if (await store.ReadAsync(NodeCertificateKey) is { } thumbprint) pin.Pin(thumbprint);
         DeviceToken = await store.ReadAsync(DeviceKey);
         _loaded = true;
     }
 
+    /// <summary>Saves the device token and pins the server certificate the pairing went through (none over plain http).</summary>
     public async Task PairAsync(string token)
     {
+        var seen = pin.Pinned ?? pin.Seen;
+        await store.SaveAsync(NodeCertificateKey, seen);
+        pin.Pin(seen);
         DeviceToken = token;
         await store.SaveAsync(DeviceKey, token);
         Changed?.Invoke();
     }
 
+    /// <summary>The owner revoked this PC: it pairs again from scratch, pin included.</summary>
     public async Task ForgetDeviceAsync()
     {
         DeviceToken = null;
         Close();
         await store.SaveAsync(DeviceKey, null);
+        await store.SaveAsync(NodeCertificateKey, null);
+        pin.Pin(null);
     }
 
     public void Open(OpenedSession s, Me me)

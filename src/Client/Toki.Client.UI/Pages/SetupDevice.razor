@@ -2,6 +2,7 @@
 @inject TokiApi Api
 @inject Session Session
 @inject NavigationManager Nav
+@inject NodeCertificatePin Pin
 
 <div class="esc-page" style="max-width:960px;margin:0 auto;width:100%">
     <div>
@@ -27,6 +28,11 @@
                 <input class="esc-input esc-input--large" inputmode="numeric" autocomplete="off" maxlength="8" @bind="_code" @bind:event="oninput"
                        aria-invalid="@(_error is not null)" style="letter-spacing:0.3em" autofocus />
             </label>
+            @if (_fingerprint is not null)
+            {
+                @* TK-122: this PC pins the certificate it sees now; the owner sees the same fingerprint next to the code. *@
+                <Notice Kind="Notice.Kinds.Info" Title="@($"Huella del servidor: {_fingerprint}")">Debe ser igual a la que ve el dueño junto al código. Si no es igual, no una este equipo y avise al técnico.</Notice>
+            }
             @if (_error is not null)
             {
                 <Notice Title="@_error" />
@@ -59,14 +65,16 @@
 @code {
     private enum Mode { Join, Install }
     private Mode _mode = Mode.Join;
-    private string? _code, _error, _name, _userCode, _pin;
+    private string? _code, _error, _name, _userCode, _pin, _fingerprint;
     private string _deviceName = "PC principal";
     private bool _sending;
 
     protected override async Task OnInitializedAsync()
     {
         await Session.LoadAsync();
-        if (Session.IsPaired) Nav.NavigateTo("sign-in");
+        if (Session.IsPaired) { Nav.NavigateTo("sign-in"); return; }
+        await Api.GetAsync<Empty>("/health"); // connects, so the server's certificate is known before the code is typed
+        _fingerprint = NodeCertificatePin.Fingerprint(Pin.Seen);
     }
 
     private void Switch(Mode m) => (_mode, _error) = (m, null);

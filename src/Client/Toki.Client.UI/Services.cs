@@ -11,7 +11,14 @@ public static class Services
     public static IServiceCollection AddTokiClient(this IServiceCollection services, Uri api, HttpMessageHandler? handler = null)
     {
         // One connection pool for the whole app, however many scopes (the web host makes one per browser tab).
-        var shared = handler ?? new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) };
+        // Over https the store server's certificate is pinned when this PC pairs (TK-122); plain http (development) never asks.
+        var pin = new NodeCertificatePin();
+        services.AddSingleton(pin);
+        var shared = handler ?? new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            SslOptions = { RemoteCertificateValidationCallback = (_, certificate, _, errors) => pin.Validate(certificate, errors) },
+        };
         // TokiApi puts the time limit on each call (30 s, longer for a backup).
         services.AddScoped(_ => new HttpClient(shared, disposeHandler: false) { BaseAddress = api, Timeout = Timeout.InfiniteTimeSpan });
         services.AddScoped<Session>();
