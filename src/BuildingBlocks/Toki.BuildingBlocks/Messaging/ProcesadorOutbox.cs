@@ -52,11 +52,13 @@ public sealed class ProcesadorOutbox(InfraDbContext db, IServiceProvider servici
     }
 }
 
-/// <summary>Runs <see cref="ProcesadorOutbox"/> every <c>Outbox:IntervaloSegundos</c> (5).</summary>
+/// <summary>Runs <see cref="ProcesadorOutbox"/> every <c>Outbox:IntervaloSegundos</c> (5), unless <c>Outbox:Procesar</c> is false
+/// (the in-memory test host, whose tests run it themselves against a fake clock).</summary>
 internal sealed class ProcesadorOutboxWorker(IServiceScopeFactory scopes, IConfiguration config, TimeProvider reloj, ILogger<ProcesadorOutboxWorker> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!config.GetValue("Outbox:Procesar", true)) return;
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(config.GetValue("Outbox:IntervaloSegundos", 5)), reloj);
         do
         {

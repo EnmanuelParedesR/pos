@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
@@ -39,12 +40,13 @@ internal sealed class UltimaVerificacionAuditoria : IHealthCheck
 
 /// <summary>Verifies the audit chain every night at 03:00 store time; a broken chain is a critical log line and an unhealthy /health.</summary>
 internal sealed class VerificacionNocturnaAuditoria(IServiceScopeFactory scopes, UltimaVerificacionAuditoria ultima, TimeProvider reloj,
-    ILogger<VerificacionNocturnaAuditoria> log) : BackgroundService
+    IConfiguration config, ILogger<VerificacionNocturnaAuditoria> log) : BackgroundService
 {
     private static readonly TimeSpan Hora = TimeSpan.FromHours(3);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!config.GetValue("Auditoria:VerificacionNocturna", true)) return; // off in the in-memory test host (fake clock)
         while (!stoppingToken.IsCancellationRequested)
         {
             await Task.Delay(HastaLaProxima(reloj.GetUtcNow().UtcDateTime), reloj, stoppingToken);

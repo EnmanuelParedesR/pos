@@ -67,6 +67,9 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         builder.UseSetting("Database:ConnectionString", _connectionString);
         builder.UseSetting("Database:CrearAlIniciar", "true");
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
+        // Background work would race the tests when they move the fake clock; tests run it themselves.
+        builder.UseSetting("Outbox:Procesar", "false");
+        builder.UseSetting("Auditoria:VerificacionNocturna", "false");
         builder.ConfigureTestServices(s =>
         {
             s.AddSingleton<TimeProvider>(Reloj);
