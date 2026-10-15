@@ -183,7 +183,7 @@ Decisión: ADR-0008. Despliegue: `docs/despliegue-azure.md`.
 | TK-137 | Panel web del dueño (React) | 🟡 `src/Cloud/panel` (Vite 6, React 19, TypeScript estricto, react-router 7, sin librerías de UI ni de gráficas): entrar / crear cuenta (errores de Identity en español), resumen del día por tienda (cifras, ventas por hora, medios de pago, "para revisar", última actualización en ámbar después de 24 h), ventas (por día, más vendidos, por cajero), cuadres con filtro de diferencias, tiendas con estado por caja y código de conexión con cuenta regresiva, asistente con aviso ámbar si no está configurado. Usa `escuadra.css` de la caja tal cual. Token en memoria y refresh en `localStorage`, renueva una vez ante un 401. `npm run check` (tsc + 12 pruebas de Vitest) pasa. Pendiente: `vite build` y `npm run dev` necesitan Node ≥ 18 (la PC tiene Node 16); con Node 22, pasar Vitest 0.34 → 3 y jsdom 22 → 26 (hoy fijados por Node 16); nombres de cajeros (TK-133); publicar en la Static Web App |
 | TK-138 | Caja: Configuración → Nube (conectar con el código del panel, estado, desconectar) | ✅ Probado de punta a punta: caja → API local → nube → panel |
 | TK-139 | Desplegar en Azure (Bicep, base, API nube, panel, modelo del asistente) y probar el asistente con el modelo real | ⬜ Necesita Azure CLI y `az login` del dueño |
-| TK-188 | Análisis de la competencia: Poszy (poszy.com) frente a Toki; brechas y tickets nuevos | 🔨 |
+| TK-188 | Análisis de la competencia: Poszy (poszy.com) frente a Toki; brechas y tickets nuevos | ✅ `docs/competencia-poszy.md`; tickets TK-191..TK-203 en M15 |
 | TK-189 | Consola de superadministrador (equipo de Toki): todos los clientes, tiendas, cajas, equipos, licencias, versión y estado de sincronización, con acceso de solo lectura y auditado | 🔨 |
 | TK-190 | Métricas de producto: activación, uso, retención y salud por tienda (latido del nodo, eventos de uso agregados, sin datos personales) en la consola | 🔨 |
 
@@ -239,6 +239,27 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-181 | Panel: subir Vitest a 5 (aviso de npm audit en tinypool, solo desarrollo) | ⬜ |
 | TK-182 | Encontrar y arreglar la prueba que falló una vez en la suite (posible inestabilidad) | ⬜ |
 | TK-183 | Modo oscuro de Escuadra Admin (variables listas) | ⬜ |
+
+## M15 · Brechas frente a la competencia
+
+Origen: `docs/competencia-poszy.md` (TK-188). Alcance y criterios de aceptación de cada ticket en su §8. Tamaño: S (≤ 2 días), M (≤ 1 semana), L (más).
+
+| Ticket | Qué | Estado |
+|---|---|---|
+| TK-191 | Mínimos, máximos y pedido sugerido con el último suplidor; crear compra en borrador (M, depende de TK-178) | ⬜ |
+| TK-192 | Reporte 608 de comprobantes anulados (CSV/Excel y TXT oficial) (S) | ⬜ |
+| TK-193 | Encargos: fecha y hora de entrega, abono como anticipo, conversión en venta con el peso real, recordatorio (M) | ⬜ |
+| TK-194 | Cotizaciones que se convierten en venta (primer paso del módulo Mayorista) (M) | ⬜ |
+| TK-195 | Catálogo público con QR y pedido por WhatsApp, desde la réplica de la nube (M) | ⬜ |
+| TK-196 | Prueba gratis autoservicio: instalador desde la web, asistente de un equipo, datos de ejemplo, 30 días (M) | ⬜ |
+| TK-197 | Sitio: precios públicos y páginas Carnicería, Colmado y Deli con FAQ (S–M, depende de TK-203) | ⬜ |
+| TK-198 | Contenido e-CF: "¿Ya te toca?" y plazo del 15/11/2026 (S) | ⬜ |
+| TK-199 | Programa de referidos para revendedores y contadores (S, decisión del dueño) | ⬜ |
+| TK-200 | Cierre de turno (Z) y estado de cuenta de fiado en PDF de una página (S) | ⬜ |
+| TK-201 | Costo, utilidad y valor de inventario visibles solo con permiso, en caja, administración, panel y exportaciones (S) | ⬜ |
+| TK-202 | Investigación: caja ligera o toma de pedidos en tablet Android contra la PC principal (M, spike → ADR) | ⬜ |
+| TK-203 | Revisar el plan de entrada frente a Poszy (colmado de una caja) (S, decisión del dueño) | ⬜ |
+
 ## Revisiones
 
 | Revisión | Hito | Estado |
