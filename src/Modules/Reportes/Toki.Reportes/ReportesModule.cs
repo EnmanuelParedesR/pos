@@ -30,7 +30,7 @@ internal readonly record struct Periodo(DateOnly Desde, DateOnly Hasta, string? 
     public string Nombre(string reporte) => $"{reporte}-{Desde:yyyyMMdd}-{Hasta:yyyyMMdd}";
 }
 
-internal sealed record VentaCategoria(Guid CategoriaId, string Categoria, decimal Neto, decimal Costo, decimal Utilidad);
+internal sealed record VentaCategoria(Guid CategoriaId, string Categoria, decimal NetoSinItbis, decimal Costo, decimal Utilidad);
 
 internal sealed class ReportesEndpoints : IEndpoint
 {
@@ -49,8 +49,8 @@ internal sealed class ReportesEndpoints : IEndpoint
             if (p.Invalido() is { } invalido) return invalido;
             var nombres = await inventario.CategoriasAsync(ct);
             var filas = (await ventas.PorProductoAsync(p.Desde, p.Hasta, ct)).GroupBy(x => x.CategoriaId)
-                .Select(c => new VentaCategoria(c.Key, nombres.GetValueOrDefault(c.Key, "?"), c.Sum(x => x.Neto), c.Sum(x => x.Costo), c.Sum(x => x.Utilidad)))
-                .OrderByDescending(c => c.Neto).ToList();
+                .Select(c => new VentaCategoria(c.Key, nombres.GetValueOrDefault(c.Key, "?"), c.Sum(x => x.NetoSinItbis), c.Sum(x => x.Costo), c.Sum(x => x.Utilidad)))
+                .OrderByDescending(c => c.NetoSinItbis).ToList();
             return Exportar.Como(filas, p.Formato, p.Nombre("ventas-por-categoria"));
         });
 

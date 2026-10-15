@@ -129,7 +129,7 @@ internal sealed class RespaldoNocturno(IServiceScopeFactory scopes, IConfigurati
                 var r = await scope.ServiceProvider.GetRequiredService<Respaldos>().CrearAsync(stoppingToken);
                 if (r.IsFailure) log.LogError("No se hizo el respaldo: {Motivo}", r.Error!.Description);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 log.LogError(ex, "Falló el respaldo nocturno");
             }

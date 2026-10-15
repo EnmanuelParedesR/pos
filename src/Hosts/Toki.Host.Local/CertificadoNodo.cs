@@ -12,15 +12,21 @@ internal static class CertificadoNodo
 {
     public const string Sujeto = "CN=Toki Nodo";
 
+    /// <remarks>Reading needs no admin rights, so the service account can start with a certificate the (elevated) installer created;
+    /// creating one needs write access to the store, which only the installer or LocalSystem has.</remarks>
     public static X509Certificate2 ObtenerOCrear(StoreLocation ubicacion, TimeProvider reloj, string sujeto = Sujeto)
     {
+        var ahora = reloj.GetUtcNow();
+        using (var lectura = new X509Store(StoreName.My, ubicacion))
+        {
+            lectura.Open(OpenFlags.ReadOnly);
+            var vigente = lectura.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, sujeto, validOnly: false)
+                .Where(c => c.HasPrivateKey && c.NotAfter.ToUniversalTime() > ahora.UtcDateTime.AddDays(30))
+                .OrderByDescending(c => c.NotAfter).FirstOrDefault();
+            if (vigente is not null) return vigente;
+        }
         using var store = new X509Store(StoreName.My, ubicacion);
         store.Open(OpenFlags.ReadWrite);
-        var ahora = reloj.GetUtcNow();
-        var vigente = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, sujeto, validOnly: false)
-            .Where(c => c.HasPrivateKey && c.NotAfter.ToUniversalTime() > ahora.UtcDateTime.AddDays(30))
-            .OrderByDescending(c => c.NotAfter).FirstOrDefault();
-        if (vigente is not null) return vigente;
 
         using var rsa = RSA.Create(2048);
         var solicitud = new CertificateRequest(sujeto, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);

@@ -70,6 +70,8 @@ public sealed class PlataformaTests(TokiApp app) : IClassFixture<TokiApp>
             using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
             store.Open(OpenFlags.ReadWrite);
             store.Remove(primero);
+            // The private key was persisted next to the store: remove it too, or every run leaves one behind.
+            if (OperatingSystem.IsWindows() && primero.GetRSAPrivateKey() is System.Security.Cryptography.RSACng rsa) rsa.Key.Delete();
         }
     }
 }

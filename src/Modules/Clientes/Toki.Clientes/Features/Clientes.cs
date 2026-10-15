@@ -267,17 +267,7 @@ internal static class EstadoCuentaCliente
     }
 }
 
-/// <summary>Accounts receivable by customer, aged by the business day of each unpaid charge: 0–30, 31–60, 61–90 and over 90 days.</summary>
-internal static class CuentasPorCobrar
-{
-    internal sealed class Endpoint : IEndpoint
-    {
-        public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/clientes/por-cobrar", async (IClientesReportes reportes, CancellationToken ct) => Results.Ok(await reportes.PorCobrarAsync(ct)))
-                .RequirePermiso(Permisos.FiadoGestionar).WithTags("Clientes");
-    }
-}
-
+/// <summary>Receivables by customer, aged by the business day of each unpaid charge (0–30, 31–60, 61–90, over 90 days); served and exported by Reportes.</summary>
 internal sealed class ClientesReportes(ClientesDbContext db, TimeProvider reloj) : IClientesReportes
 {
     public async Task<IReadOnlyList<CuentaPorCobrarCliente>> PorCobrarAsync(CancellationToken ct)

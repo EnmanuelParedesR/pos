@@ -46,7 +46,10 @@ public sealed class PadronTests(TokiApp app) : IClassFixture<TokiApp>
         juan.GetProperty("nombre").GetString().ShouldBe("JUAN PÉREZ"); // ANSI accents survive
         juan.GetProperty("activo").GetBoolean().ShouldBeFalse();
 
-        (await Importar("40212345678|ANA LÓPEZ||||||||ACTIVO|\r\n")).ShouldBe(1);
+        // A UTF-8 file is detected and read as such (accents intact either way).
+        var utf8 = await admin.PostAsync("/api/fiscal/padron", new ByteArrayContent(Encoding.UTF8.GetBytes("40212345678|ANA LÓPEZ||||||||ACTIVO|\r\n")));
+        (await utf8.Json()).GetProperty("contribuyentes").GetInt32().ShouldBe(1);
+        (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/contribuyentes/40212345678")).GetProperty("nombre").GetString().ShouldBe("ANA LÓPEZ");
         (await admin.GetAsync("/api/fiscal/contribuyentes/131245678")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         var cajero = app.Cliente(await app.UsuarioAsync(Roles.Cajero));

@@ -49,6 +49,13 @@ public sealed class CabezaAuditoria
     public int Id { get; set; }
     public long Secuencia { get; set; }
     public byte[] Hash { get; set; } = [];
+
+    /// <summary>"#seq hash8", printed on Z reports: the paper keeps how far the chain went, so a rewound head shows up.</summary>
+    public static async Task<string> TextoAsync(InfraDbContext db, CancellationToken ct)
+    {
+        var c = await db.CabezaAuditoria.AsNoTracking().SingleAsync(x => x.Id == 1, ct);
+        return $"#{c.Secuencia} {Convert.ToHexString(c.Hash)[..8]}";
+    }
 }
 
 internal sealed class OutboxMensajeConfiguration : IEntityTypeConfiguration<OutboxMensaje>

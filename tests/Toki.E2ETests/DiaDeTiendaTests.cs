@@ -154,14 +154,18 @@ public sealed class DiaDeTiendaTests
         for (var i = 0; i < 3; i++) devueltos.Add((await DevolverAsync(c3, quesos, lineaQueso, 1m, "Tarjeta")).GetProperty("total").GetDecimal());
         devueltos.ShouldBe([33.33m, 33.33m, 33.34m]);
 
-        // Credit (fiado): within the limit, then over it with the supervisor; payments in cash and by card; a voided credit sale.
-        await VenderAsync(c2, [new { ProductoId = chuleta, Cantidad = 10m }], medio: "Fiado", extra: new() { ["ClienteId"] = vecino });
+        // Credit (fiado): within the limit, a pound returned to the account, then over the limit with the supervisor;
+        // payments in cash and by card; a voided credit sale.
+        var fiado = Guid.CreateVersion7();
+        await VenderAsync(c2, [new { ProductoId = chuleta, Cantidad = 10m }], medio: "Fiado", ventaId: fiado, extra: new() { ["ClienteId"] = vecino });
+        var lineaFiado = (await Ok(await c2.Cliente.GetAsync($"/api/ventas/{fiado}"))).GetProperty("lineas")[0].GetProperty("id").GetGuid();
+        (await DevolverAsync(c2, fiado, lineaFiado, 1m, "SaldoFavor")).GetProperty("total").GetDecimal().ShouldBe(165m);
         var sobreLimite = Guid.CreateVersion7();
         await VenderAsync(c2, [new { ProductoId = chuleta, Cantidad = 10m }], medio: "Fiado", ventaId: sobreLimite,
             extra: new() { ["ClienteId"] = vecino, ["Autorizaciones"] = new[] { await AutorizarAsync(c2, "fiado.exceder-limite", sobreLimite) } });
         await Ok(await c1.Cliente.PostAsJsonAsync($"/api/clientes/{vecino}/abonos", new { AbonoId = Guid.CreateVersion7(), TurnoId = c1.TurnoId, Monto = 1000m, Medio = "Efectivo" }));
         c1.Efectivo += 1000m;
-        await Ok(await c3.Cliente.PostAsJsonAsync($"/api/clientes/{vecino}/abonos", new { AbonoId = Guid.CreateVersion7(), TurnoId = c3.TurnoId, Monto = 500m, Medio = "Tarjeta" }));
+        await Ok(await c3.Cliente.PostAsJsonAsync($"/api/clientes/{vecino}/abonos", new { AbonoId = Guid.CreateVersion7(), TurnoId = c3.TurnoId, Monto = 300m, Medio = "Tarjeta" }));
         await Ok(await c2.Cliente.PostAsJsonAsync($"/api/ventas/{sobreLimite}/anular",
             new { Motivo = "se llevó menos", AutorizacionSupervisorId = await AutorizarAsync(c2, "ventas.anular", sobreLimite) }));
         c2.Ventas.RemoveAll(v => v.VentaId == sobreLimite);
@@ -176,6 +180,7 @@ public sealed class DiaDeTiendaTests
         await Ok(await admin.PostAsJsonAsync("/api/compras/pagos", new { PagoId = Guid.CreateVersion7(), SuplidorId = suplidor, Monto = 20000m, Medio = "Transferencia", Fecha = hoy }));
 
         // ── Closing: the supervisor sees the X report; each drawer is counted blind and must match ──
+        var cobradoEnCajas = 0m;
         foreach (var caja in cajas)
         {
             var x = await Ok(await admin.GetAsync($"/api/caja/turnos/{caja.TurnoId}/z"));
@@ -183,6 +188,9 @@ public sealed class DiaDeTiendaTests
             var z = await Ok(await caja.Cliente.PostAsJsonAsync($"/api/caja/turnos/{caja.TurnoId}/cerrar",
                 new { Conteo = Contar(caja.Efectivo), AutorizacionSupervisorId = await AutorizarAsync(caja, "caja.aprobar-cierre", caja.TurnoId) }));
             z.GetProperty("diferencia").GetDecimal().ShouldBe(0m);
+            z.GetProperty("cadenaAuditoria").GetString()!.ShouldStartWith("#");
+            cobradoEnCajas += z.GetProperty("porMedio").EnumerateArray()
+                .Sum(m => m.GetProperty("cobros").GetDecimal() - m.GetProperty("anulaciones").GetDecimal() - m.GetProperty("reembolsos").GetDecimal());
         }
 
         // ── End of day: everything must add up ──
@@ -207,7 +215,7 @@ public sealed class DiaDeTiendaTests
         var tarjeta = await Ok(await admin.GetAsync($"/api/clientes/{vecino}"));
         var estado = await Ok(await admin.GetAsync($"/api/clientes/{vecino}/estado-cuenta"));
         var cxc = (await Ok(await admin.GetAsync("/api/reportes/por-cobrar"))).EnumerateArray().Single(c => c.GetProperty("clienteId").GetGuid() == vecino);
-        tarjeta.GetProperty("deuda").GetDecimal().ShouldBe(10 * 165m - 1500m);
+        tarjeta.GetProperty("deuda").GetDecimal().ShouldBe(10 * 165m - 165m - 1300m);
         estado.GetProperty("movimientos").EnumerateArray().Last().GetProperty("deuda").GetDecimal().ShouldBe(tarjeta.GetProperty("deuda").GetDecimal());
         cxc.GetProperty("total").GetDecimal().ShouldBe(tarjeta.GetProperty("deuda").GetDecimal());
 
@@ -217,9 +225,21 @@ public sealed class DiaDeTiendaTests
         (await Ok(await admin.GetAsync("/api/reportes/por-pagar"))).EnumerateArray().Single(s => s.GetProperty("suplidorId").GetGuid() == suplidor)
             .GetProperty("total").GetDecimal().ShouldBe(saldoSuplidor);
 
-        // The day's report counts every completed sale.
-        var dia = (await Ok(await admin.GetAsync($"/api/reportes/ventas/por-dia?desde={hoy:yyyy-MM-dd}&hasta={hoy:yyyy-MM-dd}"))).EnumerateArray().Single();
-        dia.GetProperty("ventas").GetInt32().ShouldBe(cajas.Sum(c => c.Ventas.Count));
+        // Reports reconcile with the closings, the fiscal documents and the stock. (Tomorrow is included: a run near midnight splits the day.)
+        var periodo = $"desde={hoy:yyyy-MM-dd}&hasta={hoy.AddDays(1):yyyy-MM-dd}";
+        var dias = (await Ok(await admin.GetAsync($"/api/reportes/ventas/por-dia?{periodo}"))).EnumerateArray().ToList();
+        dias.Sum(d => d.GetProperty("ventas").GetInt32()).ShouldBe(cajas.Sum(c => c.Ventas.Count));
+        // The drawers took every sale and paid every return except the one credited to the account (165).
+        (dias.Sum(d => d.GetProperty("ventasConItbis").GetDecimal() - d.GetProperty("devoluciones").GetDecimal()) + 165m).ShouldBe(cobradoEnCajas);
+
+        var filas607 = (await Ok(await admin.GetAsync($"/api/reportes/dgii/607?{periodo}"))).EnumerateArray().ToList();
+        filas607.Count.ShouldBe(documentos.Count);
+        var totalPorNcf = documentos.ToDictionary(d => d.GetProperty("eNcf").GetString()!, d => d.GetProperty("total").GetDecimal());
+        foreach (var f in filas607)
+            (f.GetProperty("montoFacturado").GetDecimal() + f.GetProperty("itbisFacturado").GetDecimal()).ShouldBe(totalPorNcf[f.GetProperty("ncf").GetString()!]);
+
+        foreach (var v in (await Ok(await admin.GetAsync("/api/reportes/inventario/valor"))).EnumerateArray())
+            v.GetProperty("existencia").GetDecimal().ShouldBe(existencias[v.GetProperty("productoId").GetGuid()]);
 
         servidor.Errores500.ShouldBeEmpty(string.Join("\n", servidor.Errores500));
 
@@ -247,7 +267,7 @@ public sealed class DiaDeTiendaTests
             return c;
         }
 
-        var tanteo = await caja.Cliente.PostAsJsonAsync("/api/ventas", Cuerpo(-1m, [new { Medio = "Efectivo", Monto = 1m }]));
+        var tanteo = await ConReintentoAsync(() => caja.Cliente.PostAsJsonAsync("/api/ventas", Cuerpo(-1m, [new { Medio = "Efectivo", Monto = 1m }])));
         var problema = await tanteo.Content.ReadFromJsonAsync<JsonElement>();
         problema.GetProperty("code").GetString().ShouldBe("Ventas.TotalCambio", problema.ToString());
         var total = decimal.Parse(problema.GetProperty("errors").GetProperty("total")[0].GetString()!, CultureInfo.InvariantCulture);
@@ -259,7 +279,7 @@ public sealed class DiaDeTiendaTests
             "Mixto" => [new { Medio = "Tarjeta", Monto = total - efectivo, Referencia = "AUT" }, new { Medio = "Efectivo", Monto = efectivo }],
             _ => [new { Medio = medio, Monto = total, Referencia = "AUT" }],
         };
-        var venta = await Ok(await caja.Cliente.PostAsJsonAsync("/api/ventas", Cuerpo(total, pagos)));
+        var venta = await Ok(await ConReintentoAsync(() => caja.Cliente.PostAsJsonAsync("/api/ventas", Cuerpo(total, pagos))));
         var queda = efectivo - venta.GetProperty("cambio").GetDecimal();
         lock (caja)
         {
@@ -267,6 +287,20 @@ public sealed class DiaDeTiendaTests
             caja.Ventas.Add((id, total, queda));
         }
         return venta;
+    }
+
+    /// <summary>A register retries a deadlock victim (409 Ocupado) with the same request: the same VentaId makes the retry safe.</summary>
+    private static async Task<HttpResponseMessage> ConReintentoAsync(Func<Task<HttpResponseMessage>> enviar)
+    {
+        for (var intento = 1; ; intento++)
+        {
+            var r = await enviar();
+            if (r.StatusCode != HttpStatusCode.Conflict || intento == 3) return r;
+            var cuerpo = await r.Content.ReadAsStringAsync();
+            if (!cuerpo.Contains("\"code\":\"Ocupado\"", StringComparison.Ordinal))
+                return new HttpResponseMessage(r.StatusCode) { Content = new StringContent(cuerpo, System.Text.Encoding.UTF8, "application/problem+json"), RequestMessage = r.RequestMessage };
+            await Task.Delay(100 * intento);
+        }
     }
 
     private static async Task<string> SesionAsync(ServidorToki servidor, string equipo, string codigo, string pin) =>

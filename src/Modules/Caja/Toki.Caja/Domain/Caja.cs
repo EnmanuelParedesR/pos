@@ -32,6 +32,8 @@ internal sealed class Turno
     /// <summary>JSON of the denomination count.</summary>
     public string? Conteo { get; set; }
     public int? NumeroZ { get; set; }
+    /// <summary>Head of the audit chain at the closing, as printed on the Z.</summary>
+    public string? CadenaAuditoria { get; set; }
     public int Version { get; set; }
 }
 

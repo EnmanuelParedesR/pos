@@ -35,6 +35,25 @@ internal static class Padron
         };
     }
 
+    /// <summary>DGII has published the file as ANSI (Windows-1252); if a future one is UTF-8, its first 64 KB decode strictly and it is read as such.</summary>
+    internal static async Task<Encoding> CodificacionAsync(Stream archivo, CancellationToken ct)
+    {
+        var inicio = new byte[64 * 1024];
+        var leidos = 0;
+        while (leidos < inicio.Length && await archivo.ReadAsync(inicio.AsMemory(leidos), ct) is var n and > 0) leidos += n;
+        // A multi-byte character may be cut at the end of the sample: leave its last 3 bytes out.
+        var muestra = inicio.AsSpan(0, leidos == inicio.Length ? leidos - 3 : leidos);
+        try
+        {
+            new UTF8Encoding(false, throwOnInvalidBytes: true).GetCharCount(muestra);
+            return Encoding.UTF8;
+        }
+        catch (DecoderFallbackException)
+        {
+            return Encoding.Latin1;
+        }
+    }
+
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app)
@@ -48,7 +67,10 @@ internal static class Padron
                     db.ChangeTracker.AutoDetectChangesEnabled = false;
 
                     var vistos = new HashSet<string>(StringComparer.Ordinal);
-                    using var lector = new StreamReader(http.Request.Body, Encoding.Latin1);
+                    http.Request.EnableBuffering(1024 * 1024, 300_000_000);
+                    var codificacion = await CodificacionAsync(http.Request.Body, ct);
+                    http.Request.Body.Position = 0;
+                    using var lector = new StreamReader(http.Request.Body, codificacion);
                     while (await lector.ReadLineAsync(ct) is { } linea)
                     {
                         if (Leer(linea) is not { } c || !vistos.Add(c.Rnc)) continue;

@@ -218,8 +218,8 @@ internal static class CerrarTurno
         }
     }
 
-    internal sealed class Handler(CajaDbContext db, ICajaOperaciones operaciones, IUserContext usuario, IOutbox outbox, IAuditoria auditoria, TimeProvider reloj)
-        : ICommandHandler<Command, ReporteZ>
+    internal sealed class Handler(CajaDbContext db, InfraDbContext infra, ICajaOperaciones operaciones, IUserContext usuario, IOutbox outbox, IAuditoria auditoria,
+        TimeProvider reloj) : ICommandHandler<Command, ReporteZ>
     {
         public async Task<Result<ReporteZ>> Handle(Command c, CancellationToken ct)
         {
@@ -244,7 +244,8 @@ internal static class CerrarTurno
                 turno.EfectivoContado.Value, turno.Diferencia.Value));
             await auditoria.RegistrarAsync("caja.cerrar-turno", "Turno", turno.Id,
                 new { turno.NumeroZ, turno.EfectivoEsperado, turno.EfectivoContado, turno.Diferencia }, ct);
-            return ReporteZ.Construir(turno, abierto.Value.Caja, movimientos, conteo);
+            turno.CadenaAuditoria = await CabezaAuditoria.TextoAsync(infra, ct); // read after our own audit record: it includes the closing
+            return ReporteZ.Construir(turno, abierto.Value.Caja, movimientos, conteo, turno.CadenaAuditoria);
         }
     }
 
@@ -265,7 +266,7 @@ internal static class ObtenerReporteZ
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/caja/turnos/{id:guid}/z", async (Guid id, IUserContext usuario, CajaDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/caja/turnos/{id:guid}/z", async (Guid id, IUserContext usuario, CajaDbContext db, InfraDbContext infra, CancellationToken ct) =>
                 {
                     var t = await db.Turnos.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
                     if (t is null) return EndpointExtensions.Problema(CajaErrors.TurnoNoEncontrado);
@@ -275,7 +276,7 @@ internal static class ObtenerReporteZ
                     var caja = await db.Cajas.Where(c => c.Id == t.CajaId).Select(c => c.Nombre).SingleAsync(ct);
                     var movimientos = await db.Movimientos.Where(m => m.TurnoId == id).AsNoTracking().ToListAsync(ct);
                     var conteo = t.Conteo is null ? null : JsonSerializer.Deserialize<List<ConteoDenominacion>>(t.Conteo, Json.Opciones);
-                    return Results.Ok(ReporteZ.Construir(t, caja, movimientos, conteo));
+                    return Results.Ok(ReporteZ.Construir(t, caja, movimientos, conteo, await CabezaAuditoria.TextoAsync(infra, ct)));
                 })
                 .RequireAuthorization().WithTags("Caja");
     }

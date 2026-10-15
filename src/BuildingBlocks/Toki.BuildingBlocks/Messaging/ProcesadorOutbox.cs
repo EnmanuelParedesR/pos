@@ -40,7 +40,7 @@ public sealed class ProcesadorOutbox(InfraDbContext db, IServiceProvider servici
                 }
                 await db.Outbox.Where(x => x.Secuencia == m.Secuencia).ExecuteUpdateAsync(s => s.SetProperty(x => x.ProcesadoUtc, reloj.GetUtcNow().UtcDateTime), ct);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 log.LogError(ex, "No se pudo procesar el evento {Tipo} {Id}; se reintenta en la próxima pasada", m.Tipo, m.Id);
             }
@@ -68,7 +68,7 @@ internal sealed class ProcesadorOutboxWorker(IServiceScopeFactory scopes, IConfi
                 var procesador = scope.ServiceProvider.GetRequiredService<ProcesadorOutbox>();
                 while (await procesador.ProcesarAsync(stoppingToken) == ProcesadorOutbox.Lote) { }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 log.LogError(ex, "Falló el procesador del outbox");
             }

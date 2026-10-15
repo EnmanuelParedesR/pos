@@ -13,12 +13,11 @@ internal sealed class InventarioReportes(InventarioDbContext db) : IInventarioRe
             .ToDictionaryAsync(x => x.Key, x => x.Cantidad, ct);
         var productos = await (from p in db.Productos
                                join c in db.Categorias on p.CategoriaId equals c.Id
-                               where p.Activo
-                               select new { p.Id, p.Nombre, p.CategoriaId, Categoria = c.Nombre, p.Unidad, p.Costo, p.Precio }).AsNoTracking().ToListAsync(ct);
-        return productos.Select(p =>
+                               select new { p.Id, p.Nombre, p.CategoriaId, Categoria = c.Nombre, p.Unidad, p.Activo, p.Costo, p.Precio }).AsNoTracking().ToListAsync(ct);
+        return productos.Where(p => p.Activo || existencias.GetValueOrDefault(p.Id) != 0).Select(p =>
         {
             var existencia = existencias.GetValueOrDefault(p.Id);
-            return new ValorInventario(p.Id, p.Nombre, p.CategoriaId, p.Categoria, p.Unidad, existencia, p.Costo,
+            return new ValorInventario(p.Id, p.Nombre, p.CategoriaId, p.Categoria, p.Unidad, p.Activo, existencia, p.Costo,
                 Dinero.Redondear(existencia * p.Costo), p.Precio, Dinero.Redondear(existencia * p.Precio));
         }).OrderByDescending(v => v.ValorCosto).ThenBy(v => v.Producto, StringComparer.CurrentCulture).ToList();
     }

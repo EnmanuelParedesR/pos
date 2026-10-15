@@ -9,12 +9,14 @@ internal sealed record TotalMedio(MedioPago Medio, decimal Cobros, decimal Anula
 internal sealed record ReporteZ(
     Guid TurnoId, int? NumeroZ, string Caja, string Cajero, DateTime AbiertoUtc, DateTime? CerradoUtc, decimal FondoInicial,
     IReadOnlyList<TotalMedio> PorMedio, int Ventas, int VentasAnuladas, decimal AbonosClientes, decimal Redondeo, decimal Entradas, decimal Retiros, decimal Gastos,
-    decimal EfectivoEsperado, decimal? EfectivoContado, decimal? Diferencia, IReadOnlyList<ConteoDenominacion>? Conteo, Guid? SupervisorCierreId)
+    decimal EfectivoEsperado, decimal? EfectivoContado, decimal? Diferencia, IReadOnlyList<ConteoDenominacion>? Conteo, Guid? SupervisorCierreId,
+    string? CadenaAuditoria)
 {
     /// <summary>Marks the reversal of a sale's rounding (so it is not counted as a voided payment).</summary>
     public const string ReferenciaRedondeo = "redondeo";
 
-    public static ReporteZ Construir(Turno t, string caja, IReadOnlyList<MovimientoCaja> movimientos, IReadOnlyList<ConteoDenominacion>? conteo)
+    /// <param name="cadenaAuditoria">Head of the audit chain ("#seq hash"), printed so a rewound chain shows on paper. A closed shift keeps the one from its closing.</param>
+    public static ReporteZ Construir(Turno t, string caja, IReadOnlyList<MovimientoCaja> movimientos, IReadOnlyList<ConteoDenominacion>? conteo, string? cadenaAuditoria)
     {
         static bool AnulaRedondeo(MovimientoCaja m) => m.Tipo == TipoMovimientoCaja.AnulacionCobro && m.Referencia == ReferenciaRedondeo;
         decimal Suma(TipoMovimientoCaja tipo, MedioPago? medio = null) =>
@@ -39,6 +41,6 @@ internal sealed record ReporteZ(
         return new ReporteZ(t.Id, t.NumeroZ, caja, t.CajeroNombre, t.AbiertoUtc, t.CerradoUtc, t.FondoInicial, porMedio,
             ventas - anuladas.Count, anuladas.Count, Suma(TipoMovimientoCaja.AbonoCliente) - Suma(TipoMovimientoCaja.AnulacionAbono), redondeo,
             Suma(TipoMovimientoCaja.Entrada), Suma(TipoMovimientoCaja.Retiro), Suma(TipoMovimientoCaja.Gasto),
-            t.EfectivoEsperado ?? CuadreTurno.EfectivoEsperado(t.FondoInicial, movimientos), t.EfectivoContado, t.Diferencia, conteo, t.SupervisorCierreId);
+            t.EfectivoEsperado ?? CuadreTurno.EfectivoEsperado(t.FondoInicial, movimientos), t.EfectivoContado, t.Diferencia, conteo, t.SupervisorCierreId, t.CadenaAuditoria ?? cadenaAuditoria);
     }
 }

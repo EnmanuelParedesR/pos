@@ -17,11 +17,11 @@ internal interface IEcfProveedor
 
 internal sealed record ResultadoEnvio(EstadoEnvio Estado, string? TrackId, string? Mensaje = null);
 
-/// <summary>Stand-in until a provider is contracted (e-CF on hold): accepts everything.</summary>
+/// <summary>Stand-in until a provider is contracted (e-CF on hold). Nothing reaches DGII, so nothing is marked accepted.</summary>
 internal sealed class ProveedorSimulado : IEcfProveedor
 {
     public Task<ResultadoEnvio> EnviarAsync(string encf, byte[] xmlFirmadoGzip, CancellationToken ct) =>
-        Task.FromResult(new ResultadoEnvio(EstadoEnvio.Aceptado, "SIM-" + Guid.NewGuid().ToString("N")[..12]));
+        Task.FromResult(new ResultadoEnvio(EstadoEnvio.Simulado, null));
 }
 
 /// <summary>Sends pending e-CF, closest DGII deadline first. A failure waits 1, 2, 4… up to 60 minutes before the next try.
@@ -44,7 +44,8 @@ internal sealed class EnvioEcf(FiscalDbContext db, IEcfProveedor proveedor, Time
                 var r = await proveedor.EnviarAsync(d.ENcf, d.XmlFirmado, ct);
                 (d.Estado, d.TrackId, d.UltimoError, d.ProximoIntentoUtc) = (r.Estado, r.TrackId, r.Mensaje, null);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            // An HTTP timeout is a TaskCanceledException too: only our own shutdown token ends the pass.
+            catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 d.Intentos++;
                 d.ProximoIntentoUtc = ahora + Espera(d.Intentos);
@@ -75,7 +76,7 @@ internal sealed class EnvioEcfWorker(IServiceScopeFactory scopes, IConfiguration
                 var envio = scope.ServiceProvider.GetRequiredService<EnvioEcf>();
                 while (await envio.ProcesarAsync(stoppingToken) == EnvioEcf.Lote) { }
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 log.LogError(ex, "Falló la cola de envío de e-CF");
             }

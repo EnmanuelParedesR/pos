@@ -46,7 +46,7 @@ public sealed class CajaTests
             M(TipoMovimientoCaja.Cobro, 450, MedioPago.Tarjeta, Guid.NewGuid()),
             M(TipoMovimientoCaja.AnulacionCobro, 300, venta: anulada),
         ];
-        var z = ReporteZ.Construir(turno, "Caja 1", movimientos, null);
+        var z = ReporteZ.Construir(turno, "Caja 1", movimientos, null, "#7 ABCDEF12");
 
         z.Ventas.ShouldBe(2);
         z.VentasAnuladas.ShouldBe(1);

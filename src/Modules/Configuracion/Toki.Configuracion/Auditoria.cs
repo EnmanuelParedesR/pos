@@ -38,7 +38,8 @@ internal sealed class UltimaVerificacionAuditoria : IHealthCheck
             : HealthCheckResult.Healthy());
 }
 
-/// <summary>Verifies the audit chain every night at 03:00 store time; a broken chain is a critical log line and an unhealthy /health.</summary>
+/// <summary>Verifies the audit chain two minutes after every start and every night at 03:00 store time (many store PCs are off at night,
+/// so the nightly run alone would never happen there); a broken chain is a critical log line and an unhealthy /health.</summary>
 internal sealed class VerificacionNocturnaAuditoria(IServiceScopeFactory scopes, UltimaVerificacionAuditoria ultima, TimeProvider reloj,
     IConfiguration config, ILogger<VerificacionNocturnaAuditoria> log) : BackgroundService
 {
@@ -47,19 +48,25 @@ internal sealed class VerificacionNocturnaAuditoria(IServiceScopeFactory scopes,
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!config.GetValue("Auditoria:VerificacionNocturna", true)) return; // off in the in-memory test host (fake clock)
+        await Task.Delay(TimeSpan.FromMinutes(2), reloj, stoppingToken);
         while (!stoppingToken.IsCancellationRequested)
         {
+            await VerificarAsync(stoppingToken);
             await Task.Delay(HastaLaProxima(reloj.GetUtcNow().UtcDateTime, Hora), reloj, stoppingToken);
-            try
-            {
-                await using var scope = scopes.CreateAsyncScope();
-                ultima.PrimerRegistroRoto = await CadenaAuditoria.VerificarAsync(scope.ServiceProvider.GetRequiredService<InfraDbContext>(), stoppingToken);
-                if (ultima.PrimerRegistroRoto is { } roto) log.LogCritical("La cadena de auditoría está rota desde el registro {Secuencia}", roto);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                log.LogError(ex, "No se pudo verificar la auditoría");
-            }
+        }
+    }
+
+    public async Task VerificarAsync(CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            ultima.PrimerRegistroRoto = await CadenaAuditoria.VerificarAsync(scope.ServiceProvider.GetRequiredService<InfraDbContext>(), ct);
+            if (ultima.PrimerRegistroRoto is { } roto) log.LogCritical("La cadena de auditoría está rota desde el registro {Secuencia}", roto);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            log.LogError(ex, "No se pudo verificar la auditoría");
         }
     }
 

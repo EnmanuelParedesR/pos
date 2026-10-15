@@ -118,6 +118,10 @@ namespace Toki.Caja.Persistence.Migraciones
                     b.Property<DateTime>("AbiertoUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("CadenaAuditoria")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<Guid>("CajaId")
                         .HasColumnType("uniqueidentifier");
 

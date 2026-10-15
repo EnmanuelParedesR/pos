@@ -274,17 +274,7 @@ internal static class EstadoCuentaSuplidor
     }
 }
 
-/// <summary>Accounts payable by supplier, aged by due date: current, 1–30, 31–60, 61–90 and over 90 days overdue.</summary>
-internal static class CuentasPorPagarAntiguedad
-{
-    internal sealed class Endpoint : IEndpoint
-    {
-        public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/compras/por-pagar", async (IComprasReportes reportes, CancellationToken ct) => Results.Ok(await reportes.PorPagarAsync(ct)))
-                .RequirePermiso(Permisos.ComprasGestionar).WithTags("Compras");
-    }
-}
-
+/// <summary>Payables aged by due date (current, 1–30, 31–60, 61–90, over 90 days overdue) and the 606; served and exported by Reportes.</summary>
 internal sealed class ComprasReportes(ComprasDbContext db, TimeProvider reloj) : IComprasReportes
 {
     public async Task<IReadOnlyList<CuentaPorPagarSuplidor>> PorPagarAsync(CancellationToken ct)
@@ -299,16 +289,21 @@ internal sealed class ComprasReportes(ComprasDbContext db, TimeProvider reloj) :
         }).OrderByDescending(i => i.Total).ToList();
     }
 
+    /// <remarks>shortcut: a cash purchase is reported as paid in cash (1) and a credit one as on credit (4) without its payment date;
+    /// "ITBIS llevado al costo" for exempt sales stays at zero. The accountant confirms one month before the pilot (R5 #3).</remarks>
     public async Task<IReadOnlyList<Documento606>> Documentos606Async(DateOnly desde, DateOnly hasta, CancellationToken ct)
     {
-        static int TipoId(string? rnc) => rnc?.Length == 11 ? 2 : 1;
+        static Documento606 Fila(string? rnc, int tipo, string ncf, DateOnly fecha, decimal servicios, decimal bienes, decimal itbis, Condicion condicion) =>
+            new(rnc, rnc?.Length == 11 ? 2 : 1, tipo, ncf, null, fecha, null, servicios, bienes, servicios + bienes, itbis, 0, 0, 0, itbis, 0, null, 0, 0, 0, 0, 0,
+                condicion == Condicion.Contado ? 1 : 4);
         var compras = await db.Compras.Where(c => c.Estado == EstadoCompra.Aplicada && c.FechaFactura >= desde && c.FechaFactura <= hasta)
-            .Select(c => new Documento606(c.RncSuplidor, 0, (int)TipoGasto.CostoDeVenta, c.Ncf, c.FechaFactura, c.Subtotal, c.Itbis, c.Total, c.Condicion.ToString()))
-            .AsNoTracking().ToListAsync(ct);
+            .Select(c => new { c.RncSuplidor, c.Ncf, c.FechaFactura, c.Subtotal, c.Itbis, c.Condicion }).AsNoTracking().ToListAsync(ct);
         var gastos = await db.Gastos.Where(g => !g.Anulado && g.Fecha >= desde && g.Fecha <= hasta)
-            .Select(g => new Documento606(g.RncSuplidor, 0, (int)g.Tipo, g.Ncf, g.Fecha, g.Subtotal, g.Itbis, g.Total, g.Condicion.ToString()))
-            .AsNoTracking().ToListAsync(ct);
-        return compras.Concat(gastos).Select(d => d with { TipoId = TipoId(d.RncCedula) })
-            .OrderBy(d => d.Fecha).ThenBy(d => d.Ncf, StringComparer.Ordinal).ToList();
+            .Select(g => new { g.RncSuplidor, g.Tipo, g.Ncf, g.Fecha, g.Subtotal, g.Itbis, g.Condicion }).AsNoTracking().ToListAsync(ct);
+        // Merchandise is goods; services, rent and the like are services.
+        static bool EsServicio(TipoGasto t) => t is TipoGasto.TrabajosSuministrosServicios or TipoGasto.Arrendamientos;
+        return compras.Select(c => Fila(c.RncSuplidor, (int)TipoGasto.CostoDeVenta, c.Ncf, c.FechaFactura, 0, c.Subtotal, c.Itbis, c.Condicion))
+            .Concat(gastos.Select(g => Fila(g.RncSuplidor, (int)g.Tipo, g.Ncf, g.Fecha, EsServicio(g.Tipo) ? g.Subtotal : 0, EsServicio(g.Tipo) ? 0 : g.Subtotal, g.Itbis, g.Condicion)))
+            .OrderBy(d => d.FechaComprobante).ThenBy(d => d.Ncf, StringComparer.Ordinal).ToList();
     }
 }

@@ -70,7 +70,8 @@ public sealed class ReportesTests(TokiApp app) : IClassFixture<TokiApp>, IAsyncL
         var dia = (await Get($"ventas/por-dia?{_periodo}")).EnumerateArray().Single();
         dia.GetProperty("ventas").GetInt32().ShouldBe(2);
         dia.GetProperty("devoluciones").GetDecimal().ShouldBe(59m);
-        dia.GetProperty("neto").GetDecimal().ShouldBe(566m);
+        dia.GetProperty("ventasConItbis").GetDecimal().ShouldBe(625m);
+        dia.GetProperty("netoSinItbis").GetDecimal().ShouldBe(530m);
         dia.GetProperty("itbis").GetDecimal().ShouldBe(36m);
         dia.GetProperty("costo").GetDecimal().ShouldBe(360m);
         dia.GetProperty("utilidad").GetDecimal().ShouldBe(170m);
@@ -82,7 +83,7 @@ public sealed class ReportesTests(TokiApp app) : IClassFixture<TokiApp>, IAsyncL
         var productos = (await Get($"ventas/por-producto?{_periodo}")).EnumerateArray().ToDictionary(p => p.GetProperty("productoId").GetGuid());
         productos[_chuleta].GetProperty("utilidad").GetDecimal().ShouldBe(110m);
         productos[_refresco].GetProperty("cantidad").GetDecimal().ShouldBe(4m);
-        productos[_refresco].GetProperty("neto").GetDecimal().ShouldBe(200m);
+        productos[_refresco].GetProperty("netoSinItbis").GetDecimal().ShouldBe(200m);
         productos[_refresco].GetProperty("utilidad").GetDecimal().ShouldBe(60m);
 
         var categoria = (await Get($"ventas/por-categoria?{_periodo}")).EnumerateArray().Single();
@@ -108,7 +109,23 @@ public sealed class ReportesTests(TokiApp app) : IClassFixture<TokiApp>, IAsyncL
         // Three sales and two credit notes (the void and the return), each pointing to its sale.
         var docs = (await Get($"dgii/607?{_periodo}")).EnumerateArray().ToList();
         docs.Count.ShouldBe(5);
-        docs.Count(d => d.GetProperty("eNcf").GetString()!.StartsWith("E34", StringComparison.Ordinal) && d.GetProperty("eNcfModificado").GetString() is not null).ShouldBe(2);
+        docs.Count(d => d.GetProperty("ncf").GetString()!.StartsWith("E34", StringComparison.Ordinal) && d.GetProperty("ncfModificado").GetString() is not null).ShouldBe(2);
+        // Sale A: 448 charged, ITBIS 18 → "Monto facturado" is without ITBIS, and the payment columns add up to what was charged.
+        var a = docs.Single(d => d.GetProperty("ncfModificado").ValueKind == JsonValueKind.Null && d.GetProperty("itbisFacturado").GetDecimal() == 18m);
+        a.GetProperty("montoFacturado").GetDecimal().ShouldBe(430m);
+        (a.GetProperty("efectivo").GetDecimal() + a.GetProperty("tarjeta").GetDecimal() + a.GetProperty("chequeTransferencia").GetDecimal()).ShouldBe(448m);
+        a.GetProperty("tipoIngreso").GetInt32().ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task En_CSV_las_horas_salen_en_hora_de_la_tienda()
+    {
+        var turno = (await Get($"turnos?{_periodo}")).EnumerateArray().Single();
+        var abierto = turno.GetProperty("abiertoUtc").GetDateTime().ToUniversalTime().AddHours(-4);
+        var csv = await _admin.GetStringAsync($"/api/reportes/turnos?{_periodo}&formato=csv");
+        csv.ShouldContain(",Abierto,");
+        csv.ShouldNotContain("AbiertoUtc");
+        csv.ShouldContain(abierto.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
     }
 
     [Fact]

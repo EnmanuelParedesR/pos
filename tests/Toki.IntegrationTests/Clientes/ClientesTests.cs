@@ -82,7 +82,7 @@ public sealed class ClientesTests(TokiApp app) : IClassFixture<TokiApp>
 
         var estado = await (await Admin()).GetFromJsonAsync<JsonElement>($"/api/clientes/{cliente}/estado-cuenta");
         estado.GetProperty("deuda").GetDecimal().ShouldBe(150m);
-        var cxc = await (await Admin()).GetFromJsonAsync<JsonElement>("/api/clientes/por-cobrar");
+        var cxc = await (await Admin()).GetFromJsonAsync<JsonElement>("/api/reportes/por-cobrar");
         cxc.EnumerateArray().Single(i => i.GetProperty("clienteId").GetGuid() == cliente).GetProperty("de0a30").GetDecimal().ShouldBe(150m);
         var reporte = await (await Admin()).GetFromJsonAsync<JsonElement>("/api/reportes/por-cobrar");
         reporte.EnumerateArray().Single(i => i.GetProperty("clienteId").GetGuid() == cliente).GetProperty("total").GetDecimal().ShouldBe(150m);
@@ -194,7 +194,7 @@ public sealed class ClientesTests(TokiApp app) : IClassFixture<TokiApp>
         // Blocked customers only show up for whoever can reactivate them.
         (await cajero.GetFromJsonAsync<JsonElement>("/api/clientes?buscar=Moroso&inactivos=true")).EnumerateArray().ShouldNotContain(c => c.GetProperty("id").GetGuid() == moroso);
         (await (await Admin()).GetFromJsonAsync<JsonElement>("/api/clientes?buscar=Moroso&inactivos=true")).EnumerateArray().ShouldContain(c => c.GetProperty("id").GetGuid() == moroso);
-        (await cajero.GetAsync("/api/clientes/por-cobrar")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await cajero.GetAsync("/api/reportes/por-cobrar")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
     [Fact]

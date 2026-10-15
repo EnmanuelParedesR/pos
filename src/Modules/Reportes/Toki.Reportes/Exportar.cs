@@ -8,15 +8,21 @@ using Toki.SharedKernel;
 
 namespace Toki.Reportes;
 
-/// <summary>Turns a report's rows into JSON, CSV or Excel. Columns are the row record's properties, in order.</summary>
+/// <summary>Turns a report's rows into JSON, CSV or Excel. Columns are the row record's properties, in order.
+/// In CSV and Excel, UTC times are shown in store time (UTC−4) and the "Utc" suffix leaves the column name; JSON keeps UTC with its "Z".</summary>
 internal static class Exportar
 {
     public const string Xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+    /// <summary>Excel keeps every cell as an object in memory on the store server; bigger exports go to CSV.</summary>
+    public const int MaxFilasExcel = 50_000;
 
     public static IResult Como<T>(IReadOnlyList<T> filas, string? formato, string nombre) => formato?.ToLowerInvariant() switch
     {
         null or "" or "json" => Results.Ok(filas),
         "csv" => Results.File(Csv(filas), "text/csv; charset=utf-8", $"{nombre}.csv"),
+        "xlsx" when filas.Count > MaxFilasExcel => EndpointExtensions.Problema(
+            Error.Validation("Reportes.DemasiadasFilas", $"El reporte tiene {filas.Count:N0} filas; Excel acepta hasta {MaxFilasExcel:N0} aquí. Use CSV o un período más corto.")),
         "xlsx" => Results.File(Excel(filas, nombre), Xlsx, $"{nombre}.xlsx"),
         _ => EndpointExtensions.Problema(Error.Validation("Reportes.FormatoInvalido", "El formato debe ser json, csv o xlsx.")),
     };
@@ -24,13 +30,19 @@ internal static class Exportar
     /// <summary>UTF-8 with BOM so Excel shows accents; dot decimals (invariant) so amounts parse the same everywhere.</summary>
     public static byte[] Csv<T>(IEnumerable<T> filas)
     {
-        var columnas = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        var columnas = Columnas<T>();
         var sb = new StringBuilder();
-        sb.AppendLine(string.Join(',', columnas.Select(c => c.Name)));
+        sb.AppendLine(string.Join(',', columnas.Select(Titulo)));
         foreach (var fila in filas)
-            sb.AppendLine(string.Join(',', columnas.Select(c => Celda(c.GetValue(fila)))));
+            sb.AppendLine(string.Join(',', columnas.Select(c => Celda(Valor(c, fila)))));
         return [.. Encoding.UTF8.GetPreamble(), .. Encoding.UTF8.GetBytes(sb.ToString())];
     }
+
+    private static PropertyInfo[] Columnas<T>() => typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+
+    private static string Titulo(PropertyInfo p) => p.Name.EndsWith("Utc", StringComparison.Ordinal) ? p.Name[..^3] : p.Name;
+
+    private static object? Valor<T>(PropertyInfo p, T fila) => p.GetValue(fila) is DateTime utc ? utc + DiaNegocio.Desfase : p.GetValue(fila);
 
     private static string Celda(object? valor)
     {
@@ -47,18 +59,25 @@ internal static class Exportar
         return texto.IndexOfAny([',', '"', '\n', '\r']) >= 0 ? $"\"{texto.Replace("\"", "\"\"", StringComparison.Ordinal)}\"" : texto;
     }
 
-    private static byte[] Excel<T>(IEnumerable<T> filas, string nombre)
+    /// <summary>Cells are written as values (never formulas); columns are sized from the first 100 rows only.</summary>
+    private static byte[] Excel<T>(IReadOnlyList<T> filas, string nombre)
     {
         using var libro = new XLWorkbook();
         var hoja = libro.Worksheets.Add(nombre.Length > 31 ? nombre[..31] : nombre);
-        var lista = filas.ToList();
-        if (lista.Count > 0) hoja.Cell(1, 1).InsertTable(lista);
-        else
+        var columnas = Columnas<T>();
+        for (var c = 0; c < columnas.Length; c++)
         {
-            var columnas = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            for (var i = 0; i < columnas.Length; i++) hoja.Cell(1, i + 1).Value = columnas[i].Name;
+            hoja.Cell(1, c + 1).Value = Titulo(columnas[c]);
+            for (var f = 0; f < filas.Count; f++) hoja.Cell(f + 2, c + 1).Value = XLCellValue.FromObject(Valor(columnas[c], filas[f]) switch
+            {
+                DateOnly d => d.ToDateTime(TimeOnly.MinValue),
+                Guid g => g.ToString(),
+                Enum e => e.ToString(),
+                var v => v,
+            });
         }
-        hoja.Columns().AdjustToContents();
+        hoja.Row(1).Style.Font.Bold = true;
+        hoja.Columns().AdjustToContents(1, Math.Min(filas.Count + 1, 101));
         using var salida = new MemoryStream();
         libro.SaveAs(salida);
         return salida.ToArray();

@@ -93,7 +93,7 @@ public sealed class ComprasTests(TokiApp app) : IClassFixture<TokiApp>
 
         var estado = await c.GetFromJsonAsync<JsonElement>($"/api/compras/suplidores/{suplidor}/estado-cuenta");
         estado.GetProperty("saldo").GetDecimal().ShouldBe(2000m);
-        var antiguedad = await c.GetFromJsonAsync<JsonElement>("/api/compras/por-pagar");
+        var antiguedad = await c.GetFromJsonAsync<JsonElement>("/api/reportes/por-pagar");
         antiguedad.EnumerateArray().Single(i => i.GetProperty("suplidorId").GetGuid() == suplidor).GetProperty("total").GetDecimal().ShouldBe(2000m);
 
         // A purchase with payments cannot be voided.
@@ -267,7 +267,7 @@ public sealed class ComprasTests(TokiApp app) : IClassFixture<TokiApp>
         (await c.PostAsJsonAsync("/api/compras/gastos", Gasto(suplidor, hoy.AddYears(1), 0))).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await c.PostAsJsonAsync("/api/compras/gastos", Gasto(suplidor, hoy, 0))).EnsureSuccessStatusCode();                // due today: not overdue
         (await c.PostAsJsonAsync("/api/compras/gastos", Gasto(suplidor, hoy.AddDays(-1), 0))).EnsureSuccessStatusCode();    // due yesterday: 1–30
-        var fila = (await c.GetFromJsonAsync<JsonElement>("/api/compras/por-pagar")).EnumerateArray().Single(i => i.GetProperty("suplidorId").GetGuid() == suplidor);
+        var fila = (await c.GetFromJsonAsync<JsonElement>("/api/reportes/por-pagar")).EnumerateArray().Single(i => i.GetProperty("suplidorId").GetGuid() == suplidor);
         (fila.GetProperty("porVencer").GetDecimal(), fila.GetProperty("vencido1a30").GetDecimal()).ShouldBe((100m, 100m));
     }
 
@@ -287,8 +287,8 @@ public sealed class ComprasTests(TokiApp app) : IClassFixture<TokiApp>
 
         var filas = (await c.GetFromJsonAsync<JsonElement>("/api/reportes/dgii/606?desde=2026-10-14&hasta=2026-10-14")).EnumerateArray().ToList();
         var deCompra = filas.Single(f => f.GetProperty("ncf").GetString() == ncfCompra);
-        (deCompra.GetProperty("tipoBienesServicios").GetInt32(), deCompra.GetProperty("monto").GetDecimal(), deCompra.GetProperty("tipoId").GetInt32()).ShouldBe((9, 1800m, 1));
-        filas.Single(f => f.GetProperty("ncf").GetString() == ncfGasto).GetProperty("itbis").GetDecimal().ShouldBe(90m);
+        (deCompra.GetProperty("tipoBienesServicios").GetInt32(), deCompra.GetProperty("montoBienes").GetDecimal(), deCompra.GetProperty("tipoId").GetInt32()).ShouldBe((9, 1800m, 1));
+        filas.Single(f => f.GetProperty("ncf").GetString() == ncfGasto).GetProperty("itbisFacturado").GetDecimal().ShouldBe(90m);
 
         var csv = await c.GetStringAsync("/api/reportes/por-pagar?formato=csv");
         csv.ShouldContain(suplidor.ToString());

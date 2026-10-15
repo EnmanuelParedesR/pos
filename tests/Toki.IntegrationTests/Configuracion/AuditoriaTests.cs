@@ -41,6 +41,11 @@ public sealed class AuditoriaTests(TokiApp app) : IClassFixture<TokiApp>
         resultado.GetProperty("intacta").GetBoolean().ShouldBeFalse();
         resultado.GetProperty("primerRegistroRoto").GetInt64().ShouldBe(2);
 
+        // The check that runs after every start (and at 03:00) turns /health red.
+        var verificacion = app.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<VerificacionNocturnaAuditoria>().Single();
+        await verificacion.VerificarAsync(CancellationToken.None);
+        (await app.Anonimo().GetAsync("/health")).StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+
         var cajero = app.Cliente(await app.UsuarioAsync(Roles.Cajero));
         (await cajero.GetAsync("/api/auditoria/verificar")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }

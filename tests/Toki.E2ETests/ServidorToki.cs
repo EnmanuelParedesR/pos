@@ -100,6 +100,7 @@ public sealed class ServidorToki : IAsyncDisposable
             catch (TaskCanceledException) { }
             await Task.Delay(250);
         }
+        await DetenerAsync(); // never leave an orphan holding the port and the database file
         throw new TimeoutException($"La API no respondió /health en 90 s:\n{Salida()}");
     }
 
