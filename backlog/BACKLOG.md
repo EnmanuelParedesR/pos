@@ -183,6 +183,9 @@ Decisión: ADR-0008. Despliegue: `docs/despliegue-azure.md`.
 | TK-137 | Panel web del dueño (React) | 🟡 `src/Cloud/panel` (Vite 6, React 19, TypeScript estricto, react-router 7, sin librerías de UI ni de gráficas): entrar / crear cuenta (errores de Identity en español), resumen del día por tienda (cifras, ventas por hora, medios de pago, "para revisar", última actualización en ámbar después de 24 h), ventas (por día, más vendidos, por cajero), cuadres con filtro de diferencias, tiendas con estado por caja y código de conexión con cuenta regresiva, asistente con aviso ámbar si no está configurado. Usa `escuadra.css` de la caja tal cual. Token en memoria y refresh en `localStorage`, renueva una vez ante un 401. `npm run check` (tsc + 12 pruebas de Vitest) pasa. Pendiente: `vite build` y `npm run dev` necesitan Node ≥ 18 (la PC tiene Node 16); con Node 22, pasar Vitest 0.34 → 3 y jsdom 22 → 26 (hoy fijados por Node 16); nombres de cajeros (TK-133); publicar en la Static Web App |
 | TK-138 | Caja: Configuración → Nube (conectar con el código del panel, estado, desconectar) | ✅ Probado de punta a punta: caja → API local → nube → panel |
 | TK-139 | Desplegar en Azure (Bicep, base, API nube, panel, modelo del asistente) y probar el asistente con el modelo real | ⬜ Necesita Azure CLI y `az login` del dueño |
+| TK-188 | Análisis de la competencia: Poszy (poszy.com) frente a Toki; brechas y tickets nuevos | 🔨 |
+| TK-189 | Consola de superadministrador (equipo de Toki): todos los clientes, tiendas, cajas, equipos, licencias, versión y estado de sincronización, con acceso de solo lectura y auditado | 🔨 |
+| TK-190 | Métricas de producto: activación, uso, retención y salud por tienda (latido del nodo, eventos de uso agregados, sin datos personales) en la consola | 🔨 |
 
 ## M13 · e-CF propio con la DGII
 
