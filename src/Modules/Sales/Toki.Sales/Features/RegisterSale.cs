@@ -66,7 +66,7 @@ internal static class RegisterSale
 
     internal sealed class Handler(
         SalesDbContext db, ICashRegisterOperations cash, ICatalogQueries catalog, IStockMovements inventory, IFiscalDocuments fiscal,
-        ISettingsQueries settings, ICustomerAccounts customers, ISupervisorApprovals approvals, IUserContext user, IOutbox outbox,
+        ISettingsQueries settings, ICustomerAccounts customers, ISupervisorApprovals approvals, IApprovalPolicy policy, IUserContext user, IOutbox outbox,
         IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
@@ -211,6 +211,7 @@ internal static class RegisterSale
             var available = c.SupervisorApprovals?.Distinct().ToList() ?? [];
             foreach (var permission in permissions.Where(p => !user.Has(p)).Order())
             {
+                if (!await policy.RequiresSupervisorAsync(permission, ct)) continue; // the store turned this supervisor off (TK-210)
                 Guid? supervisor = null;
                 foreach (var id in available)
                 {

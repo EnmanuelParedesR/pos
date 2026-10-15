@@ -24,6 +24,8 @@ public static class Permissions
     public const string SalesReturn = "sales.return";
     public const string SalesLargeDiscount = "sales.large-discount";
     public const string SalesPriceOverride = "sales.price-override";
+    /// <summary>Remove lines or void the sale in progress (nothing charged yet). Asked only when the store's approval policy says so (TK-210).</summary>
+    public const string SalesRemoveLine = "sales.remove-line";
 
     public const string PurchasingManage = "purchasing.manage";
     public const string CustomersManage = "customers.manage";
@@ -37,7 +39,7 @@ public static class Permissions
         UsersManage, DevicesManage, SettingsManage,
         ProductsManage, PricesChange, InventoryView, InventoryAdjust, InventoryCount, InventoryTransfer,
         RegisterOperate, RegisterWithdraw, RegisterApproveClose, RegisterOpenDrawer,
-        SalesCreate, SalesVoid, SalesReturn, SalesLargeDiscount, SalesPriceOverride,
+        SalesCreate, SalesVoid, SalesReturn, SalesLargeDiscount, SalesPriceOverride, SalesRemoveLine,
         PurchasingManage, CustomersManage, CreditManage, CreditExceedLimit, FiscalManage, ReportsView,
     ];
 }

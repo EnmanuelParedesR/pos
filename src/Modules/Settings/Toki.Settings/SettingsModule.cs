@@ -23,6 +23,7 @@ public static class SettingsModule
     {
         services.AddModuleDbContext<SettingsDbContext>();
         services.AddScoped<ISettingsQueries, SettingsQueries>();
+        services.AddScoped<IApprovalPolicy, ApprovalPolicy>();
         services.AddSingleton<LastAuditCheck>();
         services.AddHostedService<NightlyAuditCheck>();
         services.AddHealthChecks().AddCheck<LastAuditCheck>("audit").AddCheck<BackupHealthCheck>("backup");
@@ -52,6 +53,8 @@ internal sealed class Business
     public byte[]? BackupSalt { get; set; }
     /// <summary>Key derived from the passphrase, protected for this machine (ASP.NET Core Data Protection). The phrase itself is never stored.</summary>
     public string? BackupKey { get; set; }
+    /// <summary>Comma-separated permissions this store asks a supervisor for (TK-210); null until the owner saves it: <see cref="ApprovalPolicy.Defaults"/>.</summary>
+    public string? SupervisorApprovals { get; set; }
 
     public BusinessProfile ToProfile() => new(Name, Rnc, Address, Phone, ReceiptFooter, DiscountCapPercent);
 }
@@ -71,6 +74,7 @@ internal sealed class BusinessConfiguration : IEntityTypeConfiguration<Business>
         b.Property(n => n.ReceiptFooter).HasMaxLength(500);
         b.Property(n => n.BackupSalt).HasMaxLength(16);
         b.Property(n => n.BackupKey).HasMaxLength(1000);
+        b.Property(n => n.SupervisorApprovals).HasMaxLength(500);
         // Literal values: changing a property default later must not overwrite the owner's settings through a migration.
         b.HasData(new Business { Id = 1, Name = "Mi tienda", DiscountCapPercent = 10 });
     }

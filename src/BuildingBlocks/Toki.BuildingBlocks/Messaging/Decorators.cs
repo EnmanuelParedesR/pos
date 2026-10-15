@@ -85,12 +85,13 @@ internal sealed class TransactionDecorator<TCommand, TResponse>(
 }
 
 internal sealed class ApprovalDecorator<TCommand, TResponse>(
-    ICommandHandler<TCommand, TResponse> inner, IUserContext user, ISupervisorApprovals approvals, IAuditLog audit)
+    ICommandHandler<TCommand, TResponse> inner, IUserContext user, ISupervisorApprovals approvals, IApprovalPolicy policy, IAuditLog audit)
     : ICommandHandler<TCommand, TResponse> where TCommand : ICommand<TResponse>
 {
     public async Task<Result<TResponse>> Handle(TCommand command, CancellationToken ct)
     {
-        if (command is IRequiresApproval req && !user.Has(req.Permission))
+        // With the store's policy off for this action the user does it alone; the handler's own audit record still names them.
+        if (command is IRequiresApproval req && !user.Has(req.Permission) && await policy.RequiresSupervisorAsync(req.Permission, ct))
         {
             if (req.SupervisorApprovalId is not { } id) return ApprovalErrors.Required(req.Permission);
             var supervisor = await approvals.ConsumeAsync(id, req.Permission, req.ResourceId, ct);

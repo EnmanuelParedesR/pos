@@ -68,6 +68,7 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | equipo (dispositivo), emparejar, código | `Device`, `Pair`, `PairingCode` |
 | sesión, PIN, bloqueado | `Session`, `Pin`, `Locked` |
 | autorización de supervisor | `SupervisorApproval` |
+| qué acciones piden supervisor en esta tienda | `ApprovalPolicy` (`/api/settings/approvals`) |
 | instalación | `Setup` |
 | datos del negocio, pie del recibo | `BusinessProfile`, `ReceiptFooter` |
 | licencia, funciones | `License`, `Features` |
@@ -87,6 +88,7 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | `caja.operar` / `retirar` / `aprobar-cierre` / `abrir-gaveta` | `register.operate` / `withdraw` / `approve-close` / `open-drawer` |
 | `ventas.registrar` / `anular` / `devolver` | `sales.create` / `void` / `return` |
 | `ventas.descuento-mayor` / `cambiar-precio` | `sales.large-discount` / `price-override` |
+| `ventas.quitar-linea` (quitar líneas o anular la venta en curso) | `sales.remove-line` |
 | `compras.gestionar` | `purchasing.manage` |
 | `clientes.gestionar` | `customers.manage` |
 | `fiado.gestionar` / `exceder-limite` | `credit.manage` / `exceed-limit` |

@@ -5,6 +5,7 @@
 @inject Cart Cart
 @inject NavigationManager Nav
 @inject Peripherals Peripherals
+@inject Approver Approver
 
 <div class="sale" data-keys @onkeydown="KeyAsync">
     <section class="sale__left" aria-label="Productos">
@@ -332,14 +333,27 @@
     private async Task RemoveLineAsync()
     {
         _focusScanner = true;
-        if (Cart.Selected is { } id && await EditableAsync()) Cart.Remove(id);
+        if (Cart.Selected is { } id && await EditableAsync() && await SupervisorAllowsAsync("Quitar una línea")) Cart.Remove(id);
     }
 
-    private void VoidSale()
+    private async Task VoidSale()
     {
+        Close();
+        if (!await SupervisorAllowsAsync("Anular la venta en curso")) return;
         Cart.Clear();
         _notice = new(Notice.Kinds.Info, "Venta anulada antes de cobrar.");
-        Close();
+    }
+
+    /// <summary>Removing a line or voiding the sale in progress: the cashier does it alone unless the store asks a supervisor for it
+    /// (Configuración → Cajas, TK-210) and the role lacks sales.remove-line. Read on each use, so a change applies at once.</summary>
+    // shortcut: with the policy unreadable (server down) the cashier goes on alone; nothing was charged and nothing can be charged offline.
+    private async Task<bool> SupervisorAllowsAsync(string reason)
+    {
+        const string permission = "sales.remove-line";
+        if (Session.Can(permission)) return true;
+        var policy = (await Api.GetAsync<List<ApprovalRule>>("/api/settings/approvals")).Value;
+        if (policy?.Find(r => r.Permission == permission) is not { Required: true }) return true;
+        return await Approver.RequestAsync(permission, Cart.SaleId, reason) is not null;
     }
 
     private async Task OpenAsync(Panel p)

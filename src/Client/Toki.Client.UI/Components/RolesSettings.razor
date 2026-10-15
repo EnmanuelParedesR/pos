@@ -75,7 +75,7 @@
 
     private static readonly (string, string[])[] Groups =
     [
-        ("Caja y ventas", ["register.operate", "sales.create", "register.withdraw", "register.open-drawer", "register.approve-close", "sales.void", "sales.return", "sales.large-discount", "sales.price-override"]),
+        ("Caja y ventas", ["register.operate", "sales.create", "register.withdraw", "register.open-drawer", "register.approve-close", "sales.void", "sales.return", "sales.large-discount", "sales.price-override", "sales.remove-line"]),
         ("Clientes y fiado", ["customers.manage", "credit.manage", "credit.exceed-limit"]),
         ("Productos e inventario", ["products.manage", "prices.change", "inventory.view", "inventory.adjust", "inventory.count", "inventory.transfer", "purchasing.manage"]),
         ("Administración", ["reports.view", "fiscal.manage", "settings.manage", "users.manage", "devices.manage"]),
@@ -93,6 +93,7 @@
         "sales.return" => "Hacer devoluciones",
         "sales.large-discount" => "Dar descuentos mayores que el tope",
         "sales.price-override" => "Cambiar el precio en la caja",
+        "sales.remove-line" => "Quitar líneas o anular la venta en curso",
         "customers.manage" => "Buscar y crear clientes",
         "credit.manage" => "Dar crédito, precio mayorista y anular abonos",
         "credit.exceed-limit" => "Fiar por encima del límite",
