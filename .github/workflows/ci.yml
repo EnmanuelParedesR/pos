@@ -29,6 +29,12 @@ jobs:
           TOKI_TEST_DB: ${{ matrix.db }}
           # Run as a store PC would (UTC-4) so time-zone bugs show up in CI.
           TZ: America/Santo_Domingo
+          TOKI_SQL_LOGS: /tmp/sqllogs
+      - name: diag
+        if: always()
+        run: |
+          free -m; nproc
+          for f in /tmp/sqllogs/*.log; do echo "== $f"; grep -iE "login failed|reason|error:|memory|upgrade mode|terminat|shutdown" "$f" | head -60; done
 
   ui:
     name: Pruebas de interfaz (Playwright)
@@ -52,16 +58,3 @@ jobs:
         run: dotnet test --project tests/Toki.UiTests/Toki.UiTests.csproj -c Release --no-build
         env:
           TZ: America/Santo_Domingo
-
-  diag:
-    name: diag-mssql
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          docker run -d --name sq -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=yourStrong(!)Password' -p 1433:1433 mcr.microsoft.com/mssql/server:2025-CU9-GDR1-ubuntu-22.04
-          for i in $(seq 1 120); do
-            r=$(docker exec sq /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'yourStrong(!)Password' -Q 'SET NOCOUNT ON; SELECT 1' -h -1 2>&1 | tr -d '\n' | cut -c1-150)
-            echo "$(date +%T) $r"
-            sleep 1
-          done
-          docker logs -t sq

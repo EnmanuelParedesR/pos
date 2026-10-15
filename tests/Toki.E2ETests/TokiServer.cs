@@ -136,6 +136,7 @@ public sealed class TokiServer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
+        if (_container is not null) await Toki.Tests.SqlServerImage.SaveLogsAsync(_container);
         if (_container is not null) await _container.DisposeAsync();
         if (_externalDatabase is not null) await DropDatabaseAsync(_externalDatabase);
         if (_sqliteFile is not null)

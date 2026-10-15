@@ -61,6 +61,7 @@ public sealed class TestSqlServer : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
+        if (_container is not null) await Toki.Tests.SqlServerImage.SaveLogsAsync(_container);
         if (_container is not null) await _container.DisposeAsync();
         else if (BaseConnectionString is not null) await DropTestDatabasesAsync(BaseConnectionString, "toki[_]test[_]%");
     }
