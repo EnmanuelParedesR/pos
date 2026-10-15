@@ -27,6 +27,7 @@ public static class TokiServices
         services.AddModuleDbContext<InfraDbContext>();
         services.AddScoped<IOutbox, Outbox>();
         services.AddScoped<IAuditoria, Auditoria>();
+        services.AddHealthChecks().AddCheck<RelojHealthCheck>("reloj");
 
         services.Scan(s => s.FromAssemblies(modulos)
             .AddClasses(c => c.AssignableTo(typeof(ICommandHandler<,>)), publicOnly: false).AsImplementedInterfaces().WithScopedLifetime());

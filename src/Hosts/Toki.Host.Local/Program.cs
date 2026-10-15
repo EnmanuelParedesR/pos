@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Serialization;
 using Scalar.AspNetCore;
 using Serilog;
@@ -13,10 +14,17 @@ using Toki.Ventas;
 using Toki.Identidad;
 using Toki.Inventario;
 using Toki.Reportes;
+using Toki.Host.Local;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(o => o.ServiceName = "Toki");
 builder.Host.UseSerilog((ctx, cfg) => cfg.ReadFrom.Configuration(ctx.Configuration).WriteTo.Console());
+// The store server listens on the LAN over HTTPS only (appsettings.Production.json); never plain HTTP between registers and server.
+if (builder.Configuration.GetValue<bool>("Toki:HttpsConCertificadoNodo"))
+{
+    var certificado = CertificadoNodo.ObtenerOCrear(StoreLocation.LocalMachine, TimeProvider.System);
+    builder.WebHost.ConfigureKestrel(k => k.ConfigureHttpsDefaults(h => h.ServerCertificate = certificado));
+}
 
 Assembly[] modulos =
 [

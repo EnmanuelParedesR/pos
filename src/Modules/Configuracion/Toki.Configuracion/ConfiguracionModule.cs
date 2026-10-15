@@ -21,7 +21,9 @@ public static class ConfiguracionModule
     {
         services.AddModuleDbContext<ConfiguracionDbContext>();
         services.AddScoped<IConfiguracionConsultas, ConfiguracionConsultas>();
+        services.AddSingleton<UltimaVerificacionAuditoria>();
         services.AddHostedService<VerificacionNocturnaAuditoria>();
+        services.AddHealthChecks().AddCheck<UltimaVerificacionAuditoria>("auditoria");
         return services;
     }
 }

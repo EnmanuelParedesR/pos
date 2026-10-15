@@ -25,6 +25,7 @@ public static class FiscalModule
         services.AddSingleton<IEcfProveedor, ProveedorSimulado>();
         services.AddScoped<EnvioEcf>();
         services.AddHostedService<EnvioEcfWorker>();
+        services.AddHealthChecks().AddCheck<ColaEcfHealthCheck>("cola-ecf");
         return services;
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Toki.BuildingBlocks.Endpoints;
@@ -25,9 +26,20 @@ internal static class VerificarAuditoria
     }
 }
 
-/// <summary>Verifies the audit chain every night at 03:00 store time and logs a critical error when it is broken.</summary>
-/// <remarks>shortcut: the alert is only a log line; surface it in the health checks with TK-093.</remarks>
-internal sealed class VerificacionNocturnaAuditoria(IServiceScopeFactory scopes, TimeProvider reloj, ILogger<VerificacionNocturnaAuditoria> log) : BackgroundService
+/// <summary>Result of the last nightly check; the "auditoria" health check reports it.</summary>
+internal sealed class UltimaVerificacionAuditoria : IHealthCheck
+{
+    public long? PrimerRegistroRoto { get; set; }
+
+    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default) =>
+        Task.FromResult(PrimerRegistroRoto is { } roto
+            ? HealthCheckResult.Unhealthy($"La cadena de auditoría está rota desde el registro {roto}.")
+            : HealthCheckResult.Healthy());
+}
+
+/// <summary>Verifies the audit chain every night at 03:00 store time; a broken chain is a critical log line and an unhealthy /health.</summary>
+internal sealed class VerificacionNocturnaAuditoria(IServiceScopeFactory scopes, UltimaVerificacionAuditoria ultima, TimeProvider reloj,
+    ILogger<VerificacionNocturnaAuditoria> log) : BackgroundService
 {
     private static readonly TimeSpan Hora = TimeSpan.FromHours(3);
 
@@ -39,8 +51,8 @@ internal sealed class VerificacionNocturnaAuditoria(IServiceScopeFactory scopes,
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
-                if (await CadenaAuditoria.VerificarAsync(scope.ServiceProvider.GetRequiredService<InfraDbContext>(), stoppingToken) is { } roto)
-                    log.LogCritical("La cadena de auditoría está rota desde el registro {Secuencia}", roto);
+                ultima.PrimerRegistroRoto = await CadenaAuditoria.VerificarAsync(scope.ServiceProvider.GetRequiredService<InfraDbContext>(), stoppingToken);
+                if (ultima.PrimerRegistroRoto is { } roto) log.LogCritical("La cadena de auditoría está rota desde el registro {Secuencia}", roto);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
