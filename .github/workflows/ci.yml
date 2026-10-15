@@ -58,10 +58,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          docker run -d --name s -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=yourStrong(!)Password' -p 1433:1433 mcr.microsoft.com/mssql/server:2025-CU9-GDR1-ubuntu-22.04
+          docker run -d --name sq -e ACCEPT_EULA=Y -e 'MSSQL_SA_PASSWORD=yourStrong(!)Password' -p 1433:1433 mcr.microsoft.com/mssql/server:2025-CU9-GDR1-ubuntu-22.04
           for i in $(seq 1 120); do
-            r=$(docker exec s /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'yourStrong(!)Password' -Q 'SET NOCOUNT ON; SELECT 1' -h -1 2>&1 | tr -d '\n' | cut -c1-150)
+            r=$(docker exec sq /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'yourStrong(!)Password' -Q 'SET NOCOUNT ON; SELECT 1' -h -1 2>&1 | tr -d '\n' | cut -c1-150)
             echo "$(date +%T) $r"
             sleep 1
           done
-          docker logs -t s
+          docker logs -t sq
