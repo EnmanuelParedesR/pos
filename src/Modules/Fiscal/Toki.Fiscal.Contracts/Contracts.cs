@@ -47,6 +47,16 @@ public interface IFiscalDocuments
     Task<IReadOnlySet<string>> TestENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct);
 }
 
+/// <summary>One line of the DGII 608 (voided receipts), columns in the order of DGII's format: NCF, date of the receipt (AAAAMMDD in the TXT)
+/// and type of void, a two-digit code of DGII's table (01 deterioro … 10 pérdida o hurto de talonarios).</summary>
+public sealed record Report608Row(string Ncf, DateOnly DocumentDate, string VoidType);
+
+/// <summary>TK-192: what the DGII 608 reports, from the e-NCF this store consumed without a valid receipt.</summary>
+public interface IFiscalReports
+{
+    Task<IReadOnlyList<Report608Row>> Report608Async(DateOnly from, DateOnly to, CancellationToken ct);
+}
+
 /// <summary>The legend the receipt of an e-CF issued in contingency carries (Decreto 587-24; DGII "Representación Impresa").</summary>
 public static class EcfReceiptTexts
 {

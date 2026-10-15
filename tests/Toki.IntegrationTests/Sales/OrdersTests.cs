@@ -156,8 +156,9 @@ public sealed class OrdersTests(TokiApp app) : IClassFixture<TokiApp>
                 .Where(m => m.Type == typeof(CatalogItemChangedV1).FullName).OrderBy(m => m.Sequence).Select(m => m.Payload).ToListAsync())
             .Select(p => JsonDocument.Parse(p).RootElement.Clone()).Where(e => e.GetProperty("productId").GetGuid() == steak || e.GetProperty("productId").GetGuid() == liver).ToList());
         events.Count.ShouldBe(4);
-        events[^1].GetProperty("visible").GetBoolean().ShouldBeFalse(); // liver, taken off on the second save
-        events[^1].GetProperty("productId").GetGuid().ShouldBe(liver);
+        // Liver taken off on the second save; within one save the order is up to the database.
+        events.Last(e => e.GetProperty("productId").GetGuid() == liver).GetProperty("visible").GetBoolean().ShouldBeFalse();
+        events.Last(e => e.GetProperty("productId").GetGuid() == steak).GetProperty("visible").GetBoolean().ShouldBeTrue();
         events.ShouldAllBe(e => e.EnumerateObject().All(p => new[] { "productId", "name", "category", "unit", "price", "visible", "eventId", "occurredUtc", "aggregateId" }.Contains(p.Name)));
 
         (await app.Client(await app.UserAsync(Roles.Cashier)).GetAsync("/api/catalog")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);

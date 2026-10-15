@@ -23,6 +23,8 @@ internal sealed class ProductDataValidator : AbstractValidator<IProductData>
         RuleFor(c => c.Price).GreaterThan(0).PrecisionScale(19, 2, true);
         RuleFor(c => c.WholesalePrice).GreaterThan(0).PrecisionScale(19, 2, true).When(c => c.WholesalePrice is not null);
         RuleFor(c => c.MinimumStock).GreaterThanOrEqualTo(0).PrecisionScale(19, 3, true);
+        RuleFor(c => c.MaximumStock).GreaterThanOrEqualTo(0).PrecisionScale(19, 3, true)
+            .Must((c, max) => max == 0 || max >= c.MinimumStock).WithMessage("El máximo no puede ser menor que el mínimo (0 si no lo usa).");
         RuleFor(c => c.Unit).IsInEnum();
         RuleFor(c => c.ItbisRate).IsInEnum();
     }
@@ -39,6 +41,7 @@ internal interface IProductData
     decimal? WholesalePrice { get; }
     bool SellWithoutStock { get; }
     decimal MinimumStock { get; }
+    decimal MaximumStock { get; }
 }
 
 internal static class CreateProduct
@@ -47,7 +50,7 @@ internal static class CreateProduct
     /// <param name="InitialStock">Optional opening stock in the main store, recorded as an adjustment.</param>
     public sealed record Command(
         string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate, decimal Price, decimal? WholesalePrice,
-        decimal Cost, bool SellWithoutStock, decimal MinimumStock, IReadOnlyList<string>? Barcodes, decimal InitialStock = 0)
+        decimal Cost, bool SellWithoutStock, decimal MinimumStock, IReadOnlyList<string>? Barcodes, decimal InitialStock = 0, decimal MaximumStock = 0)
         : ICommand<Response>, IProductData;
 
     public sealed record Response(Guid Id);
@@ -80,7 +83,7 @@ internal static class CreateProduct
             {
                 Id = Guid.CreateVersion7(), Name = c.Name.Trim(), CategoryId = c.CategoryId, Unit = c.Unit, Plu = plu,
                 ItbisRate = c.ItbisRate, Price = c.Price, WholesalePrice = c.WholesalePrice, Cost = c.Cost,
-                SellWithoutStock = c.SellWithoutStock, MinimumStock = c.MinimumStock,
+                SellWithoutStock = c.SellWithoutStock, MinimumStock = c.MinimumStock, MaximumStock = c.MaximumStock,
             };
             db.Products.Add(product);
             db.Barcodes.AddRange(codes.Select(x => new Barcode { Code = x, ProductId = product.Id }));
@@ -116,7 +119,7 @@ internal static class UpdateProduct
 {
     public sealed record Command(
         Guid Id, int Version, string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate,
-        decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive)
+        decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal MaximumStock = 0)
         : ICommand<Ok>, IProductData;
 
     internal sealed class Validator : AbstractValidator<Command>
@@ -149,6 +152,7 @@ internal static class UpdateProduct
             p.WholesalePrice = c.WholesalePrice;
             p.SellWithoutStock = c.SellWithoutStock;
             p.MinimumStock = c.MinimumStock;
+            p.MaximumStock = c.MaximumStock;
             p.IsActive = c.IsActive;
             p.Version++;
             await audit.RecordAsync("inventory.update-product", "Product", p.Id, new { before, after = c }, ct);
@@ -158,14 +162,14 @@ internal static class UpdateProduct
 
     internal sealed record Body(
         int Version, string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate,
-        decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive);
+        decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal MaximumStock = 0);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPut("/api/inventory/products/{id:guid}", async (Guid id, Body b, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.Version, b.Name, b.CategoryId, b.Unit, b.Plu, b.ItbisRate, b.Price, b.WholesalePrice,
-                        b.SellWithoutStock, b.MinimumStock, b.IsActive), ct)).ToHttp(_ => Results.NoContent()))
+                        b.SellWithoutStock, b.MinimumStock, b.IsActive, b.MaximumStock), ct)).ToHttp(_ => Results.NoContent()))
                 .RequirePermission(Permissions.ProductsManage).WithTags("Inventory");
     }
 }
@@ -177,13 +181,13 @@ internal static class GetProduct
     public sealed record StockDto(Guid WarehouseId, string Warehouse, decimal Quantity, bool NeedsCount);
     public sealed record Response(
         Guid Id, int Version, string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate, decimal Price,
-        decimal? WholesalePrice, decimal Cost, bool SellWithoutStock, decimal MinimumStock, bool IsActive,
+        decimal? WholesalePrice, decimal? Cost, bool SellWithoutStock, decimal MinimumStock, decimal MaximumStock, bool IsActive,
         IReadOnlyList<PresentationDto> Presentations, IReadOnlyList<BarcodeDto> Barcodes, IReadOnlyList<StockDto> Stock);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/inventory/products/{id:guid}", async (Guid id, InventoryDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/inventory/products/{id:guid}", async (Guid id, IUserContext user, InventoryDbContext db, CancellationToken ct) =>
                 {
                     var p = await db.Products.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
                     if (p is null) return EndpointExtensions.Problem(InventoryErrors.ProductNotFound);
@@ -195,7 +199,7 @@ internal static class GetProduct
                                        where e.ProductId == id
                                        select new StockDto(a.Id, a.Name, e.Quantity, e.NeedsCount)).ToListAsync(ct);
                     return Results.Ok(new Response(p.Id, p.Version, p.Name, p.CategoryId, p.Unit, p.Plu, p.ItbisRate, p.Price, p.WholesalePrice,
-                        p.Cost, p.SellWithoutStock, p.MinimumStock, p.IsActive, presentations, barcodes, stock));
+                        user.Has(Permissions.CostsView) ? p.Cost : null, p.SellWithoutStock, p.MinimumStock, p.MaximumStock, p.IsActive, presentations, barcodes, stock));
                 })
                 .RequirePermission(Permissions.InventoryView).WithTags("Inventory");
     }

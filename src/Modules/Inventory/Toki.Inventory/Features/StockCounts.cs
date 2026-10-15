@@ -114,8 +114,9 @@ internal static class ApplyStockCount
         public Guid ResourceId => StockCountId;
     }
 
-    public sealed record CountDifference(Guid ProductId, string Product, decimal SystemStock, decimal Counted, decimal Difference, decimal Value);
-    public sealed record Response(IReadOnlyList<CountDifference> Differences, decimal DifferenceValue);
+    /// <param name="Value">At average cost; null without costs.view (TK-201), like <see cref="Response.DifferenceValue"/>.</param>
+    public sealed record CountDifference(Guid ProductId, string Product, decimal SystemStock, decimal Counted, decimal Difference, decimal? Value);
+    public sealed record Response(IReadOnlyList<CountDifference> Differences, decimal? DifferenceValue);
 
     internal sealed class Handler(InventoryDbContext db, StockMovements movements, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
     {
@@ -152,8 +153,9 @@ internal static class ApplyStockCount
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/inventory/stock-counts/{id:guid}/apply", async (Guid id, Body? b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
-                    (await h.Handle(new Command(id, b?.SupervisorApprovalId), ct)).ToHttp())
+            app.MapPost("/api/inventory/stock-counts/{id:guid}/apply", async (Guid id, Body? b, IUserContext user, ICommandHandler<Command, Response> h, CancellationToken ct) =>
+                    (await h.Handle(new Command(id, b?.SupervisorApprovalId), ct)).ToHttp(r => Results.Ok(user.Has(Permissions.CostsView) ? r
+                        : new Response([.. r.Differences.Select(d => d with { Value = null })], null))))
                 .RequirePermission(Permissions.InventoryCount).WithTags("Inventory");
     }
 }

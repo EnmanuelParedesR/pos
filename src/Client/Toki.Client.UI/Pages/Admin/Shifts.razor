@@ -1,6 +1,8 @@
 @page "/admin/shifts"
 @inject TokiApi Api
 @inject NavigationManager Nav
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
 <Admin Title="Turnos y cuadres" Subtitle="Cada turno con lo que se esperaba en efectivo y lo que se contó. Toque uno para ver su cierre.">
     <Actions>
@@ -86,7 +88,12 @@
                         <dt>Redondeo</dt><dd>@Format.Amount(z.Rounding)</dd>
                     </dl>
                 </ChildContent>
-                <Footer><Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="() => _z = null">Cerrar</Button></Footer>
+                <Footer>
+                    @if (_downloaded is not null) { <span class="esc-muted" role="status">@_downloaded</span> }
+                    <span class="esc-spacer"></span>
+                    <Button Disabled="_downloading" OnClick="() => DownloadAsync(z)"><Icon Name="arrow-down" Size="16" /> @(_downloading ? "Preparando…" : "Descargar para PDF")</Button>
+                    <Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="() => _z = null">Cerrar</Button>
+                </Footer>
             </Dialog>
         }
     </ChildContent>
@@ -100,9 +107,9 @@
 
     private List<ShiftSummary> _shifts = [];
     private ZReport? _z;
-    private string? _message;
+    private string? _message, _downloaded;
     private string _days = "7";
-    private bool _loading = true, _onlyDifferences;
+    private bool _loading = true, _onlyDifferences, _downloading;
 
     private IEnumerable<ShiftSummary> Visible => _onlyDifferences ? _shifts.Where(s => s.Difference is { } d && d != 0) : _shifts;
 
@@ -127,7 +134,18 @@
         (_message, _loading) = (r.Problem?.Message, false);
     }
 
-    private async Task ShowAsync(Guid id) => _z = (await Api.GetAsync<ZReport>($"/api/cash/shifts/{id}/z")).Value;
+    private async Task ShowAsync(Guid id) => (_z, _downloaded) = ((await Api.GetAsync<ZReport>($"/api/cash/shifts/{id}/z")).Value, null);
+
+    /// <summary>TK-200: the Z as a one-page document (A4 HTML) through the reports' download; opened, it prints or saves as PDF.</summary>
+    private async Task DownloadAsync(ZReport z)
+    {
+        _downloading = true;
+        var business = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value ?? new BusinessProfile("Mi negocio", null, null, null, null, 0);
+        var supervisor = z.ClosingSupervisorId is { } sid ? (await Api.GetAsync<List<ActiveUser>>("/api/identity/users/active")).Value?.Find(u => u.Id == sid)?.Name : null;
+        var (name, content) = Printables.Z(z, business, supervisor, DateTime.UtcNow);
+        await JS.InvokeVoidAsync("escuadra.download", name, "text/html", content);
+        (_downloading, _downloaded) = (false, $"Listo: {name}. Ábralo y elija “Imprimir o guardar como PDF”.");
+    }
 
     private static string Day(DateTime utc)
     {

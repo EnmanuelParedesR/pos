@@ -3,7 +3,7 @@
 @inject Session Session
 @inject NavigationManager Nav
 
-<Admin Title="Inventario" Subtitle="Cuánto hay de cada producto y cuánto vale al costo. Toque uno para ver sus movimientos.">
+<Admin Title="Inventario" Subtitle="@(Costs ? "Cuánto hay de cada producto y cuánto vale al costo. Toque uno para ver sus movimientos." : "Cuánto hay de cada producto. Toque uno para ver sus movimientos.")">
     <Actions>
         @if (_warehouses.Count > 1)
         {
@@ -20,9 +20,18 @@
 
         <div class="esc-card esc-stats">
             <div class="esc-stat">
-                <span class="esc-stat__label"><Icon Name="package" Size="16" /> Valor al costo</span>
-                <span class="esc-stat__value">@(_loading ? "—" : Format.WithCurrency(_stock.Sum(s => s.Value)))</span>
-                <span class="esc-stat__note">@_stock.Count productos activos · @WarehouseName</span>
+                @if (Costs)
+                {
+                    <span class="esc-stat__label"><Icon Name="package" Size="16" /> Valor al costo</span>
+                    <span class="esc-stat__value">@(_loading ? "—" : Format.WithCurrency(_stock.Sum(s => s.Value ?? 0)))</span>
+                    <span class="esc-stat__note">@_stock.Count productos activos · @WarehouseName</span>
+                }
+                else
+                {
+                    <span class="esc-stat__label"><Icon Name="package" Size="16" /> Productos activos</span>
+                    <span class="esc-stat__value">@(_loading ? "—" : _stock.Count)</span>
+                    <span class="esc-stat__note">@WarehouseName</span>
+                }
             </div>
             <div class="esc-stat">
                 <span class="esc-stat__label"><Icon Name="alert" Size="16" /> Bajo el mínimo</span>
@@ -54,13 +63,13 @@
 
         <div class="esc-card esc-table-wrap esc-table-wrap--tall">
             <table class="esc-table esc-table--wide">
-                <thead><tr><th>Producto</th><th class="esc-hide-sm">Categoría</th><th class="esc-num">Existencia</th><th class="esc-num esc-hide-sm">Costo promedio</th><th class="esc-num esc-hide-sm">Valor</th><th class="esc-table__chev esc-hide-sm"><span class="esc-visually-hidden">Abrir</span></th></tr></thead>
+                <thead><tr><th>Producto</th><th class="esc-hide-sm">Categoría</th><th class="esc-num">Existencia</th>@if (Costs) { <th class="esc-num esc-hide-sm">Costo promedio</th><th class="esc-num esc-hide-sm">Valor</th> }<th class="esc-table__chev esc-hide-sm"><span class="esc-visually-hidden">Abrir</span></th></tr></thead>
                 <tbody>
                     @if (_loading)
                     {
                         @for (var i = 0; i < 6; i++)
                         {
-                            <tr><td><Skeleton Width="160px" /></td><td class="esc-hide-sm"><Skeleton Width="90px" /></td><td><Skeleton /></td><td class="esc-hide-sm"><Skeleton /></td><td class="esc-hide-sm"><Skeleton /></td><td class="esc-hide-sm"></td></tr>
+                            <tr><td><Skeleton Width="160px" /></td><td class="esc-hide-sm"><Skeleton Width="90px" /></td><td><Skeleton /></td>@if (Costs) { <td class="esc-hide-sm"><Skeleton /></td><td class="esc-hide-sm"><Skeleton /></td> }<td class="esc-hide-sm"></td></tr>
                         }
                     }
                     else
@@ -68,7 +77,7 @@
                         @foreach (var s in Visible)
                         {
                             <tr class="selectable" tabindex="0" @onclick="() => OpenAsync(s)" @onkeydown='e => e.Key == "Enter" ? OpenAsync(s) : Task.CompletedTask'>
-                                <td style="font-weight:600">@s.Name<span class="esc-table__sub esc-only-sm">@s.Category · @Format.WithCurrency(s.Value)</span></td>
+                                <td style="font-weight:600">@s.Name<span class="esc-table__sub esc-only-sm">@s.Category@(s.Value is { } value ? $" · {Format.WithCurrency(value)}" : "")</span></td>
                                 <td class="esc-hide-sm">@s.Category</td>
                                 <td class="esc-num" style="white-space:nowrap">
                                     @if (s.NeedsCount)
@@ -85,8 +94,11 @@
                                     }
                                     <span class="esc-table__sub">@(s.NeedsCount ? "Pendiente de contar" : s.BelowMinimum ? "Bajo el mínimo" : "")</span>
                                 </td>
-                                <td class="esc-num esc-muted esc-hide-sm">@Format.Amount(s.Cost)</td>
-                                <td class="esc-num esc-hide-sm" style="font-weight:600">@Format.Amount(s.Value)</td>
+                                @if (Costs)
+                                {
+                                    <td class="esc-num esc-muted esc-hide-sm">@Format.Amount(s.Cost ?? 0)</td>
+                                    <td class="esc-num esc-hide-sm" style="font-weight:600">@Format.Amount(s.Value ?? 0)</td>
+                                }
                                 <td class="esc-table__chev esc-hide-sm"><Icon Name="chevron-right" Size="18" /></td>
                             </tr>
                         }
@@ -134,13 +146,13 @@
                         @if (_saved is not null) { <Notice Kind="Notice.Kinds.Success" Title="@_saved" /> }
                         <div class="esc-table-wrap" style="max-height:420px">
                             <table class="esc-table">
-                                <thead><tr><th>Fecha</th><th>Movimiento</th><th class="esc-num">Cantidad</th><th class="esc-num esc-hide-sm">Costo</th><th class="esc-num">Queda</th></tr></thead>
+                                <thead><tr><th>Fecha</th><th>Movimiento</th><th class="esc-num">Cantidad</th>@if (Costs) { <th class="esc-num esc-hide-sm">Costo</th> }<th class="esc-num">Queda</th></tr></thead>
                                 <tbody>
                                     @if (_kardex is null)
                                     {
                                         @for (var i = 0; i < 4; i++)
                                         {
-                                            <tr><td><Skeleton Width="90px" /></td><td><Skeleton Width="140px" /></td><td><Skeleton /></td><td class="esc-hide-sm"><Skeleton /></td><td><Skeleton /></td></tr>
+                                            <tr><td><Skeleton Width="90px" /></td><td><Skeleton Width="140px" /></td><td><Skeleton /></td>@if (Costs) { <td class="esc-hide-sm"><Skeleton /></td> }<td><Skeleton /></td></tr>
                                         }
                                     }
                                     else
@@ -154,7 +166,7 @@
                                                     @if (_warehouses.Count > 1) { <span class="esc-table__sub">@Name(m.WarehouseId)</span> }
                                                 </td>
                                                 <td class="esc-num" style="font-weight:600;white-space:nowrap;color:@(m.Quantity < 0 ? "var(--text)" : "var(--success)")">@AdminNames.Signed(m.Quantity, p.Unit)</td>
-                                                <td class="esc-num esc-muted esc-hide-sm">@Format.Amount(m.UnitCost)</td>
+                                                @if (Costs) { <td class="esc-num esc-muted esc-hide-sm">@Format.Amount(m.UnitCost ?? 0)</td> }
                                                 <td class="esc-num" style="white-space:nowrap">@AdminNames.Stock(m.ResultingStock, p.Unit)</td>
                                             </tr>
                                         }
@@ -208,7 +220,9 @@
         && (string.IsNullOrEmpty(_category) || s.Category == _category)
         && (!_belowMinimum || s.BelowMinimum) && (!_needsCount || s.NeedsCount));
 
-    private string WarehouseName => _warehouses.Find(w => w.Id.ToString() == _warehouse)?.Name ?? "la tienda";
+    /// <summary>TK-201: cost and stock value need costs.view (the API sends them empty otherwise).</summary>
+    private bool Costs => Session.Can("costs.view");
+    private string WarehouseName =>_warehouses.Find(w => w.Id.ToString() == _warehouse)?.Name ?? "la tienda";
     private string Name(Guid warehouse) => _warehouses.Find(w => w.Id == warehouse)?.Name ?? "";
     private bool Filtered => !string.IsNullOrWhiteSpace(_search) || !string.IsNullOrEmpty(_category) || _belowMinimum || _needsCount;
     private string EmptyTitle => !Filtered ? "Todavía no hay productos" : _belowMinimum && !_needsCount ? "Nada está bajo el mínimo" : _needsCount ? "Nada pendiente de contar" : "Nada coincide con la búsqueda";

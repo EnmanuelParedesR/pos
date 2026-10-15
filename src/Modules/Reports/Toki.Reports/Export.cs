@@ -18,7 +18,7 @@ internal static class Export
     /// <summary>Excel keeps every cell as an object in memory on the store server; bigger exports go to CSV.</summary>
     public const int MaxExcelRows = 50_000;
 
-    /// <summary>Column titles (row record properties) and enum values as the owner and the accountant know them. The 606/607 titles are DGII's.</summary>
+    /// <summary>Column titles (row record properties) and enum values as the owner and the accountant know them. The 606/607/608 titles are DGII's.</summary>
     private static readonly Dictionary<string, string> Spanish = new(StringComparer.Ordinal)
     {
         // sales by day, product, category and cashier
@@ -45,6 +45,8 @@ internal static class Export
         ["GoodsServicesType"] = "TipoBienesServicios", ["PaymentDate"] = "FechaPago", ["ServicesAmount"] = "MontoServicios", ["GoodsAmount"] = "MontoBienes",
         ["TotalAmount"] = "TotalMonto", ["ItbisWithheld"] = "ItbisRetenido", ["ItbisProportionality"] = "ItbisProporcionalidad", ["ItbisToCost"] = "ItbisAlCosto",
         ["ItbisToAdvance"] = "ItbisPorAdelantar", ["IsrWithholdingType"] = "TipoRetencionIsr", ["IncomeTaxWithheld"] = "RetencionRenta", ["PaymentForm"] = "FormaPago",
+        // DGII 608
+        ["VoidType"] = "TipoAnulacion",
         // receivables and payables
         ["CustomerId"] = "ClienteId", ["Customer"] = "Cliente", ["Days0To30"] = "De0a30", ["Days31To60"] = "De31a60", ["Days61To90"] = "De61a90",
         ["Over90"] = "MasDe90", ["CreditLimit"] = "LimiteCredito",

@@ -25,6 +25,17 @@ public static class InventoryModule
 
 internal sealed class CatalogQueries(InventoryDbContext db) : ICatalogQueries
 {
+    public async Task<IReadOnlyList<ProductToReorder>> BelowMinimumAsync(CancellationToken ct)
+    {
+        var stock = db.Stock.GroupBy(e => e.ProductId).Select(g => new { ProductId = g.Key, Quantity = g.Sum(e => e.Quantity) });
+        return await (from p in db.Products
+                      join e in stock on p.Id equals e.ProductId
+                      where p.IsActive && p.MinimumStock > 0 && e.Quantity <= p.MinimumStock
+                      orderby p.Name
+                      select new ProductToReorder(p.Id, p.Name, p.Unit, p.ItbisRate, e.Quantity, p.MinimumStock, p.MaximumStock))
+            .AsNoTracking().ToListAsync(ct);
+    }
+
     public async Task<IReadOnlyList<ProductForSale>> GetForSaleAsync(IReadOnlyCollection<(Guid ProductId, Guid? PresentationId)> items, CancellationToken ct)
     {
         var productIds = items.Select(i => i.ProductId).Distinct().ToList();

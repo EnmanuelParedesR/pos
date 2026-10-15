@@ -47,11 +47,13 @@
     }
 
     /// <summary>The same rules as the API (Ncf.IsValid, DocumentDate), checked before sending.</summary>
-    public static void Validate(Guid? supplierId, string? ncf, DateOnly date, Dictionary<string, string> errors)
+    /// <param name="ncfOptional">A purchase draft may wait for its invoice (TK-191): an empty NCF is fine until it is received.</param>
+    public static void Validate(Guid? supplierId, string? ncf, DateOnly date, Dictionary<string, string> errors, bool ncfOptional = false)
     {
         if (supplierId is null) errors["supplier"] = "Elija el suplidor.";
         var n = ncf?.Trim().ToUpperInvariant();
-        if (n is not { Length: 11 or 13 } || n[0] is not ('B' or 'E') || !n[1..].All(char.IsAsciiDigit)) errors["ncf"] = "El NCF es B01 y 8 números (11 en total) o E31 y 10 (13).";
+        var valid = n is { Length: 11 or 13 } && n[0] is 'B' or 'E' && n[1..].All(char.IsAsciiDigit);
+        if (!valid && !(ncfOptional && string.IsNullOrEmpty(n))) errors["ncf"] = "El NCF es B01 y 8 números (11 en total) o E31 y 10 (13).";
         if (date > Format.Today.AddDays(1)) errors["date"] = "La fecha no puede ser futura.";
     }
 

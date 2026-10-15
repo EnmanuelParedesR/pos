@@ -196,7 +196,9 @@ public sealed class InventoryTests(TokiApp app) : IClassFixture<TokiApp>
         applied.StatusCode.ShouldBe(HttpStatusCode.OK);
         var result = await applied.Json();
         result.GetProperty("differences").GetArrayLength().ShouldBe(1);
-        result.GetProperty("differenceValue").GetDecimal().ShouldBe(-75m);
+        // TK-201: the value at cost (−75) is not for someone without costs.view, even with a supervisor's approval to apply.
+        result.GetProperty("differenceValue").ValueKind.ShouldBe(JsonValueKind.Null);
+        result.GetProperty("differences")[0].GetProperty("value").ValueKind.ShouldBe(JsonValueKind.Null);
 
         (await admin.StockAsync(a)).ShouldBe(6.5m); // counted 9.5 minus the 3 sold after counting
         (await app.KardexMismatchesAsync()).ShouldBeEmpty();

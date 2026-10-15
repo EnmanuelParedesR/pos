@@ -151,6 +151,9 @@
                         <Field Label="Existencia mínima" Error="@Err("minimum")" Hint="Avisa cuando quede menos.">
                             <input class="esc-input esc-num" inputmode="decimal" @bind="f.MinimumStock" @bind:after='() => Clear("minimum")' aria-invalid="@Invalid("minimum")" />
                         </Field>
+                        <Field Label="Existencia máxima" Error="@Err("maximum")" Hint="Opcional. El pedido sugerido completa hasta aquí.">
+                            <input class="esc-input esc-num" inputmode="decimal" @bind="f.MaximumStock" @bind:after='() => Clear("maximum")' aria-invalid="@Invalid("maximum")" />
+                        </Field>
                     </div>
                     <div class="esc-col" style="gap:0">
                         <label class="esc-check"><input type="checkbox" @bind="f.SellWithoutStock" /> Se puede vender aunque no haya existencia</label>
@@ -174,7 +177,7 @@
     private sealed class ProductForm
     {
         public Guid? Id; public int Version; public string Name = ""; public Guid CategoryId; public UnitOfMeasure Unit = UnitOfMeasure.Unit;
-        public string? Plu, Barcode, Price, WholesalePrice, Cost = "0", InitialStock = "0", MinimumStock = "0";
+        public string? Plu, Barcode, Price, WholesalePrice, Cost = "0", InitialStock = "0", MinimumStock = "0", MaximumStock = "0";
         public ItbisRate? ItbisRate; public bool SellWithoutStock = true, IsActive = true;
     }
 
@@ -232,7 +235,7 @@
         (_editing, _error) = (new ProductForm
         {
             Id = p.Id, Version = p.Version, Name = p.Name, CategoryId = p.CategoryId, Unit = p.Unit, Plu = p.Plu, ItbisRate = p.ItbisRate,
-            Price = N(p.Price), WholesalePrice = N(p.WholesalePrice), MinimumStock = N(p.MinimumStock), SellWithoutStock = p.SellWithoutStock, IsActive = p.IsActive,
+            Price = N(p.Price), WholesalePrice = N(p.WholesalePrice), MinimumStock = N(p.MinimumStock), MaximumStock = N(p.MaximumStock), SellWithoutStock = p.SellWithoutStock, IsActive = p.IsActive,
         }, null);
     }
 
@@ -258,6 +261,8 @@
         if (f.Id is null && Bad(f.Cost)) _errors["cost"] = "Escriba un número (0 si no lo sabe).";
         if (f.Id is null && Bad(f.InitialStock)) _errors["stock"] = "Escriba un número (0 si no hay).";
         if (Bad(f.MinimumStock)) _errors["minimum"] = "Escriba un número (0 si no aplica).";
+        if (Bad(f.MaximumStock)) _errors["maximum"] = "Escriba un número (0 si no aplica).";
+        else if (Format.ParseNumber(f.MaximumStock) is > 0 and var max && max < (Format.ParseNumber(f.MinimumStock) ?? 0)) _errors["maximum"] = "No puede ser menor que el mínimo.";
         return _errors.Count == 0;
     }
 
@@ -270,6 +275,7 @@
         var price = Format.ParseNumber(f.Price)!.Value;
         var wholesale = Format.ParseNumber(f.WholesalePrice);
         var minimum = Format.ParseNumber(f.MinimumStock) ?? 0;
+        var maximum = Format.ParseNumber(f.MaximumStock) ?? 0;
         var plu = string.IsNullOrWhiteSpace(f.Plu) ? null : f.Plu.Trim();
         _sending = true;
         Problem? p;
@@ -277,12 +283,12 @@
         {
             var barcodes = string.IsNullOrWhiteSpace(f.Barcode) ? null : new[] { f.Barcode.Trim() };
             p = (await Api.PostAsync<Created>("/api/inventory/products", new CreateProduct(f.Name.Trim(), f.CategoryId, f.Unit, plu, rate, price, wholesale,
-                Format.ParseNumber(f.Cost) ?? 0, f.SellWithoutStock, minimum, barcodes, Format.ParseNumber(f.InitialStock) ?? 0))).Problem;
+                Format.ParseNumber(f.Cost) ?? 0, f.SellWithoutStock, minimum, barcodes, Format.ParseNumber(f.InitialStock) ?? 0, maximum))).Problem;
         }
         else
         {
             p = (await Api.PutAsync<Empty>($"/api/inventory/products/{f.Id}", new UpdateProduct(f.Version, f.Name.Trim(), f.CategoryId, f.Unit, plu, rate,
-                price, wholesale, f.SellWithoutStock, minimum, f.IsActive))).Problem;
+                price, wholesale, f.SellWithoutStock, minimum, f.IsActive, maximum))).Problem;
         }
         _sending = false;
         if (p is null)

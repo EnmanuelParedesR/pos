@@ -45,6 +45,12 @@ public sealed record SupplierPaid(Guid SupplierPaymentId, PaymentAllocated[] All
 
 public sealed record VoidReason(string Reason);
 
+/// <summary>TK-191: GET /api/purchasing/suggested-order. Quantities in base units (lb or units); cost per base unit without ITBIS.</summary>
+public sealed record SuggestedLine(Guid ProductId, string Product, UnitOfMeasure Unit, ItbisRate ItbisRate, decimal Stock, decimal MinimumStock, decimal MaximumStock,
+    decimal Suggested, decimal? LastCost);
+/// <param name="SupplierId">Null for products never bought from an active supplier.</param>
+public sealed record SuggestedGroup(Guid? SupplierId, string? Supplier, SuggestedLine[] Lines, decimal Subtotal);
+
 /// <summary>What is owed to a supplier by days overdue (from /api/reports/payables).</summary>
 public sealed record SupplierPayable(Guid SupplierId, string Supplier, decimal NotYetDue, decimal Overdue1To30, decimal Overdue31To60, decimal Overdue61To90,
     decimal OverdueOver90, decimal Total);

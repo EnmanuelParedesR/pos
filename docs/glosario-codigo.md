@@ -46,7 +46,8 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | producto, categoría, presentación | `Product`, `Category`, `Presentation` |
 | código de barras, etiqueta de balanza, formato de etiqueta | `Barcode`, `ScaleLabel`, `LabelFormat` |
 | unidad de medida: unidad, libra | `UnitOfMeasure`: `Unit`, `Pound` |
-| existencia, mínimo, almacén | `Stock`, `MinimumStock`, `Warehouse` |
+| existencia, mínimo, máximo, almacén | `Stock`, `MinimumStock`, `MaximumStock`, `Warehouse` |
+| pedido sugerido | `SuggestedOrder` |
 | kardex (movimiento de inventario) | `StockMovement` |
 | ajuste, conteo físico, transferencia | `Adjustment`, `StockCount`, `Transfer` |
 | costo, costo promedio | `Cost`, `AverageCost` |
@@ -104,6 +105,7 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | `fiado.gestionar` / `exceder-limite` | `credit.manage` / `exceed-limit` |
 | `fiscal.gestionar` | `fiscal.manage` |
 | `reportes.ver` | `reports.view` |
+| ver costos y ganancias | `costs.view` |
 
 ## Otros
 

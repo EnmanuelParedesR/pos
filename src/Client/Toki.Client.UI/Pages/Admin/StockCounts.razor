@@ -161,18 +161,19 @@
         {
             <Dialog Title="Conteo aplicado" Subtitle="@(result.Differences.Length == 0 ? "Todo lo contado cuadró con el sistema." : $"{result.Differences.Length} {(result.Differences.Length == 1 ? "producto tenía" : "productos tenían")} diferencia.")" Wide="true" OnClose="() => _result = null">
                 <ChildContent>
-                    @if (result.DifferenceValue != 0)
+                    @* The value at cost only comes with costs.view (TK-201). *@
+                    @if (result.DifferenceValue is { } value && value != 0)
                     {
-                        <Notice Kind="@(result.DifferenceValue < 0 ? Notice.Kinds.Error : Notice.Kinds.Warning)"
-                                Title="@($"{(result.DifferenceValue < 0 ? "Faltó" : "Sobró")} mercancía por {Format.WithCurrency(Math.Abs(result.DifferenceValue))} al costo")" />
+                        <Notice Kind="@(value < 0 ? Notice.Kinds.Error : Notice.Kinds.Warning)"
+                                Title="@($"{(value < 0 ? "Faltó" : "Sobró")} mercancía por {Format.WithCurrency(Math.Abs(value))} al costo")" />
                     }
                     @if (result.Differences.Length > 0)
                     {
                         <div class="esc-table-wrap">
                             <table class="esc-table">
-                                <thead><tr><th>Producto</th><th class="esc-num esc-hide-sm">Sistema</th><th class="esc-num esc-hide-sm">Contado</th><th class="esc-num">Diferencia</th><th class="esc-num">Valor</th></tr></thead>
+                                <thead><tr><th>Producto</th><th class="esc-num esc-hide-sm">Sistema</th><th class="esc-num esc-hide-sm">Contado</th><th class="esc-num">Diferencia</th>@if (result.DifferenceValue is not null) { <th class="esc-num">Valor</th> }</tr></thead>
                                 <tbody>
-                                    @foreach (var d in result.Differences.OrderBy(d => d.Value))
+                                    @foreach (var d in result.Differences.OrderBy(d => d.Value ?? d.Difference))
                                     {
                                         var unit = _sheet?.Lines.FirstOrDefault(l => l.ProductId == d.ProductId)?.Unit ?? UnitOfMeasure.Unit;
                                         <tr>
@@ -180,7 +181,7 @@
                                             <td class="esc-num esc-hide-sm">@AdminNames.Stock(d.SystemStock, unit)</td>
                                             <td class="esc-num esc-hide-sm">@AdminNames.Stock(d.Counted, unit)</td>
                                             <td class="esc-num" style="font-weight:600;white-space:nowrap">@AdminNames.Signed(d.Difference, unit)</td>
-                                            <td class="esc-num" style="color:@(d.Value < 0 ? "var(--error)" : "var(--text)")">@Format.Amount(d.Value)</td>
+                                            @if (d.Value is { } v) { <td class="esc-num" style="color:@(v < 0 ? "var(--error)" : "var(--text)")">@Format.Amount(v)</td> }
                                         </tr>
                                     }
                                 </tbody>

@@ -2,6 +2,7 @@
 @inject TokiApi Api
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
+@inject Session Session
 
 <Admin Title="Reportes" Subtitle="Descargue lo que necesita para revisar el negocio o para su contador, en Excel o CSV.">
     <ChildContent>
@@ -12,6 +13,10 @@
                 <label class="esc-field" style="flex:0 1 170px"><span>Hasta</span><input class="esc-input" type="date" aria-label="Hasta" @bind="_to" @bind:after='() => _period = "custom"' /></label>
             </div>
             <span class="esc-muted">@PeriodText</span>
+            @if (!Session.Can("costs.view"))
+            {
+                <span class="esc-muted">Las columnas de costo, ganancia y valor al costo salen vacías: hace falta el permiso “Ver costos y ganancias”.</span>
+            }
             @if (_message is not null)
             {
                 <Notice Kind="_messageKind" Title="@_message" />
@@ -75,6 +80,7 @@
         new("DGII", "Para el contador: se copian en la herramienta de la DGII.", [
             new("dgii/607", "Formato 607 · ventas", "Comprobantes emitidos en el periodo", "receipt"),
             new("dgii/606", "Formato 606 · compras", "Compras y gastos con comprobante en el periodo", "receipt"),
+            new("dgii/608", "Formato 608 · anulados", "Comprobantes anulados o rechazados en el periodo", "receipt"),
         ]),
     ];
 

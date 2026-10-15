@@ -28,7 +28,7 @@
     /// <summary>"Por pagar" comes from the reports, so it needs reports.view too.</summary>
     public static IReadOnlyList<(string, string)> Purchasing(Session s) =>
     [
-        ("admin/purchasing", "Compras"), ("admin/purchasing/expenses", "Gastos"), ("admin/purchasing/suppliers", "Suplidores"),
+        ("admin/purchasing", "Compras"), ("admin/purchasing/suggested", "Pedido sugerido"), ("admin/purchasing/expenses", "Gastos"), ("admin/purchasing/suppliers", "Suplidores"),
         .. s.Can("reports.view") ? [("admin/purchasing/payables", "Por pagar")] : Array.Empty<(string, string)>(),
     ];
 }
