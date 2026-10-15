@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { ApiError, Store } from "./api";
 import { addDays, money, shortMoney, storeDay } from "./format";
+import { getTheme, nextTheme, setTheme, themeName, type ThemeChoice } from "./theme";
 
 /** Logo C5, the tag with the winking eye (same SVG as Escuadra's Logo.razor). */
 export function Logo({ size = 28, withName = true }: { size?: number; withName?: boolean }) {
@@ -30,6 +31,9 @@ const paths = {
   panel: "M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M9 3v18",
   "sign-out": "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9",
   "chevron-right": "M9 6l6 6-6 6",
+  sun: "M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8z M12 2v2 M12 20v2 M4.9 4.9l1.4 1.4 M17.7 17.7l1.4 1.4 M2 12h2 M20 12h2 M4.9 19.1l1.4-1.4 M17.7 6.3l1.4-1.4",
+  moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
+  monitor: "M4 3h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M8 21h8 M12 17v4",
   "arrow-up": "M12 19V5 M5 12l7-7 7 7",
   "arrow-down": "M12 5v14 M19 12l-7 7-7-7",
   cash: "M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z M12 9.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5z M6 12h.01 M18 12h.01",
@@ -57,6 +61,28 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: "none" }}>
       <path d={paths[name]} />
     </svg>
+  );
+}
+
+/** Theme switch (TK-183): automático → claro → oscuro, remembered on this device. */
+export function ThemeToggle({ className = "esc-side__item", showLabel = true, size = 20 }: { className?: string; showLabel?: boolean; size?: number }) {
+  const [theme, setChoice] = useState<ThemeChoice>(getTheme);
+  const label = `Tema: ${themeName(theme)}. Cambiar a ${themeName(nextTheme(theme))}`;
+  return (
+    <button
+      type="button"
+      className={className}
+      title={label}
+      aria-label={label}
+      onClick={() => {
+        const next = nextTheme(theme);
+        setTheme(next);
+        setChoice(next);
+      }}
+    >
+      <Icon name={theme === "light" ? "sun" : theme === "dark" ? "moon" : "monitor"} size={size} />
+      {showLabel && <span className="esc-side__label">Tema: {themeName(theme)}</span>}
+    </button>
   );
 }
 

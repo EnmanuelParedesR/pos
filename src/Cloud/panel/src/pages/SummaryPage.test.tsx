@@ -59,8 +59,17 @@ it("shows the day's numbers, payment methods in Spanish and what to review", asy
     url.includes("/sales/by-day")
       ? json(200, [{ date: "2026-10-14", count: 30, total: 12000, discount: 0, itbis: 900, returns: 0, net: 11100, voidedCount: 0 }])
       : url.includes("/sales/top-products")
-        ? json(200, [{ productId: "p1", description: "Pechuga de pollo", quantity: 26.5, total: 4374.15, profit: 900 }])
-        : json(200, summary),
+        ? json(200, [{ productId: "p1", description: "Pechuga de pollo", quantity: 26.5, total: 4374.15, profit: 900, unit: "Pound" }])
+        : url.includes("/receivables")
+          ? json(200, {
+              total: 1700,
+              customerCount: 2,
+              topDebtors: [
+                { customerId: "c1", storeId: "s1", debt: 1500, customerName: "Ana Pérez" },
+                { customerId: "0199e3a1-0000-7000-8000-00000000c3d4", storeId: "s1", debt: 200, customerName: null },
+              ],
+            })
+          : json(200, summary),
   );
   vi.stubGlobal("fetch", fetch);
   const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {} };
@@ -86,6 +95,10 @@ it("shows the day's numbers, payment methods in Spanish and what to review", asy
   expect(screen.getByText("La tienda no ha enviado datos en más de 24 horas.")).toBeTruthy();
   expect(screen.getByText("Actualizado hace 5 min")).toBeTruthy();
   expect(await screen.findByText("Pechuga de pollo")).toBeTruthy();
+  expect(screen.getByText("26.5 lb")).toBeTruthy(); // TK-180
+  // TK-174: who owes, by name (or by the end of the id while an older store does not send it).
+  expect(await screen.findByText("Ana Pérez")).toBeTruthy();
+  expect(screen.getByText("Cliente …c3d4")).toBeTruthy();
   // 8, 9 (no sales) and 10.
   expect(screen.getByRole("list", { name: "Ventas por hora" }).querySelectorAll("[role=listitem]")).toHaveLength(3);
   expect(fetch.mock.calls[0][0]).toMatch(/\/api\/panel\/summary\?date=\d{4}-\d{2}-\d{2}$/);

@@ -38,7 +38,7 @@ internal static class SaveCustomer
         }
     }
 
-    internal sealed class Handler(CustomersDbContext db, IUserContext user, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
+    internal sealed class Handler(CustomersDbContext db, IUserContext user, IOutbox outbox, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -62,6 +62,7 @@ internal static class SaveCustomer
             customer.CreditLimit = c.CreditLimit;
             customer.IsActive = c.IsActive;
             await audit.RecordAsync("customers.save", "Customer", customer.Id, new { before, after = c }, ct);
+            await db.PublishBalanceAsync(outbox, customer.Id, ct); // the cloud names debtors (TK-174)
             return new Response(customer.Id);
         }
     }
@@ -164,6 +165,7 @@ internal static class RecordCustomerPayment
             db.Payments.Add(payment);
             outbox.Add(new CustomerPaymentRecordedV1(c.CustomerId, payment.Id, applied));
             await audit.RecordAsync("customers.payment", "Customer", c.CustomerId, new { Payment = payment.Id, c.Amount, applied, c.Method, c.ShiftId }, ct);
+            await db.PublishBalanceAsync(outbox, c.CustomerId, ct);
             return new Response(payment.Id, applied, debt - applied);
         }
 
@@ -199,7 +201,7 @@ internal static class VoidCustomerPayment
         public Validator() => RuleFor(c => c.Reason).NotEmpty().MaximumLength(200);
     }
 
-    internal sealed class Handler(CustomersDbContext db, ICashRegisterOperations register, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Ok>
+    internal sealed class Handler(CustomersDbContext db, ICashRegisterOperations register, IOutbox outbox, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
@@ -217,6 +219,7 @@ internal static class VoidCustomerPayment
             payment.VoidedUtc = clock.GetUtcNow().UtcDateTime;
             payment.VoidReason = c.Reason.Trim();
             await audit.RecordAsync("customers.void-payment", "Customer", payment.CustomerId, new { Payment = payment.Id, payment.Amount, c.Reason }, ct);
+            await db.PublishBalanceAsync(outbox, payment.CustomerId, ct); // TK-174: the only event that tells the cloud the debt went back up
             return Ok.Value;
         }
     }

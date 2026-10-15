@@ -25,27 +25,14 @@ internal static class Projectors
 {
     public static readonly IReadOnlyDictionary<string, Projector> ByType = new Dictionary<string, Projector>
     {
-        [Name<SaleRecordedV1>()] = async (db, e, ct) =>
+        // V1 lines have no unit (empty, stored as null): the panel shows their quantity without one.
+        [Name<SaleRecordedV1>()] = (db, e, ct) =>
         {
             var s = Read<SaleRecordedV1>(e);
-            await db.SaleLines.Where(l => l.TenantId == e.TenantId && l.SaleId == s.SaleId).ExecuteDeleteAsync(ct);
-            await db.SalePayments.Where(p => p.TenantId == e.TenantId && p.SaleId == s.SaleId).ExecuteDeleteAsync(ct);
-            await db.Sales.Where(x => x.TenantId == e.TenantId && x.Id == s.SaleId).ExecuteDeleteAsync(ct);
-            db.Sales.Add(new ReplicaSale
-            {
-                TenantId = e.TenantId, Id = s.SaleId, StoreId = e.StoreId, Number = s.Number, ShiftId = s.ShiftId, CashierId = s.CashierId,
-                CustomerId = s.CustomerId, ENcf = s.ENcf, Total = s.Total, Itbis = s.Itbis, Discount = s.Discount, SoldUtc = e.OccurredUtc,
-            });
-            db.SaleLines.AddRange(s.Lines.Select((l, i) => new ReplicaSaleLine
-            {
-                TenantId = e.TenantId, SaleId = s.SaleId, LineNumber = i + 1, StoreId = e.StoreId, ProductId = l.ProductId, PresentationId = l.PresentationId,
-                Description = l.Description, Quantity = l.Quantity, Total = l.Total, Itbis = l.Itbis, UnitCost = l.Cost,
-            }));
-            db.SalePayments.AddRange(s.Payments.Select((p, i) => new ReplicaSalePayment
-            {
-                TenantId = e.TenantId, SaleId = s.SaleId, LineNumber = i + 1, StoreId = e.StoreId, Method = p.Method, Amount = p.Amount,
-            }));
+            return Sale(db, e, new SaleRecordedV2(s.SaleId, s.Number, s.ShiftId, s.CashierId, s.CustomerId, s.ENcf, s.Total, s.Itbis, s.Discount,
+                [.. s.Lines.Select(l => new SaleLineV2(l.ProductId, l.PresentationId, l.Description, l.Quantity, "", l.Total, l.Itbis, l.Cost))], s.Payments), ct);
         },
+        [Name<SaleRecordedV2>()] = (db, e, ct) => Sale(db, e, Read<SaleRecordedV2>(e), ct),
         [Name<SaleVoidedV1>()] = async (db, e, ct) =>
         {
             var v = Read<SaleVoidedV1>(e);
@@ -172,6 +159,15 @@ internal static class Projectors
                 TenantId = e.TenantId, Id = p.CustomerPaymentId, StoreId = e.StoreId, CustomerId = p.CustomerId, Amount = p.Amount, PaidUtc = e.OccurredUtc,
             });
         },
+        // TK-174: the store's own figures, newest by event time (a late snapshot never undoes a newer payment).
+        [Name<CustomerBalanceChangedV1>()] = async (db, e, ct) =>
+        {
+            var c = Read<CustomerBalanceChangedV1>(e);
+            var row = await db.Customers.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.Id == c.CustomerId, ct);
+            if (row is null) db.Customers.Add(row = new ReplicaCustomer { TenantId = e.TenantId, Id = c.CustomerId });
+            else if (row.ChangedUtc > e.OccurredUtc) return;
+            (row.StoreId, row.Name, row.Debt, row.CreditBalance, row.ChangedUtc) = (e.StoreId, Cut(c.Name, 150), c.Debt, c.CreditBalance, e.OccurredUtc);
+        },
         [Name<ShiftOpenedV1>()] = async (db, e, ct) =>
         {
             var s = Read<ShiftOpenedV1>(e);
@@ -216,6 +212,27 @@ internal static class Projectors
     };
 
     private static string Cut(string value, int max) => value.Length > max ? value[..max] : value;
+
+    private static async Task Sale(CloudDbContext db, InboxEvent e, SaleRecordedV2 s, CancellationToken ct)
+    {
+        await db.SaleLines.Where(l => l.TenantId == e.TenantId && l.SaleId == s.SaleId).ExecuteDeleteAsync(ct);
+        await db.SalePayments.Where(p => p.TenantId == e.TenantId && p.SaleId == s.SaleId).ExecuteDeleteAsync(ct);
+        await db.Sales.Where(x => x.TenantId == e.TenantId && x.Id == s.SaleId).ExecuteDeleteAsync(ct);
+        db.Sales.Add(new ReplicaSale
+        {
+            TenantId = e.TenantId, Id = s.SaleId, StoreId = e.StoreId, Number = s.Number, ShiftId = s.ShiftId, CashierId = s.CashierId,
+            CustomerId = s.CustomerId, ENcf = s.ENcf, Total = s.Total, Itbis = s.Itbis, Discount = s.Discount, SoldUtc = e.OccurredUtc,
+        });
+        db.SaleLines.AddRange(s.Lines.Select((l, i) => new ReplicaSaleLine
+        {
+            TenantId = e.TenantId, SaleId = s.SaleId, LineNumber = i + 1, StoreId = e.StoreId, ProductId = l.ProductId, PresentationId = l.PresentationId,
+            Description = l.Description, Quantity = l.Quantity, Unit = string.IsNullOrEmpty(l.Unit) ? null : Cut(l.Unit, 10), Total = l.Total, Itbis = l.Itbis, UnitCost = l.Cost,
+        }));
+        db.SalePayments.AddRange(s.Payments.Select((p, i) => new ReplicaSalePayment
+        {
+            TenantId = e.TenantId, SaleId = s.SaleId, LineNumber = i + 1, StoreId = e.StoreId, Method = p.Method, Amount = p.Amount,
+        }));
+    }
 
     private static async Task Return(CloudDbContext db, InboxEvent e, ReturnRecordedV2 r, CancellationToken ct)
     {

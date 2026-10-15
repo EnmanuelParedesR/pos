@@ -237,14 +237,14 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-168 | Precio mayorista en la caja (R7 #16) | ✅ Con cliente mayorista las líneas toman `WholesalePrice` (si existe) y la venta va con `PriceLevel.Wholesale`; "Precio mayorista" en la línea; otro cliente vuelve al detalle |
 | TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | ✅ "e-CF en cola: N" (ámbar si el más viejo pasa de 24 h) solo con `fiscal.manage`; "Salir" de administración pide espera o anular; `GET /api/inventory/products/prices` (solo `sales.create`) re-precia las líneas |
 | TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ✅ Vitest 3, jsdom 30, Tiendas se refresca al conectar una caja |
-| TK-174 | Nube: evento de saldo de clientes (incluye anulación de abonos) y nombres de clientes, para que "Te deben" sea exacto y diga nombres | ⬜ |
+| TK-174 | Nube: evento de saldo de clientes (incluye anulación de abonos) y nombres de clientes, para que "Te deben" sea exacto y diga nombres | ✅ `CustomerBalanceChangedV1(customerId, name, debt, creditBalance)` con las cifras de la tienda tras crear/editar, fiado, abono, abono anulado, venta anulada, devolución a la cuenta y uso del saldo a favor, y en la foto inicial; réplica `Customers` (gana el más reciente); `receivables` usa esa cifra y trae `customerName` (tiendas viejas: se reconstruye como antes); el panel lista quién debe por nombre |
 | TK-175 | Renombrar cajas desde Configuración (y enviar `RegisterChangedV1`) | ✅ `PUT /api/cash/registers/{id}` con `RegisterChangedV1` en la misma transacción; prueba de integración |
 | TK-178 | Bug: `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 | ✅ |
-| TK-179 | Reportes en la tienda: mezcla de medios de pago y ventas por hora (hoy el Resumen suma los Z y no compara a la misma hora) | ⬜ |
-| TK-180 | Nube: unidad (lb/unidad) en más vendidos | ⬜ |
+| TK-179 | Reportes en la tienda: mezcla de medios de pago y ventas por hora (hoy el Resumen suma los Z y no compara a la misma hora) | ✅ `GET /api/reports/sales/by-payment-method` (pagado, devuelto y neto por medio, desde las ventas) y `GET /api/reports/sales/by-hour` (por día y hora de la tienda), también en CSV/Excel; el Resumen ya no pide los Z: "Cómo le pagaron" sale del reporte, "Hoy" se compara con el mismo día de la semana pasada hasta esta hora, y hay gráfico "Ventas por hora" contra el periodo anterior |
+| TK-180 | Nube: unidad (lb/unidad) en más vendidos | ✅ `SaleRecordedV2` con `unit` por línea (V1 se sigue proyectando sin unidad); `SaleLines.Unit` en la réplica; `top-products` trae `unit` y el panel dice "26.5 lb" o "12 unidades" |
 | TK-181 | Panel: subir Vitest a 5 (aviso de npm audit en tinypool, solo desarrollo) | ✅ Vitest 5.0.3; `npm audit` sin hallazgos |
 | TK-182 | Encontrar y arreglar la prueba que falló una vez en la suite (posible inestabilidad) | ✅ No se reprodujo (6 corridas completas, 140 de proyectos en paralelo, 720 de las clases bUnit sospechosas); no quedó registrado cuál prueba falló (la corrida fue en la copia principal que comparten varios agentes) |
-| TK-183 | Modo oscuro de Escuadra Admin (variables listas) | ⬜ |
+| TK-183 | Modo oscuro de Escuadra Admin (variables listas) | ✅ Tokens oscuros bajo `:root[data-theme="dark"] .esc-admin` (contraste AA comprobado: texto 13.9:1, secundario 7.9:1, terciario 5.7:1, enlaces 5.7:1); `escuadra.js` y `theme.ts` siguen `prefers-color-scheme` o la elección guardada en el equipo; botón "Tema" (automático → claro → oscuro) en el menú de la administración y del panel. La caja sigue clara |
 
 ## M15 · Brechas frente a la competencia
 

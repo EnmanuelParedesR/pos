@@ -54,6 +54,13 @@ internal sealed class ReportsEndpoints : IEndpoint
             return Export.As(rows, p.Format, p.Name("ventas-por-categoria"));
         });
 
+        // TK-179: the back office's payment mix and the same-hour comparison.
+        g.MapGet("/sales/by-payment-method", async ([AsParameters] Period p, ISalesReports sales, CancellationToken ct) =>
+            p.Invalid() ?? Export.As(await sales.ByPaymentMethodAsync(p.From, p.To, ct), p.Format, p.Name("ventas-por-medio-de-pago")));
+
+        g.MapGet("/sales/by-hour", async ([AsParameters] Period p, ISalesReports sales, CancellationToken ct) =>
+            p.Invalid() ?? Export.As(await sales.ByHourAsync(p.From, p.To, ct), p.Format, p.Name("ventas-por-hora")));
+
         g.MapGet("/sales/by-cashier", async ([AsParameters] Period p, ISalesReports sales, CancellationToken ct) =>
             p.Invalid() ?? Export.As(await sales.ByCashierAsync(p.From, p.To, ct), p.Format, p.Name("ventas-por-cajero")));
 

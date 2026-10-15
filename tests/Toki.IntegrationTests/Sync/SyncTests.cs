@@ -131,11 +131,15 @@ public sealed class CloudNamesTests(TokiApp app) : IClassFixture<TokiApp>
         changed.ShouldAllBe(e => !e.GetRawText().Contains("9876") && !e.GetRawText().Contains(code!));
         var registers = await EventsAsync<Toki.CashRegister.Contracts.RegisterChangedV1>();
         (registers.Single().GetProperty("registerId").GetGuid(), registers.Single().GetProperty("name").GetString()).ShouldBe((register, "Caja 1"));
+        (await admin.PostAsJsonAsync("/api/customers", new { Name = "Ana Pérez" })).StatusCode.ShouldBe(HttpStatusCode.Created);
+        var customer = (await EventsAsync<Toki.Customers.Contracts.CustomerBalanceChangedV1>()).ShouldHaveSingleItem(); // TK-174
+        (customer.GetProperty("name").GetString(), customer.GetProperty("debt").GetDecimal()).ShouldBe(("Ana Pérez", 0m));
 
         await app.ConnectAsync();
 
         (await EventsAsync<Toki.Identity.Contracts.UserProfileChangedV1>()).Count.ShouldBe(5); // + admin and cashier, as they are now
         (await EventsAsync<Toki.CashRegister.Contracts.RegisterChangedV1>()).Count.ShouldBe(2);
+        (await EventsAsync<Toki.Customers.Contracts.CustomerBalanceChangedV1>()).Count.ShouldBe(2);
         await app.UploadAsync();
         app.Cloud.To(CloudUploader.IngestPath).SelectMany(r => r.Body.GetProperty("events").EnumerateArray())
             .Count(e => e.GetProperty("type").GetString() == typeof(Toki.Identity.Contracts.UserProfileChangedV1).FullName).ShouldBe(5);

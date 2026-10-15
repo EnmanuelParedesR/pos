@@ -37,3 +37,10 @@ public interface ICustomerAccounts
 public sealed record OnAccountChargeRecordedV1(Guid CustomerId, Guid SaleId, decimal Amount) : IntegrationEvent(CustomerId);
 
 public sealed record CustomerPaymentRecordedV1(Guid CustomerId, Guid CustomerPaymentId, decimal Amount) : IntegrationEvent(CustomerId);
+
+/// <summary>A customer's account as the store sees it right after it changed (TK-174): created or edited, a credit sale, a payment,
+/// a voided payment, a voided sale or a return to the account. It carries the store's own figures, so the cloud never has to rebuild them.
+/// Also written for every customer when the store connects to the cloud.</summary>
+/// <param name="Debt">Unpaid credit (fiado) right now.</param>
+/// <param name="CreditBalance">Money the store owes the customer (from returns).</param>
+public sealed record CustomerBalanceChangedV1(Guid CustomerId, string Name, decimal Debt, decimal CreditBalance) : IntegrationEvent(CustomerId);

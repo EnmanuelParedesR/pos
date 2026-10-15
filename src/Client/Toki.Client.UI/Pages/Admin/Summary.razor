@@ -57,17 +57,18 @@
                         <div class="esc-hero__compare">
                             @if (_range == "today")
                             {
+                                @* TK-179: today so far against the same day last week up to this hour, not against its whole day. *@
                                 @if (_previous.Sales == 0)
                                 {
                                     <span>El @WeekdayLastWeek no hubo ventas.</span>
                                 }
-                                else if (_current.Sales >= _previous.Sales)
+                                else if (_previousSoFar == 0)
                                 {
-                                    <Delta Current="_current.Sales" Previous="_previous.Sales" /><span>Ya pasó lo del @WeekdayLastWeek completo (@Format.WithCurrency(_previous.Sales))</span>
+                                    <span>El @WeekdayLastWeek a esta hora todavía no había vendido (vendió @Format.WithCurrency(_previous.Sales) en todo el día).</span>
                                 }
                                 else
                                 {
-                                    <span>Lleva el <b>@(Math.Round(_current.Sales / _previous.Sales * 100)) %</b> de lo que vendió el @WeekdayLastWeek en todo el día (@Format.WithCurrency(_previous.Sales))</span>
+                                    <Delta Current="_current.Sales" Previous="_previousSoFar" /><span>vs. el @WeekdayLastWeek a esta hora (@Format.WithCurrency(_previousSoFar); en todo el día, @Format.WithCurrency(_previous.Sales))</span>
                                 }
                             }
                             else if (_previous.Sales == 0)
@@ -181,6 +182,14 @@
                     </section>
                 }
 
+                <section class="esc-card esc-card--padded esc-span-12" aria-labelledby="hours-title">
+                    <div class="esc-card__head">
+                        <h2 id="hours-title" class="esc-card__title">Ventas por hora</h2>
+                        <div class="esc-legend"><span><i></i>@PeriodShort</span><span><i class="ghost"></i>@GhostLabel</span></div>
+                    </div>
+                    <BarChart Points="_hours" Label="Ventas por hora" GhostLabel="@GhostLabel" EmptyText="Cuando la caja venda, aquí verá a qué horas vende más." />
+                </section>
+
                 <section class="esc-card esc-card--padded esc-span-12" aria-labelledby="top-title">
                     <div class="esc-card__head"><h2 id="top-title" class="esc-card__title">Lo más vendido</h2><span class="esc-card__aside">@PeriodShort · venta sin ITBIS</span></div>
                     @if (_top.Count == 0)
@@ -229,7 +238,8 @@
     private bool _loading = true;
     private DateOnly _from, _to;
     private Totals _current = Totals.Of([]), _previous = Totals.Of([]);
-    private List<BarChart.Point> _chart = [];
+    private decimal _previousSoFar;
+    private List<BarChart.Point> _chart = [], _hours = [];
     private List<ProductSales> _top = [];
     private decimal _topTotal;
     private Dictionary<Guid, string> _units = [];
@@ -300,6 +310,21 @@
             Detail: day.TryGetValue(d, out var s) ? $"{s.SaleCount} {(s.SaleCount == 1 ? "factura" : "facturas")}" : "Sin ventas",
             IsCurrent: d == _to))];
 
+        // TK-179: by hour, for "today so far vs. that day so far" and the hours chart (this period against the one it is compared with).
+        var byHour = (await Api.GetAsync<List<HourlySales>>($"/api/reports/sales/by-hour?from={compareFrom:yyyy-MM-dd}&to={_to:yyyy-MM-dd}")).Value ?? [];
+        var nowHour = Format.StoreTime(DateTimeOffset.UtcNow).Hour;
+        _previousSoFar = byHour.Where(h => h.Day == compareFrom && h.Hour <= nowHour).Sum(h => h.SalesWithItbis);
+        var hoursNow = byHour.Where(h => h.Day >= _from && h.Day <= _to).ToList();
+        var hoursBefore = byHour.Where(h => h.Day >= compareFrom && h.Day <= previousTo).ToList();
+        var hourRange = hoursNow.Concat(hoursBefore).Select(h => h.Hour).DefaultIfEmpty(-1).ToList();
+        _hours = hourRange.Max() < 0 ? [] : [.. Enumerable.Range(hourRange.Min(), hourRange.Max() - hourRange.Min() + 1).Select(h =>
+        {
+            var count = hoursNow.Where(x => x.Hour == h).Sum(x => x.SaleCount);
+            return new BarChart.Point(Label: HourShort(h), Title: $"De {HourLong(h)} a {HourLong(h + 1)}", Value: hoursNow.Where(x => x.Hour == h).Sum(x => x.SalesWithItbis),
+                Ghost: hoursBefore.Where(x => x.Hour == h).Sum(x => x.SalesWithItbis), Detail: $"{count} {(count == 1 ? "factura" : "facturas")}",
+                IsCurrent: _range == "today" && h == nowHour);
+        })];
+
         var products = (await Api.GetAsync<List<ProductSales>>($"/api/reports/sales/by-product?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}")).Value ?? [];
         _topTotal = products.Sum(p => p.NetWithoutItbis);
         _top = [.. products.OrderByDescending(p => p.NetWithoutItbis).Take(6)];
@@ -309,11 +334,14 @@
         // Who owes (JTBD 4): today's balances, whatever the period.
         _debts = [.. ((await Api.GetAsync<List<Receivable>>("/api/reports/receivables")).Value ?? []).Where(d => d.Total > 0)];
 
-        // Shifts of the period (payment mix) and of the last 7 days (differences to review).
+        // TK-179: how the period's sales were paid, from the sales themselves (open shifts included), minus what returns gave back.
+        _mix = [.. ((await Api.GetAsync<List<PaymentMethodSales>>($"/api/reports/sales/by-payment-method?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}")).Value ?? [])
+            .Where(m => m.Net > 0).Select(m => new Mix(m.Method, m.Net))];
+
+        // Shifts of the period and of the last 7 days (open since when, differences to review).
         var shiftFrom = new[] { _from, today.AddDays(-6) }.Min();
         var shifts = (await Api.GetAsync<List<ShiftSummary>>($"/api/reports/shifts?from={shiftFrom:yyyy-MM-dd}&to={today:yyyy-MM-dd}")).Value ?? [];
         _openSince = shifts.Where(s => s.ClosedUtc is null).ToDictionary(s => s.ShiftId, s => s.OpenedUtc);
-        await LoadMixAsync(shifts.Where(s => Format.StoreTime(s.OpenedUtc) is var o && DateOnly.FromDateTime(o) >= _from && DateOnly.FromDateTime(o) <= _to));
 
         _alerts.Clear();
         foreach (var s in shifts.Where(s => s.Difference is { } d && d != 0 && s.ClosedUtc is { } c && DateOnly.FromDateTime(Format.StoreTime(c)) >= today.AddDays(-6)).OrderByDescending(s => s.ClosedUtc).Take(5))
@@ -350,17 +378,10 @@
         _loading = false;
     }
 
-    /// <summary>The mix comes from each shift's Z (sales minus voids and refunds; customer payments are not sales).</summary>
-    // shortcut: one Z call per shift (at most 31); a payment-mix report endpoint would make the month cheaper.
-    private async Task LoadMixAsync(IEnumerable<ShiftSummary> shifts)
-    {
-        var reports = await Task.WhenAll(shifts.Take(31).Select(s => Api.GetAsync<ZReport>($"/api/cash/shifts/{s.ShiftId}/z")));
-        _mix = [.. reports.SelectMany(r => r.Value?.ByMethod ?? [])
-            .GroupBy(m => m.Method)
-            .Select(g => new Mix(g.Key, g.Sum(m => m.SalePayments - m.Voids - m.Refunds)))
-            .Where(m => m.Amount > 0)
-            .OrderByDescending(m => m.Amount)];
-    }
+    /// <summary>"8a", "2p": the hours chart's axis.</summary>
+    private static string HourShort(int h) => $"{(h % 12 == 0 ? 12 : h % 12)}{(h % 24 < 12 ? "a" : "p")}";
+    /// <summary>"8 a. m.", "2 p. m.".</summary>
+    private static string HourLong(int h) => $"{(h % 12 == 0 ? 12 : h % 12)} {(h % 24 < 12 ? "a. m." : "p. m.")}";
 
     private string Quantity(ProductSales p) =>
         _units.TryGetValue(p.ProductId, out var unit) && unit == "Pound" ? $"{N(p.Quantity)} lb" : $"{N(p.Quantity)} {(p.Quantity == 1 ? "unidad" : "unidades")}";

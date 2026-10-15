@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { useApi, type DaySales, type Issue, type ProductSales, type Receivables, type Summary } from "../api";
 import { usePanel } from "../App";
-import { addDays, ago, amount, dayName, isStale, money, paymentMethodNames, quantity, storeDay, storeHour, time, weekday } from "../format";
+import { addDays, ago, amount, customerLabel, dayName, isStale, money, paymentMethodNames, quantity, storeDay, storeHour, time, weekday } from "../format";
 import { BarChart, BarList, Card, Delta, EmptyState, Icon, Legend, LoadError, PageHead, Segmented, Skeleton, Sparkline, Stat, StoreSelect } from "../ui";
 
 type Day = "today" | "yesterday" | "other";
@@ -151,13 +151,15 @@ function SummaryView({ summary: s, lastWeek, days, top, receivables, isToday }: 
         </Card>
 
         {receivables && receivables.total > 0 && (
-          <Card title="Le deben (fiado)" aside={`${receivables.customerCount} ${receivables.customerCount === 1 ? "cliente" : "clientes"}`} className="esc-span-12">
-            <div className="esc-row" style={{ gap: "8px 24px", alignItems: "baseline" }}>
-              <span className="esc-stat__value">{money(receivables.total)}</span>
-              <span className="esc-muted">
-                {receivables.topDebtors.length > 0 && `El que más debe: ${money(receivables.topDebtors[0].debt)}. `}Los nombres de los clientes llegan cuando la tienda los envíe.
-              </span>
-            </div>
+          <Card title="Le deben (fiado)" aside={`${money(receivables.total)} · ${receivables.customerCount} ${receivables.customerCount === 1 ? "cliente" : "clientes"}`} className="esc-span-12">
+            <BarList
+              items={receivables.topDebtors.map((d) => ({
+                key: d.customerId,
+                name: customerLabel(d.customerId, d.customerName),
+                value: d.debt,
+                share: receivables.topDebtors[0].debt === 0 ? 0 : d.debt / receivables.topDebtors[0].debt,
+              }))}
+            />
           </Card>
         )}
 
@@ -165,7 +167,7 @@ function SummaryView({ summary: s, lastWeek, days, top, receivables, isToday }: 
           {top.length === 0 ? (
             <EmptyState icon="package" title="Sin ventas este día" />
           ) : (
-            <BarList items={top.map((p) => ({ key: p.productId, name: p.description, detail: quantity(p.quantity), value: p.total, share: topMax === 0 ? 0 : p.total / topMax }))} />
+            <BarList items={top.map((p) => ({ key: p.productId, name: p.description, detail: quantity(p.quantity, p.unit), value: p.total, share: topMax === 0 ? 0 : p.total / topMax }))} />
           )}
         </Card>
 

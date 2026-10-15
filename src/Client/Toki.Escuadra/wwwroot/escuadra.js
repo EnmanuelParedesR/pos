@@ -97,7 +97,30 @@
     }
   }, true);
 
+  // Admin dark mode (TK-183): the choice ("light", "dark" or none = follow the system) is kept per device; <html data-theme> is always the
+  // resolved theme, set before Blazor renders so the page never flashes light.
+  const THEME_KEY = 'toki.theme';
+  const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  let unsavedTheme = null; // storage blocked: the choice lasts until the page reloads
+  const storedTheme = () => { try { return localStorage.getItem(THEME_KEY); } catch { return unsavedTheme; } };
+  const applyTheme = () => {
+    const choice = storedTheme();
+    document.documentElement.dataset.theme = choice === 'light' || choice === 'dark' ? choice : (darkQuery && darkQuery.matches ? 'dark' : 'light');
+  };
+  applyTheme();
+  if (darkQuery) darkQuery.addEventListener('change', applyTheme);
+
   window.escuadra = {
+    // "system", "light" or "dark".
+    getTheme: () => storedTheme() || 'system',
+    setTheme: choice => {
+      unsavedTheme = choice === 'light' || choice === 'dark' ? choice : null;
+      try {
+        if (unsavedTheme) localStorage.setItem(THEME_KEY, unsavedTheme);
+        else localStorage.removeItem(THEME_KEY);
+      } catch { /* kept in unsavedTheme */ }
+      applyTheme();
+    },
     // HTML autofocus only works on page load; a dialog Blazor inserts later focuses its field here.
     focusFirst: el => {
       // A screen may focus its own field first (Blazor Server runs this after the client acknowledges the render): keep it.

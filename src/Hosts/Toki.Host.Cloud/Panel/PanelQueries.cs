@@ -18,13 +18,15 @@ public sealed record Summary(
     DateOnly Date, decimal SalesTotal, int SalesCount, decimal AverageTicket, decimal DiscountTotal, decimal ItbisTotal, decimal ReturnsTotal, decimal NetTotal,
     int VoidedCount, IReadOnlyList<HourSales> ByHour, IReadOnlyList<PaymentMix> PaymentMix, IReadOnlyList<PanelIssue> Issues, DateTime? LastEventUtc);
 public sealed record DaySales(DateOnly Date, int Count, decimal Total, decimal Discount, decimal Itbis, decimal Returns, decimal Net, int VoidedCount);
-public sealed record ProductSales(Guid ProductId, string Description, decimal Quantity, decimal Total, decimal Profit);
+/// <param name="Unit">Unit of <paramref name="Quantity"/>, "Pound" or "Unit", from the newest sale with one (SaleRecordedV2, TK-180); null before that.</param>
+public sealed record ProductSales(Guid ProductId, string Description, decimal Quantity, decimal Total, decimal Profit, string? Unit = null);
 /// <param name="CashierName">Null until the store sent the name (names come from UserProfileChangedV1 and RegisterChangedV1).</param>
 public sealed record ShiftDifference(
     Guid ShiftId, Guid StoreId, string StoreName, Guid RegisterId, Guid CashierId, int ZNumber, decimal ExpectedCash, decimal CountedCash, decimal Difference, DateTime ClosedUtc,
     string? RegisterName = null, string? CashierName = null);
 public sealed record CashierSales(Guid CashierId, int Count, decimal Total, int VoidedCount, string? CashierName = null);
-public sealed record CustomerDebt(Guid CustomerId, Guid StoreId, decimal Debt);
+/// <param name="CustomerName">Null until the store sent the customer's account (CustomerBalanceChangedV1, TK-174).</param>
+public sealed record CustomerDebt(Guid CustomerId, Guid StoreId, decimal Debt, string? CustomerName = null);
 /// <param name="Total">What all customers owe on credit (fiado) right now.</param>
 public sealed record Receivables(decimal Total, int CustomerCount, IReadOnlyList<CustomerDebt> TopDebtors);
 public sealed record NodeStatus(Guid NodeId, string Name, DateTime? LastEventUtc, DateTime? LastSyncUtc);
@@ -93,17 +95,17 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
     public async Task<IReadOnlyList<ProductSales>> TopProductsAsync(PanelFilter f, int limit, CancellationToken ct)
     {
         var (start, end) = BusinessDay.UtcRange(f.From, f.To);
-        var sold =await (from l in Rows(db.SaleLines, f)
+        var sold = await (from l in Rows(db.SaleLines, f)
                           join s in CompletedSales(f) on l.SaleId equals s.Id
-                          select new { l.ProductId, l.Description, l.Quantity, l.Total, l.Itbis, l.UnitCost, At = s.SoldUtc }).ToListAsync(ct);
+                          select new { l.ProductId, l.Description, l.Quantity, l.Unit, l.Total, l.Itbis, l.UnitCost, At = s.SoldUtc }).ToListAsync(ct);
         var returned = await (from l in Rows(db.ReturnLines, f)
                               join r in Rows(db.Returns, f) on l.ReturnId equals r.Id
                               where r.ReturnedUtc >= start && r.ReturnedUtc < end
-                              select new { l.ProductId, l.Description, Quantity = -l.Quantity, Total = -l.Total, Itbis = -l.Itbis, l.UnitCost, At = r.ReturnedUtc })
+                              select new { l.ProductId, l.Description, Quantity = -l.Quantity, Unit = (string?)null, Total = -l.Total, Itbis = -l.Itbis, l.UnitCost, At = r.ReturnedUtc })
             .ToListAsync(ct);
         return [.. sold.Concat(returned).GroupBy(l => l.ProductId)
             .Select(g => new ProductSales(g.Key, g.MaxBy(l => l.At)!.Description, g.Sum(l => l.Quantity), g.Sum(l => l.Total),
-                Money.Round(g.Sum(l => l.Total - l.Itbis - l.UnitCost * l.Quantity))))
+                Money.Round(g.Sum(l => l.Total - l.Itbis - l.UnitCost * l.Quantity)), g.Where(l => l.Unit != null).MaxBy(l => l.At)?.Unit))
             .OrderByDescending(p => p.Total).Take(Math.Clamp(limit, 1, 50))];
     }
 
@@ -130,15 +132,17 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
             .OrderByDescending(c => c.Total)];
     }
 
-    /// <summary>Credit (fiado) owed right now: charges of sales not voided, minus returns credited to the account on those sales (up to the charge),
-    /// minus payments. A customer whose payments cover more owes nothing.</summary>
-    /// <remarks>shortcut: voided customer payments raise no event, so after one the debt shows too low; add a balance event from Customers
-    /// (CustomerBalanceChangedV1 with the store's own figure) if owners see the gap.</remarks>
+    /// <summary>Credit (fiado) owed right now. A customer the store sent its account for (CustomerBalanceChangedV1, TK-174) owes the store's own
+    /// figure, with their name. For the rest (stores on an older version) it is rebuilt: charges of sales not voided, minus returns credited to
+    /// the account on those sales (up to the charge), minus payments; a customer whose payments cover more owes nothing.</summary>
+    /// <remarks>shortcut: the rebuilt figure misses voided customer payments (no event before TK-174); it goes away once every store has updated.</remarks>
     public async Task<Receivables> ReceivablesAsync(Guid tenantId, Guid? storeId, int limit, CancellationToken ct)
     {
         var f = new PanelFilter(tenantId, storeId, default, default);
+        var known = await Rows(db.Customers, f).Select(c => new { c.Id, c.StoreId, c.Name, c.Debt }).ToListAsync(ct);
+        var knownIds = known.Select(c => c.Id).ToHashSet();
         var voids = Rows(db.SaleVoids, f).Select(v => v.SaleId);
-        var charges = await Rows(db.CustomerCharges, f).Where(c => !voids.Contains(c.SaleId)).ToListAsync(ct);
+        var charges = (await Rows(db.CustomerCharges, f).Where(c => !voids.Contains(c.SaleId)).ToListAsync(ct)).Where(c => !knownIds.Contains(c.CustomerId)).ToList();
         var chargedSales = charges.Select(c => c.SaleId).ToList();
         var credited = await Rows(db.Returns, f).Where(r => r.Method == "CreditBalance" && chargedSales.Contains(r.SaleId))
             .Select(r => new { r.SaleId, r.Total }).ToListAsync(ct);
@@ -148,6 +152,7 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
             .Select(c => new { c.CustomerId, c.StoreId, Owed = c.Amount - Math.Min(c.Amount, credited.Where(r => r.SaleId == c.SaleId).Sum(r => r.Total)) })
             .GroupBy(c => c.CustomerId)
             .Select(g => new CustomerDebt(g.Key, g.First().StoreId, Math.Max(0, g.Sum(c => c.Owed) - payments.Where(p => p.CustomerId == g.Key).Sum(p => p.Amount))))
+            .Concat(known.Select(c => new CustomerDebt(c.Id, c.StoreId, c.Debt, c.Name)))
             .Where(d => d.Debt > 0).OrderByDescending(d => d.Debt).ToList();
         return new Receivables(debts.Sum(d => d.Debt), debts.Count, [.. debts.Take(Math.Clamp(limit, 1, 50))]);
     }

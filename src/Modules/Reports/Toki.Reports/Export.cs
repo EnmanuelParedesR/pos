@@ -26,6 +26,9 @@ internal static class Export
         ["NetWithoutItbis"] = "NetoSinItbis", ["Cost"] = "Costo", ["Profit"] = "Utilidad",
         ["ProductId"] = "ProductoId", ["CategoryId"] = "CategoriaId", ["Product"] = "Producto", ["Category"] = "Categoria", ["Quantity"] = "Cantidad",
         ["CashierId"] = "CajeroId", ["Cashier"] = "Cajero", ["VoidedCount"] = "Anuladas", ["SoldWithItbis"] = "VendidoConItbis",
+        // sales by payment method (Method values too) and by hour
+        ["Method"] = "MedioPago", ["Paid"] = "Pagado", ["Refunded"] = "Devuelto", ["Net"] = "Neto", ["Hour"] = "Hora",
+        ["Transfer"] = "Transferencia", ["OnAccount"] = "Credito", ["CreditBalance"] = "SaldoAFavor",
         // shifts
         ["ShiftId"] = "TurnoId", ["Register"] = "Caja", ["OpenedUtc"] = "Abierto", ["ClosedUtc"] = "Cerrado", ["ZNumber"] = "NumeroZ",
         ["OpeningFloat"] = "FondoInicial", ["ExpectedCash"] = "EfectivoEsperado", ["CountedCash"] = "EfectivoContado", ["Difference"] = "Diferencia",
@@ -79,6 +82,7 @@ internal static class Export
     {
         DateTime utc => utc + BusinessDay.Offset,
         Enum e => Spanish.GetValueOrDefault(e.ToString(), e.ToString()),
+        string method when p.Name == "Method" => Spanish.GetValueOrDefault(method, method), // a payment method sent as text by its module
         var v => v,
     };
 

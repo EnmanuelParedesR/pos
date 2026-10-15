@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { NavLink, Outlet, Route, Routes, useLocation, useNavigate, useOutletContext } from "react-router";
 import { api, hasSession, setOnSignedOut, signOut, useApi, type Me, type Store } from "./api";
-import { Icon, Logo, type IconName } from "./ui";
+import { Icon, Logo, ThemeToggle, type IconName } from "./ui";
 import { SignIn } from "./pages/SignIn";
 import { SummaryPage } from "./pages/SummaryPage";
 import { SalesPage } from "./pages/SalesPage";
@@ -141,6 +141,7 @@ function Shell({ me }: { me: Me }) {
               {me.isPlatformAdmin ? "Equipo de Toki" : "Dueño"}
             </div>
           </div>
+          <ThemeToggle />
           <button type="button" className="esc-side__item" title="Salir" onClick={signOut}>
             <Icon name="sign-out" />
             <span className="esc-side__label">Salir</span>
@@ -151,6 +152,7 @@ function Shell({ me }: { me: Me }) {
       <header className="esc-topbar">
         <Logo size={26} />
         <span className="esc-topbar__store">{me.tenantName}</span>
+        <ThemeToggle className="esc-button esc-button--ghost esc-button--small" showLabel={false} size={18} />
         <button type="button" className="esc-button esc-button--ghost esc-button--small" aria-label="Salir" onClick={signOut}>
           <Icon name="sign-out" size={18} />
         </button>

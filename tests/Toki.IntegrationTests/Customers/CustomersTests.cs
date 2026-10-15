@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
+using Toki.BuildingBlocks.Persistence;
 using Toki.IntegrationTests.Infra;
 using static Toki.IntegrationTests.Infra.Store;
 
@@ -308,6 +311,10 @@ public sealed class CustomersTests(TokiApp app) : IClassFixture<TokiApp>
         (await cashier.Client.PostAsJsonAsync($"/api/customers/payments/{payment}/void",
             new { Reason = "era 500", SupervisorApprovalId = await cashier.Client.ApproveAsync("credit.manage", payment) })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await DebtAsync(customer)).ShouldBe(6000m);
+        // TK-174: the cloud learns the debt went back up from the customer's balance event.
+        var balance = await app.InScopeAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox
+            .Where(m => m.AggregateId == customer && m.Type.EndsWith("CustomerBalanceChangedV1")).OrderByDescending(m => m.Sequence).Select(m => m.Payload).FirstAsync());
+        JsonDocument.Parse(balance).RootElement.GetProperty("debt").GetDecimal().ShouldBe(6000m);
         var x = await app.XReportAsync(cashier.ShiftId);
         x.GetProperty("customerPayments").GetDecimal().ShouldBe(0m);
         (await (await cashier.Client.PostAsJsonAsync($"/api/customers/payments/{payment}/void",

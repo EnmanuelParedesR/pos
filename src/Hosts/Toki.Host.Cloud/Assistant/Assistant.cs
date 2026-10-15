@@ -98,13 +98,13 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries)
     public static readonly IReadOnlyList<ChatTool> Tools =
     [
         Tool("sales_by_day", "Ventas por día de la tienda: cantidad de ventas, total vendido, descuentos, ITBIS, devoluciones, neto y anuladas."),
-        Tool("top_products", "Productos más vendidos en el rango, por monto vendido (con cantidad y ganancia estimada).", withLimit: true),
+        Tool("top_products", "Productos más vendidos en el rango, por monto vendido (con cantidad, su unidad: Pound = libras, Unit = unidades, y ganancia estimada).", withLimit: true),
         Tool("shift_differences", "Turnos cerrados (cierres Z) con efectivo esperado, contado y diferencia (negativa = faltante, positiva = sobrante), por cajero y caja."),
         Tool("sales_by_cashier", "Ventas por cajero: cantidad, total y anuladas."),
         Tool("payment_mix", "Cómo pagaron los clientes: efectivo, tarjeta, transferencia, fiado o saldo a favor, con cantidad y monto."),
         new("sync_status", "Hora del último dato recibido de cada tienda y si hay datos pendientes de procesar.",
             new JsonObject { ["type"] = "object", ["properties"] = new JsonObject() }),
-        new("receivables", "Cuentas por cobrar (fiado) de hoy: total que deben los clientes, cuántos deben y los que más deben (por id de cliente).",
+        new("receivables", "Cuentas por cobrar (fiado) de hoy: total que deben los clientes, cuántos deben y los que más deben, con su nombre (customerName) cuando la tienda lo envió.",
             new JsonObject
             {
                 ["type"] = "object",
