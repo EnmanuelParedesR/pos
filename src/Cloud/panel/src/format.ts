@@ -1,9 +1,12 @@
 import type { PaymentMethod } from "./api";
 
-const amount = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const amountFormat = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** "1,234.50" without the currency (the hero number shows "RD$" smaller). */
+export const amount = (value: number) => amountFormat.format(value);
 
 /** "RD$ 1,234.50", the way the owner reads amounts (same as the register and the API's assistant). */
-export const money = (value: number) => (value < 0 ? "-" : "") + "RD$ " + amount.format(Math.abs(value));
+export const money = (value: number) => (value < 0 ? "-" : "") + "RD$ " + amountFormat.format(Math.abs(value));
 
 /** Short amount for chart labels: 950, 12.5k. */
 export const shortMoney = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(value)));
@@ -23,10 +26,32 @@ const storeOffsetMs = 4 * 60 * 60 * 1000;
 
 export const storeDay = (date = new Date()) => new Date(date.getTime() - storeOffsetMs).toISOString().slice(0, 10);
 
+/** The store's current hour (0–23). */
+export const storeHour = (date = new Date()) => new Date(date.getTime() - storeOffsetMs).getUTCHours();
+
 export const addDays = (day: string, days: number) => new Date(Date.parse(day + "T00:00:00Z") + days * 86_400_000).toISOString().slice(0, 10);
 
 const dateTimeFormat = new Intl.DateTimeFormat("es-DO", { timeZone: "America/Santo_Domingo", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 const dayFormat = new Intl.DateTimeFormat("es-DO", { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" });
+
+const timeFormat = new Intl.DateTimeFormat("es-DO", { timeZone: "America/Santo_Domingo", hour: "numeric", minute: "2-digit" });
+const weekdayFormat = new Intl.DateTimeFormat("es-DO", { timeZone: "UTC", weekday: "long" });
+
+/** A UTC instant's store time: "3:40 p. m.". */
+export const time = (utc: string) => timeFormat.format(new Date(utc));
+
+const dayMonthFormat = new Intl.DateTimeFormat("es-DO", { timeZone: "UTC", day: "numeric", month: "long" });
+
+/** "Del 9 al 15 de octubre" or "Del 28 de septiembre al 4 de octubre". */
+export function rangeLabel(from: string, to: string) {
+  const end = dayMonthFormat.format(new Date(to + "T00:00:00Z"));
+  if (from === to) return `El ${end}`;
+  const sameMonth = from.slice(0, 7) === to.slice(0, 7);
+  return `Del ${sameMonth ? Number(from.slice(8)) : dayMonthFormat.format(new Date(from + "T00:00:00Z"))} al ${end}`;
+}
+
+/** A store day's weekday: "jueves". */
+export const weekday = (day: string) => weekdayFormat.format(new Date(day + "T00:00:00Z"));
 
 /** A UTC instant in store time: "15 oct, 3:40 p. m.". */
 export const dateTime = (utc: string) => dateTimeFormat.format(new Date(utc));
@@ -47,6 +72,5 @@ export function ago(utc: string, now = Date.now()) {
 /** The API flags a store as stale after 24 h without data (PanelQueries.SyncStaleAfter). */
 export const isStale = (utc: string | null, now = Date.now()) => utc === null || now - Date.parse(utc) > 24 * 60 * 60 * 1000;
 
-/** Cashiers only have an id: show its end, since ids created the same day share their start (version 7). */
-// shortcut: "Cajero …1a2b" until the store sends a user event with names (pending in TK-133); then show the name.
-export const cashierLabel = (id: string) => `Cajero …${id.slice(-4)}`;
+/** The cashier's name (TK-165); until the store sends it, the end of the id, since ids created the same day share their start (version 7). */
+export const cashierLabel = (id: string, name?: string | null) => name?.trim() || `Cajero …${id.slice(-4)}`;

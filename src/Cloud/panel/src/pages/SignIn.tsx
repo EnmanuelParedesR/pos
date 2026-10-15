@@ -1,14 +1,15 @@
 import { useState, type FormEvent } from "react";
 import { ApiError, identityMessages, register, signIn } from "../api";
-import { Logo, Notice } from "../ui";
+import { Logo, Notice, Segmented } from "../ui";
 
 /** Entrar / Crear cuenta. Creating an account also creates the owner's business (tenant). */
 export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
-  const [creating, setCreating] = useState(false);
+  const [mode, setMode] = useState<"in" | "create">("in");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
+  const creating = mode === "create";
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -26,18 +27,24 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
   const messages = error ? identityMessages(error) : [];
 
   return (
-    <main className="signin">
-      <form className="esc-card esc-card--padded signin__card" onSubmit={submit}>
-        <Logo size={44} />
-        <div className="esc-row" role="group" aria-label="Opción">
-          <button type="button" className="esc-chip" aria-pressed={!creating} onClick={() => (setCreating(false), setError(null))}>
-            Entrar
-          </button>
-          <button type="button" className="esc-chip" aria-pressed={creating} onClick={() => (setCreating(true), setError(null))}>
-            Crear cuenta
-          </button>
+    <main className="esc-admin esc-signin">
+      <form className="esc-card esc-signin__card" onSubmit={submit}>
+        <Logo size={40} />
+        <div>
+          <h1>{creating ? "Cree su cuenta" : "Bienvenido de nuevo"}</h1>
+          <p className="esc-muted" style={{ marginTop: 4 }}>
+            {creating ? "Vea sus ventas y cuadres desde el celular." : "Entre para ver cómo van sus tiendas."}
+          </p>
         </div>
-        <h1 className="esc-title">{creating ? "Crear su cuenta" : "Entrar al panel"}</h1>
+        <Segmented<"in" | "create">
+          label="Opción"
+          options={[
+            ["in", "Entrar"],
+            ["create", "Crear cuenta"],
+          ]}
+          value={mode}
+          onChange={(m) => (setMode(m), setError(null))}
+        />
         <label className="esc-field">
           <span>Correo</span>
           <input className="esc-input" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -54,7 +61,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
             onChange={(e) => setPassword(e.target.value)}
             aria-invalid={error ? true : undefined}
           />
-          {creating && <span className="esc-subtitle">Mínimo 8 caracteres, con una mayúscula, una minúscula y un número.</span>}
+          {creating && <span className="esc-field__hint">Mínimo 8 caracteres, con una mayúscula, una minúscula y un número.</span>}
         </label>
         {error && (
           <Notice kind={error.offline ? "warning" : "error"} title={messages[0]}>

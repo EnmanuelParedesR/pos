@@ -178,6 +178,9 @@ export interface Issue {
   amount: number | null;
   occurredUtc: string | null;
   message: string;
+  /** Null when the issue is not about a shift or the store has not sent the name yet. */
+  cashierName?: string | null;
+  registerName?: string | null;
 }
 export interface Summary {
   date: string;
@@ -196,13 +199,16 @@ export interface Summary {
 }
 export interface DaySales { date: string; count: number; total: number; discount: number; itbis: number; returns: number; net: number; voidedCount: number }
 export interface ProductSales { productId: string; description: string; quantity: number; total: number; profit: number }
-export interface CashierSales { cashierId: string; count: number; total: number; voidedCount: number }
+export interface CashierSales { cashierId: string; count: number; total: number; voidedCount: number; cashierName?: string | null }
+export interface Receivables { total: number; customerCount: number; topDebtors: { customerId: string; storeId: string; debt: number }[] }
 export interface Shift {
   shiftId: string;
   storeId: string;
   storeName: string;
   registerId: string;
   cashierId: string;
+  cashierName?: string | null;
+  registerName?: string | null;
   zNumber: number;
   expectedCash: number;
   countedCash: number;

@@ -25,7 +25,8 @@ describe("format", () => {
     expect(isStale(null, now)).toBe(true);
   });
 
-  it("names a cashier by the end of the id", () => {
-    expect(cashierLabel("0199e3a1-0000-7000-8000-00000000a1b2")).toBe("Cajero …a1b2");
+  it("names a cashier by name, or by the end of the id until the store sends it", () => {
+    expect(cashierLabel("0199e3a1-0000-7000-8000-00000000a1b2", "Yudelka Martínez")).toBe("Yudelka Martínez");
+    expect(cashierLabel("0199e3a1-0000-7000-8000-00000000a1b2", null)).toBe("Cajero …a1b2");
   });
 });

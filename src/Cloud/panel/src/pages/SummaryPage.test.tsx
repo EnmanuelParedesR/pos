@@ -38,6 +38,8 @@ const summary: Summary = {
       amount: -200,
       occurredUtc: "2026-10-15T20:00:00Z",
       message: "Z #3: faltante de RD$ 200.00",
+      cashierName: "Yudelka Martínez",
+      registerName: "Caja 2",
     },
     {
       kind: "SyncStale",
@@ -53,7 +55,13 @@ const summary: Summary = {
 };
 
 it("shows the day's numbers, payment methods in Spanish and what to review", async () => {
-  const fetch = vi.fn(async (_url: string) => json(200, summary));
+  const fetch = vi.fn(async (url: string) =>
+    url.includes("/sales/by-day")
+      ? json(200, [{ date: "2026-10-14", count: 30, total: 12000, discount: 0, itbis: 900, returns: 0, net: 11100, voidedCount: 0 }])
+      : url.includes("/sales/top-products")
+        ? json(200, [{ productId: "p1", description: "Pechuga de pollo", quantity: 26.5, total: 4374.15, profit: 900 }])
+        : json(200, summary),
+  );
   vi.stubGlobal("fetch", fetch);
   const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {} };
 
@@ -67,14 +75,18 @@ it("shows the day's numbers, payment methods in Spanish and what to review", asy
     </MemoryRouter>,
   );
 
-  expect(await screen.findByText("RD$ 15,234.50")).toBeTruthy();
+  // The hero shows the amount big, with "RD$" apart.
+  expect(await screen.findByText("15,234.50")).toBeTruthy();
   expect(screen.getByText("42")).toBeTruthy();
   expect(screen.getByText("Efectivo")).toBeTruthy();
   expect(screen.getByText("Fiado")).toBeTruthy();
-  expect(screen.getByText("Faltaron RD$ 200.00")).toBeTruthy();
+  // What to review comes in words, with the amount.
+  expect(screen.getByText((_, el) => el?.className === "esc-alert__title" && el.textContent === "Faltaron RD$ 200.00 en Caja 2")).toBeTruthy();
+  expect(screen.getByText(/^Yudelka Martínez · Centro · cierre de/)).toBeTruthy();
   expect(screen.getByText("La tienda no ha enviado datos en más de 24 horas.")).toBeTruthy();
-  expect(screen.getByText("Última actualización hace 5 min")).toBeTruthy();
+  expect(screen.getByText("Actualizado hace 5 min")).toBeTruthy();
+  expect(await screen.findByText("Pechuga de pollo")).toBeTruthy();
   // 8, 9 (no sales) and 10.
-  expect(screen.getByRole("img", { name: "Ventas por hora" }).children).toHaveLength(3);
+  expect(screen.getByRole("list", { name: "Ventas por hora" }).querySelectorAll("[role=listitem]")).toHaveLength(3);
   expect(fetch.mock.calls[0][0]).toMatch(/\/api\/panel\/summary\?date=\d{4}-\d{2}-\d{2}$/);
 });
