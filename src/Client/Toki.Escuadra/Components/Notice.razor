@@ -1,0 +1,21 @@
+@* Inline notice: the register never stops for a modal when a code is not found or a label repeats. *@
+<div class="esc-notice esc-notice--@Kind.ToString().ToLowerInvariant()" role="@(Kind is Kinds.Error or Kinds.Warning ? "alert" : "status")">
+    <Icon Name="@(Kind switch { Kinds.Success => "check", Kinds.Info => "info", _ => "alert" })" />
+    <div class="esc-notice__body">
+        <div>@Title</div>
+        @if (ChildContent is not null)
+        {
+            <div class="esc-notice__detail">@ChildContent</div>
+        }
+    </div>
+    @Action
+</div>
+
+@code {
+    public enum Kinds { Error, Warning, Success, Info }
+
+    [Parameter] public Kinds Kind { get; set; } = Kinds.Error;
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Action { get; set; }
+}

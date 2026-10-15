@@ -1,0 +1,99 @@
+@* Quantity / weight, price change and discount for one line. The server decides whether a supervisor must allow it, at charge time. *@
+<Dialog Title="@Title" Subtitle="@Line.Name" OnClose="OnClose" OnKey="KeyDown">
+    <ChildContent>
+        @if (Mode == "Discount")
+        {
+            <div class="esc-row" role="group" aria-label="Tipo de descuento">
+                <button type="button" class="esc-chip" aria-pressed="@(_percentage ? "true" : "false")" @onclick="() => _percentage = true">Porcentaje</button>
+                <button type="button" class="esc-chip" aria-pressed="@(!_percentage ? "true" : "false")" @onclick="() => _percentage = false">Monto RD$</button>
+            </div>
+        }
+        <div style="display:flex;flex-direction:column;gap:12px">
+            <input @ref="_input" class="esc-input esc-input--large esc-num" inputmode="decimal" aria-label="@Title" @bind="_text" @bind:event="oninput" />
+            <div class="esc-subtitle">@Help</div>
+            <Keypad WithDot="@(Mode != "Quantity" || Line.ByWeight)" OnKey="k => _text = Keypad.Apply(_text, k)" />
+        </div>
+        @if (_error is not null)
+        {
+            <Notice Title="@_error" />
+        }
+    </ChildContent>
+    <Footer>
+        @if (Mode == "Discount" && Line.Discount is not null)
+        {
+            <Button Variant="Button.Variants.Ghost" OnClick="() => OnDone.InvokeAsync(Line with { Discount = null })">Quitar descuento</Button>
+        }
+        @if (Mode == "Price" && Line.OverriddenPrice is not null)
+        {
+            <Button Variant="Button.Variants.Ghost" OnClick="() => OnDone.InvokeAsync(Line with { OverriddenPrice = null })">Volver al precio de lista</Button>
+        }
+        <Button OnClick="OnClose" Shortcut="Esc">Cancelar</Button>
+        <Button Variant="Button.Variants.Primary" Shortcut="Enter" OnClick="Done">Aceptar</Button>
+    </Footer>
+</Dialog>
+
+@code {
+    [Parameter, EditorRequired] public CartLine Line { get; set; } = default!;
+    /// <summary>Quantity, Weight (a new by-the-pound line), Price or Discount.</summary>
+    [Parameter, EditorRequired] public string Mode { get; set; } = "Quantity";
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<CartLine> OnDone { get; set; }
+
+    private string _text = "";
+    private string? _error;
+    private bool _percentage = true;
+    private ElementReference _input;
+
+    private string Title => Mode switch { "Weight" => "Peso en libras", "Price" => "Cambiar precio", "Discount" => "Descuento", _ => "Cantidad" };
+    private string Help => Mode switch
+    {
+        "Weight" => $"Precio por libra: {Format.WithCurrency(Line.ListPrice)}",
+        "Price" => $"Precio de lista: {Format.WithCurrency(Line.ListPrice)}. Cambiarlo puede pedir un supervisor.",
+        "Discount" => "Un descuento mayor que el tope del negocio pide un supervisor al cobrar.",
+        _ => Line.ByWeight ? "Libras, con hasta 3 decimales." : "Unidades enteras.",
+    };
+
+    protected override void OnInitialized()
+    {
+        _text = Mode switch
+        {
+            "Quantity" => Line.Quantity.ToString(Line.ByWeight ? "0.000" : "0", System.Globalization.CultureInfo.InvariantCulture),
+            "Price" => Line.Price.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+            "Discount" when Line.Discount is { } d => d.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+            _ => "",
+        };
+        _percentage = Line.Discount?.IsPercentage ?? true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await _input.FocusAsync();
+    }
+
+    private async Task KeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Done();
+    }
+
+    private async Task Done()
+    {
+        var v = Format.ParseNumber(_text);
+        _error = v switch
+        {
+            null or < 0 => "Escriba un número.",
+            0 when Mode is "Quantity" or "Weight" or "Price" => "Debe ser mayor que cero.",
+            _ when Mode == "Quantity" && !Line.ByWeight && v != Math.Floor(v.Value) => "Este producto se vende por unidad: use números enteros.",
+            > 100 when Mode == "Discount" && _percentage => "El porcentaje no puede pasar de 100.",
+            _ when Mode == "Discount" && !_percentage && v > Line.Gross => "El descuento no puede ser mayor que la línea.",
+            _ => null,
+        };
+        if (_error is not null) return;
+        var value = Math.Round(v!.Value, Mode is "Quantity" or "Weight" ? 3 : 2);
+        await OnDone.InvokeAsync(Mode switch
+        {
+            "Price" => Line with { OverriddenPrice = value == Line.ListPrice ? null : value },
+            "Discount" => Line with { Discount = value == 0 ? null : new Discount(_percentage, value) },
+            _ => Line with { Quantity = value },
+        });
+    }
+}

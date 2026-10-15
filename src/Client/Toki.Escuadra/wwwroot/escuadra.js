@@ -5,9 +5,9 @@ document.addEventListener('keydown', e => {
 
 window.escuadra = {
   // HTML autofocus only works on page load; a dialog Blazor inserts later focuses its field here.
-  enfocar: el => {
+  focusFirst: el => {
     if (!el) return;
-    const campo = el.querySelector('[autofocus]') || el.querySelector('input:not([type=hidden]):not([disabled]), select, textarea');
-    (campo || el).focus();
+    const field = el.querySelector('[autofocus]') || el.querySelector('input:not([type=hidden]):not([disabled]), select, textarea');
+    (field || el).focus();
   }
 };

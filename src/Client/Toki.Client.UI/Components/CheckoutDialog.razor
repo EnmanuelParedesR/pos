@@ -1,0 +1,228 @@
+@inject TokiApi Api
+@inject Cart Cart
+@inject Approver Approver
+
+<Dialog Title="Cobrar" Subtitle="@($"{Cart.LineCount} {(Cart.LineCount == 1 ? "línea" : "líneas")} · {(Cart.Customer?.Name ?? Cart.ManualName ?? "cliente de contado")}")" Wide="true" OnClose="Cancel" OnKey="KeyAsync">
+    <ChildContent>
+        <div class="checkout">
+            <div class="checkout__left">
+                <div>
+                    <div class="esc-label">Total a cobrar</div>
+                    <Money Value="_total" Size="72" />
+                </div>
+                @if (_payments.Count > 0)
+                {
+                    <div class="esc-card esc-card--padded esc-col" style="gap:4px">
+                        @foreach (var p in _payments)
+                        {
+                            <div class="esc-row" style="justify-content:space-between"><span>@Names.PaymentMethod(p.Method)</span><span>@Format.Amount(p.Amount)</span></div>
+                        }
+                        <div class="esc-row" style="justify-content:space-between;font-weight:700"><span>Falta</span><span>@Format.Amount(Pending)</span></div>
+                    </div>
+                }
+                <div class="checkout__methods" role="group" aria-label="Forma de pago">
+                    @foreach (var (m, key) in Methods)
+                    {
+                        <button type="button" class="esc-button" aria-pressed="@(m == _method ? "true" : "false")" @onclick="() => Choose(m)">
+                            <span>@Names.PaymentMethod(m)</span><Keycap>@key</Keycap>
+                        </button>
+                    }
+                </div>
+                @if (_method == PaymentMethod.Cash)
+                {
+                    <div class="esc-label">Devuelta</div>
+                    <Money Value="Change" Size="52" />
+                }
+            </div>
+
+            <div class="checkout__right">
+                @if (_method == PaymentMethod.Cash)
+                {
+                    <label class="esc-field">
+                        <span>Efectivo recibido (pesos enteros)</span>
+                        <input @ref="_input" class="esc-input esc-input--large esc-num" inputmode="numeric" @bind="_received" @bind:event="oninput" onfocus="this.select()" />
+                    </label>
+                    <div class="esc-row">
+                        @foreach (var quick in QuickAmounts)
+                        {
+                            <button type="button" class="esc-chip" @onclick="() => Suggest(quick)">@Format.Amount(quick)</button>
+                        }
+                    </div>
+                    <Keypad OnKey="CashKey" />
+                }
+                else
+                {
+                    <label class="esc-field">
+                        <span>Monto</span>
+                        <input @ref="_input" class="esc-input esc-input--large esc-num" inputmode="decimal" @bind="_amount" @bind:event="oninput" />
+                    </label>
+                    @if (_method is PaymentMethod.Card or PaymentMethod.Transfer)
+                    {
+                        <label class="esc-field">
+                            <span>Referencia (opcional)</span>
+                            <input class="esc-input" maxlength="60" @bind="_reference" placeholder="@(_method == PaymentMethod.Card ? "Aprobación del verifone" : "Número de la transferencia")" />
+                        </label>
+                    }
+                    @if (_method == PaymentMethod.OnAccount && Cart.Customer is { } c)
+                    {
+                        <div class="esc-subtitle">Debe @Format.WithCurrency(c.Debt) de un límite de @Format.WithCurrency(c.CreditLimit).</div>
+                    }
+                    @if (CurrentAmount < Pending)
+                    {
+                        <Button OnClick="AddPayment">Agregar este pago y cobrar el resto con otro medio</Button>
+                    }
+                }
+            </div>
+        </div>
+        @if (_notice is not null)
+        {
+            <Notice Kind="_noticeKind" Title="@_notice" />
+        }
+    </ChildContent>
+    <Footer>
+        <Button OnClick="Cancel" Shortcut="Esc">Volver a la venta</Button>
+        <Button Variant="Button.Variants.Primary" Money="true" Shortcut="F12" Disabled="@(!CanConfirm || _sending)" OnClick="ConfirmAsync">
+            @(_sending ? "Guardando…" : "Confirmar cobro")
+        </Button>
+    </Footer>
+</Dialog>
+
+@code {
+    [Parameter, EditorRequired] public Guid ShiftId { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<SaleRegistered> OnSold { get; set; }
+
+    private decimal _total;
+    private PaymentMethod _method = PaymentMethod.Cash;
+    private string _received = "", _amount = "";
+    private string? _reference, _notice;
+    private Notice.Kinds _noticeKind = Notice.Kinds.Error;
+    private bool _sending, _suggested;
+    private readonly List<Payment> _payments = [];
+    private readonly List<Guid> _approvals = [];
+    private ElementReference _input;
+
+    private IEnumerable<(PaymentMethod, string)> Methods
+    {
+        get
+        {
+            yield return (PaymentMethod.Cash, "F5");
+            yield return (PaymentMethod.Card, "F6");
+            yield return (PaymentMethod.Transfer, "F7");
+            if (Cart.Customer is { CreditLimit: > 0 }) yield return (PaymentMethod.OnAccount, "F8");
+            if (Cart.Customer is { CreditBalance: > 0 }) yield return (PaymentMethod.CreditBalance, "F9");
+        }
+    }
+
+    private decimal Pending => Math.Max(0, _total - _payments.Sum(p => p.Amount));
+    /// <summary>Cash is handed over in whole pesos; the centavos of the total stay in the drawer as rounding.</summary>
+    private decimal MinimumCash => Math.Ceiling(Pending);
+    private decimal Received => Format.ParseNumber(_received) ?? 0;
+    private decimal CurrentAmount => _method == PaymentMethod.Cash ? Received : Format.ParseNumber(_amount) ?? 0;
+    private decimal Change => Math.Max(0, Math.Floor(Received - Pending));
+    private bool CanConfirm => _method == PaymentMethod.Cash
+        ? Received >= MinimumCash && Received == Math.Floor(Received)
+        : CurrentAmount == Pending && Pending > 0;
+
+    private IEnumerable<decimal> QuickAmounts => new[] { MinimumCash, Math.Ceiling(Pending / 100) * 100, Math.Ceiling(Pending / 500) * 500, Math.Ceiling(Pending / 1000) * 1000, 2000m }
+        .Where(v => v >= MinimumCash).Distinct().Order().Take(5);
+
+    protected override void OnInitialized()
+    {
+        _total = Cart.Total;
+        Suggest(MinimumCash);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await _input.FocusAsync();
+    }
+
+    private async Task Choose(PaymentMethod m)
+    {
+        _method = m;
+        _amount = (m == PaymentMethod.CreditBalance && Cart.Customer is { } c ? Math.Min(c.CreditBalance, Pending) : Pending)
+            .ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        Suggest(MinimumCash);
+        _notice = null;
+        StateHasChanged();
+        await _input.FocusAsync();
+    }
+
+    /// <summary>A suggested amount: the first keypad press replaces it instead of appending to it.</summary>
+    private void Suggest(decimal amount) => (_received, _suggested) = (amount.ToString(System.Globalization.CultureInfo.InvariantCulture), true);
+
+    private void CashKey(string k)
+    {
+        _received = Keypad.Apply(_suggested ? "" : _received, k);
+        _suggested = false;
+    }
+
+    private void AddPayment()
+    {
+        if (CurrentAmount <= 0 || CurrentAmount >= Pending) return;
+        _payments.Add(new Payment(_method, Math.Round(CurrentAmount, 2), string.IsNullOrWhiteSpace(_reference) ? null : _reference.Trim()));
+        _reference = null;
+        _method = PaymentMethod.Cash;
+        Suggest(MinimumCash);
+    }
+
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        var m = Methods.FirstOrDefault(x => x.Item2 == e.Key);
+        if (m.Item2 is not null) await Choose(m.Item1);
+        else if (e.Key is "F12" or "Enter" && CanConfirm && !_sending) await ConfirmAsync();
+    }
+
+    private async Task ConfirmAsync()
+    {
+        _sending = true;
+        _notice = null;
+        var payments = _payments.Append(new Payment(_method, _method == PaymentMethod.Cash ? Received : CurrentAmount,
+            string.IsNullOrWhiteSpace(_reference) ? null : _reference.Trim())).ToList();
+
+        // Up to one supervisor per permission the sale needs (price change, big discount, credit over the limit).
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var r = await Api.PostAsync<SaleRegistered>("/api/sales", Cart.ToRegisterSale(ShiftId, payments, _total, _approvals));
+            if (r.Value is { } sale)
+            {
+                await OnSold.InvokeAsync(sale);
+                return;
+            }
+            var p = r.Problem!;
+            if (p.PermissionRequired is { } permission)
+            {
+                var id = await Approver.RequestAsync(permission, Cart.SaleId, $"Venta de {Format.WithCurrency(_total)}");
+                if (id is null) { Fail(Notice.Kinds.Warning, "Sin la autorización no se puede cobrar así. Quite el cambio o pida a otro supervisor."); return; }
+                _approvals.Add(id.Value);
+                continue;
+            }
+            if (p.Code == "Sales.TotalChanged" && Format.ParseNumber(p.Error("total")) is { } correct)
+            {
+                // The server rounds per line its own way: show its total and let the cashier confirm it again.
+                _total = correct;
+                if (_method == PaymentMethod.Cash && Received < MinimumCash) Suggest(MinimumCash);
+                else if (_method != PaymentMethod.Cash) _amount = Pending.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                Fail(Notice.Kinds.Warning, $"El total correcto es {Format.WithCurrency(correct)}. Revíselo con el cliente y confirme de nuevo.");
+                return;
+            }
+            Fail(Notice.Kinds.Error, p.Code switch
+            {
+                "Inventory.OutOfStock" => "No hay existencia suficiente de un producto. Un supervisor puede permitir vender sin existencia en Productos.",
+                "Customers.CreditLimitExceeded" => "El cliente pasa su límite de crédito.",
+                "Fiscal.NoSequence" => "Se acabaron los comprobantes de este tipo. El dueño debe cargar una nueva secuencia.",
+                "Fiscal.MissingIssuerRnc" => "Falta el RNC del negocio en Configuración.",
+                "Sales.RncRequired" => "Esta factura necesita el RNC o la cédula del cliente (F6).",
+                "Sales.DuplicateScaleLabel" => "Una etiqueta de peso ya se cobró en otra venta.",
+                _ => p.Message,
+            });
+            return;
+        }
+        Fail(Notice.Kinds.Error, "No se pudo completar la autorización. Intente de nuevo.");
+    }
+
+    private void Fail(Notice.Kinds kind, string message) => (_noticeKind, _notice, _sending) = (kind, message, false);
+
+    private Task Cancel() => _sending ? Task.CompletedTask : OnClose.InvokeAsync();
+}

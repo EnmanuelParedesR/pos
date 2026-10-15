@@ -6,12 +6,12 @@ public interface IIntegrationEvent
 {
     Guid EventId { get; }
     /// <summary>Set by the outbox from the application clock when the event is saved.</summary>
-    DateTime OcurridoUtc { get; set; }
-    Guid AgregadoId { get; }
+    DateTime OccurredUtc { get; set; }
+    Guid AggregateId { get; }
 }
 
-public abstract record IntegrationEvent(Guid AgregadoId) : IIntegrationEvent
+public abstract record IntegrationEvent(Guid AggregateId) : IIntegrationEvent
 {
     public Guid EventId { get; init; } = Guid.CreateVersion7();
-    public DateTime OcurridoUtc { get; set; }
+    public DateTime OccurredUtc { get; set; }
 }

@@ -1,0 +1,136 @@
+@page "/close-register"
+@inject TokiApi Api
+@inject Session Session
+@inject Approver Approver
+@inject NavigationManager Nav
+
+<div class="esc-page" @onkeydown="KeyAsync">
+    <div class="esc-row" style="justify-content:space-between">
+        <div>
+            <h1 class="esc-title">Cerrar caja</h1>
+            <p class="esc-subtitle">Cuente todo el efectivo de la gaveta, incluido el fondo@(Session.Shift is { } t ? $" de {Format.WithCurrency(t.OpeningFloat)}" : "").</p>
+        </div>
+        <div class="esc-row" style="gap:20px" aria-label="Pasos">
+            <span style="padding:6px 0;border-bottom:3px solid @(_z is null ? "var(--brand)" : "transparent");font-weight:@(_z is null ? 700 : 600);color:@(_z is null ? "var(--text)" : "var(--text-2)")">1 · Contar</span>
+            <span style="padding:6px 0;border-bottom:3px solid transparent;color:var(--text-2);font-weight:600">2 · Autoriza supervisor</span>
+            <span style="padding:6px 0;border-bottom:3px solid @(_z is not null ? "var(--brand)" : "transparent");font-weight:@(_z is not null ? 700 : 600);color:@(_z is not null ? "var(--text)" : "var(--text-2)")">3 · Resultado</span>
+        </div>
+    </div>
+
+    @if (_z is null)
+    {
+        <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+            <section class="esc-card" style="flex:999 1 480px" aria-label="Conteo por denominación">
+                <div style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr;gap:16px;padding:10px 16px;border-bottom:1px solid var(--card-border)" class="esc-label">
+                    <div>Efectivo en pesos</div><div class="esc-num">Cantidad</div><div class="esc-num">Importe RD$</div>
+                </div>
+                @foreach (var d in _denominations)
+                {
+                    <label style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr;gap:16px;align-items:center;min-height:48px;padding:0 16px;border-bottom:1px solid var(--card-border)">
+                        <span style="font-size:var(--t-20);font-weight:600">@d.ToString("#,##0") <span class="esc-subtitle">@(d >= 50 ? "billete" : "moneda")</span></span>
+                        <input class="esc-input esc-num" inputmode="numeric" style="font-size:var(--t-20);font-weight:600" aria-label="@($"Cantidad de {d:#,##0}")"
+                               value="@(_count.GetValueOrDefault(d) is var c and > 0 ? c : "")" @onchange="e => SetCount(d, e.Value)" />
+                        <span class="esc-num" style="font-size:var(--t-20);font-weight:600">@Format.Amount(d * _count.GetValueOrDefault(d))</span>
+                    </label>
+                }
+            </section>
+            <section class="esc-col" style="flex:1 1 360px;gap:16px">
+                <div class="esc-card esc-card--padded esc-col" style="gap:4px">
+                    <span class="esc-label">Efectivo contado</span>
+                    <Money Value="Counted" Size="52" />
+                </div>
+                <div class="esc-row esc-muted" style="flex-wrap:nowrap;align-items:flex-start">
+                    <Icon Name="lock" />
+                    <span>El monto esperado no se muestra aquí. Después de confirmar, un supervisor autoriza el cierre y ve si la caja cuadró, sobró o faltó.</span>
+                </div>
+                @if (_error is not null)
+                {
+                    <Notice Title="@_error" />
+                }
+                <Button Variant="Button.Variants.Primary" Money="true" Shortcut="F12" Disabled="@(_sending || Session.Shift is null)" OnClick="ConfirmAsync">Confirmar conteo</Button>
+                <Button OnClick='() => Nav.NavigateTo("sale")' Shortcut="Esc">Volver a la venta</Button>
+            </section>
+        </div>
+    }
+    else
+    {
+        var diff = _z.Difference ?? 0;
+        <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+            <section class="esc-col" style="flex:1 1 420px;gap:16px">
+                <Notice Kind="@(diff == 0 ? Notice.Kinds.Success : Notice.Kinds.Warning)"
+                       Title="@(diff == 0 ? "La caja cuadró." : diff > 0 ? $"Sobraron {Format.WithCurrency(diff)}." : $"Faltaron {Format.WithCurrency(-diff)}.")">
+                    Cierre Z #@_z.ZNumber · @_z.Register · @_z.Cashier
+                </Notice>
+                <div class="kpis">
+                    <div class="esc-card kpi"><span class="esc-label">Esperado</span><span class="kpi__value">@Format.Amount(_z.ExpectedCash)</span></div>
+                    <div class="esc-card kpi"><span class="esc-label">Contado</span><span class="kpi__value">@Format.Amount(_z.CountedCash ?? 0)</span></div>
+                    <div class="esc-card kpi"><span class="esc-label">Diferencia</span><span class="kpi__value" style="color:@(diff == 0 ? "var(--success)" : "var(--warning)")">@Format.Amount(diff)</span></div>
+                </div>
+                <Button Variant="Button.Variants.Primary" Money="true" OnClick="SignOutAsync">Terminar</Button>
+            </section>
+            <section class="esc-card" style="flex:1 1 420px" aria-label="Por forma de pago">
+                <table class="esc-table">
+                    <thead><tr><th>Forma de pago</th><th class="esc-num">Cobros</th><th class="esc-num">Anulado / devuelto</th><th class="esc-num">Neto</th></tr></thead>
+                    <tbody>
+                        @foreach (var m in _z.ByMethod)
+                        {
+                            <tr><td>@Names.PaymentMethod(m.Method)</td><td class="esc-num">@Format.Amount(m.SalePayments)</td><td class="esc-num">@Format.Amount(m.Voids + m.Refunds)</td><td class="esc-num" style="font-weight:700">@Format.Amount(m.Net)</td></tr>
+                        }
+                        <tr><td>Ventas</td><td class="esc-num">@_z.SaleCount</td><td class="esc-num">@_z.VoidedCount anuladas</td><td></td></tr>
+                        <tr><td>Fondo · entradas · salidas</td><td class="esc-num">@Format.Amount(_z.OpeningFloat)</td><td class="esc-num">+@Format.Amount(_z.CashIn) −@Format.Amount(_z.Withdrawals + _z.Expenses)</td><td></td></tr>
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private List<decimal> _denominations = [];
+    private readonly Dictionary<decimal, int> _count = [];
+    private ZReport? _z;
+    private string? _error;
+    private bool _sending;
+
+    private decimal Counted => _count.Sum(c => c.Key * c.Value);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Shift ??= (await Api.GetAsync<CurrentShift>("/api/cash/shifts/current")).Value;
+        var d = await Api.GetAsync<List<decimal>>("/api/cash/denominations");
+        _denominations = d.Value ?? [];
+        _error = Session.Shift is null ? "No tiene un turno abierto." : d.Problem?.Message;
+    }
+
+    private void SetCount(decimal denomination, object? value) =>
+        _count[denomination] = int.TryParse(value?.ToString(), out var n) && n >= 0 ? n : 0;
+
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "F12" && _z is null && !_sending) await ConfirmAsync();
+        else if (e.Key == "Escape" && _z is null) Nav.NavigateTo("sale");
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (Session.Shift is not { } shift) return;
+        _sending = true;
+        var cashCount = _denominations.Select(d => new DenominationCount(d, _count.GetValueOrDefault(d))).ToList();
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<ZReport>($"/api/cash/shifts/{shift.ShiftId}/close", new { CashCount = cashCount, SupervisorApprovalId = id }),
+            shift.ShiftId, $"Cierre de {shift.Register}: contado {Format.WithCurrency(Counted)}");
+        _sending = false;
+        if (r.Value is { } z)
+        {
+            _z = z;
+            Session.Shift = null;
+        }
+        else _error = r.Problem!.Message;
+    }
+
+    private async Task SignOutAsync()
+    {
+        await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
+        Session.Close();
+        Nav.NavigateTo("sign-in");
+    }
+}

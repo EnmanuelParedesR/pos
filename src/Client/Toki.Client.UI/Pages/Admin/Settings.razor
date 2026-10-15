@@ -1,0 +1,311 @@
+@page "/admin/settings"
+@inject TokiApi Api
+@inject Session Session
+
+<Admin Title="Configuración">
+    <div class="esc-row" role="tablist" aria-label="Secciones">
+        @foreach (var s in Sections)
+        {
+            <button type="button" role="tab" class="esc-chip" aria-selected="@(s == _section)" aria-pressed="@(s == _section ? "true" : "false")" @onclick="() => GoAsync(s)">@Label(s)</button>
+        }
+    </div>
+    @if (_message is not null)
+    {
+        <Notice Kind="_messageKind" Title="@_message" />
+    }
+
+    @switch (_section)
+    {
+        case Section.Business when _business is not null:
+            <form class="esc-card esc-card--padded esc-col" style="gap:12px;max-width:760px" @onsubmit="SaveBusinessAsync">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                    <label class="esc-field"><span>Nombre del negocio</span><input class="esc-input" maxlength="150" @bind="_business.Name" /></label>
+                    <label class="esc-field"><span>RNC</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="_business.Rnc" /></label>
+                    <label class="esc-field"><span>Teléfono</span><input class="esc-input" maxlength="30" @bind="_business.Phone" /></label>
+                    <label class="esc-field"><span>Tope de descuento sin supervisor (%)</span><input class="esc-input esc-num" inputmode="decimal" @bind="_business.DiscountCap" /></label>
+                    <label class="esc-field" style="grid-column:1/-1"><span>Dirección</span><input class="esc-input" maxlength="200" @bind="_business.Address" /></label>
+                    <label class="esc-field" style="grid-column:1/-1"><span>Pie de la factura</span><input class="esc-input" maxlength="500" @bind="_business.ReceiptFooter" /></label>
+                </div>
+                <div><Button Type="submit" Variant="Button.Variants.Primary">Guardar</Button></div>
+            </form>
+            break;
+
+        case Section.Registers:
+            <div class="esc-card esc-table-wrap" style="max-width:760px">
+                <table class="esc-table">
+                    <thead><tr><th>Caja</th><th>Estado</th></tr></thead>
+                    <tbody>
+                        @foreach (var register in _registers)
+                        {
+                            <tr><td style="font-weight:600">@register.Name</td><td>@(register.Cashier is { } q ? $"Abierta · {q}" : "Cerrada")</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <form class="esc-row" @onsubmit="CreateRegisterAsync">
+                <input class="esc-input" style="width:240px" placeholder="Caja 2" aria-label="Nombre de la caja" maxlength="60" @bind="_newRegister" />
+                <Button Type="submit"><Icon Name="plus" /> Agregar caja</Button>
+            </form>
+            break;
+
+        case Section.FiscalSequences:
+            <div class="esc-card esc-table-wrap">
+                <table class="esc-table" style="min-width:680px">
+                    <thead><tr><th>Tipo</th><th>Desde</th><th>Hasta</th><th>Siguiente</th><th class="esc-num">Quedan</th><th>Vence</th></tr></thead>
+                    <tbody>
+                        @foreach (var s in _sequences)
+                        {
+                            <tr><td>@Names.DocumentType(s.Type)</td><td>@s.From</td><td>@s.To</td><td>@s.Next</td>
+                                <td class="esc-num" style="font-weight:700;color:@(s.PercentUsed >= 80 ? "var(--warning)" : "var(--text)")">@s.Available</td><td>@s.ExpiresOn.ToString("dd/MM/yyyy")</td></tr>
+                        }
+                        @if (_sequences.Count == 0)
+                        {
+                            <tr><td colspan="6" class="esc-muted">No hay secuencias. Cargue las que autorizó la DGII para poder facturar.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <form class="esc-card esc-card--padded esc-col" style="gap:12px;max-width:760px" @onsubmit="LoadSequenceAsync">
+                <div style="font-weight:700">Cargar secuencia autorizada</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
+                    <label class="esc-field"><span>Tipo</span>
+                        <select class="esc-select" @bind="_seqType">
+                            <option value="Consumer32">Consumo (E32)</option>
+                            <option value="FiscalCredit31">Crédito fiscal (E31)</option>
+                            <option value="CreditNote34">Nota de crédito (E34)</option>
+                        </select>
+                    </label>
+                    <label class="esc-field"><span>Desde (número)</span><input class="esc-input esc-num" inputmode="numeric" @bind="_seqFrom" /></label>
+                    <label class="esc-field"><span>Hasta (número)</span><input class="esc-input esc-num" inputmode="numeric" @bind="_seqTo" /></label>
+                    <label class="esc-field"><span>Vence el</span><input class="esc-input" type="date" @bind="_seqExpires" /></label>
+                </div>
+                <div><Button Type="submit">Cargar</Button></div>
+            </form>
+            break;
+
+        case Section.Devices:
+            <div class="esc-card esc-table-wrap" style="max-width:760px">
+                <table class="esc-table">
+                    <thead><tr><th>Equipo</th><th>Desde</th><th>Estado</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var d in _devices)
+                        {
+                            <tr><td style="font-weight:600">@d.Name</td><td>@Format.Date(d.CreatedUtc)</td>
+                                <td><span class="esc-pill @(d.IsRevoked ? "esc-pill--error" : "esc-pill--success")">@(d.IsRevoked ? "Revocado" : "Activo")</span></td>
+                                <td class="esc-num">@if (!d.IsRevoked) { <Button Variant="Button.Variants.Danger" OnClick="() => RevokeAsync(d)">Revocar</Button> }</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <form class="esc-card esc-card--padded esc-col" style="gap:12px;max-width:760px" @onsubmit="CreatePairingCodeAsync">
+                <div style="font-weight:700">Unir un equipo nuevo</div>
+                <div class="esc-subtitle">Genere un código y escríbalo en el equipo nuevo, en "Unir a una tienda". Vale 10 minutos y sirve una vez.</div>
+                <div class="esc-row">
+                    <input class="esc-input" style="width:240px" placeholder="Caja 2" aria-label="Nombre del equipo" maxlength="100" @bind="_newDevice" />
+                    <Button Type="submit" Variant="Button.Variants.Primary">Generar código</Button>
+                </div>
+                @if (_pairingCode is { } pc)
+                {
+                    <div class="esc-row" role="status" style="gap:16px">
+                        <span style="font-size:var(--t-44);font-weight:700;letter-spacing:0.15em">@pc.Code[..4] @pc.Code[4..]</span>
+                        <span class="esc-subtitle">Vence a las @Format.Time(pc.ExpiresUtc)</span>
+                    </div>
+                }
+            </form>
+            break;
+
+        case Section.Users:
+            <div class="esc-card esc-table-wrap" style="max-width:860px">
+                <table class="esc-table">
+                    <thead><tr><th>Nombre</th><th>Código</th><th>Rol</th><th>Estado</th></tr></thead>
+                    <tbody>
+                        @foreach (var u in _users)
+                        {
+                            <tr><td style="font-weight:600">@u.Name</td><td>@u.Code</td><td>@u.Role</td>
+                                <td><span class="esc-pill @(!u.IsActive ? "esc-pill--neutral" : u.IsLocked ? "esc-pill--warning" : "esc-pill--success")">@(!u.IsActive ? "Inactivo" : u.IsLocked ? "Bloqueado" : "Activo")</span></td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <form class="esc-card esc-card--padded esc-col" style="gap:12px;max-width:860px" @onsubmit="CreateUserAsync">
+                <div style="font-weight:700">Nuevo usuario</div>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+                    <label class="esc-field"><span>Nombre</span><input class="esc-input" maxlength="100" @bind="_userName" /></label>
+                    <label class="esc-field"><span>Código para entrar</span><input class="esc-input" maxlength="20" @bind="_userCode" /></label>
+                    <label class="esc-field"><span>PIN (4 a 8 dígitos)</span><input class="esc-input" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password" @bind="_userPin" /></label>
+                    <label class="esc-field"><span>Rol</span>
+                        <select class="esc-select" @bind="_userRole">
+                            @foreach (var r in _roles) { <option value="@r.Id">@r.Name</option> }
+                        </select>
+                    </label>
+                </div>
+                <div><Button Type="submit" Variant="Button.Variants.Primary">Crear usuario</Button></div>
+            </form>
+            break;
+
+        case Section.Backups:
+            <div class="esc-card esc-card--padded esc-col" style="gap:12px;max-width:760px">
+                <div style="font-weight:700">Frase de los respaldos</div>
+                <div class="esc-subtitle">Los respaldos se cifran con esta frase. Guárdela fuera de la PC: sin ella no se pueden restaurar.</div>
+                <div class="esc-row">
+                    <input class="esc-input" style="flex:1 1 280px" type="password" minlength="12" maxlength="200" autocomplete="new-password" placeholder="Al menos 12 caracteres" aria-label="Frase" @bind="_passphrase" />
+                    <Button OnClick="SavePassphraseAsync">Guardar frase</Button>
+                </div>
+            </div>
+            <div class="esc-row"><Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="BackUpAsync">Respaldar ahora</Button></div>
+            <div class="esc-card esc-table-wrap" style="max-width:760px">
+                <table class="esc-table">
+                    <thead><tr><th>Archivo</th><th>Fecha</th><th class="esc-num">Tamaño</th></tr></thead>
+                    <tbody>
+                        @foreach (var b in _backups)
+                        {
+                            <tr><td>@b.FileName</td><td>@Format.Date(b.DateUtc)</td><td class="esc-num">@((b.Bytes / 1024d / 1024d).ToString("0.0")) MB</td></tr>
+                        }
+                        @if (_backups.Count == 0) { <tr><td colspan="3" class="esc-muted">Todavía no hay respaldos.</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+            break;
+
+        case Section.License when _features is { } f:
+            <div class="esc-card esc-card--padded esc-col" style="gap:8px;max-width:760px">
+                <div class="esc-row"><span class="esc-label">Estado</span><span class="esc-pill @(f.Status == "Active" ? "esc-pill--success" : "esc-pill--warning")">@Names.LicenseStatus(f.Status)</span></div>
+                <div>Plan: <b>@(f.Plan ?? "Prueba")</b>@(f.ExpiresUtc is { } v ? $" · vence el {v.ToLocalTime():dd/MM/yyyy}" : "")</div>
+                <div>Cajas permitidas: <b>@f.Registers</b></div>
+                <div class="esc-subtitle">Funciones: @(f.Enabled.Length == 0 ? "las básicas" : string.Join(", ", f.Enabled.Select(Names.Feature)))</div>
+            </div>
+            break;
+    }
+</Admin>
+
+@code {
+    private enum Section { None, Business, Registers, FiscalSequences, Devices, Users, Backups, License }
+    private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; }
+    private sealed record Sequence(Guid Id, string Type, string From, string To, string Next, long Available, decimal PercentUsed, DateOnly ExpiresOn);
+
+    private static string Label(Section s) => s switch
+    {
+        Section.Business => "Negocio",
+        Section.Registers => "Cajas",
+        Section.FiscalSequences => "Comprobantes",
+        Section.Devices => "Equipos",
+        Section.Users => "Usuarios",
+        Section.Backups => "Respaldos",
+        _ => "Licencia",
+    };
+
+    private Section[] Sections => [.. new Section?[]
+    {
+        Session.Can("settings.manage") ? Section.Business : null, Session.Can("settings.manage") ? Section.Registers : null,
+        Session.Can("fiscal.manage") ? Section.FiscalSequences : null, Session.Can("devices.manage") ? Section.Devices : null,
+        Session.Can("users.manage") ? Section.Users : null, Session.Can("settings.manage") ? Section.Backups : null, Section.License,
+    }.OfType<Section>()];
+
+    private Section _section;
+    private string? _message;
+    private Notice.Kinds _messageKind;
+    private bool _sending;
+    private BusinessForm? _business;
+    private List<RegisterInfo> _registers = [];
+    private string? _newRegister, _newDevice, _passphrase, _userName, _userCode, _userPin, _seqFrom, _seqTo;
+    private string _seqType = "Consumer32";
+    private DateOnly _seqExpires = DateOnly.FromDateTime(DateTime.Today.AddYears(1));
+    private List<Sequence> _sequences = [];
+    private List<Device> _devices = [];
+    private PairingCode? _pairingCode;
+    private List<User> _users = [];
+    private List<Role> _roles = [];
+    private Guid _userRole;
+    private List<BackupFile> _backups = [];
+    private LicenseFeatures? _features;
+
+    protected override Task OnInitializedAsync() => GoAsync(Sections[0]);
+
+    private async Task GoAsync(Section section)
+    {
+        (_section, _message, _pairingCode) = (section, null, null);
+        switch (section)
+        {
+            case Section.Business:
+                var b = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value;
+                _business = b is null ? new() : new() { Name = b.Name, Rnc = b.Rnc, Address = b.Address, Phone = b.Phone, ReceiptFooter = b.ReceiptFooter, DiscountCap = b.DiscountCapPercent.ToString("0.##") };
+                break;
+            case Section.Registers: _registers = (await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers")).Value ?? []; break;
+            case Section.FiscalSequences: _sequences = (await Api.GetAsync<List<Sequence>>("/api/fiscal/sequences")).Value ?? []; break;
+            case Section.Devices: _devices = (await Api.GetAsync<List<Device>>("/api/identity/devices")).Value ?? []; break;
+            case Section.Users:
+                _users = (await Api.GetAsync<List<User>>("/api/identity/users")).Value ?? [];
+                _roles = [.. (await Api.GetAsync<RoleList>("/api/identity/roles")).Value?.Roles ?? []];
+                _userRole = _roles.Find(r => r.Name == "Cajero")?.Id ?? _roles.FirstOrDefault()?.Id ?? Guid.Empty;
+                break;
+            case Section.Backups: _backups = (await Api.GetAsync<List<BackupFile>>("/api/backups")).Value ?? []; break;
+            case Section.License: _features = (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value; break;
+        }
+    }
+
+    private void ShowResult(Problem? p, string success) => (_messageKind, _message) = p is null ? (Notice.Kinds.Success, success) : (Notice.Kinds.Error, p.Message);
+
+    private async Task SaveBusinessAsync()
+    {
+        var f = _business!;
+        string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        var r = await Api.PutAsync<Empty>("/api/settings/business", new BusinessProfile(f.Name.Trim(), Clean(f.Rnc), Clean(f.Address), Clean(f.Phone), Clean(f.ReceiptFooter), Format.ParseNumber(f.DiscountCap) ?? 0));
+        ShowResult(r.Problem, "Datos del negocio guardados.");
+    }
+
+    private async Task CreateRegisterAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newRegister)) return;
+        var r = await Api.PostAsync<Created>("/api/cash/registers", new { Name = _newRegister.Trim() });
+        await GoAsync(Section.Registers);
+        ShowResult(r.Problem, $"{_newRegister} creada.");
+        _newRegister = null;
+    }
+
+    private async Task LoadSequenceAsync()
+    {
+        if (!long.TryParse(_seqFrom, out var from) || !long.TryParse(_seqTo, out var to)) { ShowResult(new Problem(400, "", "Escriba los números de la secuencia."), ""); return; }
+        var r = await Api.PostAsync<Created>("/api/fiscal/sequences", new { Type = _seqType, From = from, To = to, ExpiresOn = _seqExpires });
+        await GoAsync(Section.FiscalSequences);
+        ShowResult(r.Problem?.Code == "Fiscal.OverlappingRange" ? r.Problem with { Message = "Ese rango se cruza con uno ya cargado." } : r.Problem, "Secuencia cargada.");
+    }
+
+    private async Task CreatePairingCodeAsync()
+    {
+        var r = await Api.PostAsync<PairingCode>("/api/identity/devices/pairing-codes", new { DeviceName = string.IsNullOrWhiteSpace(_newDevice) ? "Caja" : _newDevice.Trim() });
+        _pairingCode = r.Value;
+        if (!r.Ok) ShowResult(r.Problem, "");
+    }
+
+    private async Task RevokeAsync(Device d)
+    {
+        var r = await Api.PostAsync<Empty>($"/api/identity/devices/{d.Id}/revoke");
+        await GoAsync(Section.Devices);
+        ShowResult(r.Problem?.Code == "Identity.CannotRevokeOwnDevice" ? r.Problem with { Message = "No puede revocar el equipo que está usando." } : r.Problem, $"{d.Name} ya no puede entrar.");
+    }
+
+    private async Task CreateUserAsync()
+    {
+        var r = await Api.PostAsync<Created>("/api/identity/users", new { Name = _userName?.Trim(), Code = _userCode?.Trim(), Pin = _userPin, RoleId = _userRole });
+        var name = _userName;
+        if (r.Ok) (_userName, _userCode, _userPin) = (null, null, null);
+        await GoAsync(Section.Users);
+        ShowResult(r.Problem?.Code == "Identity.DuplicateCode" ? r.Problem with { Message = "Ese código ya lo usa otra persona." } : r.Problem, $"{name} puede entrar con su código y PIN.");
+    }
+
+    private async Task SavePassphraseAsync()
+    {
+        var r = await Api.PutAsync<Empty>("/api/backups/passphrase", new { Passphrase = _passphrase });
+        _passphrase = null;
+        ShowResult(r.Problem, "Frase guardada. Anótela en un lugar seguro.");
+    }
+
+    private async Task BackUpAsync()
+    {
+        _sending = true;
+        var r = await Api.PostAsync<BackupFile>("/api/backups");
+        _sending = false;
+        await GoAsync(Section.Backups);
+        ShowResult(r.Problem?.Code == "Backup.NoPassphrase" ? r.Problem with { Message = "Primero guarde la frase de los respaldos." } : r.Problem, "Respaldo creado.");
+    }
+}

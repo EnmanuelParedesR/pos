@@ -1,0 +1,215 @@
+@page "/shift-sales"
+@inject TokiApi Api
+@inject Session Session
+@inject Approver Approver
+@inject NavigationManager Nav
+
+<div class="esc-page">
+    <div class="esc-row" style="justify-content:space-between">
+        <div>
+            <h1 class="esc-title">Ventas de este turno</h1>
+            <p class="esc-subtitle">Anular devuelve todo mientras el turno siga abierto. Después, use devolución.</p>
+        </div>
+        <div class="esc-row">
+            <form class="esc-row" @onsubmit="LoadAsync">
+                <input class="esc-input" style="width:220px" placeholder="Número o e-NCF" aria-label="Buscar venta" @bind="_search" />
+                <Button Type="submit"><Icon Name="search" /> Buscar</Button>
+            </form>
+            <Button OnClick='() => Nav.NavigateTo("sale")' Shortcut="Esc">Volver a la venta</Button>
+        </div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start" @onkeydown="KeyDown">
+        <section class="esc-card esc-table-wrap" style="flex:999 1 520px">
+            <table class="esc-table">
+                <thead><tr><th>No.</th><th>Hora</th><th>e-NCF</th><th>Cliente</th><th>Estado</th><th class="esc-num">Total</th></tr></thead>
+                <tbody>
+                    @foreach (var v in _sales)
+                    {
+                        <tr class="selectable @(v.Id == _detail?.Id ? "selected" : "")" tabindex="0" @onclick="() => ShowAsync(v.Id)"
+                            @onkeydown='e => e.Key == "Enter" ? ShowAsync(v.Id) : Task.CompletedTask'>
+                            <td>@v.Number</td><td>@Format.Time(v.DateUtc)</td><td>@v.ENcf</td><td>@(v.Customer ?? "Contado")</td>
+                            <td><span class="esc-pill @(v.Status == "Voided" ? "esc-pill--error" : "esc-pill--success")">@Names.SaleStatus(v.Status)</span></td>
+                            <td class="esc-num" style="font-weight:600">@Format.Amount(v.Total)</td>
+                        </tr>
+                    }
+                    @if (_sales.Count == 0)
+                    {
+                        <tr><td colspan="6" class="esc-muted">@(_loading ? "Cargando…" : "Todavía no hay ventas en este turno.")</td></tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+
+        @if (_detail is { } d)
+        {
+            <section class="esc-card esc-card--padded esc-col" style="flex:1 1 380px;gap:12px" aria-label="Detalle">
+                <div class="esc-row" style="justify-content:space-between">
+                    <div>
+                        <div style="font-size:var(--t-20);font-weight:700">Factura #@d.Number</div>
+                        <div class="esc-subtitle">@d.ENcf · @Format.Date(d.DateUtc) · @d.Cashier</div>
+                    </div>
+                    <Money Value="d.Total" Size="32" />
+                </div>
+                @if (d.VoidReason is not null)
+                {
+                    <Notice Kind="Notice.Kinds.Warning" Title="Anulada">@d.VoidReason</Notice>
+                }
+                <table class="esc-table">
+                    <thead><tr><th>Producto</th><th class="esc-num">Cant.</th><th class="esc-num">Total</th>@if (_action == SaleAction.Return) { <th class="esc-num">Devolver</th> }</tr></thead>
+                    <tbody>
+                        @foreach (var l in d.Lines)
+                        {
+                            var available = l.Quantity - l.ReturnedQuantity;
+                            <tr>
+                                <td>@l.Description @if (l.ReturnedQuantity > 0) { <span class="esc-subtitle">· devuelto @l.ReturnedQuantity.ToString("0.###")</span> }</td>
+                                <td class="esc-num">@l.Quantity.ToString("0.###")</td>
+                                <td class="esc-num">@Format.Amount(l.Total)</td>
+                                @if (_action == SaleAction.Return)
+                                {
+                                    <td class="esc-num" style="width:120px">
+                                        <input class="esc-input esc-num" inputmode="decimal" disabled="@(available <= 0)" aria-label="@($"Devolver de {l.Description}")"
+                                               value="@(_toReturn.GetValueOrDefault(l.Id) is var x and > 0 ? x.ToString("0.###") : "")"
+                                               @onchange="e => _toReturn[l.Id] = Math.Min(available, Format.ParseNumber(e.Value?.ToString()) ?? 0)" />
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="esc-subtitle">Pagado: @string.Join(" · ", d.Payments.Select(p => $"{Names.PaymentMethod(p.Method)} {Format.Amount(p.Amount)}"))</div>
+                @foreach (var ret in d.Returns)
+                {
+                    <div class="esc-subtitle">Devolución @Format.Time(ret.DateUtc): @Format.WithCurrency(ret.Total) por @Names.PaymentMethod(ret.Method) · @ret.ENcf</div>
+                }
+
+                @if (_action is not null)
+                {
+                    <label class="esc-field"><span>Motivo</span><input class="esc-input" maxlength="200" @bind="_reason" autofocus /></label>
+                    @if (_action == SaleAction.Return)
+                    {
+                        <label class="esc-field">
+                            <span>Devolver el dinero por</span>
+                            <select class="esc-select" @bind="_method">
+                                <option value="@PaymentMethod.Cash">Efectivo</option>
+                                <option value="@PaymentMethod.Card">Tarjeta</option>
+                                <option value="@PaymentMethod.Transfer">Transferencia</option>
+                                @if (d.CustomerId is not null) { <option value="@PaymentMethod.CreditBalance">Saldo a favor del cliente</option> }
+                            </select>
+                        </label>
+                    }
+                }
+                @if (_message is not null)
+                {
+                    <Notice Kind="_messageKind" Title="@_message" />
+                }
+                <div class="esc-row" style="justify-content:flex-end">
+                    @if (_action is null)
+                    {
+                        <Button OnClick="() => _showReceipt = true"><Icon Name="printer" /> Reimprimir</Button>
+                        @if (d.Status != "Voided")
+                        {
+                            <Button OnClick="() => Start(SaleAction.Return)">Devolver líneas</Button>
+                            <Button Variant="Button.Variants.Danger" OnClick="() => Start(SaleAction.Void)"><Icon Name="lock" /> Anular venta</Button>
+                        }
+                    }
+                    else
+                    {
+                        <Button OnClick="() => _action = null">Cancelar</Button>
+                        <Button Variant="@(_action == SaleAction.Void ? Button.Variants.Danger : Button.Variants.Primary)" Disabled="_sending" OnClick="ConfirmAsync">
+                            @(_action == SaleAction.Void ? "Anular venta" : "Devolver")
+                        </Button>
+                    }
+                </div>
+            </section>
+        }
+    </div>
+</div>
+
+@if (_showReceipt && _receipt is { } c)
+{
+    <ReceiptDialog Receipt="c" OnClose="() => _showReceipt = false" />
+}
+
+@code {
+    private enum SaleAction { Void, Return }
+
+    private List<SaleSummary> _sales = [];
+    private SaleDetail? _detail;
+    private Receipt? _receipt;
+    private string? _search, _reason, _message;
+    private SaleAction? _action;
+    private Notice.Kinds _messageKind;
+    private PaymentMethod _method = PaymentMethod.Cash;
+    private readonly Dictionary<Guid, decimal> _toReturn = [];
+    private bool _loading = true, _sending, _showReceipt;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Shift ??= (await Api.GetAsync<CurrentShift>("/api/cash/shifts/current")).Value;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var filter = string.IsNullOrWhiteSpace(_search) ? $"shiftId={Session.Shift?.ShiftId}" : $"search={Uri.EscapeDataString(_search.Trim())}";
+        var r = await Api.GetAsync<List<SaleSummary>>($"/api/sales?{filter}");
+        (_sales, _loading) = (r.Value ?? [], false);
+        if (r.Problem is { } p) (_messageKind, _message) = (Notice.Kinds.Error, p.Message);
+    }
+
+    private async Task ShowAsync(Guid id)
+    {
+        (_action, _message) = (null, null);
+        _toReturn.Clear();
+        _detail = (await Api.GetAsync<SaleDetail>($"/api/sales/{id}")).Value;
+        _receipt = (await Api.GetAsync<Receipt>($"/api/sales/{id}/receipt")).Value;
+    }
+
+    private void Start(SaleAction a) => (_action, _reason, _message) = (a, null, null);
+
+    private void KeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _action is null && !_showReceipt) Nav.NavigateTo("sale");
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_detail is not { } d || Session.Shift is not { } shift) return;
+        if (string.IsNullOrWhiteSpace(_reason)) { (_messageKind, _message) = (Notice.Kinds.Error, "Escriba el motivo."); return; }
+        _sending = true;
+        Problem? problem;
+        if (_action == SaleAction.Void)
+        {
+            var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/sales/{d.Id}/void", new { Reason = _reason.Trim(), SupervisorApprovalId = id }),
+                d.Id, $"Anular la factura #{d.Number} de {Format.WithCurrency(d.Total)}");
+            problem = r.Problem;
+        }
+        else
+        {
+            var lines = _toReturn.Where(x => x.Value > 0).Select(x => new ReturnLine(x.Key, Math.Round(x.Value, 3))).ToList();
+            if (lines.Count == 0) { (_messageKind, _message, _sending) = (Notice.Kinds.Error, "Escriba cuánto se devuelve de cada producto.", false); return; }
+            var returnId = Guid.CreateVersion7();
+            var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/sales/{d.Id}/returns",
+                    new { ReturnId = returnId, shift.ShiftId, Lines = lines, Method = _method, Reason = _reason.Trim(), SupervisorApprovalId = id }),
+                d.Id, $"Devolución de la factura #{d.Number}");
+            problem = r.Problem;
+        }
+        _sending = false;
+        if (problem is null)
+        {
+            var done = _action == SaleAction.Void ? "Venta anulada. Se emitió la nota de crédito." : "Devolución registrada. Se emitió la nota de crédito.";
+            await LoadAsync();
+            await ShowAsync(d.Id); // clears the form
+            (_messageKind, _message) = (Notice.Kinds.Success, done);
+            return;
+        }
+        (_messageKind, _message) = (Notice.Kinds.Error, problem.Code switch
+        {
+            "Sales.OutsideShift" => "Esa venta es de un turno cerrado: use Devolver líneas.",
+            "Sales.HasReturns" => "Esa venta ya tiene devoluciones: devuelva lo que queda en vez de anular.",
+            "Sales.MethodExceeded" => "No se puede devolver por ese medio más de lo que se pagó con él.",
+            _ => problem.Message,
+        });
+    }
+}

@@ -2,7 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Toki.Client.UI;
-using Toki.Client.UI.Estado;
+using Toki.Client.UI.State;
 
 namespace Toki.Client.Wpf;
 
@@ -15,14 +15,14 @@ public partial class MainWindow
         var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))).RootElement;
         var api = new Uri(config.GetProperty("Api").GetProperty("Url").GetString()!);
 
-        var servicios = new ServiceCollection();
-        servicios.AddWpfBlazorWebView();
+        var services = new ServiceCollection();
+        services.AddWpfBlazorWebView();
         // shortcut: the store API's self-signed node certificate is not pinned yet (TK-091); until then use http on the store LAN or a trusted certificate.
-        servicios.AddTokiCliente(api);
-        servicios.AddSingleton<IAlmacenLocal, AlmacenProtegido>();
+        services.AddTokiClient(api);
+        services.AddSingleton<ILocalStore, ProtectedStore>();
 #if DEBUG
-        servicios.AddBlazorWebViewDeveloperTools();
+        services.AddBlazorWebViewDeveloperTools();
 #endif
-        Vista.Services = servicios.BuildServiceProvider();
+        WebView.Services = services.BuildServiceProvider();
     }
 }

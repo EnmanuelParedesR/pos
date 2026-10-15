@@ -1,0 +1,9 @@
+<span class="esc-money" style="font-size:@(Size)px">
+    <span class="esc-money__currency">RD$</span>
+    <span>@Format.Amount(Value)</span>
+</span>
+
+@code {
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public int Size { get; set; } = 24;
+}

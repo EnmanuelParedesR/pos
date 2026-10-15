@@ -1,5 +1,5 @@
 root = true
 
 # EF migrations are written by dotnet-ef: analyzers skip them.
-[**/Persistence/Migraciones/*.cs]
+[**/Persistence/Migrations/*.cs]
 generated_code = true

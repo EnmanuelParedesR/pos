@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "Caja": {
+    "Register": {
       "commandName": "Project",
       "applicationUrl": "http://localhost:5280",
       "environmentVariables": { "ASPNETCORE_ENVIRONMENT": "Development" }

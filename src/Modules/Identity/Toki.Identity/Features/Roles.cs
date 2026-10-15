@@ -13,69 +13,69 @@ using Toki.SharedKernel;
 
 namespace Toki.Identity.Features;
 
-internal static class ListarRoles
+internal static class ListRoles
 {
-    public sealed record Item(Guid Id, string Nombre, IReadOnlyList<string> Permisos);
-    public sealed record Response(IReadOnlyList<Item> Roles, IReadOnlyList<string> PermisosDisponibles);
+    public sealed record Item(Guid Id, string Name, IReadOnlyList<string> Permissions);
+    public sealed record Response(IReadOnlyList<Item> Roles, IReadOnlyList<string> AvailablePermissions);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/identidad/roles", async (IdentidadDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/identity/roles", async (IdentityDbContext db, CancellationToken ct) =>
                 {
-                    var roles = await db.Roles.AsNoTracking().OrderBy(r => r.Nombre).ToListAsync(ct);
-                    return Results.Ok(new Response(roles.Select(r => new Item(r.Id, r.Nombre, r.Permisos)).ToList(), Permisos.Todos));
+                    var roles = await db.Roles.AsNoTracking().OrderBy(r => r.Name).ToListAsync(ct);
+                    return Results.Ok(new Response(roles.Select(r => new Item(r.Id, r.Name, r.Permissions)).ToList(), Permissions.All));
                 })
-                .RequirePermiso(Permisos.UsuariosGestionar).WithTags("Identidad");
+                .RequirePermission(Permissions.UsersManage).WithTags("Identity");
     }
 }
 
 /// <summary>Creates a role (Id null) or replaces a role's name and permissions. The Administrador role always keeps every permission.</summary>
-internal static class GuardarRol
+internal static class SaveRole
 {
-    public sealed record Command(Guid? Id, string Nombre, IReadOnlyList<string> Permisos) : ICommand<Response>;
+    public sealed record Command(Guid? Id, string Name, IReadOnlyList<string> Permissions) : ICommand<Response>;
     public sealed record Response(Guid Id);
 
     internal sealed class Validator : AbstractValidator<Command>
     {
         public Validator()
         {
-            RuleFor(c => c.Nombre).NotEmpty().MaximumLength(60);
-            RuleForEach(c => c.Permisos).Must(p => BuildingBlocks.Security.Permisos.Todos.Contains(p)).WithMessage("Permiso desconocido: {PropertyValue}.");
+            RuleFor(c => c.Name).NotEmpty().MaximumLength(60);
+            RuleForEach(c => c.Permissions).Must(p => BuildingBlocks.Security.Permissions.All.Contains(p)).WithMessage("Permiso desconocido: {PropertyValue}.");
         }
     }
 
-    internal sealed class Handler(IdentidadDbContext db, IAuditoria auditoria) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IAuditLog audit) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            if (c.Id == Rol.AdministradorId) return Error.Validation("Identidad.RolProtegido", "El rol Administrador no se puede editar.");
-            var rol = c.Id is { } id ? await db.Roles.FirstOrDefaultAsync(r => r.Id == id, ct) : null;
-            if (c.Id is not null && rol is null) return IdentidadErrors.RolNoEncontrado;
-            if (rol is null)
+            if (c.Id == Role.AdministratorId) return Error.Validation("Identity.ProtectedRole", "El rol Administrador no se puede editar.");
+            var role = c.Id is { } id ? await db.Roles.FirstOrDefaultAsync(r => r.Id == id, ct) : null;
+            if (c.Id is not null && role is null) return IdentityErrors.RoleNotFound;
+            if (role is null)
             {
-                rol = new Rol { Id = Guid.CreateVersion7() };
-                db.Roles.Add(rol);
+                role = new Role { Id = Guid.CreateVersion7() };
+                db.Roles.Add(role);
             }
-            rol.Nombre = c.Nombre.Trim();
-            rol.Permisos = c.Permisos.Distinct().ToList();
-            await auditoria.RegistrarAsync("identidad.guardar-rol", "Rol", rol.Id, new { rol.Nombre, rol.Permisos }, ct);
-            return new Response(rol.Id);
+            role.Name = c.Name.Trim();
+            role.Permissions = c.Permissions.Distinct().ToList();
+            await audit.RecordAsync("identity.save-role", "Role", role.Id, new { role.Name, role.Permissions }, ct);
+            return new Response(role.Id);
         }
     }
 
-    internal sealed record Body(string Nombre, IReadOnlyList<string> Permisos);
+    internal sealed record Body(string Name, IReadOnlyList<string> Permissions);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app)
         {
-            app.MapPost("/api/identidad/roles", async (Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
-                    (await h.Handle(new Command(null, b.Nombre, b.Permisos), ct)).ToHttp(r => Results.Created($"/api/identidad/roles/{r.Id}", r)))
-                .RequirePermiso(Permisos.UsuariosGestionar).WithTags("Identidad");
-            app.MapPut("/api/identidad/roles/{id:guid}", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
-                    (await h.Handle(new Command(id, b.Nombre, b.Permisos), ct)).ToHttp(_ => Results.NoContent()))
-                .RequirePermiso(Permisos.UsuariosGestionar).WithTags("Identidad");
+            app.MapPost("/api/identity/roles", async (Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
+                    (await h.Handle(new Command(null, b.Name, b.Permissions), ct)).ToHttp(r => Results.Created($"/api/identity/roles/{r.Id}", r)))
+                .RequirePermission(Permissions.UsersManage).WithTags("Identity");
+            app.MapPut("/api/identity/roles/{id:guid}", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
+                    (await h.Handle(new Command(id, b.Name, b.Permissions), ct)).ToHttp(_ => Results.NoContent()))
+                .RequirePermission(Permissions.UsersManage).WithTags("Identity");
         }
     }
 }

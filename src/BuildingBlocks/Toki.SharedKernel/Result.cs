@@ -2,7 +2,7 @@ namespace Toki.SharedKernel;
 
 public enum ErrorType { Failure, Validation, NotFound, Conflict, Unauthorized, Forbidden }
 
-/// <summary>An expected failure with a stable code (for example "Caja.TurnoYaAbierto").</summary>
+/// <summary>An expected failure with a stable code (for example "CashRegister.ShiftAlreadyOpen").</summary>
 public sealed record Error(string Code, string Description, ErrorType Type = ErrorType.Failure)
 {
     public IReadOnlyDictionary<string, string[]>? Details { get; init; }

@@ -1,0 +1,321 @@
+@page "/sale"
+@inject TokiApi Api
+@inject Session Session
+@inject Cart Cart
+@inject NavigationManager Nav
+
+<div class="sale" @onkeydown="KeyAsync">
+    <section class="sale__left" aria-label="Productos">
+        <form class="esc-row" style="flex-wrap:nowrap" @onsubmit="ScanAsync">
+            <label class="esc-card" style="flex:1 1 auto;display:flex;align-items:center;gap:10px;padding:0 12px;border-color:var(--control-border);border-width:2px">
+                <Icon Name="barcode" />
+                <input @ref="_scanner" class="sale__scanner" placeholder="Escanee o escriba el código o PLU" aria-label="Código de barras o PLU"
+                       autocomplete="off" @bind="_code" @bind:event="oninput" />
+                <Keycap>F2</Keycap>
+            </label>
+            <Button Type="submit" Shortcut="Enter">Agregar</Button>
+        </form>
+
+        @if (_notice is { } a)
+        {
+            <Notice Kind="a.Kind" Title="@a.Title">
+                <ChildContent>@a.Detail</ChildContent>
+                <Action><Button Variant="Button.Variants.Ghost" aria-label="Cerrar aviso" OnClick="() => _notice = null"><Icon Name="x" /></Button></Action>
+            </Notice>
+        }
+
+        <div class="esc-row" role="group" aria-label="Categorías">
+            @foreach (var c in _categories)
+            {
+                <button type="button" class="esc-chip" aria-pressed="@(c.Id == _category ? "true" : "false")" @onclick="() => CategoryAsync(c.Id)">@c.Name</button>
+            }
+        </div>
+
+        <div class="sale__tiles">
+            @foreach (var p in _products)
+            {
+                <button type="button" class="esc-tile" @onclick="() => Tap(p)">
+                    <span class="esc-tile__name">@p.Name</span>
+                    <span class="esc-tile__price">@Format.WithCurrency(p.Price)@(p.Unit == "Pound" ? " / lb" : "")</span>
+                </button>
+            }
+            @if (_products.Count == 0)
+            {
+                <div class="esc-muted">@(_categories.Count == 0 ? "No hay productos todavía. Agréguelos en Administración → Productos." : "Esta categoría no tiene productos.")</div>
+            }
+        </div>
+    </section>
+
+    <section class="sale__cart esc-card" aria-label="Venta actual">
+        <div class="sale__customer">
+            <button type="button" class="esc-button esc-button--ghost" style="justify-content:flex-start;flex:1 1 auto;min-width:0" @onclick="() => Open(Panel.Customer)">
+                <Icon Name="user" />
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@(Cart.Customer?.Name ?? Cart.ManualName ?? "Cliente de contado")</span>
+                <span class="esc-pill esc-pill--neutral">@(Cart.DocumentType == EcfType.FiscalCredit31 ? "Crédito fiscal" : "Consumo")</span>
+                <Keycap>F6</Keycap>
+            </button>
+        </div>
+
+        <ol class="sale__lines" aria-label="Líneas">
+            @foreach (var l in Cart.Lines)
+            {
+                <li class="sale__line @(l.Id == Cart.Selected ? "selected" : "")" @onclick="() => Cart.Selected = l.Id" aria-current="@(l.Id == Cart.Selected)">
+                    <div style="min-width:0">
+                        <div style="font-weight:600">@l.Name</div>
+                        <div class="esc-subtitle">
+                            @Format.Quantity(l.Quantity, l.Unit) × @Format.Amount(l.Price)
+                            @if (l.OverriddenPrice is not null) { <span> · precio cambiado</span> }
+                            @if (l.DiscountAmount > 0) { <span> · desc. −@Format.Amount(l.DiscountAmount)</span> }
+                            @if (l.ScaleLabel is not null) { <span> · etiqueta</span> }
+                        </div>
+                    </div>
+                    <div class="esc-num" style="font-size:var(--t-17);font-weight:700">@Format.Amount(l.Total)</div>
+                </li>
+            }
+        </ol>
+
+        @if (Cart.IsEmpty && _last is { } v)
+        {
+            <div class="sale__list" role="status">
+                <Notice Kind="Notice.Kinds.Success" Title="@($"Venta guardada · {v.ENcf}")" />
+                @if (v.Change > 0)
+                {
+                    <div class="esc-label">Devuelta</div>
+                    <Money Value="v.Change" Size="52" />
+                }
+                <Button OnClick="() => Open(Panel.Receipt)"><Icon Name="printer" /> Ver factura</Button>
+            </div>
+        }
+        else if (Cart.IsEmpty)
+        {
+            <div class="sale__list esc-muted">Escanee el primer producto.</div>
+        }
+
+        <div class="sale__totals">
+            @if (Cart.Discounts > 0)
+            {
+                <div class="esc-row" style="justify-content:space-between"><span class="esc-muted">Descuentos</span><span>−@Format.Amount(Cart.Discounts)</span></div>
+            }
+            <div class="esc-row" style="justify-content:space-between;align-items:baseline">
+                <span class="esc-label">Total · @Cart.LineCount @(Cart.LineCount == 1 ? "línea" : "líneas")</span>
+                <Money Value="Cart.Total" Size="44" />
+            </div>
+            <Button Variant="Button.Variants.Primary" Money="true" Shortcut="F12" Disabled="@(Cart.IsEmpty || Session.Shift is null)" OnClick="() => Open(Panel.Checkout)">Cobrar</Button>
+        </div>
+    </section>
+</div>
+
+<nav class="esc-key-bar" aria-label="Teclas">
+    <button type="button" @onclick="() => OpenLine(Panel.Quantity)" disabled="@(Cart.SelectedLine is null)"><Keycap>F3</Keycap> Cantidad</button>
+    <button type="button" @onclick="() => OpenLine(Panel.Price)" disabled="@(Cart.SelectedLine is null)"><Keycap>F4</Keycap> Precio</button>
+    <button type="button" @onclick="() => Open(Panel.Hold)"><Keycap>F5</Keycap> Espera</button>
+    <button type="button" @onclick="() => OpenLine(Panel.Discount)" disabled="@(Cart.SelectedLine is null)"><Keycap>F7</Keycap> Descuento</button>
+    <button type="button" @onclick="RemoveLine" disabled="@(Cart.SelectedLine is null)"><Keycap>Supr</Keycap> Quitar línea</button>
+    <button type="button" @onclick="() => Open(Panel.Void)" disabled="@Cart.IsEmpty"><Keycap>F8</Keycap> Anular venta</button>
+    <button type="button" @onclick="() => Open(Panel.Register)"><Keycap>F9</Keycap> Caja</button>
+</nav>
+
+@switch (_panel)
+{
+    case Panel.Checkout:
+        <CheckoutDialog ShiftId="Session.Shift!.ShiftId" OnClose="Close" OnSold="SoldAsync" />
+        break;
+    case Panel.Quantity or Panel.Price or Panel.Discount when Cart.SelectedLine is { } l:
+        <LineDialog Line="l" Mode="@_panel.ToString()" OnClose="Close" OnDone="UpdateLine" />
+        break;
+    case Panel.Weight when _pending is { } p:
+        <LineDialog Line="@(new CartLine(p.ProductId, p.PresentationId, p.Name, p.Unit, p.Price, 0m))" Mode="Weight" OnClose="Close" OnDone="AddWeighed" />
+        break;
+    case Panel.Customer:
+        <CustomerDialog OnClose="Close" />
+        break;
+    case Panel.Hold:
+        <HeldSalesDialog ShiftId="Session.Shift!.ShiftId" OnClose="Close" />
+        break;
+    case Panel.Register:
+        <RegisterMenu OnClose="Close" />
+        break;
+    case Panel.Receipt when _last is { } u:
+        <ReceiptDialog Receipt="u.Receipt" OnClose="Close" />
+        break;
+    case Panel.Void:
+        <Dialog Title="¿Anular esta venta?" Subtitle="Se borran todas las líneas. Todavía no se ha cobrado nada." OnClose="Close">
+            <Footer>
+                <Button OnClick="Close" Shortcut="Esc">No, seguir vendiendo</Button>
+                <Button Variant="Button.Variants.Danger" OnClick="VoidSale" Shortcut="Enter" autofocus>Sí, anular</Button>
+            </Footer>
+        </Dialog>
+        break;
+}
+
+@code {
+    private enum Panel { None, Checkout, Quantity, Price, Discount, Weight, Customer, Hold, Register, Receipt, Void }
+    private sealed record SaleNotice(Notice.Kinds Kind, string Title, string? Detail = null);
+
+    private Panel _panel;
+    private string? _code;
+    private SaleNotice? _notice;
+    private List<Category> _categories = [];
+    private Guid? _category;
+    private List<ProductSummary> _products = [];
+    private ProductByCode? _pending;
+    private SaleRegistered? _last;
+    private ElementReference _scanner;
+    private bool _focusScanner = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsOpen) return;
+        Session.Shift ??= (await Api.GetAsync<CurrentShift>("/api/cash/shifts/current")).Value;
+        if (Session.Shift is null)
+        {
+            Nav.NavigateTo("open-register");
+            return;
+        }
+        _categories = (await Api.GetAsync<List<Category>>("/api/inventory/categories")).Value?.Where(c => c.IsActive).ToList() ?? [];
+        if (_categories.Count > 0) await CategoryAsync(_categories[0].Id);
+    }
+
+    // The scanner never gets lost (principle 2): focus goes back to it after every action.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusScanner && _panel == Panel.None)
+        {
+            _focusScanner = false;
+            try { await _scanner.FocusAsync(); }
+            catch (InvalidOperationException) { } // not rendered yet (redirecting)
+        }
+    }
+
+    private async Task CategoryAsync(Guid id)
+    {
+        _category = id;
+        _products = (await Api.GetAsync<List<ProductSummary>>($"/api/inventory/products?categoryId={id}")).Value ?? [];
+        _focusScanner = true;
+    }
+
+    private async Task ScanAsync()
+    {
+        var code = _code?.Trim();
+        _code = "";
+        _focusScanner = true;
+        if (string.IsNullOrEmpty(code)) return;
+        if (Cart.HasLabel(code))
+        {
+            _notice = new(Notice.Kinds.Warning, "Esta etiqueta ya está en la venta.", "Cada etiqueta de peso se cobra una sola vez. Si es otro paquete, pese de nuevo.");
+            return;
+        }
+        var r = await Api.GetAsync<ProductByCode>($"/api/inventory/products/by-code/{Uri.EscapeDataString(code)}");
+        if (r.Value is not { } p)
+        {
+            _notice = r.Problem!.Code switch
+            {
+                "Inventory.CodeNotFound" => new(Notice.Kinds.Error, $"No se encontró el código {code}.", "Búsquelo en las categorías o escriba su PLU."),
+                "Inventory.LabelMisread" => new(Notice.Kinds.Error, "La etiqueta se leyó mal.", "Vuelva a escanearla o escriba el PLU."),
+                "Inventory.ProductInactive" => new(Notice.Kinds.Warning, "Ese producto está desactivado.", "Un supervisor puede activarlo en Productos."),
+                _ => new(Notice.Kinds.Error, r.Problem.Message),
+            };
+            return;
+        }
+        Add(p, code);
+    }
+
+    private void Add(ProductByCode p, string? code)
+    {
+        var withLabel = p.LabelQuantity is not null || p.LabelAmount is not null;
+        if (p.Unit == "Pound" && !withLabel)
+        {
+            // shortcut: the weight is typed (no scale driver yet, Toki.Hardware.Scales); read IScale here when it exists.
+            _pending = p;
+            _panel = Panel.Weight;
+            return;
+        }
+        Cart.Add(p, withLabel ? code : null);
+        _last = null;
+        _notice = p.Notes.Length > 0 ? new(Notice.Kinds.Info, string.Join(" · ", p.Notes)) : null;
+        _focusScanner = true;
+    }
+
+    private void Tap(ProductSummary p) =>
+        Add(new ProductByCode(p.Id, null, p.Name, p.Unit, p.ItbisRate, p.Price, p.WholesalePrice, 1m, null, null, [], p.Stock), null);
+
+    private void AddWeighed(CartLine l)
+    {
+        if (_pending is { } p && l.Quantity > 0)
+        {
+            Cart.Add(p, null, l.Quantity);
+            _last = null;
+            _notice = null;
+        }
+        Close();
+    }
+
+    private void UpdateLine(CartLine l)
+    {
+        Cart.Update(l);
+        Close();
+    }
+
+    private void RemoveLine()
+    {
+        if (Cart.Selected is { } id) Cart.Remove(id);
+        _focusScanner = true;
+    }
+
+    private void VoidSale()
+    {
+        Cart.Clear();
+        _notice = new(Notice.Kinds.Info, "Venta anulada antes de cobrar.");
+        Close();
+    }
+
+    private void Open(Panel p)
+    {
+        if (p == Panel.Checkout && (Cart.IsEmpty || Session.Shift is null)) return;
+        if (p == Panel.Void && Cart.IsEmpty) return;
+        _panel = p;
+    }
+
+    private void OpenLine(Panel p)
+    {
+        if (Cart.SelectedLine is not null) _panel = p;
+    }
+
+    private void Close()
+    {
+        (_panel, _pending, _focusScanner) = (Panel.None, null, true);
+    }
+
+    private Task SoldAsync(SaleRegistered v)
+    {
+        _last = v;
+        _notice = null;
+        Cart.Clear();
+        Close();
+        return Task.CompletedTask;
+    }
+
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        if (_panel != Panel.None) return; // the open dialog owns the keyboard
+        switch (e.Key)
+        {
+            case "F2": _focusScanner = true; break;
+            case "F3": OpenLine(Panel.Quantity); break;
+            case "F4": OpenLine(Panel.Price); break;
+            case "F5": Open(Panel.Hold); break;
+            case "F6": Open(Panel.Customer); break;
+            case "F7": OpenLine(Panel.Discount); break;
+            case "F8": Open(Panel.Void); break;
+            case "F9": Open(Panel.Register); break;
+            case "F12": Open(Panel.Checkout); break;
+            case "Delete": RemoveLine(); break;
+            case "ArrowUp" or "ArrowDown" when Cart.Lines.Count > 0:
+                var i = Cart.Lines.ToList().FindIndex(l => l.Id == Cart.Selected);
+                i = Math.Clamp(i + (e.Key == "ArrowUp" ? -1 : 1), 0, Cart.Lines.Count - 1);
+                Cart.Selected = Cart.Lines[i].Id;
+                break;
+        }
+        await Task.CompletedTask;
+    }
+}

@@ -5,23 +5,23 @@ namespace Toki.BuildingBlocks.Security;
 
 public static class TokiClaims
 {
-    public const string Usuario = "sub";
-    public const string Nombre = "name";
-    public const string Dispositivo = "dispositivo";
-    public const string Sesion = "sesion";
-    public const string Permiso = "permiso";
+    public const string User = "sub";
+    public const string Name = "name";
+    public const string Device = "device";
+    public const string Session = "session";
+    public const string Permission = "permission";
 }
 
 /// <summary>Who is calling: the cashier's session on a paired device.</summary>
 public interface IUserContext
 {
-    Guid UsuarioId { get; }
-    string Nombre { get; }
-    Guid? DispositivoId { get; }
-    Guid? SesionId { get; }
-    bool Tiene(string permiso);
+    Guid UserId { get; }
+    string Name { get; }
+    Guid? DeviceId { get; }
+    Guid? SessionId { get; }
+    bool Has(string permission);
 
-    /// <summary>Supervisor who authorized the current command, if any. Recorded in the audit trail.</summary>
+    /// <summary>Supervisor who approved the current command, if any. Recorded in the audit trail.</summary>
     Guid? SupervisorId { get; set; }
 }
 
@@ -29,10 +29,11 @@ internal sealed class HttpUserContext(IHttpContextAccessor accessor) : IUserCont
 {
     private ClaimsPrincipal User => accessor.HttpContext?.User ?? new ClaimsPrincipal();
 
-    public Guid UsuarioId => Guid.TryParse(User.FindFirstValue(TokiClaims.Usuario), out var id) ? id : Guid.Empty;
-    public string Nombre => User.FindFirstValue(TokiClaims.Nombre) ?? "sistema";
-    public Guid? DispositivoId => Guid.TryParse(User.FindFirstValue(TokiClaims.Dispositivo), out var id) ? id : null;
-    public Guid? SesionId => Guid.TryParse(User.FindFirstValue(TokiClaims.Sesion), out var id) ? id : null;
-    public bool Tiene(string permiso) => User.HasClaim(TokiClaims.Permiso, permiso);
+    public Guid UserId => Guid.TryParse(User.FindFirstValue(TokiClaims.User), out var id) ? id : Guid.Empty;
+    // "sistema" is a display name the store can see, so it stays in Spanish.
+    public string Name => User.FindFirstValue(TokiClaims.Name) ?? "sistema";
+    public Guid? DeviceId => Guid.TryParse(User.FindFirstValue(TokiClaims.Device), out var id) ? id : null;
+    public Guid? SessionId => Guid.TryParse(User.FindFirstValue(TokiClaims.Session), out var id) ? id : null;
+    public bool Has(string permission) => User.HasClaim(TokiClaims.Permission, permission);
     public Guid? SupervisorId { get; set; }
 }

@@ -1,0 +1,110 @@
+@inject TokiApi Api
+@inject Cart Cart
+
+<Dialog Title="@(Cart.IsEmpty ? "Ventas en espera" : "Poner la venta en espera")" Subtitle="Se borran al cerrar la caja." OnClose="OnClose">
+    <ChildContent>
+        @if (!Cart.IsEmpty)
+        {
+            <label class="esc-field">
+                <span>Nombre para encontrarla</span>
+                <input @ref="_input" class="esc-input" maxlength="60" @bind="_label" @onkeydown='e => e.Key == "Enter" ? SaveAsync() : Task.CompletedTask' />
+            </label>
+            <div class="esc-subtitle">@Cart.LineCount líneas · @Format.WithCurrency(Cart.Total)</div>
+        }
+        else if (_list is null)
+        {
+            <div class="esc-muted">Cargando…</div>
+        }
+        else if (_list.Count == 0)
+        {
+            <div class="esc-muted">No hay ventas en espera.</div>
+        }
+        else
+        {
+            <div class="esc-card esc-table-wrap">
+                <table class="esc-table">
+                    <thead><tr><th>Hora</th><th>Nombre</th><th class="esc-num">Total</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var v in _list)
+                        {
+                            <tr>
+                                <td>@Format.Time(v.CreatedUtc)</td>
+                                <td style="font-weight:600">@v.Label</td>
+                                <td class="esc-num">@Format.Amount(v.Total)</td>
+                                <td class="esc-num">
+                                    <div class="esc-row" style="justify-content:flex-end">
+                                        <Button Variant="Button.Variants.Ghost" OnClick="() => DiscardAsync(v)">Descartar</Button>
+                                        <Button Variant="Button.Variants.Primary" OnClick="() => ResumeAsync(v)">Retomar</Button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        @if (_error is not null)
+        {
+            <Notice Title="@_error" />
+        }
+    </ChildContent>
+    <Footer>
+        <Button OnClick="OnClose" Shortcut="Esc">Cerrar</Button>
+        @if (!Cart.IsEmpty)
+        {
+            <Button Variant="Button.Variants.Primary" Shortcut="Enter" OnClick="SaveAsync">Poner en espera</Button>
+        }
+    </Footer>
+</Dialog>
+
+@code {
+    [Parameter, EditorRequired] public Guid ShiftId { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private List<HeldSale>? _list;
+    private string? _label, _error;
+    private ElementReference _input;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _label = Cart.Customer?.Name ?? $"Venta de las {Format.Time(DateTimeOffset.Now)}";
+        if (Cart.IsEmpty) await LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !Cart.IsEmpty) await _input.FocusAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var r = await Api.GetAsync<List<HeldSale>>($"/api/sales/held?shiftId={ShiftId}");
+        (_list, _error) = (r.Value ?? [], r.Problem?.Message);
+    }
+
+    private async Task SaveAsync()
+    {
+        var content = System.Text.Json.JsonSerializer.SerializeToElement(Cart.Save(), TokiApi.Json);
+        var r = await Api.PutAsync<Empty>("/api/sales/held", new { Id = Cart.SaleId, ShiftId, Label = string.IsNullOrWhiteSpace(_label) ? "Venta" : _label.Trim(), Content = content, Total = Cart.Total });
+        if (!r.Ok) { _error = r.Problem!.Message; return; }
+        Cart.Clear();
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task ResumeAsync(HeldSale v)
+    {
+        var saved = System.Text.Json.JsonSerializer.Deserialize<SavedCart>(v.Content, TokiApi.Json);
+        if (saved is null) { _error = "No se pudo leer esa venta."; return; }
+        var r = await Api.DeleteAsync<Empty>($"/api/sales/held/{v.Id}?shiftId={ShiftId}");
+        if (!r.Ok) { _error = r.Problem!.Message; return; }
+        Cart.Restore(saved);
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task DiscardAsync(HeldSale v)
+    {
+        var r = await Api.DeleteAsync<Empty>($"/api/sales/held/{v.Id}?shiftId={ShiftId}");
+        _error = r.Problem?.Message;
+        await LoadAsync();
+    }
+}

@@ -53,9 +53,9 @@ Contra SQL Server la API aplica sola las migraciones de cada módulo al arrancar
 
 En producción (`appsettings.Production.json`) escucha solo HTTPS en el puerto 5443 con un certificado propio de la PC principal, y escribe logs diarios en C:\ProgramData\Toki\logs.
 
-Respaldos: el dueño define una frase (PUT /api/respaldos/frase); cada noche a las 23:30 la API respalda la base, la cifra con esa frase (AES-256-GCM) y guarda los 14 más nuevos en C:\ProgramData\Toki\respaldos (y una copia en Respaldo:CopiaEn, si se configura, por ejemplo una memoria USB o una carpeta de red). Para abrir un respaldo en cualquier PC: `Toki.Host.Local descifrar-respaldo <archivo> <salida>` con la frase.
+Respaldos: el dueño define una frase (PUT /api/backups/passphrase); cada noche a las 23:30 la API respalda la base, la cifra con esa frase (AES-256-GCM) y guarda los 14 más nuevos en C:\ProgramData\Toki\backups (y una copia en Backup:CopyTo, si se configura, por ejemplo una memoria USB o una carpeta de red). Para abrir un respaldo en cualquier PC: `Toki.Host.Local decrypt-backup <archivo> <salida>` con la frase.
 
-Primer uso: `POST /api/identidad/instalacion` crea el administrador y empareja la PC principal; luego `POST /api/identidad/sesiones` con el encabezado `X-Dispositivo`.
+Primer uso: `POST /api/identity/setup` crea el administrador y empareja la PC principal; luego `POST /api/identity/sessions` con el encabezado `X-Device`.
 
 ## Instalar en la tienda
 
@@ -63,10 +63,10 @@ En la PC principal (Windows, con SQL Server Express), como administrador:
 
 ```powershell
 dotnet publish src/Hosts/Toki.Host.Local -c Release -r win-x64 --self-contained -o publicado
-.\deploy\instalar.ps1 -Origen .\publicado
+.\deploy\install.ps1 -Source .\publicado
 ```
 
-Crea el servicio `Toki` con su propia cuenta virtual (`NT SERVICE\Toki`, sin permisos de administrador), el certificado HTTPS del nodo, la carpeta `C:\ProgramData\Toki` y el login de SQL Server, y abre el puerto 5443 solo en redes privadas. `deploy\desinstalar.ps1` quita el servicio y deja los datos.
+Crea el servicio `Toki` con su propia cuenta virtual (`NT SERVICE\Toki`, sin permisos de administrador), el certificado HTTPS del nodo, la carpeta `C:\ProgramData\Toki` y el login de SQL Server, y abre el puerto 5443 solo en redes privadas. `deploy\uninstall.ps1` quita el servicio y deja los datos.
 
 ## Reglas
 

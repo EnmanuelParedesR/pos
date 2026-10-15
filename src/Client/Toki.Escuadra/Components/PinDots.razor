@@ -1,0 +1,11 @@
+<div class="esc-pin" role="img" aria-label="@($"{Length} de {Max} dígitos")">
+    @for (var i = 0; i < Max; i++)
+    {
+        <span class="@(i < Length ? "filled" : "")"></span>
+    }
+</div>
+
+@code {
+    [Parameter] public int Length { get; set; }
+    [Parameter] public int Max { get; set; } = 4;
+}

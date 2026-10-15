@@ -8,77 +8,77 @@ using Microsoft.Extensions.Time.Testing;
 using Testcontainers.MsSql;
 using Toki.BuildingBlocks.Persistence;
 
-[assembly: AssemblyFixture(typeof(Toki.IntegrationTests.Infra.SqlServerDePrueba))]
+[assembly: AssemblyFixture(typeof(Toki.IntegrationTests.Infra.TestSqlServer))]
 
 namespace Toki.IntegrationTests.Infra;
 
 /// <summary>SQL Server when TOKI_TEST_DB=sqlserver: the server in TOKI_TEST_SQLSERVER (e.g. a local SQL Express) or else a container (CI);
 /// otherwise each app uses its own Sqlite file.</summary>
-public sealed class SqlServerDePrueba : IAsyncLifetime
+public sealed class TestSqlServer : IAsyncLifetime
 {
-    private MsSqlContainer? _contenedor;
+    private MsSqlContainer? _container;
 
-    public static bool Activo => Environment.GetEnvironmentVariable("TOKI_TEST_DB") == "sqlserver";
-    public static string? ConnectionStringBase { get; private set; }
+    public static bool IsEnabled => Environment.GetEnvironmentVariable("TOKI_TEST_DB") == "sqlserver";
+    public static string? BaseConnectionString { get; private set; }
 
     /// <summary>The account SQL Server runs as, when it runs on this PC (TOKI_TEST_SQLSERVER).</summary>
-    public static string? CuentaServicio { get; private set; }
+    public static string? ServiceAccount { get; private set; }
 
     /// <summary>Sqlite, or a SQL Server on this PC: BACKUP writes a .bak the tests can read. A container writes it inside itself.</summary>
-    public static bool RespaldaEnEsteEquipo => !Activo || CuentaServicio is not null;
+    public static bool BacksUpOnThisMachine => !IsEnabled || ServiceAccount is not null;
 
-    /// <summary>A new backup folder SQL Server can write to, as the installer grants in a store (PrepararServicio).</summary>
-    public static string CarpetaRespaldos()
+    /// <summary>A new backup folder SQL Server can write to, as the installer grants in a store (PrepareService).</summary>
+    public static string BackupFolder()
     {
-        var carpeta = new DirectoryInfo(Path.Combine(Path.GetTempPath(), $"toki_respaldos_{Guid.NewGuid():N}"));
-        if (CuentaServicio is null || !OperatingSystem.IsWindows()) return carpeta.FullName;
-        carpeta.Create();
-        var acl = carpeta.GetAccessControl();
-        acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(CuentaServicio, System.Security.AccessControl.FileSystemRights.Modify,
+        var folder = new DirectoryInfo(Path.Combine(Path.GetTempPath(), $"toki_backups_{Guid.NewGuid():N}"));
+        if (ServiceAccount is null || !OperatingSystem.IsWindows()) return folder.FullName;
+        folder.Create();
+        var acl = folder.GetAccessControl();
+        acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(ServiceAccount, System.Security.AccessControl.FileSystemRights.Modify,
             System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit,
             System.Security.AccessControl.PropagationFlags.None, System.Security.AccessControl.AccessControlType.Allow));
-        carpeta.SetAccessControl(acl);
-        return carpeta.FullName;
+        folder.SetAccessControl(acl);
+        return folder.FullName;
     }
 
     public async ValueTask InitializeAsync()
     {
-        if (!Activo) return;
-        ConnectionStringBase = Environment.GetEnvironmentVariable("TOKI_TEST_SQLSERVER");
-        if (ConnectionStringBase is not null)
+        if (!IsEnabled) return;
+        BaseConnectionString = Environment.GetEnvironmentVariable("TOKI_TEST_SQLSERVER");
+        if (BaseConnectionString is not null)
         {
-            await using var c = new Microsoft.Data.SqlClient.SqlConnection(ConnectionStringBase);
+            await using var c = new Microsoft.Data.SqlClient.SqlConnection(BaseConnectionString);
             await c.OpenAsync();
             await using var cmd = c.CreateCommand();
             cmd.CommandText = "SELECT service_account FROM sys.dm_server_services WHERE servicename LIKE 'SQL Server (%'";
-            CuentaServicio = (string?)await cmd.ExecuteScalarAsync();
+            ServiceAccount = (string?)await cmd.ExecuteScalarAsync();
             return;
         }
-        _contenedor = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest").Build();
-        await _contenedor.StartAsync();
-        ConnectionStringBase = _contenedor.GetConnectionString();
+        _container = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2025-latest").Build();
+        await _container.StartAsync();
+        BaseConnectionString = _container.GetConnectionString();
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_contenedor is not null) await _contenedor.DisposeAsync();
-        else if (ConnectionStringBase is not null) await BorrarBasesDePruebaAsync(ConnectionStringBase, "toki[_]test[_]%");
+        if (_container is not null) await _container.DisposeAsync();
+        else if (BaseConnectionString is not null) await DropTestDatabasesAsync(BaseConnectionString, "toki[_]test[_]%");
     }
 
     /// <summary>A shared server outlives the run, so the throwaway databases are dropped here.</summary>
-    public static async Task BorrarBasesDePruebaAsync(string conexion, string patron)
+    public static async Task DropTestDatabasesAsync(string connectionString, string pattern)
     {
         Microsoft.Data.SqlClient.SqlConnection.ClearAllPools();
-        await using var c = new Microsoft.Data.SqlClient.SqlConnection(new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(conexion) { InitialCatalog = "master" }.ConnectionString);
+        await using var c = new Microsoft.Data.SqlClient.SqlConnection(new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(connectionString) { InitialCatalog = "master" }.ConnectionString);
         await c.OpenAsync();
         await using var cmd = c.CreateCommand();
         cmd.CommandText = """
             DECLARE @sql nvarchar(max) = N'';
             SELECT @sql += N'ALTER DATABASE ' + QUOTENAME(name) + N' SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ' + QUOTENAME(name) + N';'
-            FROM sys.databases WHERE name LIKE @patron;
+            FROM sys.databases WHERE name LIKE @pattern;
             EXEC sp_executesql @sql;
             """;
-        cmd.Parameters.AddWithValue("@patron", patron);
+        cmd.Parameters.AddWithValue("@pattern", pattern);
         cmd.CommandTimeout = 300;
         await cmd.ExecuteNonQueryAsync();
     }
@@ -87,26 +87,26 @@ public sealed class SqlServerDePrueba : IAsyncLifetime
 /// <summary>The real API in memory, on a fresh database. One per test class.</summary>
 public sealed class TokiApp : WebApplicationFactory<Program>
 {
-    public const string PinAdmin = "1234";
+    public const string AdminPin = "1234";
     private readonly string _provider;
     private readonly string _connectionString;
-    private readonly string? _archivoSqlite;
-    private readonly SemaphoreSlim _instalacion = new(1, 1);
-    private Sesion? _admin;
+    private readonly string? _sqliteFile;
+    private readonly SemaphoreSlim _setup = new(1, 1);
+    private UserSession? _admin;
 
     public TokiApp()
     {
-        if (SqlServerDePrueba.Activo)
+        if (TestSqlServer.IsEnabled)
         {
             _provider = "SqlServer";
-            _connectionString = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(SqlServerDePrueba.ConnectionStringBase)
+            _connectionString = new Microsoft.Data.SqlClient.SqlConnectionStringBuilder(TestSqlServer.BaseConnectionString)
             { InitialCatalog = $"toki_test_{Guid.NewGuid():N}" }.ConnectionString;
         }
         else
         {
             _provider = "Sqlite";
-            _archivoSqlite = Path.Combine(Path.GetTempPath(), $"toki_test_{Guid.NewGuid():N}.db");
-            _connectionString = $"Data Source={_archivoSqlite};Pooling=False";
+            _sqliteFile = Path.Combine(Path.GetTempPath(), $"toki_test_{Guid.NewGuid():N}.db");
+            _connectionString = $"Data Source={_sqliteFile};Pooling=False";
         }
     }
 
@@ -115,129 +115,129 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         builder.UseEnvironment("Testing");
         builder.UseSetting("Database:Provider", _provider);
         builder.UseSetting("Database:ConnectionString", _connectionString);
-        builder.UseSetting("Database:CrearAlIniciar", "true");
+        builder.UseSetting("Database:CreateOnStartup", "true");
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
         // Background work would race the tests when they move the fake clock; tests run it themselves.
-        builder.UseSetting("Outbox:Procesar", "false");
-        builder.UseSetting("Auditoria:VerificacionNocturna", "false");
-        builder.UseSetting("Respaldo:Automatico", "false");
-        builder.UseSetting("Toki:CarpetaClaves", Path.Combine(Path.GetTempPath(), $"toki_claves_{Guid.NewGuid():N}"));
-        builder.UseSetting("Licencia:ClavePublica", ClaveLicencias.ExportSubjectPublicKeyInfoPem());
-        builder.UseSetting("Licencia:Archivo", Path.Combine(Path.GetTempPath(), $"toki_licencia_{Guid.NewGuid():N}.jws"));
-        builder.UseSetting("Respaldo:Carpeta", SqlServerDePrueba.CarpetaRespaldos());
+        builder.UseSetting("Outbox:Process", "false");
+        builder.UseSetting("Audit:NightlyCheck", "false");
+        builder.UseSetting("Backup:Automatic", "false");
+        builder.UseSetting("Toki:KeysFolder", Path.Combine(Path.GetTempPath(), $"toki_keys_{Guid.NewGuid():N}"));
+        builder.UseSetting("License:PublicKey", LicenseKey.ExportSubjectPublicKeyInfoPem());
+        builder.UseSetting("License:File", Path.Combine(Path.GetTempPath(), $"toki_license_{Guid.NewGuid():N}.jws"));
+        builder.UseSetting("Backup:Folder", TestSqlServer.BackupFolder());
         builder.ConfigureTestServices(s =>
         {
-            s.AddSingleton<TimeProvider>(Reloj);
-            ComandosDePrueba.Registrar(s);
+            s.AddSingleton<TimeProvider>(Clock);
+            TestCommands.Register(s);
         });
     }
 
     /// <summary>Signs this app's test licenses; the app trusts its public key instead of Toki's (allowed outside Production only).</summary>
-    public System.Security.Cryptography.ECDsa ClaveLicencias { get; } = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+    public System.Security.Cryptography.ECDsa LicenseKey { get; } = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
 
     /// <summary>The application clock. Starts at the real time and only moves when a test advances it.</summary>
-    public FakeTimeProvider Reloj { get; } = new(DateTimeOffset.UtcNow);
+    public FakeTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);
 
-    public HttpClient Anonimo(string? dispositivo = null)
+    public HttpClient Anonymous(string? device = null)
     {
         var c = CreateClient();
-        if (dispositivo is not null) c.DefaultRequestHeaders.Add("X-Dispositivo", dispositivo);
+        if (device is not null) c.DefaultRequestHeaders.Add("X-Device", device);
         return c;
     }
 
-    public HttpClient Cliente(Sesion s)
+    public HttpClient Client(UserSession s)
     {
-        var c = Anonimo(s.Dispositivo);
+        var c = Anonymous(s.Device);
         c.DefaultRequestHeaders.Authorization = new("Bearer", s.Token);
         return c;
     }
 
-    /// <summary>Installs the shop once per app and returns the administrator's session.</summary>
-    public async Task<Sesion> AdminAsync()
+    /// <summary>Sets up the shop once per app and returns the administrator's session.</summary>
+    public async Task<UserSession> AdminAsync()
     {
-        await _instalacion.WaitAsync();
+        await _setup.WaitAsync();
         try
         {
             if (_admin is not null) return _admin;
-            var r = await Anonimo().PostAsJsonAsync("/api/identidad/instalacion",
-                new { NombreAdministrador = "Dueña", CodigoAdministrador = "admin", Pin = PinAdmin, NombreDispositivo = "PC principal" });
+            var r = await Anonymous().PostAsJsonAsync("/api/identity/setup",
+                new { AdministratorName = "Dueña", AdministratorCode = "admin", Pin = AdminPin, DeviceName = "PC principal" });
             r.EnsureSuccessStatusCode();
-            var dispositivo = (await r.Json()).GetProperty("tokenDispositivo").GetString()!;
-            _admin = await IniciarSesionAsync("admin", PinAdmin, dispositivo);
+            var device = (await r.Json()).GetProperty("deviceToken").GetString()!;
+            _admin = await SignInAsync("admin", AdminPin, device);
             return _admin;
         }
-        finally { _instalacion.Release(); }
+        finally { _setup.Release(); }
     }
 
-    public async Task<Sesion> IniciarSesionAsync(string codigo, string pin, string dispositivo)
+    public async Task<UserSession> SignInAsync(string code, string pin, string device)
     {
-        var r = await Anonimo(dispositivo).PostAsJsonAsync("/api/identidad/sesiones", new { Codigo = codigo, Pin = pin });
+        var r = await Anonymous(device).PostAsJsonAsync("/api/identity/sessions", new { Code = code, Pin = pin });
         r.EnsureSuccessStatusCode();
         var json = await r.Json();
-        return new Sesion(json.GetProperty("token").GetString()!, dispositivo, json.GetProperty("usuarioId").GetGuid());
+        return new UserSession(json.GetProperty("token").GetString()!, device, json.GetProperty("userId").GetGuid());
     }
 
     /// <summary>Creates a user with the given role on the admin's device and logs them in.</summary>
-    public async Task<Sesion> UsuarioAsync(Guid rolId, string pin = "4321")
+    public async Task<UserSession> UserAsync(Guid roleId, string pin = "4321")
     {
         var admin = await AdminAsync();
-        var codigo = $"u{Guid.NewGuid():N}"[..12];
-        var r = await Cliente(admin).PostAsJsonAsync("/api/identidad/usuarios", new { Nombre = "Usuario " + codigo, Codigo = codigo, Pin = pin, RolId = rolId });
+        var code = $"u{Guid.NewGuid():N}"[..12];
+        var r = await Client(admin).PostAsJsonAsync("/api/identity/users", new { Name = "Usuario " + code, Code = code, Pin = pin, RoleId = roleId });
         r.EnsureSuccessStatusCode();
-        return await IniciarSesionAsync(codigo, pin, admin.Dispositivo);
+        return await SignInAsync(code, pin, admin.Device);
     }
 
-    public async Task<T> EnScopeAsync<T>(Func<IServiceProvider, Task<T>> accion)
+    public async Task<T> InScopeAsync<T>(Func<IServiceProvider, Task<T>> action)
     {
         await using var scope = Services.CreateAsyncScope();
-        return await accion(scope.ServiceProvider);
+        return await action(scope.ServiceProvider);
     }
 
     /// <summary>Runs a test-only command with no user (system context).</summary>
-    internal async Task<Toki.SharedKernel.Result<Toki.BuildingBlocks.Messaging.Ok>> ComandoAsync<TCommand>(TCommand comando)
+    internal async Task<Toki.SharedKernel.Result<Toki.BuildingBlocks.Messaging.Ok>> CommandAsync<TCommand>(TCommand command)
         where TCommand : Toki.BuildingBlocks.Messaging.ICommand<Toki.BuildingBlocks.Messaging.Ok>
     {
         await using var scope = Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<Toki.BuildingBlocks.Messaging.ICommandHandler<TCommand, Toki.BuildingBlocks.Messaging.Ok>>()
-            .Handle(comando, CancellationToken.None);
+            .Handle(command, CancellationToken.None);
     }
 
     /// <summary>The kardex rule: for every product and warehouse, the movements add up to the stock and the last row's result equals it.</summary>
-    public Task<IReadOnlyList<string>> DescuadresKardexAsync() => EnScopeAsync<IReadOnlyList<string>>(async sp =>
+    public Task<IReadOnlyList<string>> KardexMismatchesAsync() => InScopeAsync<IReadOnlyList<string>>(async sp =>
     {
-        var db = sp.GetRequiredService<Toki.Inventory.Persistence.InventarioDbContext>();
-        var existencias = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.Existencias);
-        var movimientos = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.Movimientos);
-        return existencias
+        var db = sp.GetRequiredService<Toki.Inventory.Persistence.InventoryDbContext>();
+        var stock = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.Stock);
+        var movements = await Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions.ToListAsync(db.StockMovements);
+        return stock
             .Where(e =>
             {
-                var propios = movimientos.Where(m => m.ProductoId == e.ProductoId && m.AlmacenId == e.AlmacenId).OrderBy(m => m.Secuencia).ToList();
-                return propios.Sum(m => m.Cantidad) != e.Cantidad || (propios.Count > 0 && propios[^1].ExistenciaResultante != e.Cantidad);
+                var own = movements.Where(m => m.ProductId == e.ProductId && m.WarehouseId == e.WarehouseId).OrderBy(m => m.Sequence).ToList();
+                return own.Sum(m => m.Quantity) != e.Quantity || (own.Count > 0 && own[^1].ResultingStock != e.Quantity);
             })
-            .Select(e => $"{e.ProductoId}/{e.AlmacenId}: {e.Cantidad}").ToList();
+            .Select(e => $"{e.ProductId}/{e.WarehouseId}: {e.Quantity}").ToList();
     });
 
-    public Task<long?> VerificarAuditoriaAsync() =>
-        EnScopeAsync(sp => CadenaAuditoria.VerificarAsync(sp.GetRequiredService<InfraDbContext>(), CancellationToken.None));
+    public Task<long?> VerifyAuditAsync() =>
+        InScopeAsync(sp => AuditChain.VerifyAsync(sp.GetRequiredService<InfraDbContext>(), CancellationToken.None));
 
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        _instalacion.Dispose();
-        if (_archivoSqlite is null) return;
+        _setup.Dispose();
+        if (_sqliteFile is null) return;
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-        try { File.Delete(_archivoSqlite); }
+        try { File.Delete(_sqliteFile); }
         catch (IOException) { } // best effort: a temp file left behind is harmless
     }
 }
 
-public sealed record Sesion(string Token, string Dispositivo, Guid UsuarioId);
+public sealed record UserSession(string Token, string Device, Guid UserId);
 
 public static class Roles
 {
-    public static readonly Guid Administrador = new("0199e000-0000-7000-8000-000000000001");
+    public static readonly Guid Administrator = new("0199e000-0000-7000-8000-000000000001");
     public static readonly Guid Supervisor = new("0199e000-0000-7000-8000-000000000002");
-    public static readonly Guid Cajero = new("0199e000-0000-7000-8000-000000000003");
+    public static readonly Guid Cashier = new("0199e000-0000-7000-8000-000000000003");
 }
 
 public static class HttpExtensions
@@ -245,6 +245,6 @@ public static class HttpExtensions
     public static async Task<JsonElement> Json(this HttpResponseMessage r) => await r.Content.ReadFromJsonAsync<JsonElement>();
 
     /// <summary>The stable error code of a ProblemDetails response.</summary>
-    public static async Task<string?> CodigoError(this HttpResponseMessage r) =>
+    public static async Task<string?> ErrorCode(this HttpResponseMessage r) =>
         (await r.Json()).TryGetProperty("code", out var c) ? c.GetString() : null;
 }

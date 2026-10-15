@@ -2,7 +2,7 @@ using Toki.SharedKernel;
 
 namespace Toki.BuildingBlocks.Messaging;
 
-/// <summary>A change. Runs inside one database transaction (see TransaccionDecorator). Reads live in the endpoints.</summary>
+/// <summary>A change. Runs inside one database transaction (see TransactionDecorator). Reads live in the endpoints.</summary>
 public interface ICommand<TResponse>;
 
 public interface ICommandHandler<in TCommand, TResponse> where TCommand : ICommand<TResponse>
@@ -13,5 +13,5 @@ public interface ICommandHandler<in TCommand, TResponse> where TCommand : IComma
 /// <summary>Response for commands that return nothing but success.</summary>
 public sealed record Ok
 {
-    public static readonly Ok Valor = new();
+    public static readonly Ok Value = new();
 }

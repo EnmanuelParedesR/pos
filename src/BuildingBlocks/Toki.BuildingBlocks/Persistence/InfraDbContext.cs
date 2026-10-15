@@ -3,95 +3,95 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Toki.BuildingBlocks.Persistence;
 
-/// <summary>Infrastructure tables: the outbox and the hash-chained audit trail. Modules write them only through IOutbox and IAuditoria.</summary>
+/// <summary>Infrastructure tables: the outbox and the hash-chained audit trail. Modules write them only through IOutbox and IAuditLog.</summary>
 public sealed class InfraDbContext(DbContextOptions<InfraDbContext> options) : ModuleDbContext(options)
 {
     protected override string Schema => "infra";
 
-    public DbSet<OutboxMensaje> Outbox => Set<OutboxMensaje>();
-    public DbSet<RegistroAuditoria> Auditoria => Set<RegistroAuditoria>();
-    public DbSet<CabezaAuditoria> CabezaAuditoria => Set<CabezaAuditoria>();
+    public DbSet<OutboxMessage> Outbox => Set<OutboxMessage>();
+    public DbSet<AuditRecord> AuditRecords => Set<AuditRecord>();
+    public DbSet<AuditHead> AuditHead => Set<AuditHead>();
 }
 
-public sealed class OutboxMensaje
+public sealed class OutboxMessage
 {
-    public long Secuencia { get; set; }
+    public long Sequence { get; set; }
     public Guid Id { get; set; }
-    public string Tipo { get; set; } = "";
-    public Guid AgregadoId { get; set; }
+    public string Type { get; set; } = "";
+    public Guid AggregateId { get; set; }
     public string Payload { get; set; } = "";
-    public DateTime OcurridoUtc { get; set; }
-    public Guid? UsuarioId { get; set; }
-    public Guid? DispositivoId { get; set; }
-    public DateTime? ProcesadoUtc { get; set; }
-    public DateTime? SubidoUtc { get; set; }
+    public DateTime OccurredUtc { get; set; }
+    public Guid? UserId { get; set; }
+    public Guid? DeviceId { get; set; }
+    public DateTime? ProcessedUtc { get; set; }
+    public DateTime? UploadedUtc { get; set; }
 }
 
-public sealed class RegistroAuditoria
+public sealed class AuditRecord
 {
-    public long Secuencia { get; set; }
+    public long Sequence { get; set; }
     public Guid Id { get; set; }
-    public DateTime FechaUtc { get; set; }
-    public Guid? UsuarioId { get; set; }
+    public DateTime DateUtc { get; set; }
+    public Guid? UserId { get; set; }
     public Guid? SupervisorId { get; set; }
-    public Guid? DispositivoId { get; set; }
-    public string Accion { get; set; } = "";
-    public string RecursoTipo { get; set; } = "";
-    public Guid RecursoId { get; set; }
-    public string Datos { get; set; } = "";
-    public byte[] HashPrevio { get; set; } = [];
+    public Guid? DeviceId { get; set; }
+    public string Action { get; set; } = "";
+    public string ResourceType { get; set; } = "";
+    public Guid ResourceId { get; set; }
+    public string Data { get; set; } = "";
+    public byte[] PreviousHash { get; set; } = [];
     public byte[] Hash { get; set; } = [];
 }
 
 /// <summary>Single row with the head of the audit chain. Updating it first serializes audit writers.</summary>
-public sealed class CabezaAuditoria
+public sealed class AuditHead
 {
     public int Id { get; set; }
-    public long Secuencia { get; set; }
+    public long Sequence { get; set; }
     public byte[] Hash { get; set; } = [];
 
     /// <summary>"#seq hash8", printed on Z reports: the paper keeps how far the chain went, so a rewound head shows up.</summary>
-    public static async Task<string> TextoAsync(InfraDbContext db, CancellationToken ct)
+    public static async Task<string> TextAsync(InfraDbContext db, CancellationToken ct)
     {
-        var c = await db.CabezaAuditoria.AsNoTracking().SingleAsync(x => x.Id == 1, ct);
-        return $"#{c.Secuencia} {Convert.ToHexString(c.Hash)[..8]}";
+        var h = await db.AuditHead.AsNoTracking().SingleAsync(x => x.Id == 1, ct);
+        return $"#{h.Sequence} {Convert.ToHexString(h.Hash)[..8]}";
     }
 }
 
-internal sealed class OutboxMensajeConfiguration : IEntityTypeConfiguration<OutboxMensaje>
+internal sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<OutboxMessage>
 {
-    public void Configure(EntityTypeBuilder<OutboxMensaje> b)
+    public void Configure(EntityTypeBuilder<OutboxMessage> b)
     {
-        b.ToTable("OutboxMensajes");
-        b.HasKey(m => m.Secuencia);
-        b.Property(m => m.Secuencia).ValueGeneratedOnAdd();
+        b.ToTable("OutboxMessages");
+        b.HasKey(m => m.Sequence);
+        b.Property(m => m.Sequence).ValueGeneratedOnAdd();
         b.HasIndex(m => m.Id).IsUnique();
-        b.Property(m => m.Payload).HasMaxLength(ModuleDbContext.TextoLargo);
-        b.HasIndex(m => m.ProcesadoUtc);
+        b.Property(m => m.Payload).HasMaxLength(ModuleDbContext.LongText);
+        b.HasIndex(m => m.ProcessedUtc);
     }
 }
 
-internal sealed class RegistroAuditoriaConfiguration : IEntityTypeConfiguration<RegistroAuditoria>
+internal sealed class AuditRecordConfiguration : IEntityTypeConfiguration<AuditRecord>
 {
-    public void Configure(EntityTypeBuilder<RegistroAuditoria> b)
+    public void Configure(EntityTypeBuilder<AuditRecord> b)
     {
-        b.ToTable("AuditoriaRegistros");
-        b.HasKey(r => r.Secuencia);
-        b.Property(r => r.Secuencia).ValueGeneratedNever();
-        b.Property(r => r.Datos).HasMaxLength(ModuleDbContext.TextoLargo);
-        b.Property(r => r.HashPrevio).HasMaxLength(32);
+        b.ToTable("AuditRecords");
+        b.HasKey(r => r.Sequence);
+        b.Property(r => r.Sequence).ValueGeneratedNever();
+        b.Property(r => r.Data).HasMaxLength(ModuleDbContext.LongText);
+        b.Property(r => r.PreviousHash).HasMaxLength(32);
         b.Property(r => r.Hash).HasMaxLength(32);
-        b.HasIndex(r => new { r.RecursoTipo, r.RecursoId });
+        b.HasIndex(r => new { r.ResourceType, r.ResourceId });
     }
 }
 
-internal sealed class CabezaAuditoriaConfiguration : IEntityTypeConfiguration<CabezaAuditoria>
+internal sealed class AuditHeadConfiguration : IEntityTypeConfiguration<AuditHead>
 {
-    public void Configure(EntityTypeBuilder<CabezaAuditoria> b)
+    public void Configure(EntityTypeBuilder<AuditHead> b)
     {
-        b.ToTable("AuditoriaCabeza");
-        b.Property(c => c.Id).ValueGeneratedNever();
-        b.Property(c => c.Hash).HasMaxLength(32);
-        b.HasData(new CabezaAuditoria { Id = 1, Secuencia = 0, Hash = new byte[32] });
+        b.ToTable("AuditHead");
+        b.Property(h => h.Id).ValueGeneratedNever();
+        b.Property(h => h.Hash).HasMaxLength(32);
+        b.HasData(new AuditHead { Id = 1, Sequence = 0, Hash = new byte[32] });
     }
 }

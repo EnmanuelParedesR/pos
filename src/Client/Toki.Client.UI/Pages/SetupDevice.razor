@@ -1,0 +1,110 @@
+@page "/setup"
+@inject TokiApi Api
+@inject Session Session
+@inject NavigationManager Nav
+
+<div class="esc-page" style="max-width:960px;margin:0 auto;width:100%">
+    <div>
+        <h1 class="esc-title">Configurar este equipo</h1>
+        <p class="esc-subtitle">Se hace una sola vez. Elija si esta es la PC principal de una tienda nueva o una caja más de una tienda que ya usa Toki.</p>
+    </div>
+
+    <div class="esc-row" role="tablist" aria-label="Modo">
+        <button type="button" role="tab" class="esc-chip" aria-pressed="@(_mode == Mode.Join ? "true" : "false")" aria-selected="@(_mode == Mode.Join)" @onclick="() => Switch(Mode.Join)">Unir a una tienda</button>
+        <button type="button" role="tab" class="esc-chip" aria-pressed="@(_mode == Mode.Install ? "true" : "false")" aria-selected="@(_mode == Mode.Install)" @onclick="() => Switch(Mode.Install)">Primera instalación</button>
+    </div>
+
+    @if (_mode == Mode.Join)
+    {
+        <form class="esc-card esc-card--padded esc-col" style="gap:16px;max-width:520px" @onsubmit="JoinAsync">
+            <div>
+                <div style="font-size:var(--t-20);font-weight:700">Código del dueño</div>
+                <div class="esc-subtitle">En la PC principal: Configuración → Equipos → Generar código. Vale 10 minutos.</div>
+            </div>
+            <label class="esc-field">
+                <span>Código de 8 dígitos</span>
+                <input class="esc-input esc-input--large" inputmode="numeric" autocomplete="off" maxlength="8" @bind="_code" @bind:event="oninput"
+                       aria-invalid="@(_error is not null)" style="letter-spacing:0.3em" autofocus />
+            </label>
+            @if (_error is not null)
+            {
+                <Notice Title="@_error" />
+            }
+            <Button Type="submit" Variant="Button.Variants.Primary" Shortcut="Enter" Disabled="@(_code?.Length != 8 || _sending)">Unir este equipo</Button>
+        </form>
+    }
+    else
+    {
+        <form class="esc-card esc-card--padded esc-col" style="gap:16px;max-width:620px" @onsubmit="InstallAsync">
+            <div>
+                <div style="font-size:var(--t-20);font-weight:700">Tienda nueva</div>
+                <div class="esc-subtitle">Esta PC queda como la principal y usted como administrador. Después agrega cajeros y cajas.</div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                <label class="esc-field"><span>Su nombre</span><input class="esc-input" @bind="_name" maxlength="100" autocomplete="name" /></label>
+                <label class="esc-field"><span>Su código para entrar</span><input class="esc-input" @bind="_userCode" maxlength="20" autocomplete="off" /></label>
+                <label class="esc-field"><span>PIN (4 a 8 dígitos)</span><input class="esc-input" type="password" inputmode="numeric" @bind="_pin" maxlength="8" autocomplete="new-password" /></label>
+                <label class="esc-field"><span>Nombre de este equipo</span><input class="esc-input" @bind="_deviceName" maxlength="100" /></label>
+            </div>
+            @if (_error is not null)
+            {
+                <Notice Title="@_error" />
+            }
+            <Button Type="submit" Variant="Button.Variants.Primary" Disabled="@_sending">Instalar Toki</Button>
+        </form>
+    }
+</div>
+
+@code {
+    private enum Mode { Join, Install }
+    private Mode _mode = Mode.Join;
+    private string? _code, _error, _name, _userCode, _pin;
+    private string _deviceName = "PC principal";
+    private bool _sending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.LoadAsync();
+        if (Session.IsPaired) Nav.NavigateTo("sign-in");
+    }
+
+    private void Switch(Mode m) => (_mode, _error) = (m, null);
+
+    private async Task JoinAsync()
+    {
+        _sending = true;
+        var r = await Api.PostAsync<Paired>("/api/identity/devices/pair", new { Code = _code });
+        _sending = false;
+        if (r.Value is { } p)
+        {
+            await Session.PairAsync(p.Token);
+            Nav.NavigateTo("sign-in");
+            return;
+        }
+        _error = r.Problem!.Code switch
+        {
+            "Identity.InvalidPairingCode" => "Ese código no sirve o ya venció. Pida uno nuevo al dueño.",
+            "Identity.RegisterLimitReached" => "La licencia no permite más cajas. El dueño puede revocar una que ya no use.",
+            _ => r.Problem.Message,
+        };
+    }
+
+    private async Task InstallAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_userCode) || _pin is not { Length: >= 4 and <= 8 } || !_pin.All(char.IsAsciiDigit))
+        {
+            _error = "Complete su nombre, su código y un PIN de 4 a 8 dígitos.";
+            return;
+        }
+        _sending = true;
+        var r = await Api.PostAsync<SetupResult>("/api/identity/setup", new SetupRequest(_name.Trim(), _userCode.Trim(), _pin, _deviceName.Trim()));
+        _sending = false;
+        if (r.Value is { } s)
+        {
+            await Session.PairAsync(s.DeviceToken);
+            Nav.NavigateTo("sign-in");
+            return;
+        }
+        _error = r.Problem!.Code == "Identity.AlreadySetUp" ? "Esta tienda ya está instalada. Use \"Unir a una tienda\" con un código del dueño." : r.Problem.Message;
+    }
+}

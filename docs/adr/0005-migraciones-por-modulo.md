@@ -9,17 +9,17 @@ Cada tienda guarda sus datos en SQL Server Express. Después del piloto, cualqui
 
 ## Decisión
 
-- Cada módulo tiene sus propias migraciones en `Persistence/Migraciones`, generadas con `dotnet-ef` (herramienta local, `dotnet tool restore`) a través de una fábrica de diseño (`DisenoDbContext<T>`). Un módulo nunca toca las tablas de otro.
+- Cada módulo tiene sus propias migraciones en `Persistence/Migrations`, generadas con `dotnet-ef` (herramienta local, `dotnet tool restore`) a través de una fábrica de diseño (`DisenoDbContext<T>`). Un módulo nunca toca las tablas de otro.
 - Todas comparten la tabla `__EFMigrationsHistory`; los nombres llevan el módulo (`InicialVentas`) para que los ids no choquen.
 - Al arrancar contra SQL Server, la API aplica las migraciones pendientes de cada módulo (`MigrateAsync`). SQLite sigue creando las tablas directamente.
-- Una prueba (`MigracionesTests`) falla si el modelo de un módulo cambió sin su migración. El job de SQL Server de CI aplica las migraciones en una base nueva en cada corrida, y la suite e2e también.
+- Una prueba (`MigrationsTests`) falla si el modelo de un módulo cambió sin su migración. El job de SQL Server de CI aplica las migraciones en una base nueva en cada corrida, y la suite e2e también.
 
 Para agregar una migración:
 
 ```
 dotnet tool restore
 dotnet build Toki.slnx
-dotnet dotnet-ef migrations add <Nombre><Módulo> --project src/Modules/<Módulo>/Toki.<Módulo> --startup-project src/Modules/<Módulo>/Toki.<Módulo> --context <Módulo>DbContext --output-dir Persistence/Migraciones --no-build
+dotnet dotnet-ef migrations add <Name><Module> --project src/Modules/<Módulo>/Toki.<Módulo> --startup-project src/Modules/<Módulo>/Toki.<Módulo> --context <Módulo>DbContext --output-dir Persistence/Migrations --no-build
 ```
 
 - Las migraciones corren en el `StartingAsync` del host (después de avisar a Windows que el servicio arrancó y antes de que Kestrel escuche), con 30 minutos por comando.

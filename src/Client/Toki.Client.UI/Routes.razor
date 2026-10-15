@@ -1,10 +1,10 @@
 <Router AppAssembly="typeof(Routes).Assembly">
-    <Found Context="ruta">
-        <RouteView RouteData="ruta" DefaultLayout="typeof(Componentes.Marco)" />
+    <Found Context="route">
+        <RouteView RouteData="route" DefaultLayout="typeof(Components.Frame)" />
     </Found>
     <NotFound>
-        <LayoutView Layout="typeof(Componentes.Marco)">
-            <div class="esc-pagina"><Aviso Titulo="Esta pantalla no existe." Tipo="Aviso.Tipos.Aviso" /></div>
+        <LayoutView Layout="typeof(Components.Frame)">
+            <div class="esc-page"><Notice Title="Esta pantalla no existe." Kind="Notice.Kinds.Warning" /></div>
         </LayoutView>
     </NotFound>
 </Router>

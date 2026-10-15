@@ -8,27 +8,27 @@ using Toki.SharedKernel;
 
 namespace Toki.BuildingBlocks.Messaging;
 
-// Order, outside in: Validacion → Transaccion → Autorizacion → handler.
-// Authorization runs inside the transaction so a supervisor authorization is consumed atomically with the command.
+// Order, outside in: Validation → Transaction → Approval → handler.
+// Approval runs inside the transaction so a supervisor approval is consumed atomically with the command.
 
-internal sealed class ValidacionDecorator<TCommand, TResponse>(
+internal sealed class ValidationDecorator<TCommand, TResponse>(
     ICommandHandler<TCommand, TResponse> inner, IEnumerable<IValidator<TCommand>> validators)
     : ICommandHandler<TCommand, TResponse> where TCommand : ICommand<TResponse>
 {
     public async Task<Result<TResponse>> Handle(TCommand command, CancellationToken ct)
     {
-        var fallos = new List<FluentValidation.Results.ValidationFailure>();
-        foreach (var v in validators) fallos.AddRange((await v.ValidateAsync(command, ct)).Errors);
-        if (fallos.Count == 0) return await inner.Handle(command, ct);
-        return Error.Validation("Validacion", fallos[0].ErrorMessage) with
+        var failures = new List<FluentValidation.Results.ValidationFailure>();
+        foreach (var v in validators) failures.AddRange((await v.ValidateAsync(command, ct)).Errors);
+        if (failures.Count == 0) return await inner.Handle(command, ct);
+        return Error.Validation("Validation", failures[0].ErrorMessage) with
         {
-            Details = fallos.GroupBy(f => f.PropertyName).ToDictionary(g => g.Key, g => g.Select(f => f.ErrorMessage).ToArray()),
+            Details = failures.GroupBy(f => f.PropertyName).ToDictionary(g => g.Key, g => g.Select(f => f.ErrorMessage).ToArray()),
         };
     }
 }
 
-internal sealed class TransaccionDecorator<TCommand, TResponse>(
-    ICommandHandler<TCommand, TResponse> inner, UnitOfWork uow, IEnumerable<ModuleDbContext> contextos)
+internal sealed class TransactionDecorator<TCommand, TResponse>(
+    ICommandHandler<TCommand, TResponse> inner, UnitOfWork uow, IEnumerable<ModuleDbContext> contexts)
     : ICommandHandler<TCommand, TResponse> where TCommand : ICommand<TResponse>
 {
     public async Task<Result<TResponse>> Handle(TCommand command, CancellationToken ct)
@@ -36,7 +36,7 @@ internal sealed class TransaccionDecorator<TCommand, TResponse>(
         if (uow.Transaction is not null)
             throw new InvalidOperationException("Commands cannot be nested; call the other module's Contracts interface instead.");
 
-        var dbs = contextos.ToList();
+        var dbs = contexts.ToList();
         var tx = await uow.BeginAsync(ct);
         var commit = false;
         try
@@ -51,16 +51,16 @@ internal sealed class TransaccionDecorator<TCommand, TResponse>(
         }
         catch (DbUpdateConcurrencyException)
         {
-            return Error.Conflict("Concurrencia", "Otro usuario cambió este registro. Recargue e intente de nuevo.");
+            return Error.Conflict("Concurrency", "Otro usuario cambió este registro. Recargue e intente de nuevo.");
         }
-        catch (DbUpdateException e) when (EsDuplicado(e))
+        catch (DbUpdateException e) when (IsDuplicate(e))
         {
-            return Error.Conflict("Duplicado", "Ya existe un registro con esos datos.");
+            return Error.Conflict("Duplicate", "Ya existe un registro con esos datos.");
         }
         catch (SqlException e) when (e.Number == 1205)
         {
             // Deadlock victim: nothing was saved, the register can simply retry.
-            return Error.Conflict("Ocupado", "El sistema estaba ocupado. Intente de nuevo.");
+            return Error.Conflict("Busy", "El sistema estaba ocupado. Intente de nuevo.");
         }
         finally
         {
@@ -76,7 +76,7 @@ internal sealed class TransaccionDecorator<TCommand, TResponse>(
         }
     }
 
-    private static bool EsDuplicado(DbUpdateException e) => e.InnerException switch
+    private static bool IsDuplicate(DbUpdateException e) => e.InnerException switch
     {
         SqlException s => s.Number is 2601 or 2627,
         SqliteException s => s.SqliteExtendedErrorCode is 2067 or 1555,
@@ -84,21 +84,21 @@ internal sealed class TransaccionDecorator<TCommand, TResponse>(
     };
 }
 
-internal sealed class AutorizacionDecorator<TCommand, TResponse>(
-    ICommandHandler<TCommand, TResponse> inner, IUserContext usuario, IAutorizacionesSupervisor autorizaciones, IAuditoria auditoria)
+internal sealed class ApprovalDecorator<TCommand, TResponse>(
+    ICommandHandler<TCommand, TResponse> inner, IUserContext user, ISupervisorApprovals approvals, IAuditLog audit)
     : ICommandHandler<TCommand, TResponse> where TCommand : ICommand<TResponse>
 {
     public async Task<Result<TResponse>> Handle(TCommand command, CancellationToken ct)
     {
-        if (command is IRequiereAutorizacion req && !usuario.Tiene(req.Permiso))
+        if (command is IRequiresApproval req && !user.Has(req.Permission))
         {
-            if (req.AutorizacionSupervisorId is not { } id) return AutorizacionErrors.Requerida(req.Permiso);
-            var supervisor = await autorizaciones.ConsumirAsync(id, req.Permiso, req.RecursoId, ct);
+            if (req.SupervisorApprovalId is not { } id) return ApprovalErrors.Required(req.Permission);
+            var supervisor = await approvals.ConsumeAsync(id, req.Permission, req.ResourceId, ct);
             if (supervisor.IsFailure) return supervisor.Error!;
-            usuario.SupervisorId = supervisor.Value;
+            user.SupervisorId = supervisor.Value;
             var result = await inner.Handle(command, ct);
             // Written after the handler: the audit head must be the last lock a command takes (no deadlock with stock rows).
-            if (result.IsSuccess) await auditoria.RegistrarAsync("autorizacion.usada", typeof(TCommand).Name, req.RecursoId, new { req.Permiso, Autorizacion = id }, ct);
+            if (result.IsSuccess) await audit.RecordAsync("approval.used", typeof(TCommand).Name, req.ResourceId, new { req.Permission, Approval = id }, ct);
             return result;
         }
         return await inner.Handle(command, ct);

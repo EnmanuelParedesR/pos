@@ -1,0 +1,51 @@
+@* Back office frame: the side menu and the page. "Vender" goes to the register (F1). *@
+@inject Session Session
+@inject TokiApi Api
+@inject NavigationManager Nav
+
+<div class="esc-admin" @onkeydown="KeyDown">
+    <nav class="esc-menu" aria-label="Secciones">
+        <a href="sale" class="esc-menu__sell"><span>Vender</span><Keycap>F1</Keycap></a>
+        <NavLink href="admin" Match="NavLinkMatch.All">Resumen</NavLink>
+        <NavLink href="admin/products">Productos</NavLink>
+        <NavLink href="admin/shifts">Turnos y cuadres</NavLink>
+        @if (Session.Can("settings.manage") || Session.Can("users.manage"))
+        {
+            <NavLink href="admin/settings">Configuración</NavLink>
+        }
+        <div class="esc-spacer"></div>
+        <a href="" @onclick="SignOutAsync" @onclick:preventDefault="true"><Icon Name="sign-out" /> &nbsp;Salir</a>
+    </nav>
+    <div class="esc-page">
+        <div class="esc-row" style="justify-content:space-between">
+            <div>
+                <h1 class="esc-title">@Title</h1>
+                @if (Subtitle is not null)
+                {
+                    <p class="esc-subtitle">@Subtitle</p>
+                }
+            </div>
+            @Actions
+        </div>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private void KeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "F1") Nav.NavigateTo("sale");
+    }
+
+    private async Task SignOutAsync()
+    {
+        await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
+        Session.Close();
+        Nav.NavigateTo("sign-in");
+    }
+}

@@ -1,0 +1,67 @@
+@page "/admin/shifts"
+@inject TokiApi Api
+
+<Admin Title="Turnos y cuadres" Subtitle="Últimos 7 días. Toque un turno para ver su cierre Z.">
+    <div class="esc-card esc-table-wrap">
+        <table class="esc-table" style="min-width:720px">
+            <thead><tr><th>Z</th><th>Caja</th><th>Cajero</th><th>Abierto</th><th>Cerrado</th><th class="esc-num">Esperado</th><th class="esc-num">Contado</th><th class="esc-num">Diferencia</th></tr></thead>
+            <tbody>
+                @foreach (var t in _shifts)
+                {
+                    <tr class="selectable" tabindex="0" @onclick="() => ShowAsync(t.ShiftId)" @onkeydown='e => e.Key == "Enter" ? ShowAsync(t.ShiftId) : Task.CompletedTask'>
+                        <td>@(t.ZNumber?.ToString() ?? "—")</td><td>@t.Register</td><td>@t.Cashier</td>
+                        <td>@Format.Date(t.OpenedUtc)</td>
+                        <td>@(t.ClosedUtc is { } c ? Format.Time(c) : "Abierto")</td>
+                        <td class="esc-num">@(t.ExpectedCash is { } e ? Format.Amount(e) : "—")</td>
+                        <td class="esc-num">@(t.CountedCash is { } k ? Format.Amount(k) : "—")</td>
+                        <td class="esc-num" style="font-weight:700;color:@(t.Difference is null or 0 ? "var(--text)" : "var(--warning)")">@(t.Difference is { } d ? Format.Amount(d) : "—")</td>
+                    </tr>
+                }
+                @if (_shifts.Count == 0)
+                {
+                    <tr><td colspan="8" class="esc-muted">@(_message ?? "No hay turnos en estos días.")</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</Admin>
+
+@if (_z is { } z)
+{
+    <Dialog Title="@(z.ZNumber is { } n ? $"Cierre Z #{n}" : "Reporte X (turno abierto)")" Subtitle="@($"{z.Register} · {z.Cashier}")" Wide="true" OnClose="() => _z = null">
+        <ChildContent>
+            <div class="kpis">
+                <div class="esc-card kpi"><span class="esc-label">Fondo</span><span class="kpi__value">@Format.Amount(z.OpeningFloat)</span></div>
+                <div class="esc-card kpi"><span class="esc-label">Efectivo esperado</span><span class="kpi__value">@Format.Amount(z.ExpectedCash)</span></div>
+                <div class="esc-card kpi"><span class="esc-label">Contado</span><span class="kpi__value">@(z.CountedCash is { } c ? Format.Amount(c) : "—")</span></div>
+            </div>
+            <table class="esc-table">
+                <thead><tr><th>Forma de pago</th><th class="esc-num">Cobros</th><th class="esc-num">Anulaciones</th><th class="esc-num">Reembolsos</th><th class="esc-num">Abonos</th><th class="esc-num">Neto</th></tr></thead>
+                <tbody>
+                    @foreach (var m in z.ByMethod)
+                    {
+                        <tr><td>@Names.PaymentMethod(m.Method)</td><td class="esc-num">@Format.Amount(m.SalePayments)</td><td class="esc-num">@Format.Amount(m.Voids)</td><td class="esc-num">@Format.Amount(m.Refunds)</td><td class="esc-num">@Format.Amount(m.CustomerPayments)</td><td class="esc-num" style="font-weight:700">@Format.Amount(m.Net)</td></tr>
+                    }
+                </tbody>
+            </table>
+            <div class="esc-subtitle">@z.SaleCount ventas · @z.VoidedCount anuladas · entradas @Format.Amount(z.CashIn) · retiros @Format.Amount(z.Withdrawals) · gastos @Format.Amount(z.Expenses) · redondeo @Format.Amount(z.Rounding)</div>
+        </ChildContent>
+        <Footer><Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="() => _z = null">Cerrar</Button></Footer>
+    </Dialog>
+}
+
+@code {
+    private List<ShiftSummary> _shifts = [];
+    private ZReport? _z;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Now);
+        var r = await Api.GetAsync<List<ShiftSummary>>($"/api/reports/shifts?from={today.AddDays(-6):yyyy-MM-dd}&to={today:yyyy-MM-dd}");
+        _shifts = [.. (r.Value ?? []).OrderByDescending(t => t.OpenedUtc)];
+        _message = r.Problem?.Message;
+    }
+
+    private async Task ShowAsync(Guid id) => _z = (await Api.GetAsync<ZReport>($"/api/cash/shifts/{id}/z")).Value;
+}

@@ -1,0 +1,32 @@
+/* Register screen layout. Pieces come from Escuadra; this file only places them. */
+
+.sale { flex: 1 1 auto; min-height: 0; display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; align-items: stretch; }
+.sale__left { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.sale__scanner { flex: 1 1 auto; min-width: 0; height: 56px; border: 0; outline: 0; background: transparent; font-size: var(--t-20); font-weight: 600; }
+.sale__tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; align-content: start; overflow: auto; }
+.sale__cart { flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; min-height: 420px; }
+.sale__customer { padding: 8px; border-bottom: 1px solid var(--card-border); display: flex; }
+.sale__lines { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; overflow: auto; min-height: 120px; }
+.sale__line { display: flex; justify-content: space-between; gap: 12px; align-items: center; min-height: 56px; padding: 6px 16px; border-bottom: 1px solid var(--card-border); cursor: pointer; }
+.sale__line.selected { background: var(--brand-tint); box-shadow: inset 4px 0 0 var(--brand); }
+.sale__list { padding: 16px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; }
+.sale__totals { padding: 16px; border-top: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 12px; background: var(--surface-2); border-radius: 0 0 6px 6px; }
+
+.checkout { display: flex; flex-wrap: wrap; gap: 24px; }
+.checkout__left { flex: 1 1 300px; display: flex; flex-direction: column; gap: 12px; }
+.checkout__right { flex: 1 1 280px; display: flex; flex-direction: column; gap: 12px; }
+.checkout__methods { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.checkout__methods button { min-height: 56px; justify-content: space-between; }
+.checkout__methods button[aria-pressed="true"] { border: 2px solid var(--brand); background: var(--brand-tint); color: var(--brand); }
+
+.receipt { width: 320px; max-width: 100%; margin: 0 auto; padding: 16px; background: #FFFFFF; border: 1px dashed var(--control-border); font-family: "Consolas", "Courier New", monospace; font-size: 13px; line-height: 1.4; }
+.receipt hr { border: 0; border-top: 1px dashed var(--control-border); margin: 8px 0; }
+.receipt .row { display: flex; justify-content: space-between; gap: 8px; }
+.receipt .center { text-align: center; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.kpi { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+.kpi__value { font-size: var(--t-32); font-weight: 700; }
+.bars { display: flex; align-items: flex-end; gap: 8px; height: 160px; padding: 8px 0; }
+.bars__bar { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; font-size: var(--t-12); color: var(--text-2); }
+.bars__bar > div { width: 100%; max-width: 48px; background: var(--brand); border-radius: 4px 4px 0 0; min-height: 2px; }

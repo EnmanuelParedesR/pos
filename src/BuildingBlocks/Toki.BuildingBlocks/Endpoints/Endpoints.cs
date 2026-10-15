@@ -23,15 +23,15 @@ public static class EndpointExtensions
         return app;
     }
 
-    public static TBuilder RequirePermiso<TBuilder>(this TBuilder builder, string permiso) where TBuilder : IEndpointConventionBuilder =>
-        builder.RequireAuthorization(p => p.RequireClaim(TokiClaims.Permiso, permiso));
+    public static TBuilder RequirePermission<TBuilder>(this TBuilder builder, string permission) where TBuilder : IEndpointConventionBuilder =>
+        builder.RequireAuthorization(p => p.RequireClaim(TokiClaims.Permission, permission));
 
     public static IResult ToHttp<T>(this Result<T> result, Func<T, IResult> ok) =>
-        result.IsSuccess ? ok(result.Value) : Problema(result.Error!);
+        result.IsSuccess ? ok(result.Value) : Problem(result.Error!);
 
     public static IResult ToHttp<T>(this Result<T> result) => result.ToHttp(v => Results.Ok(v));
 
-    public static IResult Problema(Error error)
+    public static IResult Problem(Error error)
     {
         var status = error.Type switch
         {

@@ -20,12 +20,12 @@ public static class FiscalModule
     public static IServiceCollection AddFiscalModule(this IServiceCollection services)
     {
         services.AddModuleDbContext<FiscalDbContext>();
-        services.AddScoped<IComprobantesFiscales, ComprobantesFiscales>();
-        services.AddSingleton<IEcfFirmador, FirmadorSimulado>();
-        services.AddSingleton<IEcfProveedor, ProveedorSimulado>();
-        services.AddScoped<EnvioEcf>();
-        services.AddHostedService<EnvioEcfWorker>();
-        services.AddHealthChecks().AddCheck<ColaEcfHealthCheck>("cola-ecf");
+        services.AddScoped<IFiscalDocuments, FiscalDocuments>();
+        services.AddSingleton<IEcfSigner, SimulatedEcfSigner>();
+        services.AddSingleton<IEcfProvider, SimulatedEcfProvider>();
+        services.AddScoped<EcfSubmissionQueue>();
+        services.AddHostedService<EcfSubmissionWorker>();
+        services.AddHealthChecks().AddCheck<EcfQueueHealthCheck>("ecf-queue");
         return services;
     }
 }
@@ -34,164 +34,165 @@ internal sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options)
 {
     protected override string Schema => "fiscal";
 
-    public DbSet<Secuencia> Secuencias => Set<Secuencia>();
-    public DbSet<DocumentoFiscal> Documentos => Set<DocumentoFiscal>();
-    public DbSet<Contribuyente> Contribuyentes => Set<Contribuyente>();
+    public DbSet<NcfSequence> Sequences => Set<NcfSequence>();
+    public DbSet<FiscalDocument> Documents => Set<FiscalDocument>();
+    public DbSet<Taxpayer> Taxpayers => Set<Taxpayer>();
 }
 
-internal sealed class FiscalConfiguration : IEntityTypeConfiguration<Secuencia>, IEntityTypeConfiguration<DocumentoFiscal>, IEntityTypeConfiguration<Contribuyente>
+internal sealed class FiscalConfiguration : IEntityTypeConfiguration<NcfSequence>, IEntityTypeConfiguration<FiscalDocument>, IEntityTypeConfiguration<Taxpayer>
 {
-    public void Configure(EntityTypeBuilder<Contribuyente> b)
+    public void Configure(EntityTypeBuilder<Taxpayer> b)
     {
-        b.ToTable("Contribuyentes");
+        b.ToTable("Taxpayers");
         b.HasKey(c => c.Rnc);
         b.Property(c => c.Rnc).HasMaxLength(11);
-        b.Property(c => c.Nombre).HasMaxLength(250);
-        b.Property(c => c.NombreComercial).HasMaxLength(250);
+        b.Property(c => c.Name).HasMaxLength(250);
+        b.Property(c => c.TradeName).HasMaxLength(250);
     }
 
-    public void Configure(EntityTypeBuilder<Secuencia> b)
+    public void Configure(EntityTypeBuilder<NcfSequence> b)
     {
-        b.ToTable("SecuenciasEcf");
-        b.Property(s => s.Tipo).HasConversion<int>();
-        b.Ignore(s => s.Usados);
+        b.ToTable("EcfSequences");
+        b.Property(s => s.Type).HasConversion<int>();
+        b.Ignore(s => s.Used);
         b.Ignore(s => s.Total);
-        b.Ignore(s => s.PorcentajeUsado);
+        b.Ignore(s => s.PercentUsed);
     }
 
-    public void Configure(EntityTypeBuilder<DocumentoFiscal> b)
+    public void Configure(EntityTypeBuilder<FiscalDocument> b)
     {
-        b.ToTable("DocumentosEcf");
+        b.ToTable("EcfDocuments");
         b.Property(d => d.ENcf).HasMaxLength(13);
         b.HasIndex(d => d.ENcf).IsUnique();
-        b.HasIndex(d => d.ReferenciaId);
-        b.HasIndex(d => new { d.Estado, d.FechaLimiteEnvioUtc });
-        b.Property(d => d.Tipo).HasConversion<int>();
-        b.Property(d => d.Estado).HasConversion<string>().HasMaxLength(20);
-        b.Property(d => d.CodigoSeguridad).HasMaxLength(6);
-        b.Property(d => d.ENcfModificado).HasMaxLength(13);
-        b.Property(d => d.RncComprador).HasMaxLength(11);
-        b.Property(d => d.XmlFirmado).HasMaxLength(ModuleDbContext.TextoLargo * 4);
-        b.Property(d => d.UltimoError).HasMaxLength(2000);
+        b.HasIndex(d => d.ReferenceId);
+        b.HasIndex(d => new { d.Status, d.SubmitDeadlineUtc });
+        b.Property(d => d.Type).HasConversion<int>();
+        b.Property(d => d.Status).HasConversion<string>().HasMaxLength(20);
+        b.Property(d => d.SecurityCode).HasMaxLength(6);
+        b.Property(d => d.ModifiedENcf).HasMaxLength(13);
+        b.Property(d => d.BuyerRnc).HasMaxLength(11);
+        b.Property(d => d.SignedXml).HasMaxLength(ModuleDbContext.LongText * 4);
+        b.Property(d => d.LastError).HasMaxLength(2000);
     }
 }
 
 /// <summary>Signs the e-CF XML. Returns the signed document and its security code (first 6 characters of the signature).</summary>
-internal interface IEcfFirmador
+internal interface IEcfSigner
 {
-    /// <summary>True for the stand-in signer: its documents are stored as Simulado and never sent.</summary>
-    bool EsSimulado { get; }
-    (string XmlFirmado, string CodigoSeguridad) Firmar(XDocument xml);
+    /// <summary>True for the stand-in signer: its documents are stored as Simulated and never sent.</summary>
+    bool IsSimulated { get; }
+    (string SignedXml, string SecurityCode) Sign(XDocument xml);
 }
 
 /// <summary>Stand-in until the real certificate and provider are contracted (e-CF on hold, see pos-ecf-deferred).</summary>
 /// <remarks>shortcut: hash instead of XMLDSig with the taxpayer's .p12; replace with CertStoreEcfSigner before certification (TK-055).</remarks>
-internal sealed class FirmadorSimulado : IEcfFirmador
+internal sealed class SimulatedEcfSigner : IEcfSigner
 {
-    public bool EsSimulado => true;
+    public bool IsSimulated => true;
 
-    public (string XmlFirmado, string CodigoSeguridad) Firmar(XDocument xml)
+    public (string SignedXml, string SecurityCode) Sign(XDocument xml)
     {
-        var firma = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(xml.ToString(SaveOptions.DisableFormatting))));
-        xml.Root!.Add(new XElement("FirmaSimulada", firma));
-        return (xml.ToString(SaveOptions.DisableFormatting), firma[..6]);
+        var signature = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(xml.ToString(SaveOptions.DisableFormatting))));
+        xml.Root!.Add(new XElement("SimulatedSignature", signature));
+        return (xml.ToString(SaveOptions.DisableFormatting), signature[..6]);
     }
 }
 
-internal sealed class ComprobantesFiscales(FiscalDbContext db, IConfiguracionConsultas configuracion, IEcfFirmador firmador, IOutbox outbox, TimeProvider reloj)
-    : IComprobantesFiscales
+internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries settings, IEcfSigner signer, IOutbox outbox, TimeProvider clock)
+    : IFiscalDocuments
 {
-    public static readonly TimeSpan PlazoEnvio = TimeSpan.FromHours(72);
+    public static readonly TimeSpan SubmitDeadline = TimeSpan.FromHours(72);
 
-    public async Task<Result<ComprobanteEmitido>> EmitirAsync(DocumentoAEmitir doc, CancellationToken ct)
+    public async Task<Result<IssuedDocument>> IssueAsync(DocumentToIssue doc, CancellationToken ct)
     {
-        if (doc.Tipo == TipoEcf.CreditoFiscal31 && !Rnc.EsValido(doc.RncComprador)) return FiscalErrors.RncRequerido;
-        if (doc.Tipo == TipoEcf.Consumo32 && doc.Total >= LimitesEcf.ConsumoIdentificado && !Rnc.EsValido(doc.RncComprador)) return FiscalErrors.RncRequerido;
-        if (doc.Tipo is TipoEcf.NotaCredito34 or TipoEcf.NotaDebito33 && (doc.ENcfModificado is null || doc.CodigoModificacion is null))
-            return FiscalErrors.ReferenciaRequerida;
-        var negocio = await configuracion.ObtenerNegocioAsync(ct);
-        if (!Rnc.EsValido(negocio.Rnc)) return FiscalErrors.SinRncEmisor;
+        if (doc.Type == EcfType.FiscalCredit31 && !Rnc.IsValid(doc.BuyerRnc)) return FiscalErrors.RncRequired;
+        if (doc.Type == EcfType.Consumer32 && doc.Total >= EcfLimits.IdentifiedConsumer && !Rnc.IsValid(doc.BuyerRnc)) return FiscalErrors.RncRequired;
+        if (doc.Type is EcfType.CreditNote34 or EcfType.DebitNote33 && (doc.ModifiedENcf is null || doc.ModificationCode is null))
+            return FiscalErrors.ReferenceRequired;
+        var business = await settings.GetBusinessProfileAsync(ct);
+        if (!Rnc.IsValid(business.Rnc)) return FiscalErrors.MissingIssuerRnc;
 
-        var ahora = reloj.GetUtcNow().UtcDateTime;
-        var numero = await ReservarAsync(doc.Tipo, DiaNegocio.De(ahora), ct);
-        if (numero is null) return FiscalErrors.SinSecuencia(doc.Tipo);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var number = await ReserveAsync(doc.Type, BusinessDay.Of(now), ct);
+        if (number is null) return FiscalErrors.NoSequence(doc.Type);
 
-        var encf = ENcf.Formatear(doc.Tipo, numero.Value);
-        var (xml, codigo) = firmador.Firmar(ArmarXml(doc, encf, negocio, ahora));
+        var encf = ENcf.Format(doc.Type, number.Value);
+        var (xml, code) = signer.Sign(BuildXml(doc, encf, business, now));
 
-        var documento = new DocumentoFiscal
+        var document = new FiscalDocument
         {
-            Id = Guid.CreateVersion7(), ENcf = encf, Tipo = doc.Tipo, ReferenciaId = doc.ReferenciaId, ENcfModificado = doc.ENcfModificado,
-            RncComprador = doc.RncComprador, NombreComprador = doc.NombreComprador, Itbis = doc.Itbis, Total = doc.Total,
-            FechaFirmaUtc = ahora, CodigoSeguridad = codigo, XmlFirmado = Comprimir(xml), Estado = firmador.EsSimulado ? EstadoEnvio.Simulado : EstadoEnvio.Pendiente,
-            FechaLimiteEnvioUtc = ahora + PlazoEnvio,
+            Id = Guid.CreateVersion7(), ENcf = encf, Type = doc.Type, ReferenceId = doc.ReferenceId, ModifiedENcf = doc.ModifiedENcf,
+            BuyerRnc = doc.BuyerRnc, BuyerName = doc.BuyerName, Itbis = doc.Itbis, Total = doc.Total,
+            SignedUtc = now, SecurityCode = code, SignedXml = Compress(xml), Status = signer.IsSimulated ? SubmissionStatus.Simulated : SubmissionStatus.Pending,
+            SubmitDeadlineUtc = now + SubmitDeadline,
         };
-        db.Documentos.Add(documento);
-        outbox.Agregar(new ComprobanteEmitidoV1(documento.Id, encf, doc.Tipo, doc.ReferenciaId, doc.Total, doc.Itbis));
-        return new ComprobanteEmitido(documento.Id, encf, codigo, ahora, UrlQr(negocio.Rnc, doc, encf, ahora, codigo));
+        db.Documents.Add(document);
+        outbox.Add(new FiscalDocumentIssuedV1(document.Id, encf, doc.Type, doc.ReferenceId, doc.Total, doc.Itbis));
+        return new IssuedDocument(document.Id, encf, code, now, QrUrl(business.Rnc, doc, encf, now, code));
     }
 
     /// <summary>Takes the next number of the oldest valid range. The update locks the range row until commit; a rollback gives the number back.</summary>
-    private async Task<long?> ReservarAsync(TipoEcf tipo, DateOnly hoy, CancellationToken ct)
+    private async Task<long?> ReserveAsync(EcfType type, DateOnly today, CancellationToken ct)
     {
-        var candidatos = await db.Secuencias.Where(s => s.Tipo == tipo && s.Siguiente <= s.Hasta && s.VenceEl >= hoy)
-            .OrderBy(s => s.Desde).Select(s => s.Id).ToListAsync(ct);
-        foreach (var id in candidatos)
+        var candidates = await db.Sequences.Where(s => s.Type == type && s.Next <= s.To && s.ExpiresOn >= today)
+            .OrderBy(s => s.From).Select(s => s.Id).ToListAsync(ct);
+        foreach (var id in candidates)
         {
-            var filas = await db.Secuencias.Where(s => s.Id == id && s.Siguiente <= s.Hasta)
-                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Siguiente, x => x.Siguiente + 1), ct);
-            if (filas == 1) return await db.Secuencias.Where(s => s.Id == id).Select(s => s.Siguiente - 1).SingleAsync(ct);
+            var rows = await db.Sequences.Where(s => s.Id == id && s.Next <= s.To)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Next, x => x.Next + 1), ct);
+            if (rows == 1) return await db.Sequences.Where(s => s.Id == id).Select(s => s.Next - 1).SingleAsync(ct);
         }
         return null;
     }
 
-    private static XDocument ArmarXml(DocumentoAEmitir doc, string encf, DatosNegocio negocio, DateTime fechaUtc)
+    // Element names are the DGII e-CF format: they stay as DGII defines them.
+    private static XDocument BuildXml(DocumentToIssue doc, string encf, BusinessProfile business, DateTime dateUtc)
     {
-        var local = fechaUtc + DiaNegocio.Desfase;
+        var local = dateUtc + BusinessDay.Offset;
         return new XDocument(new XElement("ECF",
             new XElement("Encabezado",
-                new XElement("TipoeCF", (int)doc.Tipo),
+                new XElement("TipoeCF", (int)doc.Type),
                 new XElement("eNCF", encf),
-                new XElement("RNCEmisor", negocio.Rnc),
-                new XElement("RazonSocialEmisor", negocio.Nombre),
+                new XElement("RNCEmisor", business.Rnc),
+                new XElement("RazonSocialEmisor", business.Name),
                 new XElement("FechaEmision", local.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture)),
-                new XElement("RNCComprador", doc.RncComprador),
-                new XElement("RazonSocialComprador", doc.NombreComprador),
-                new XElement("NCFModificado", doc.ENcfModificado),
-                new XElement("CodigoModificacion", (int?)doc.CodigoModificacion),
-                new XElement("TipoPago", (int)doc.TipoPago),
+                new XElement("RNCComprador", doc.BuyerRnc),
+                new XElement("RazonSocialComprador", doc.BuyerName),
+                new XElement("NCFModificado", doc.ModifiedENcf),
+                new XElement("CodigoModificacion", (int?)doc.ModificationCode),
+                new XElement("TipoPago", (int)doc.PaymentType),
                 new XElement("MontoTotal", doc.Total.ToString("0.00", CultureInfo.InvariantCulture)),
                 new XElement("TotalITBIS", doc.Itbis.ToString("0.00", CultureInfo.InvariantCulture))),
-            new XElement("DetallesItems", doc.Lineas.Select((l, i) => new XElement("Item",
+            new XElement("DetallesItems", doc.Lines.Select((l, i) => new XElement("Item",
                 new XElement("NumeroLinea", i + 1),
-                new XElement("NombreItem", l.Descripcion),
-                new XElement("CantidadItem", l.Cantidad.ToString("0.###", CultureInfo.InvariantCulture)),
-                new XElement("PrecioUnitarioItem", l.PrecioUnitario.ToString("0.00", CultureInfo.InvariantCulture)),
-                new XElement("DescuentoMonto", l.Descuento.ToString("0.00", CultureInfo.InvariantCulture)),
-                new XElement("IndicadorFacturacion", Indicador(l.Tasa)),
+                new XElement("NombreItem", l.Description),
+                new XElement("CantidadItem", l.Quantity.ToString("0.###", CultureInfo.InvariantCulture)),
+                new XElement("PrecioUnitarioItem", l.UnitPrice.ToString("0.00", CultureInfo.InvariantCulture)),
+                new XElement("DescuentoMonto", l.Discount.ToString("0.00", CultureInfo.InvariantCulture)),
+                new XElement("IndicadorFacturacion", BillingIndicator(l.Rate)),
                 new XElement("MontoItem", l.Total.ToString("0.00", CultureInfo.InvariantCulture))))),
             new XElement("FechaHoraFirma", local.ToString("dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture))));
     }
 
     // DGII billing indicator: 1 = 18 %, 2 = 16 %, 3 = 0 %, 4 = exempt.
-    private static int Indicador(TasaItbis t) => t switch { TasaItbis.General18 => 1, TasaItbis.Reducida16 => 2, TasaItbis.Cero => 3, _ => 4 };
+    private static int BillingIndicator(ItbisRate r) => r switch { ItbisRate.General18 => 1, ItbisRate.Reduced16 => 2, ItbisRate.Zero => 3, _ => 4 };
 
-    private static string UrlQr(string? rncEmisor, DocumentoAEmitir doc, string encf, DateTime fechaUtc, string codigo)
+    private static string QrUrl(string? issuerRnc, DocumentToIssue doc, string encf, DateTime dateUtc, string code)
     {
-        var local = fechaUtc + DiaNegocio.Desfase;
+        var local = dateUtc + BusinessDay.Offset;
         return "https://ecf.dgii.gov.do/ecf/ConsultaTimbre"
-            + $"?RncEmisor={rncEmisor}&RncComprador={doc.RncComprador}&ENCF={encf}"
+            + $"?RncEmisor={issuerRnc}&RncComprador={doc.BuyerRnc}&ENCF={encf}"
             + $"&FechaEmision={local:dd-MM-yyyy}&MontoTotal={doc.Total.ToString("0.00", CultureInfo.InvariantCulture)}"
-            + $"&FechaFirma={Uri.EscapeDataString(local.ToString("dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture))}&CodigoSeguridad={Uri.EscapeDataString(codigo)}";
+            + $"&FechaFirma={Uri.EscapeDataString(local.ToString("dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture))}&CodigoSeguridad={Uri.EscapeDataString(code)}";
     }
 
-    private static byte[] Comprimir(string texto)
+    private static byte[] Compress(string text)
     {
-        using var salida = new MemoryStream();
-        using (var gzip = new GZipStream(salida, CompressionLevel.SmallestSize)) gzip.Write(Encoding.UTF8.GetBytes(texto));
-        return salida.ToArray();
+        using var output = new MemoryStream();
+        using (var gzip = new GZipStream(output, CompressionLevel.SmallestSize)) gzip.Write(Encoding.UTF8.GetBytes(text));
+        return output.ToArray();
     }
 }
 
 /// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>
-internal sealed class DisenoFiscal : Toki.BuildingBlocks.Persistence.DisenoDbContext<FiscalDbContext>;
+internal sealed class FiscalDesignTimeFactory : Toki.BuildingBlocks.Persistence.DesignTimeFactory<FiscalDbContext>;

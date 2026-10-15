@@ -5,81 +5,81 @@ using Toki.SharedKernel;
 namespace Toki.Fiscal.Domain;
 
 /// <summary>An authorized e-NCF range for one receipt type.</summary>
-internal sealed class Secuencia
+internal sealed class NcfSequence
 {
     public Guid Id { get; set; }
-    public TipoEcf Tipo { get; set; }
-    public long Desde { get; set; }
-    public long Hasta { get; set; }
+    public EcfType Type { get; set; }
+    public long From { get; set; }
+    public long To { get; set; }
     /// <summary>Next number to assign. Moved only by an atomic update inside the sale's transaction, so a rollback leaves no gap.</summary>
-    public long Siguiente { get; set; }
-    public DateOnly VenceEl { get; set; }
-    public DateTime CreadaUtc { get; set; }
+    public long Next { get; set; }
+    public DateOnly ExpiresOn { get; set; }
+    public DateTime CreatedUtc { get; set; }
 
-    public long Usados => Siguiente - Desde;
-    public long Total => Hasta - Desde + 1;
-    public decimal PorcentajeUsado => Total == 0 ? 100 : Math.Round(100m * Usados / Total, 1);
+    public long Used => Next - From;
+    public long Total => To - From + 1;
+    public decimal PercentUsed => Total == 0 ? 100 : Math.Round(100m * Used / Total, 1);
 }
 
-/// <summary>Simulado: signed by the stand-in signer; never sent to the DGII (the real sender only reads Pendiente).</summary>
-internal enum EstadoEnvio { Pendiente, Aceptado, AceptadoCondicional, Rechazado, Simulado }
+/// <summary>Simulated: signed by the stand-in signer; never sent to the DGII (the real sender only reads Pending).</summary>
+internal enum SubmissionStatus { Pending, Accepted, AcceptedConditional, Rejected, Simulated }
 
 /// <summary>A signed e-CF. Never deleted or edited: corrections are credit notes.</summary>
-internal sealed class DocumentoFiscal
+internal sealed class FiscalDocument
 {
     public Guid Id { get; set; }
     public string ENcf { get; set; } = "";
-    public TipoEcf Tipo { get; set; }
-    public Guid ReferenciaId { get; set; }
-    public string? ENcfModificado { get; set; }
-    public string? RncComprador { get; set; }
-    public string? NombreComprador { get; set; }
+    public EcfType Type { get; set; }
+    public Guid ReferenceId { get; set; }
+    public string? ModifiedENcf { get; set; }
+    public string? BuyerRnc { get; set; }
+    public string? BuyerName { get; set; }
     public decimal Itbis { get; set; }
     public decimal Total { get; set; }
-    public DateTime FechaFirmaUtc { get; set; }
-    public string CodigoSeguridad { get; set; } = "";
+    public DateTime SignedUtc { get; set; }
+    public string SecurityCode { get; set; } = "";
     /// <summary>GZip of the signed XML.</summary>
-    public byte[] XmlFirmado { get; set; } = [];
-    public EstadoEnvio Estado { get; set; }
+    public byte[] SignedXml { get; set; } = [];
+    public SubmissionStatus Status { get; set; }
     /// <summary>DGII deadline: 72 hours after signing.</summary>
-    public DateTime FechaLimiteEnvioUtc { get; set; }
+    public DateTime SubmitDeadlineUtc { get; set; }
     public string? TrackId { get; set; }
-    public int Intentos { get; set; }
-    public DateTime? ProximoIntentoUtc { get; set; }
-    public string? UltimoError { get; set; }
+    public int Attempts { get; set; }
+    public DateTime? NextAttemptUtc { get; set; }
+    public string? LastError { get; set; }
 }
 
 /// <summary>A row of the DGII taxpayer registry (DGII_RNC.TXT), to fill the buyer's name from an RNC or cédula.</summary>
-internal sealed class Contribuyente
+internal sealed class Taxpayer
 {
     public string Rnc { get; set; } = "";
-    public string Nombre { get; set; } = "";
-    public string? NombreComercial { get; set; }
-    public bool Activo { get; set; }
+    public string Name { get; set; } = "";
+    public string? TradeName { get; set; }
+    public bool IsActive { get; set; }
 }
 
 internal static class ENcf
 {
     /// <summary>"E" + 2-digit type + 10-digit sequence, e.g. E320000000001.</summary>
-    public static string Formatear(TipoEcf tipo, long numero) =>
-        $"E{(int)tipo:00}{numero.ToString("D10", CultureInfo.InvariantCulture)}";
+    public static string Format(EcfType type, long number) =>
+        $"E{(int)type:00}{number.ToString("D10", CultureInfo.InvariantCulture)}";
 }
 
 internal static class FiscalErrors
 {
-    public static Error SinSecuencia(TipoEcf tipo) =>
-        Error.Conflict("Fiscal.SinSecuencia", $"No hay números e-NCF disponibles para {Nombre(tipo)}. Cargue un rango nuevo.");
+    public static Error NoSequence(EcfType type) =>
+        Error.Conflict("Fiscal.NoSequence", $"No hay números e-NCF disponibles para {Name(type)}. Cargue un rango nuevo.");
 
-    public static readonly Error RangoSolapado = Error.Conflict("Fiscal.RangoSolapado", "Ese rango se cruza con otro ya cargado.");
-    public static readonly Error SinRncEmisor = Error.Conflict("Fiscal.SinRncEmisor", "Configure el RNC del negocio antes de emitir comprobantes.");
-    public static readonly Error ReferenciaRequerida = Error.Validation("Fiscal.ReferenciaRequerida", "Una nota de crédito necesita el e-NCF que modifica.");
-    public static readonly Error RncRequerido = Error.Validation("Fiscal.RncRequerido", "El crédito fiscal necesita el RNC o la cédula del cliente.");
+    public static readonly Error OverlappingRange = Error.Conflict("Fiscal.OverlappingRange", "Ese rango se cruza con otro ya cargado.");
+    public static readonly Error MissingIssuerRnc = Error.Conflict("Fiscal.MissingIssuerRnc", "Configure el RNC del negocio antes de emitir comprobantes.");
+    public static readonly Error ReferenceRequired = Error.Validation("Fiscal.ReferenceRequired", "Una nota de crédito necesita el e-NCF que modifica.");
+    public static readonly Error RncRequired = Error.Validation("Fiscal.RncRequired", "El crédito fiscal necesita el RNC o la cédula del cliente.");
 
-    public static string Nombre(TipoEcf tipo) => tipo switch
+    public static string Name(EcfType type) => type switch
     {
-        TipoEcf.CreditoFiscal31 => "Factura de Crédito Fiscal Electrónica",
-        TipoEcf.Consumo32 => "Factura de Consumo Electrónica",
-        TipoEcf.NotaDebito33 => "Nota de Débito Electrónica",
+        EcfType.FiscalCredit31 => "Factura de Crédito Fiscal Electrónica",
+        EcfType.Consumer32 => "Factura de Consumo Electrónica",
+        EcfType.DebitNote33 => "Nota de Débito Electrónica",
         _ => "Nota de Crédito Electrónica",
     };
 }

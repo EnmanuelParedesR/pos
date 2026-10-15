@@ -1,0 +1,11 @@
+@page "/"
+@inject NavigationManager Nav
+@inject Session Session
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.LoadAsync();
+        Nav.NavigateTo(!Session.IsPaired ? "setup" : !Session.IsOpen ? "sign-in" : Session.IsBackOffice ? "admin" : "sale");
+    }
+}

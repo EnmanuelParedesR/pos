@@ -2,53 +2,53 @@ using Toki.SharedKernel;
 
 namespace Toki.Inventory.Contracts;
 
-public enum UnidadMedida { Unidad, Libra }
+public enum UnitOfMeasure { Unit, Pound }
 
-public enum TipoMovimiento
+public enum StockMovementType
 {
-    Venta, AnulacionVenta, Devolucion,
-    Compra, AnulacionCompra,
-    Ajuste, Conteo,
-    TransferenciaSalida, TransferenciaEntrada,
+    Sale, SaleVoid, Return,
+    Purchase, PurchaseVoid,
+    Adjustment, Count,
+    TransferOut, TransferIn,
 }
 
 /// <summary>What a sale needs to price and record a line. <see cref="Factor"/> is base units per sold unit (1 without a presentation).</summary>
-public sealed record ProductoParaVenta(
-    Guid ProductoId, Guid? PresentacionId, string Nombre, Guid CategoriaId, string Categoria, UnidadMedida Unidad,
-    TasaItbis TasaItbis, decimal Precio, decimal? PrecioMayorista, decimal Factor, decimal CostoBase,
-    bool VenderSinExistencia, bool Activo);
+public sealed record ProductForSale(
+    Guid ProductId, Guid? PresentationId, string Name, Guid CategoryId, string Category, UnitOfMeasure Unit,
+    ItbisRate ItbisRate, decimal Price, decimal? WholesalePrice, decimal Factor, decimal BaseCost,
+    bool SellWithoutStock, bool IsActive);
 
-public interface ICatalogoConsultas
+public interface ICatalogQueries
 {
     /// <summary>Products (or presentations) by id. Missing ids are simply absent from the result.</summary>
-    Task<IReadOnlyList<ProductoParaVenta>> ObtenerParaVentaAsync(IReadOnlyCollection<(Guid ProductoId, Guid? PresentacionId)> items, CancellationToken ct);
+    Task<IReadOnlyList<ProductForSale>> GetForSaleAsync(IReadOnlyCollection<(Guid ProductId, Guid? PresentationId)> items, CancellationToken ct);
 
     /// <summary>Reads a scale label (weight or price) and finds its product by PLU. A sale trusts this, never an amount sent by the register.</summary>
-    Task<Result<EtiquetaLeida>> LeerEtiquetaAsync(string codigo, CancellationToken ct);
+    Task<Result<ScaleLabelReading>> ReadScaleLabelAsync(string code, CancellationToken ct);
 }
 
-/// <summary>Exactly one of <see cref="Peso"/> (pounds) or <see cref="Monto"/> (line total) is set.</summary>
-public sealed record EtiquetaLeida(Guid ProductoId, decimal? Peso, decimal? Monto);
+/// <summary>Exactly one of <see cref="Weight"/> (pounds) or <see cref="Amount"/> (line total) is set.</summary>
+public sealed record ScaleLabelReading(Guid ProductId, decimal? Weight, decimal? Amount);
 
-/// <param name="Cantidad">Base units (units or pounds), always positive.</param>
-/// <param name="CostoUnitario">Cost per base unit for entries (purchases); ignored on exits.</param>
-public sealed record LineaMovimiento(Guid ProductoId, decimal Cantidad, decimal? CostoUnitario = null);
+/// <param name="Quantity">Base units (units or pounds), always positive.</param>
+/// <param name="UnitCost">Cost per base unit for inbound movements (purchases); ignored on outbound ones.</param>
+public sealed record StockMovementLine(Guid ProductId, decimal Quantity, decimal? UnitCost = null);
 
 /// <summary>Stock changes called inside another module's transaction (a sale, a purchase).</summary>
-public interface IMovimientosInventario
+public interface IStockMovements
 {
-    /// <summary>Takes stock out. Fails with Inventario.SinExistencia unless the product may be sold without stock (then it is flagged for counting).</summary>
-    /// <param name="soloConExistencia">True for non-sale exits (voiding a purchase): never below zero, even for products sold without stock.</param>
-    /// <param name="revertirCosto">Voiding a purchase: each line's <see cref="LineaMovimiento.CostoUnitario"/> is taken back out of the average cost.</param>
-    Task<Result> RegistrarSalidaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, CancellationToken ct, Guid? almacenId = null,
-        bool soloConExistencia = false, bool revertirCosto = false);
+    /// <summary>Takes stock out. Fails with Inventory.OutOfStock unless the product may be sold without stock (then it is flagged for counting).</summary>
+    /// <param name="onlyWithStock">True for non-sale outbound movements (voiding a purchase): never below zero, even for products sold without stock.</param>
+    /// <param name="reverseCost">Voiding a purchase: each line's <see cref="StockMovementLine.UnitCost"/> is taken back out of the average cost.</param>
+    Task<Result> RecordOutboundAsync(StockMovementType type, Guid referenceId, IReadOnlyList<StockMovementLine> lines, CancellationToken ct, Guid? warehouseId = null,
+        bool onlyWithStock = false, bool reverseCost = false);
 
-    /// <summary>Puts stock in. When <paramref name="actualizarCosto"/> is true (purchases) the weighted average cost is recomputed.</summary>
-    Task<Result> RegistrarEntradaAsync(TipoMovimiento tipo, Guid referenciaId, IReadOnlyList<LineaMovimiento> lineas, bool actualizarCosto, CancellationToken ct, Guid? almacenId = null);
+    /// <summary>Puts stock in. When <paramref name="updateCost"/> is true (purchases) the weighted average cost is recomputed.</summary>
+    Task<Result> RecordInboundAsync(StockMovementType type, Guid referenceId, IReadOnlyList<StockMovementLine> lines, bool updateCost, CancellationToken ct, Guid? warehouseId = null);
 }
 
-public sealed record PrecioCambiadoV1(Guid ProductoId, decimal PrecioAnterior, decimal PrecioNuevo, decimal? MayoristaAnterior, decimal? MayoristaNuevo)
-    : IntegrationEvent(ProductoId);
+public sealed record PriceChangedV1(Guid ProductId, decimal OldPrice, decimal NewPrice, decimal? OldWholesalePrice, decimal? NewWholesalePrice)
+    : IntegrationEvent(ProductId);
 
-public sealed record MovimientoInventarioRegistradoV1(Guid MovimientoId, Guid ProductoId, Guid AlmacenId, TipoMovimiento Tipo, decimal Cantidad, decimal CostoUnitario, Guid? ReferenciaId)
-    : IntegrationEvent(ProductoId);
+public sealed record StockMovementRecordedV1(Guid MovementId, Guid ProductId, Guid WarehouseId, StockMovementType Type, decimal Quantity, decimal UnitCost, Guid? ReferenceId)
+    : IntegrationEvent(ProductId);

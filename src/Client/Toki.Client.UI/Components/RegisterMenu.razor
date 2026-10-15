@@ -1,0 +1,119 @@
+@inject TokiApi Api
+@inject Session Session
+@inject Approver Approver
+@inject NavigationManager Nav
+
+<Dialog Title="@(_kind is null ? "Caja" : _kind == CashMovementKind.CashIn ? "Entrada de efectivo" : "Salida de efectivo")" OnClose="Back">
+    <ChildContent>
+        @if (_kind is null)
+        {
+            <div class="esc-col">
+                <Button Wide="true" OnClick="() => Choose(CashMovementKind.CashIn)" style="justify-content:space-between"><span>Entrada de efectivo</span></Button>
+                <Button Wide="true" OnClick="() => Choose(CashMovementKind.Withdrawal)" style="justify-content:space-between"><span>Salida de efectivo (retiro o gasto)</span></Button>
+                <Button Wide="true" OnClick='() => Nav.NavigateTo("shift-sales")' style="justify-content:space-between"><span>Ventas de este turno · anular y devolver</span></Button>
+                <Button Wide="true" OnClick='() => Nav.NavigateTo("close-register")' style="justify-content:space-between"><span>Cerrar caja</span></Button>
+                @if (Session.IsBackOffice)
+                {
+                    <Button Wide="true" OnClick='() => Nav.NavigateTo("admin")' style="justify-content:space-between"><span>Ir a administración</span></Button>
+                }
+                <Button Wide="true" Variant="Button.Variants.Ghost" OnClick="SignOutAsync" style="justify-content:space-between"><span>Cambiar de usuario (el turno sigue abierto)</span><Icon Name="sign-out" /></Button>
+            </div>
+        }
+        else
+        {
+            @if (_kind != CashMovementKind.CashIn)
+            {
+                <div class="esc-row" role="group" aria-label="Tipo de salida">
+                    <button type="button" class="esc-chip" aria-pressed="@(_kind == CashMovementKind.Withdrawal ? "true" : "false")" @onclick="() => _kind = CashMovementKind.Withdrawal">Retiro</button>
+                    <button type="button" class="esc-chip" aria-pressed="@(_kind == CashMovementKind.Expense ? "true" : "false")" @onclick="() => _kind = CashMovementKind.Expense">Gasto</button>
+                </div>
+            }
+            <label class="esc-field">
+                <span>Monto RD$</span>
+                <input class="esc-input esc-input--large esc-num" inputmode="decimal" @bind="_amount" @bind:event="oninput" autofocus />
+            </label>
+            <label class="esc-field">
+                <span>Motivo</span>
+                <select class="esc-select" @bind="_reason">
+                    @foreach (var m in Reasons)
+                    {
+                        <option value="@m.Item1">@m.Item2</option>
+                    }
+                </select>
+            </label>
+            <label class="esc-field">
+                <span>Nota @(_reason == MovementReason.Other ? "(obligatoria)" : "(opcional)")</span>
+                <input class="esc-input" maxlength="200" @bind="_note" />
+            </label>
+            @if (_kind != CashMovementKind.CashIn)
+            {
+                <div class="esc-row esc-muted"><Icon Name="lock" /> Sacar efectivo pide la autorización de un supervisor.</div>
+            }
+        }
+        @if (_message is not null)
+        {
+            <Notice Kind="_messageKind" Title="@_message" />
+        }
+    </ChildContent>
+    <Footer>
+        <Button OnClick="Back" Shortcut="Esc">@(_kind is null ? "Cerrar" : "Volver")</Button>
+        @if (_kind is not null)
+        {
+            <Button Variant="Button.Variants.Primary" Shortcut="Enter" Disabled="_sending" OnClick="RecordAsync">Registrar</Button>
+        }
+    </Footer>
+</Dialog>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private CashMovementKind? _kind;
+    private MovementReason _reason = MovementReason.CashPickup;
+    private string? _amount, _note, _message;
+    private Notice.Kinds _messageKind;
+    private bool _sending;
+
+    private IEnumerable<(MovementReason, string)> Reasons => _kind == CashMovementKind.CashIn
+        ? [(MovementReason.ExtraChange, "Cambio adicional"), (MovementReason.Other, "Otro")]
+        : [(MovementReason.CashPickup, "Recogida a la bóveda"), (MovementReason.BankDeposit, "Depósito al banco"), (MovementReason.SupplierPayment, "Pago a suplidor"),
+           (MovementReason.PettyExpense, "Gasto menor"), (MovementReason.Other, "Otro")];
+
+    private void Choose(CashMovementKind k)
+    {
+        (_kind, _amount, _note, _message) = (k, null, null, null);
+        _reason = Reasons.First().Item1;
+    }
+
+    private Task Back()
+    {
+        if (_kind is null) return OnClose.InvokeAsync();
+        _kind = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task RecordAsync()
+    {
+        var amount = Format.ParseNumber(_amount);
+        if (amount is not > 0) { (_messageKind, _message) = (Notice.Kinds.Error, "Escriba el monto."); return; }
+        if (_reason == MovementReason.Other && string.IsNullOrWhiteSpace(_note)) { (_messageKind, _message) = (Notice.Kinds.Error, "Escriba una nota para \"Otro\"."); return; }
+        var shift = Session.Shift!.ShiftId;
+        _sending = true;
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/cash/shifts/{shift}/movements",
+                new { MovementType = _kind, Amount = Math.Round(amount.Value, 2), Reason = _reason, Note = string.IsNullOrWhiteSpace(_note) ? null : _note.Trim(), SupervisorApprovalId = id }),
+            shift, $"{(_kind == CashMovementKind.CashIn ? "Entrada" : "Salida")} de {Format.WithCurrency(amount.Value)}");
+        _sending = false;
+        if (r.Ok)
+        {
+            (_messageKind, _message, _kind) = (Notice.Kinds.Success, $"Registrado: {Format.WithCurrency(amount.Value)}.", null);
+            return;
+        }
+        (_messageKind, _message) = (Notice.Kinds.Error, r.Problem!.Message);
+    }
+
+    private async Task SignOutAsync()
+    {
+        await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
+        Session.Close();
+        Nav.NavigateTo("sign-in");
+    }
+}

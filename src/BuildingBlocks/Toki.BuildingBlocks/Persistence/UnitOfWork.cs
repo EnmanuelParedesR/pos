@@ -8,17 +8,17 @@ public enum DbProvider { SqlServer, Sqlite }
 
 public sealed class DatabaseOptions
 {
-    public const string Seccion = "Database";
+    public const string Section = "Database";
 
     /// <summary>SqlServer in production. Sqlite for development and tests on machines without SQL Server (ADR-0002).</summary>
     public DbProvider Provider { get; set; } = DbProvider.SqlServer;
     public string ConnectionString { get; set; } = "";
     /// <summary>Create or migrate the database when the host starts.</summary>
-    public bool CrearAlIniciar { get; set; }
+    public bool CreateOnStartup { get; set; }
 }
 
 /// <summary>One connection and one transaction per request, shared by every module's DbContext,
-/// so a sale writes ventas, inventario, caja, fiscal, outbox and audit atomically.</summary>
+/// so a sale writes sales, inventory, cash, fiscal, outbox and audit atomically.</summary>
 public sealed class UnitOfWork(DatabaseOptions options) : IAsyncDisposable
 {
     public DbConnection Connection { get; } = options.Provider == DbProvider.Sqlite

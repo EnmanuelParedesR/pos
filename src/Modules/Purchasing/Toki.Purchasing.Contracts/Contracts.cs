@@ -2,9 +2,9 @@ using Toki.SharedKernel;
 
 namespace Toki.Purchasing.Contracts;
 
-public sealed record CompraRegistradaV1(Guid CompraId, Guid SuplidorId, string Ncf, decimal Subtotal, decimal Itbis, decimal Total, bool Credito)
-    : IntegrationEvent(CompraId);
+public sealed record PurchasePostedV1(Guid PurchaseId, Guid SupplierId, string Ncf, decimal Subtotal, decimal Itbis, decimal Total, bool OnCredit)
+    : IntegrationEvent(PurchaseId);
 
-public sealed record CompraAnuladaV1(Guid CompraId, string Motivo) : IntegrationEvent(CompraId);
+public sealed record PurchaseVoidedV1(Guid PurchaseId, string Reason) : IntegrationEvent(PurchaseId);
 
-public sealed record PagoSuplidorRegistradoV1(Guid PagoId, Guid SuplidorId, decimal Monto) : IntegrationEvent(PagoId);
+public sealed record SupplierPaymentRecordedV1(Guid SupplierPaymentId, Guid SupplierId, decimal Amount) : IntegrationEvent(SupplierPaymentId);

@@ -1,0 +1,41 @@
+@* The only element with a shadow. Esc closes it when the screen lets it. Opens with the focus on its first field. *@
+@inject IJSRuntime JS
+<div class="esc-overlay" @onkeydown="KeyDown">
+    <div @ref="_dialog" tabindex="-1" class="esc-dialog @(Wide ? "esc-dialog--wide" : "")" role="dialog" aria-modal="true" aria-labelledby="@_id">
+        <div class="esc-dialog__header">
+            <h2 id="@_id" style="font-size:var(--t-20);font-weight:700">@Title</h2>
+            @if (Subtitle is not null)
+            {
+                <div class="esc-subtitle">@Subtitle</div>
+            }
+        </div>
+        <div class="esc-dialog__body">@ChildContent</div>
+        @if (Footer is not null)
+        {
+            <div class="esc-dialog__footer">@Footer</div>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly string _id = "dlg-" + Guid.NewGuid().ToString("N")[..8];
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference _dialog;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("escuadra.focusFirst", _dialog);
+    }
+
+    /// <summary>Every key pressed anywhere in the dialog, whatever has the focus (PIN pads, F-keys).</summary>
+    [Parameter] public EventCallback<KeyboardEventArgs> OnKey { get; set; }
+
+    private Task KeyDown(KeyboardEventArgs e) => e.Key == "Escape" && OnClose.HasDelegate ? OnClose.InvokeAsync() : OnKey.InvokeAsync(e);
+}

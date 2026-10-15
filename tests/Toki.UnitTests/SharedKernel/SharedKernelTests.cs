@@ -10,58 +10,58 @@ public sealed class SharedKernelTests
     [InlineData(1.005, 1.01)]
     [InlineData(1.004, 1.00)]
     [InlineData(-1.005, -1.01)]
-    public void Redondeo_de_dinero_lejos_de_cero(decimal monto, decimal esperado) => Dinero.Redondear(monto).ShouldBe(esperado);
+    public void Money_rounds_away_from_zero(decimal amount, decimal expected) => Money.Round(amount).ShouldBe(expected);
 
     [Fact]
-    public void El_dia_de_negocio_es_hora_de_Santo_Domingo()
+    public void The_business_day_is_Santo_Domingo_time()
     {
         // 02:30 UTC on the 16th is still 22:30 on the 15th in the Dominican Republic.
-        DiaNegocio.De(new DateTime(2026, 10, 16, 2, 30, 0, DateTimeKind.Utc)).ShouldBe(new DateOnly(2026, 10, 15));
-        var (desde, hasta) = DiaNegocio.RangoUtc(new DateOnly(2026, 10, 15), new DateOnly(2026, 10, 15));
-        desde.ShouldBe(new DateTime(2026, 10, 15, 4, 0, 0));
-        desde.Kind.ShouldBe(DateTimeKind.Utc);
-        hasta.Kind.ShouldBe(DateTimeKind.Utc);
-        hasta.ShouldBe(new DateTime(2026, 10, 16, 4, 0, 0));
+        BusinessDay.Of(new DateTime(2026, 10, 16, 2, 30, 0, DateTimeKind.Utc)).ShouldBe(new DateOnly(2026, 10, 15));
+        var (from, to) = BusinessDay.UtcRange(new DateOnly(2026, 10, 15), new DateOnly(2026, 10, 15));
+        from.ShouldBe(new DateTime(2026, 10, 15, 4, 0, 0));
+        from.Kind.ShouldBe(DateTimeKind.Utc);
+        to.Kind.ShouldBe(DateTimeKind.Utc);
+        to.ShouldBe(new DateTime(2026, 10, 16, 4, 0, 0));
     }
 
     [Fact]
-    public void La_cadena_de_auditoria_detecta_un_cambio()
+    public void The_audit_chain_detects_a_change()
     {
-        var r = new RegistroAuditoria { Secuencia = 1, Id = Guid.NewGuid(), FechaUtc = DateTime.UtcNow, Accion = "a", RecursoTipo = "t", Datos = "{}", HashPrevio = new byte[32] };
-        r.Hash = CadenaAuditoria.Hash(r);
-        var copia = CadenaAuditoria.Hash(r);
-        copia.ShouldBe(r.Hash);
+        var r = new AuditRecord { Sequence = 1, Id = Guid.NewGuid(), DateUtc = DateTime.UtcNow, Action = "a", ResourceType = "t", Data = "{}", PreviousHash = new byte[32] };
+        r.Hash = AuditChain.Hash(r);
+        var copy = AuditChain.Hash(r);
+        copy.ShouldBe(r.Hash);
 
-        r.Datos = "{\"monto\":1}";
-        CadenaAuditoria.Hash(r).ShouldNotBe(copia);
+        r.Data = "{\"amount\":1}";
+        AuditChain.Hash(r).ShouldNotBe(copy);
     }
 
     [Theory]
-    [InlineData(118.00, TasaItbis.General18, 18.00)]
-    [InlineData(116.00, TasaItbis.Reducida16, 16.00)]
-    [InlineData(100.00, TasaItbis.Exento, 0)]
-    [InlineData(100.00, TasaItbis.Cero, 0)]
-    [InlineData(185.00, TasaItbis.General18, 28.22)]
-    public void El_itbis_incluido_se_extrae_del_precio(decimal monto, TasaItbis tasa, decimal itbis) => Itbis.Incluido(monto, tasa).ShouldBe(itbis);
+    [InlineData(118.00, ItbisRate.General18, 18.00)]
+    [InlineData(116.00, ItbisRate.Reduced16, 16.00)]
+    [InlineData(100.00, ItbisRate.Exempt, 0)]
+    [InlineData(100.00, ItbisRate.Zero, 0)]
+    [InlineData(185.00, ItbisRate.General18, 28.22)]
+    public void Included_itbis_is_taken_out_of_the_price(decimal amount, ItbisRate rate, decimal itbis) => Itbis.Included(amount, rate).ShouldBe(itbis);
 
     [Theory]
     [InlineData("131245678", true)]
     [InlineData("00112345678", true)]
     [InlineData("1312456", false)]
     [InlineData("13124567A", false)]
-    public void Formato_de_RNC_o_cedula(string valor, bool valido) => Rnc.EsValido(valor).ShouldBe(valido);
+    public void Rnc_or_cedula_format(string value, bool valid) => Rnc.IsValid(value).ShouldBe(valid);
 
     [Fact]
-    public void Un_pago_va_a_las_facturas_mas_viejas_primero_sin_pasar_su_saldo()
+    public void A_payment_goes_to_the_oldest_invoices_first_without_exceeding_their_balance()
     {
-        var abiertas = new[] { ("A", 100m), ("B", 0m), ("C", 250m), ("D", 50m) };
-        Asignacion.EnOrden(300m, abiertas).ShouldBe([("A", 100m), ("C", 200m)]);
-        Asignacion.EnOrden(1000m, abiertas).Sum(x => x.Monto).ShouldBe(400m); // the rest (600) is left to the caller
-        Asignacion.EnOrden(0m, abiertas).ShouldBeEmpty();
+        var open = new[] { ("A", 100m), ("B", 0m), ("C", 250m), ("D", 50m) };
+        Allocation.InOrder(300m, open).ShouldBe([("A", 100m), ("C", 200m)]);
+        Allocation.InOrder(1000m, open).Sum(x => x.Amount).ShouldBe(400m); // the rest (600) is left to the caller
+        Allocation.InOrder(0m, open).ShouldBeEmpty();
     }
 
     [Fact]
-    public void Un_resultado_fallido_no_entrega_valor()
+    public void A_failed_result_gives_no_value()
     {
         Result<int> r = Error.NotFound("X", "no");
         r.IsFailure.ShouldBeTrue();

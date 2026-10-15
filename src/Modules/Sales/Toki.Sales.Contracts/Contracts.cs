@@ -2,15 +2,15 @@ using Toki.SharedKernel;
 
 namespace Toki.Sales.Contracts;
 
-public sealed record LineaVentaV1(Guid ProductoId, Guid? PresentacionId, string Descripcion, decimal Cantidad, decimal Total, decimal Itbis, decimal Costo);
+public sealed record SaleLineV1(Guid ProductId, Guid? PresentationId, string Description, decimal Quantity, decimal Total, decimal Itbis, decimal Cost);
 
-public sealed record PagoVentaV1(string Medio, decimal Monto);
+public sealed record SalePaymentV1(string Method, decimal Amount);
 
-public sealed record VentaRegistradaV1(
-    Guid VentaId, long Numero, Guid TurnoId, Guid CajeroId, Guid? ClienteId, string ENcf, decimal Total, decimal Itbis, decimal Descuento,
-    IReadOnlyList<LineaVentaV1> Lineas, IReadOnlyList<PagoVentaV1> Pagos) : IntegrationEvent(VentaId);
+public sealed record SaleRecordedV1(
+    Guid SaleId, long Number, Guid ShiftId, Guid CashierId, Guid? CustomerId, string ENcf, decimal Total, decimal Itbis, decimal Discount,
+    IReadOnlyList<SaleLineV1> Lines, IReadOnlyList<SalePaymentV1> Payments) : IntegrationEvent(SaleId);
 
-public sealed record VentaAnuladaV1(Guid VentaId, string ENcfNotaCredito, string Motivo, Guid? SupervisorId) : IntegrationEvent(VentaId);
+public sealed record SaleVoidedV1(Guid SaleId, string CreditNoteENcf, string Reason, Guid? SupervisorId) : IntegrationEvent(SaleId);
 
-public sealed record DevolucionRegistradaV1(Guid DevolucionId, Guid VentaId, string ENcfNotaCredito, string Medio, decimal Total, decimal Itbis)
-    : IntegrationEvent(VentaId);
+public sealed record ReturnRecordedV1(Guid ReturnId, Guid SaleId, string CreditNoteENcf, string Method, decimal Total, decimal Itbis)
+    : IntegrationEvent(SaleId);

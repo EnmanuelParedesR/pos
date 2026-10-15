@@ -1,0 +1,163 @@
+using System.Text.Json;
+using FluentValidation;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
+using Toki.BuildingBlocks.Endpoints;
+using Toki.BuildingBlocks.Messaging;
+using Toki.BuildingBlocks.Persistence;
+using Toki.BuildingBlocks.Security;
+using Toki.CashRegister.Contracts;
+using Toki.Settings.Contracts;
+using Toki.Fiscal.Contracts;
+using Toki.SharedKernel;
+using Toki.Sales.Domain;
+
+namespace Toki.Sales.Features;
+
+/// <summary>Reprint: the same print model as the original sale (also for a voided one, marked as voided).</summary>
+internal static class GetReceipt
+{
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapGet("/api/sales/{id:guid}/receipt", async (Guid id, SalesDbContext db, ISettingsQueries settings, CancellationToken ct) =>
+                    await db.FullSaleAsync(id, ct) is { } s
+                        ? Results.Ok(Receipt.From(s, await settings.GetBusinessProfileAsync(ct)))
+                        : EndpointExtensions.Problem(SalesErrors.SaleNotFound))
+                .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
+    }
+}
+
+internal static class GetSale
+{
+    public sealed record LineDto(Guid Id, string Description, decimal Quantity, decimal UnitPrice, decimal Discount, decimal Total,
+        decimal Itbis, decimal ReturnedQuantity, string? Note);
+    public sealed record PaymentDto(PaymentMethod Method, decimal Amount, decimal? Received, string? Reference);
+    public sealed record ReturnDto(Guid Id, DateTime DateUtc, decimal Total, PaymentMethod Method, string ENcf, string Reason);
+    public sealed record Response(Guid Id, long Number, string ENcf, EcfType DocumentType, DateTime DateUtc, string Status, string Register, string Cashier,
+        Guid? CustomerId, string? Customer, decimal Discount, decimal Itbis, decimal Total, decimal Change, string? VoidReason, string? VoidENcf,
+        IReadOnlyList<LineDto> Lines, IReadOnlyList<PaymentDto> Payments, IReadOnlyList<ReturnDto> Returns);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapGet("/api/sales/{id:guid}", async (Guid id, SalesDbContext db, CancellationToken ct) =>
+                {
+                    var s = await db.FullSaleAsync(id, ct);
+                    if (s is null) return EndpointExtensions.Problem(SalesErrors.SaleNotFound);
+                    var returns = await db.Returns.Where(r => r.SaleId == id).OrderBy(r => r.DateUtc)
+                        .Select(r => new ReturnDto(r.Id, r.DateUtc, r.Total, r.Method, r.ENcf, r.Reason)).AsNoTracking().ToListAsync(ct);
+                    return Results.Ok(new Response(s.Id, s.Number, s.ENcf, s.DocumentType, s.DateUtc, s.Status.ToString(), s.Register, s.Cashier, s.CustomerId,
+                        s.CustomerName, s.Discount, s.Itbis, s.Total, s.Change, s.VoidReason, s.VoidENcf,
+                        s.Lines.Select(l => new LineDto(l.Id, l.Description, l.Quantity, l.UnitPrice, l.Discount, l.Total, l.Itbis, l.ReturnedQuantity, l.Note)).ToList(),
+                        s.Payments.Select(p => new PaymentDto(p.Method, p.Amount, p.Received, p.Reference)).ToList(), returns));
+                })
+                .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
+    }
+}
+
+/// <summary>Sales of a shift (the register's list for reprints and voids), or of a date range for whoever may see reports.
+/// A cashier without reports only sees their own sales.</summary>
+internal static class ListSales
+{
+    public const int PageSize = 100;
+
+    public sealed record Item(Guid Id, long Number, string ENcf, DateTime DateUtc, string Status, string Cashier, string? Customer, decimal Total);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapGet("/api/sales", async (Guid? shiftId, DateOnly? from, DateOnly? to, string? search, int? page, IUserContext user,
+                    SalesDbContext db, CancellationToken ct) =>
+                {
+                    var q = db.Sales.AsNoTracking();
+                    if (!user.Has(Permissions.ReportsView)) q = q.Where(s => s.CashierId == user.UserId);
+                    if (shiftId is { } sh) q = q.Where(s => s.ShiftId == sh);
+                    if (from is not null || to is not null)
+                    {
+                        var (f, t) = BusinessDay.UtcRange(from ?? to!.Value, to ?? from!.Value);
+                        q = q.Where(s => s.DateUtc >= f && s.DateUtc < t);
+                    }
+                    if (!string.IsNullOrWhiteSpace(search)) q = q.Where(s => s.ENcf == search.Trim() || s.Number.ToString() == search.Trim());
+                    var items = await q.OrderByDescending(s => s.Number).Skip((Math.Max(page ?? 1, 1) - 1) * PageSize).Take(PageSize)
+                        .Select(s => new Item(s.Id, s.Number, s.ENcf, s.DateUtc, s.Status == SaleStatus.Voided ? "Voided" : "Completed", s.Cashier, s.CustomerName, s.Total))
+                        .ToListAsync(ct);
+                    return Results.Ok(items);
+                })
+                .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
+    }
+}
+
+/// <summary>Parks a cart to serve the next customer. The register sends its draft as JSON and gets it back later.</summary>
+internal static class HeldSales
+{
+    public sealed record Save(Guid Id, Guid ShiftId, string Label, JsonElement Content, decimal Total) : ICommand<Ok>;
+    public sealed record Remove(Guid Id, Guid ShiftId) : ICommand<Ok>;
+    public sealed record Item(Guid Id, string Label, decimal Total, DateTime CreatedUtc, JsonElement Content);
+
+    internal sealed class Validator : AbstractValidator<Save>
+    {
+        public Validator()
+        {
+            RuleFor(c => c.Id).NotEmpty();
+            RuleFor(c => c.Label).NotEmpty().MaximumLength(60);
+            RuleFor(c => c.Content.GetRawText()).MaximumLength(ModuleDbContext.LongText).WithMessage("La venta en espera es demasiado grande.");
+        }
+    }
+
+    internal sealed class SaveHandler(SalesDbContext db, ICashRegisterOperations cash, IUserContext user, TimeProvider clock) : ICommandHandler<Save, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Save c, CancellationToken ct)
+        {
+            var shift = await cash.GetOpenShiftAsync(c.ShiftId, ct);
+            if (shift.IsFailure) return shift.Error!;
+            // Only this shift's cart: an id from another register never overwrites theirs (it fails as a duplicate instead).
+            var held = await db.HeldSales.FirstOrDefaultAsync(h => h.Id == c.Id && h.ShiftId == c.ShiftId, ct);
+            if (held is null) db.HeldSales.Add(held = new HeldSale { Id = c.Id, CreatedUtc = clock.GetUtcNow().UtcDateTime });
+            held.ShiftId = c.ShiftId;
+            held.UserId = user.UserId;
+            held.Label = c.Label.Trim();
+            held.Content = c.Content.GetRawText();
+            held.Total = c.Total;
+            return Ok.Value;
+        }
+    }
+
+    /// <summary>A closed shift's parked carts are no longer usable: they go when CashRegister publishes the closing.</summary>
+    internal sealed class PurgeOnShiftClosed(SalesDbContext db) : IEventHandler<ShiftClosedV1>
+    {
+        public Task HandleAsync(ShiftClosedV1 @event, CancellationToken ct) => db.HeldSales.Where(h => h.ShiftId == @event.ShiftId).ExecuteDeleteAsync(ct);
+    }
+
+    internal sealed class RemoveHandler(SalesDbContext db, ICashRegisterOperations cash) : ICommandHandler<Remove, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Remove c, CancellationToken ct)
+        {
+            var shift = await cash.GetOpenShiftAsync(c.ShiftId, ct);
+            if (shift.IsFailure) return shift.Error!;
+            await db.HeldSales.Where(h => h.Id == c.Id && h.ShiftId == c.ShiftId).ExecuteDeleteAsync(ct);
+            return Ok.Value;
+        }
+    }
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app)
+        {
+            app.MapPut("/api/sales/held", async (Save c, ICommandHandler<Save, Ok> h, CancellationToken ct) =>
+                    (await h.Handle(c, ct)).ToHttp(_ => Results.NoContent()))
+                .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
+            app.MapDelete("/api/sales/held/{id:guid}", async (Guid id, Guid shiftId, ICommandHandler<Remove, Ok> h, CancellationToken ct) =>
+                    (await h.Handle(new Remove(id, shiftId), ct)).ToHttp(_ => Results.NoContent()))
+                .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
+            app.MapGet("/api/sales/held", async (Guid shiftId, SalesDbContext db, CancellationToken ct) =>
+                {
+                    var items = await db.HeldSales.Where(h => h.ShiftId == shiftId).OrderBy(h => h.CreatedUtc).AsNoTracking().ToListAsync(ct);
+                    return Results.Ok(items.Select(h => new Item(h.Id, h.Label, h.Total, h.CreatedUtc, JsonDocument.Parse(h.Content).RootElement)));
+                })
+                .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
+        }
+    }
+}

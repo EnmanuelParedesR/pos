@@ -1,10 +1,10 @@
 namespace Toki.Settings.Contracts;
 
 /// <summary>Shop data printed on receipts and limits that apply to every register.</summary>
-/// <param name="TopeDescuentoPct">Largest discount (percent of each line, after the global discount) a cashier may give without a supervisor.</param>
-public sealed record DatosNegocio(string Nombre, string? Rnc, string? Direccion, string? Telefono, string? PieRecibo, decimal TopeDescuentoPct);
+/// <param name="DiscountCapPercent">Largest discount (percent of each line, after the global discount) a cashier may give without a supervisor.</param>
+public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent);
 
-public interface IConfiguracionConsultas
+public interface ISettingsQueries
 {
-    Task<DatosNegocio> ObtenerNegocioAsync(CancellationToken ct);
+    Task<BusinessProfile> GetBusinessProfileAsync(CancellationToken ct);
 }

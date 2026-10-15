@@ -8,7 +8,7 @@ namespace Toki.BuildingBlocks.Persistence;
 public abstract class ModuleDbContext(DbContextOptions options) : DbContext(options)
 {
     /// <summary>Text columns that hold JSON or long notes (maps to nvarchar(max) on SQL Server).</summary>
-    public const int TextoLargo = 8000;
+    public const int LongText = 8000;
 
     /// <summary>The module's schema. Sqlite ignores schemas, so table names must be unique across modules.</summary>
     protected abstract string Schema { get; }

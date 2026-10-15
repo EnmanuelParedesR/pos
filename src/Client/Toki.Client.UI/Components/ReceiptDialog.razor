@@ -1,0 +1,56 @@
+@* The invoice as the thermal printer would print it. *@
+<Dialog Title="@($"Factura {Receipt.ENcf}")" Subtitle="@(Receipt.IsVoided ? "ANULADA" : null)" OnClose="OnClose">
+    <ChildContent>
+        <div class="receipt" aria-label="Factura">
+            <div class="center" style="font-weight:700">@Receipt.BusinessName</div>
+            @if (Receipt.Rnc is not null) { <div class="center">RNC @Receipt.Rnc</div> }
+            @if (Receipt.Address is not null) { <div class="center">@Receipt.Address</div> }
+            @if (Receipt.Phone is not null) { <div class="center">Tel. @Receipt.Phone</div> }
+            <hr />
+            <div class="center" style="font-weight:700">@Receipt.DocumentType</div>
+            <div class="row"><span>e-NCF</span><span>@Receipt.ENcf</span></div>
+            <div class="row"><span>Factura</span><span>#@Receipt.Number</span></div>
+            @* localDateTime is already store time even though it carries a Z: shown as is. *@
+            <div class="row"><span>Fecha</span><span>@Receipt.LocalDateTime.ToString("dd/MM/yyyy h:mm tt", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))</span></div>
+            <div class="row"><span>@Receipt.Register</span><span>@Receipt.Cashier</span></div>
+            @if (Receipt.Customer is not null)
+            {
+                <div class="row"><span>Cliente</span><span>@Receipt.Customer</span></div>
+                @if (Receipt.CustomerRnc is not null) { <div class="row"><span>RNC</span><span>@Receipt.CustomerRnc</span></div> }
+            }
+            <hr />
+            @foreach (var l in Receipt.Lines)
+            {
+                <div>@l.Description</div>
+                <div class="row"><span>&nbsp;&nbsp;@Format.Quantity(l.Quantity, l.Unit) × @Format.Amount(l.Price)</span><span>@Format.Amount(l.Total)</span></div>
+                @if (l.Discount > 0) { <div class="row"><span>&nbsp;&nbsp;Descuento</span><span>−@Format.Amount(l.Discount)</span></div> }
+            }
+            <hr />
+            <div class="row"><span>Subtotal</span><span>@Format.Amount(Receipt.Subtotal)</span></div>
+            @if (Receipt.Discount > 0) { <div class="row"><span>Descuento</span><span>−@Format.Amount(Receipt.Discount)</span></div> }
+            @foreach (var i in Receipt.Itbis)
+            {
+                <div class="row"><span>@i.Rate</span><span>@Format.Amount(i.Itbis)</span></div>
+            }
+            <div class="row" style="font-weight:700;font-size:16px"><span>TOTAL</span><span>RD$ @Format.Amount(Receipt.Total)</span></div>
+            <hr />
+            @foreach (var p in Receipt.Payments)
+            {
+                <div class="row"><span>@p.Method</span><span>@Format.Amount(p.Received ?? p.Amount)</span></div>
+            }
+            @if (Receipt.Change > 0) { <div class="row"><span>Devuelta</span><span>@Format.Amount(Receipt.Change)</span></div> }
+            <hr />
+            <div class="center">Código de seguridad: @Receipt.SecurityCode</div>
+            @if (Receipt.Footer is not null) { <div class="center" style="margin-top:8px">@Receipt.Footer</div> }
+        </div>
+    </ChildContent>
+    <Footer>
+        @* shortcut: no thermal printer driver yet (Toki.Hardware.EscPos); this is a preview. Wire IPrinter here when it exists. *@
+        <Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="OnClose">Cerrar</Button>
+    </Footer>
+</Dialog>
+
+@code {
+    [Parameter, EditorRequired] public Receipt Receipt { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+}
