@@ -206,6 +206,8 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-157 | Contingencia por imposibilidad de emitir (serie B y regularización) | ⬜ |
 | TK-158 | Pruebas de contrato y de punta a punta contra TesteCF | ⬜ |
 | TK-159 | (Después de V1) Receptor sin custodia por túnel y E41 de compras | ⬜ |
+| TK-176 | Importar el `.p12` desde Configuración → Comprobantes y avisar 30 días antes de que venza el certificado (resto de TK-142) | ⬜ |
+| TK-177 | Consultar a la DGII las preguntas abiertas de `docs/ecf-propio.md` §11 (peso con 3 decimales, comprador vacío en la 32, fecha límite de pago, saldo a favor como forma de pago, receptor por tienda) | ⬜ Necesita al dueño |
 
 ## M14 · Pendientes de las revisiones y de la nube
 
@@ -222,6 +224,8 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-168 | Precio mayorista en la caja (R7 #16) | ⬜ |
 | TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | ⬜ |
 | TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ⬜ |
+| TK-174 | Nube: evento de saldo de clientes (incluye anulación de abonos) y nombres de clientes, para que "Te deben" sea exacto y diga nombres | ⬜ |
+| TK-175 | Renombrar cajas desde Configuración (y enviar `RegisterChangedV1`) | ⬜ |
 ## Revisiones
 
 | Revisión | Hito | Estado |
