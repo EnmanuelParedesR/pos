@@ -160,7 +160,7 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-127 | Pruebas contra SQL Server Express local (`TOKI_TEST_SQLSERVER`) y arreglo de `AbonosFiado.Origen` (columna corta) con prueba de guarda | ✅ |
 | TK-171 | Investigación de usuarios y crítica de la administración (`docs/investigacion-admin.md`, `docs/critica-admin.md`) | ✅ |
 | TK-172 | Validar con 6 dueños reales (entrevistas y prueba de usabilidad en el celular) | ⬜ Con el piloto |
-| TK-173 | Rediseño de la administración y del panel ("Escuadra Admin"): resumen que cuenta una historia, nueva paleta, navegación moderna | 🔨 |
+| TK-173 | Rediseño de la administración y del panel ("Escuadra Admin"): resumen que cuenta una historia, nueva paleta, navegación moderna | ✅ 3 rondas con capturas; detalle en `docs/critica-admin.md` |
 | TK-128 | Corregir los hallazgos de R7 | ✅ Lo que quedó pendiente está en TK-123, TK-124, TK-168 y TK-169 |
 
 ## M12 · Nube
@@ -223,9 +223,15 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-167 | Proyectar en la réplica compras, clientes, apertura de turno y movimientos de caja | ✅ Más `GET /api/panel/receivables` y la herramienta `receivables` del asistente. Pendiente: abonos anulados y nombres de clientes no tienen evento |
 | TK-168 | Precio mayorista en la caja (R7 #16) | ⬜ |
 | TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | ⬜ |
-| TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ⬜ |
+| TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ✅ Vitest 3, jsdom 30, Tiendas se refresca al conectar una caja |
 | TK-174 | Nube: evento de saldo de clientes (incluye anulación de abonos) y nombres de clientes, para que "Te deben" sea exacto y diga nombres | ⬜ |
 | TK-175 | Renombrar cajas desde Configuración (y enviar `RegisterChangedV1`) | ⬜ |
+| TK-178 | Bug: `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 | ⬜ |
+| TK-179 | Reportes en la tienda: mezcla de medios de pago y ventas por hora (hoy el Resumen suma los Z y no compara a la misma hora) | ⬜ |
+| TK-180 | Nube: unidad (lb/unidad) en más vendidos | ⬜ |
+| TK-181 | Panel: subir Vitest a 5 (aviso de npm audit en tinypool, solo desarrollo) | ⬜ |
+| TK-182 | Encontrar y arreglar la prueba que falló una vez en la suite (posible inestabilidad) | ⬜ |
+| TK-183 | Modo oscuro de Escuadra Admin (variables listas) | ⬜ |
 ## Revisiones
 
 | Revisión | Hito | Estado |
