@@ -22,6 +22,30 @@ jobs:
       - name: Pruebas
         run: dotnet test --solution Toki.slnx -c Release --no-build
         env:
+          # sqlserver: a Testcontainers SQL Server, image pinned in tests/SqlServerImage.cs
           TOKI_TEST_DB: ${{ matrix.db }}
           # Run as a store PC would (UTC-4) so time-zone bugs show up in CI.
+          TZ: America/Santo_Domingo
+
+  ui:
+    name: Pruebas de interfaz (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/Cloud/panel/package-lock.json
+      - run: npm ci
+        working-directory: src/Cloud/panel
+      - run: dotnet build tests/Toki.UiTests/Toki.UiTests.csproj -c Release
+      - name: Navegador
+        run: pwsh tests/Toki.UiTests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+      - name: Pruebas
+        run: dotnet test --project tests/Toki.UiTests/Toki.UiTests.csproj -c Release --no-build
+        env:
           TZ: America/Santo_Domingo

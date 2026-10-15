@@ -10,6 +10,9 @@
     <PackageReference Include="Microsoft.Data.SqlClient" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\SqlServerImage.cs" Link="SqlServerImage.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- Only to build the API first: the tests start its real process, they never load it. -->
     <ProjectReference Include="..\..\src\Hosts\Toki.Host.Local\Toki.Host.Local.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>

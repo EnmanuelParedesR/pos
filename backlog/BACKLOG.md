@@ -157,7 +157,7 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-187 | Administración: facturas (buscar, ver, reimprimir) y reportes descargables (CSV/Excel, 606/607) | 🔨 |
 | TK-121 | Abono de un cliente desde la caja | 🔨 |
 | TK-122 | Fijar el certificado del nodo en el cliente al emparejar (con TK-091) | ⬜ |
-| TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real; incluye las de R7 #5 (escaneo ignorado en efectivo/PIN) y #8 (el foco nunca se pierde) | ⬜ |
+| TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real; incluye las de R7 #5 (escaneo ignorado en efectivo/PIN) y #8 (el foco nunca se pierde) | ✅ `tests/Toki.UiTests` (Playwright, job `ui` de CI): un día de caja con teclado contra la API real y un humo del panel; arregló el foco que `focusFirst` robaba (checkbox de imprimir, PIN del supervisor) |
 | TK-124 | Prueba de contratos en `Toki.IntegrationTests`: llamar a los endpoints reales y deserializar cada respuesta con `TokiApi.Json` en los records de `Contracts.cs` (R7 #13b) | ✅ `ClientContractTests`: el flujo de la caja de punta a punta con los records del cliente; falla si llega un campo no anulable vacío (también en registros anidados) |
 | TK-125 | Crítica de diseño (`docs/critica-diseno.md`) y canvas actualizado: logo C5, marca fija, 7 pantallas nuevas, fase 2 marcada | ✅ |
 | TK-126 | Reescribir todo el código en inglés (UI en español): glosario `docs/glosario-codigo.md`, mapas `docs/rename-map*.md`, migraciones nuevas | ✅ |
@@ -223,7 +223,7 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-160 | Probar instalador y servicio en una VM Windows limpia: cuenta del servicio, llave del certificado, `backups\work` (R5 #6, R6 2/5/10, TK-093) | ⬜ |
 | TK-161 | Que un contador revise un mes de 606/607 (R5 #3) | ⬜ |
 | TK-162 | Importar el padrón en segundo plano o con `SqlBulkCopy` si con el archivo real tarda más de un minuto (R5 #10) | ⬜ |
-| TK-163 | Fijar la imagen de SQL Server de CI con etiqueta fechada (R1) | ⬜ |
+| TK-163 | Fijar la imagen de SQL Server de CI con etiqueta fechada (R1) | ✅ `2025-CU9-GDR1-ubuntu-22.04` en `tests/SqlServerImage.cs` |
 | TK-164 | Reembolso en efectivo con centavos (R3) | ✅ El efectivo se devuelve en pesos enteros hacia abajo y los centavos quedan como `Rounding` (como la devuelta); la nota de crédito y los reembolsos del Z guardan el monto exacto |
 | TK-165 | Nombres de cajeros y cajas en la nube (evento desde la tienda) para el panel y el asistente | ✅ `UserProfileChangedV1` y `RegisterChangedV1`, foto inicial al conectar; `cashierName`/`registerName` en el panel y el asistente |
 | TK-166 | Devoluciones con líneas en `ReturnRecordedV1` para restarlas en los más vendidos | ✅ `ReturnRecordedV2` con líneas (V1 se sigue proyectando) |
@@ -236,8 +236,8 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-178 | Bug: `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 | 🔨 |
 | TK-179 | Reportes en la tienda: mezcla de medios de pago y ventas por hora (hoy el Resumen suma los Z y no compara a la misma hora) | ⬜ |
 | TK-180 | Nube: unidad (lb/unidad) en más vendidos | ⬜ |
-| TK-181 | Panel: subir Vitest a 5 (aviso de npm audit en tinypool, solo desarrollo) | ⬜ |
-| TK-182 | Encontrar y arreglar la prueba que falló una vez en la suite (posible inestabilidad) | ⬜ |
+| TK-181 | Panel: subir Vitest a 5 (aviso de npm audit en tinypool, solo desarrollo) | ✅ Vitest 5.0.3; `npm audit` sin hallazgos |
+| TK-182 | Encontrar y arreglar la prueba que falló una vez en la suite (posible inestabilidad) | ✅ No se reprodujo (6 corridas completas, 140 de proyectos en paralelo, 720 de las clases bUnit sospechosas); no quedó registrado cuál prueba falló (la corrida fue en la copia principal que comparten varios agentes) |
 | TK-183 | Modo oscuro de Escuadra Admin (variables listas) | ⬜ |
 
 ## M15 · Brechas frente a la competencia

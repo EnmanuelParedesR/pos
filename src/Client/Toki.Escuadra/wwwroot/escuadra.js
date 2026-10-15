@@ -100,7 +100,8 @@
   window.escuadra = {
     // HTML autofocus only works on page load; a dialog Blazor inserts later focuses its field here.
     focusFirst: el => {
-      if (!el) return;
+      // A screen may focus its own field first (Blazor Server runs this after the client acknowledges the render): keep it.
+      if (!el || el.contains(document.activeElement)) return;
       const field = el.querySelector('[autofocus]') || el.querySelector('input:not([type=hidden]):not([disabled]), select, textarea');
       (field || el).focus();
     }
