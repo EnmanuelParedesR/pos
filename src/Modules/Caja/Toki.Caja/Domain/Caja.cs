@@ -33,7 +33,7 @@ internal sealed class Turno
     public int Version { get; set; }
 }
 
-internal enum TipoMovimientoCaja { Cobro, AnulacionCobro, Reembolso, Entrada, Retiro, Gasto }
+internal enum TipoMovimientoCaja { Cobro, AnulacionCobro, Reembolso, Entrada, Retiro, Gasto, AbonoCliente }
 
 internal enum MotivoMovimiento { CambioAdicional, Recogida, DepositoBanco, PagoSuplidor, GastoMenor, Otro }
 
@@ -55,7 +55,7 @@ internal sealed class MovimientoCaja
     public Guid? SupervisorId { get; set; }
     public DateTime FechaUtc { get; set; }
 
-    public bool Entra => Tipo is TipoMovimientoCaja.Cobro or TipoMovimientoCaja.Entrada;
+    public bool Entra => Tipo is TipoMovimientoCaja.Cobro or TipoMovimientoCaja.Entrada or TipoMovimientoCaja.AbonoCliente;
 }
 
 /// <summary>Dominican peso bills and coins for the closing count.</summary>

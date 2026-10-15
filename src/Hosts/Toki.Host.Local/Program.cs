@@ -5,6 +5,7 @@ using Serilog;
 using Toki.BuildingBlocks;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Caja;
+using Toki.Clientes;
 using Toki.Compras;
 using Toki.Configuracion;
 using Toki.Fiscal;
@@ -25,6 +26,7 @@ Assembly[] modulos =
     typeof(FiscalModule).Assembly,
     typeof(VentasModule).Assembly,
     typeof(ComprasModule).Assembly,
+    typeof(ClientesModule).Assembly,
 ];
 
 builder.Services.AddToki(builder.Configuration, modulos);
@@ -35,6 +37,7 @@ builder.Services.AddCajaModule();
 builder.Services.AddFiscalModule();
 builder.Services.AddVentasModule();
 builder.Services.AddComprasModule();
+builder.Services.AddClientesModule();
 
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();

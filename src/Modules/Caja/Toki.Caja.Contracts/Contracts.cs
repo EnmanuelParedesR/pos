@@ -20,6 +20,9 @@ public interface ICajaOperaciones
     /// <summary>Money given back to a customer (a return).</summary>
     Task<Result> RegistrarReembolsoAsync(Guid turnoId, Guid referenciaId, MedioPago medio, decimal monto, CancellationToken ct);
 
+    /// <summary>A customer pays their credit (fiado) at the register.</summary>
+    Task<Result> RegistrarAbonoClienteAsync(Guid turnoId, Guid abonoId, MedioPago medio, decimal monto, CancellationToken ct);
+
     /// <summary>Reverses every payment of a sale in its shift (a void).</summary>
     Task<Result> AnularCobrosAsync(Guid ventaId, CancellationToken ct);
 }

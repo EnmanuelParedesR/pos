@@ -92,8 +92,8 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 
 | Ticket | Qué | Estado |
 |---|---|---|
-| TK-070 | Clientes: nombre, RNC/cédula, teléfono, tipo de comprobante, nivel de precio, límite; alta rápida desde la caja | ⬜ |
-| TK-071 | Fiado: cargos por venta, abonos a las facturas más viejas, límite (supervisor para excederlo), antigüedad 30/60/90 y estado de cuenta | ⬜ |
+| TK-070 | Clientes: nombre, RNC/cédula, teléfono, tipo de comprobante, nivel de precio, límite; alta rápida desde la caja | ✅ |
+| TK-071 | Fiado: cargos por venta, abonos a las facturas más viejas, límite (supervisor para excederlo), antigüedad 30/60/90 y estado de cuenta | ✅ |
 
 ## M8 · Reportes
 

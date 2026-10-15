@@ -8,6 +8,7 @@ using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
 using Toki.Caja.Contracts;
+using Toki.Clientes.Contracts;
 using Toki.Fiscal.Contracts;
 using Toki.Inventario.Contracts;
 using Toki.SharedKernel;
@@ -34,7 +35,7 @@ internal static class AnularVenta
     }
 
     internal sealed class Handler(VentasDbContext db, ICajaOperaciones caja, IMovimientosInventario inventario, IComprobantesFiscales fiscal,
-        IUserContext usuario, IOutbox outbox, IAuditoria auditoria, TimeProvider reloj) : ICommandHandler<Command, Response>
+        ICuentasClientes clientes, IUserContext usuario, IOutbox outbox, IAuditoria auditoria, TimeProvider reloj) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -58,6 +59,7 @@ internal static class AnularVenta
             if (entrada.IsFailure) return entrada.Error!;
             var cobros = await caja.AnularCobrosAsync(venta.Id, ct);
             if (cobros.IsFailure) return cobros.Error!;
+            if (venta.ClienteId is not null) await clientes.AnularVentaAsync(venta.Id, ct);
 
             venta.Estado = EstadoVenta.Anulada;
             venta.AnuladaUtc = reloj.GetUtcNow().UtcDateTime;
@@ -107,14 +109,14 @@ internal static class DevolverVenta
             RuleFor(c => c.Lineas).NotEmpty();
             RuleForEach(c => c.Lineas).ChildRules(l => l.RuleFor(x => x.Cantidad).GreaterThan(0).PrecisionScale(19, 3, true));
             RuleFor(c => c.Lineas).Must(l => l.Select(x => x.LineaVentaId).Distinct().Count() == l.Count).WithMessage("Hay líneas repetidas.");
-            RuleFor(c => c.Medio).Must(m => m is MedioPago.Efectivo or MedioPago.Tarjeta or MedioPago.Transferencia)
-                .WithMessage("La devolución se paga en efectivo, a la tarjeta o por transferencia.");
+            RuleFor(c => c.Medio).Must(m => m is MedioPago.Efectivo or MedioPago.Tarjeta or MedioPago.Transferencia or MedioPago.SaldoFavor)
+                .WithMessage("La devolución se paga en efectivo, a la tarjeta, por transferencia o a la cuenta del cliente.");
             RuleFor(c => c.Motivo).NotEmpty().MaximumLength(200);
         }
     }
 
     internal sealed class Handler(VentasDbContext db, ICajaOperaciones caja, IMovimientosInventario inventario, IComprobantesFiscales fiscal,
-        IUserContext usuario, IOutbox outbox, IAuditoria auditoria, TimeProvider reloj) : ICommandHandler<Command, Response>
+        ICuentasClientes clientes, IUserContext usuario, IOutbox outbox, IAuditoria auditoria, TimeProvider reloj) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -171,8 +173,17 @@ internal static class DevolverVenta
                 var entrada = await inventario.RegistrarEntradaAsync(TipoMovimiento.Devolucion, devolucion.Id, reponer, actualizarCosto: false, ct);
                 if (entrada.IsFailure) return entrada.Error!;
             }
-            var reembolso = await caja.RegistrarReembolsoAsync(c.TurnoId, devolucion.Id, c.Medio, devolucion.Total, ct);
-            if (reembolso.IsFailure) return reembolso.Error!;
+            if (c.Medio == MedioPago.SaldoFavor)
+            {
+                // To the customer account: pays down this sale's unpaid credit first, the rest is balance in favor.
+                if (venta.ClienteId is not { } clienteId) return VentasErrors.MedioNoDisponible;
+                await clientes.AcreditarDevolucionAsync(clienteId, venta.Id, devolucion.Id, devolucion.Total, ct);
+            }
+            else
+            {
+                var reembolso = await caja.RegistrarReembolsoAsync(c.TurnoId, devolucion.Id, c.Medio, devolucion.Total, ct);
+                if (reembolso.IsFailure) return reembolso.Error!;
+            }
 
             db.Devoluciones.Add(devolucion);
             outbox.Agregar(new DevolucionRegistradaV1(devolucion.Id, venta.Id, devolucion.ENcf, c.Medio.ToString(), devolucion.Total, devolucion.Itbis));

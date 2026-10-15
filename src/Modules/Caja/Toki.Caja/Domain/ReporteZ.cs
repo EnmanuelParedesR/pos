@@ -7,7 +7,7 @@ internal sealed record TotalMedio(MedioPago Medio, decimal Cobros, decimal Anula
 /// <summary>Z report (closed shift) or X report (open shift, for a supervisor).</summary>
 internal sealed record ReporteZ(
     Guid TurnoId, int? NumeroZ, string Caja, string Cajero, DateTime AbiertoUtc, DateTime? CerradoUtc, decimal FondoInicial,
-    IReadOnlyList<TotalMedio> PorMedio, int Ventas, int VentasAnuladas, decimal Entradas, decimal Retiros, decimal Gastos,
+    IReadOnlyList<TotalMedio> PorMedio, int Ventas, int VentasAnuladas, decimal AbonosClientes, decimal Entradas, decimal Retiros, decimal Gastos,
     decimal EfectivoEsperado, decimal? EfectivoContado, decimal? Diferencia, IReadOnlyList<ConteoDenominacion>? Conteo, Guid? SupervisorCierreId)
 {
     public static ReporteZ Construir(Turno t, string caja, IReadOnlyList<MovimientoCaja> movimientos, IReadOnlyList<ConteoDenominacion>? conteo)
@@ -29,7 +29,7 @@ internal sealed record ReporteZ(
         var ventas = movimientos.Where(m => m.Tipo == TipoMovimientoCaja.Cobro).Select(m => m.ReferenciaId).Distinct().Count();
 
         return new ReporteZ(t.Id, t.NumeroZ, caja, t.CajeroNombre, t.AbiertoUtc, t.CerradoUtc, t.FondoInicial, porMedio,
-            ventas - anuladas.Count, anuladas.Count, Suma(TipoMovimientoCaja.Entrada), Suma(TipoMovimientoCaja.Retiro), Suma(TipoMovimientoCaja.Gasto),
+            ventas - anuladas.Count, anuladas.Count, Suma(TipoMovimientoCaja.AbonoCliente), Suma(TipoMovimientoCaja.Entrada), Suma(TipoMovimientoCaja.Retiro), Suma(TipoMovimientoCaja.Gasto),
             t.EfectivoEsperado ?? CuadreTurno.EfectivoEsperado(t.FondoInicial, movimientos), t.EfectivoContado, t.Diferencia, conteo, t.SupervisorCierreId);
     }
 }

@@ -93,6 +93,14 @@ internal sealed class CajaOperaciones(CajaDbContext db, IUserContext usuario, IO
         return Result.Success();
     }
 
+    public async Task<Result> RegistrarAbonoClienteAsync(Guid turnoId, Guid abonoId, MedioPago medio, decimal monto, CancellationToken ct)
+    {
+        var turno = await ObtenerTurnoAbiertoAsync(turnoId, ct);
+        if (turno.IsFailure) return turno.Error!;
+        Agregar(turnoId, TipoMovimientoCaja.AbonoCliente, medio, monto, abonoId, null);
+        return Result.Success();
+    }
+
     public async Task<Result> AnularCobrosAsync(Guid ventaId, CancellationToken ct)
     {
         var cobros = await db.Movimientos.Where(m => m.ReferenciaId == ventaId && m.Tipo == TipoMovimientoCaja.Cobro).AsNoTracking().ToListAsync(ct);

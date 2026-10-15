@@ -10,6 +10,8 @@
   <Folder Name="/src/Modules/">
     <Project Path="src/Modules/Caja/Toki.Caja.Contracts/Toki.Caja.Contracts.csproj" />
     <Project Path="src/Modules/Caja/Toki.Caja/Toki.Caja.csproj" />
+    <Project Path="src/Modules/Clientes/Toki.Clientes.Contracts/Toki.Clientes.Contracts.csproj" />
+    <Project Path="src/Modules/Clientes/Toki.Clientes/Toki.Clientes.csproj" />
     <Project Path="src/Modules/Compras/Toki.Compras.Contracts/Toki.Compras.Contracts.csproj" />
     <Project Path="src/Modules/Compras/Toki.Compras/Toki.Compras.csproj" />
     <Project Path="src/Modules/Configuracion/Toki.Configuracion.Contracts/Toki.Configuracion.Contracts.csproj" />

@@ -6,6 +6,7 @@
     <ProjectReference Include="..\..\Inventario\Toki.Inventario.Contracts\Toki.Inventario.Contracts.csproj" />
     <ProjectReference Include="..\..\Caja\Toki.Caja.Contracts\Toki.Caja.Contracts.csproj" />
     <ProjectReference Include="..\..\Fiscal\Toki.Fiscal.Contracts\Toki.Fiscal.Contracts.csproj" />
+    <ProjectReference Include="..\..\Clientes\Toki.Clientes.Contracts\Toki.Clientes.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.UnitTests" />

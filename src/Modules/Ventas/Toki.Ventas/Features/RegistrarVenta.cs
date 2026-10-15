@@ -8,6 +8,7 @@ using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
 using Toki.Caja.Contracts;
+using Toki.Clientes.Contracts;
 using Toki.Configuracion.Contracts;
 using Toki.Fiscal.Contracts;
 using Toki.Inventario.Contracts;
@@ -54,17 +55,20 @@ internal static class RegistrarVenta
             RuleFor(c => c.Pagos).NotEmpty();
             RuleForEach(c => c.Pagos).ChildRules(p => { p.RuleFor(x => x.Medio).IsInEnum(); p.RuleFor(x => x.Referencia).MaximumLength(60); });
             RuleFor(c => c.TipoComprobante).Must(t => t is TipoEcf.Consumo32 or TipoEcf.CreditoFiscal31).WithMessage("Tipo de comprobante no válido para una venta.");
-            RuleFor(c => c.RncCliente).Must(r => Rnc.EsValido(Rnc.Normalizar(r))).When(c => c.TipoComprobante == TipoEcf.CreditoFiscal31)
+            RuleFor(c => c.RncCliente).Must(r => Rnc.EsValido(Rnc.Normalizar(r))).When(c => c.TipoComprobante == TipoEcf.CreditoFiscal31 && c.ClienteId is null)
                 .WithMessage("El crédito fiscal necesita el RNC o la cédula del cliente.");
-            RuleFor(c => c.NombreCliente).NotEmpty().MaximumLength(150).When(c => c.TipoComprobante == TipoEcf.CreditoFiscal31);
+            RuleFor(c => c.NombreCliente).NotEmpty().When(c => c.TipoComprobante == TipoEcf.CreditoFiscal31 && c.ClienteId is null);
+            RuleFor(c => c.NombreCliente).MaximumLength(150);
+            RuleFor(c => c.ClienteId).NotNull().When(c => c.Pagos.Any(p => p.Medio is MedioPago.Fiado or MedioPago.SaldoFavor))
+                .WithMessage("El fiado y el saldo a favor necesitan un cliente.");
             RuleFor(c => c.Nivel).IsInEnum();
         }
     }
 
     internal sealed class Handler(
         VentasDbContext db, ICajaOperaciones caja, ICatalogoConsultas catalogo, IMovimientosInventario inventario, IComprobantesFiscales fiscal,
-        IConfiguracionConsultas configuracion, IAutorizacionesSupervisor autorizaciones, IUserContext usuario, IOutbox outbox, IAuditoria auditoria,
-        TimeProvider reloj) : ICommandHandler<Command, Response>
+        IConfiguracionConsultas configuracion, ICuentasClientes clientes, IAutorizacionesSupervisor autorizaciones, IUserContext usuario, IOutbox outbox,
+        IAuditoria auditoria, TimeProvider reloj) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -79,7 +83,17 @@ internal static class RegistrarVenta
 
             var etiquetas = c.Lineas.Where(l => l.CodigoEtiqueta is not null).Select(l => l.CodigoEtiqueta).ToList();
             if (etiquetas.Count != etiquetas.Distinct().Count()) return VentasErrors.EtiquetaRepetida;
-            if (c.Pagos.Any(p => p.Medio is MedioPago.Fiado or MedioPago.SaldoFavor)) return VentasErrors.MedioNoDisponible;
+
+            ClienteParaVenta? cliente = null;
+            if (c.ClienteId is { } clienteId)
+            {
+                cliente = await clientes.ObtenerAsync(clienteId, ct);
+                if (cliente is not { Activo: true }) return Error.NotFound("Clientes.ClienteNoEncontrado", "El cliente no existe o está desactivado.");
+            }
+            var rnc = Rnc.Normalizar(c.RncCliente) ?? cliente?.RncCedula;
+            var nombreCliente = c.NombreCliente?.Trim() ?? cliente?.Nombre;
+            if (c.TipoComprobante == TipoEcf.CreditoFiscal31 && !Rnc.EsValido(rnc))
+                return Error.Validation("Ventas.RncRequerido", "El crédito fiscal necesita el RNC o la cédula del cliente.");
 
             var productos = (await catalogo.ObtenerParaVentaAsync(c.Lineas.Select(l => (l.ProductoId, l.PresentacionId)).ToList(), ct))
                 .ToDictionary(p => (p.ProductoId, p.PresentacionId));
@@ -97,7 +111,8 @@ internal static class RegistrarVenta
 
                 var costoVendido = p.CostoBase * p.Factor;
                 var bajoCosto = precio / (1 + Itbis.Porcentaje(p.TasaItbis)) < costoVendido;
-                if (precio != lista || c.Nivel == NivelPrecio.Mayorista || bajoCosto) permisos.Add(Permisos.VentasCambiarPrecio);
+                var mayoristaSinCliente = c.Nivel == NivelPrecio.Mayorista && cliente?.Nivel != NivelPrecioCliente.Mayorista;
+                if (precio != lista || mayoristaSinCliente || bajoCosto) permisos.Add(Permisos.VentasCambiarPrecio);
                 entradas.Add((l, p, precio, cantidad));
             }
 
@@ -109,16 +124,18 @@ internal static class RegistrarVenta
             if (t.Total != c.TotalEsperado) return VentasErrors.TotalCambio(t.Total);
             if (t.PorcentajeDescuento > negocio.TopeDescuentoPct) permisos.Add(Permisos.VentasDescuentoMayor);
 
+            var pagos = Pagos.Aplicar(t.Total, c.Pagos.Select(p => new PagoEntrada(p.Medio, p.Monto, p.Referencia?.Trim())).ToList());
+            if (pagos.IsFailure) return pagos.Error!;
+            var fiado = pagos.Value.Pagos.Where(p => p.Medio == MedioPago.Fiado).Sum(p => p.Monto);
+            var saldoFavor = pagos.Value.Pagos.Where(p => p.Medio == MedioPago.SaldoFavor).Sum(p => p.Monto);
+            if (fiado > 0 && cliente!.Deuda + fiado > cliente.LimiteCredito) permisos.Add(Permisos.FiadoExcederLimite);
+
             var autorizado = await AutorizarAsync(permisos, c, ct);
             if (autorizado.IsFailure) return autorizado.Error!;
 
-            var pagos = Pagos.Aplicar(t.Total, c.Pagos.Select(p => new PagoEntrada(p.Medio, p.Monto, p.Referencia?.Trim())).ToList());
-            if (pagos.IsFailure) return pagos.Error!;
-
             var lineasFiscales = entradas.Select((e, i) => new LineaFiscal(e.Producto.Nombre, e.Cantidad, e.Precio, t.Lineas[i].Descuento,
                 e.Producto.TasaItbis, t.Lineas[i].Itbis, t.Lineas[i].Total)).ToList();
-            var comprobante = await fiscal.EmitirAsync(new DocumentoAEmitir(c.TipoComprobante, c.VentaId, Rnc.Normalizar(c.RncCliente),
-                c.NombreCliente?.Trim(), lineasFiscales, t.Itbis, t.Total), ct);
+            var comprobante = await fiscal.EmitirAsync(new DocumentoAEmitir(c.TipoComprobante, c.VentaId, rnc, nombreCliente, lineasFiscales, t.Itbis, t.Total), ct);
             if (comprobante.IsFailure) return comprobante.Error!;
 
             var salida = await inventario.RegistrarSalidaAsync(TipoMovimiento.Venta, c.VentaId,
@@ -126,11 +143,16 @@ internal static class RegistrarVenta
             if (salida.IsFailure) return salida.Error!;
 
             await caja.RegistrarCobroAsync(c.TurnoId, c.VentaId, pagos.Value.Pagos.Select(p => new CobroMedio(p.Medio, p.Monto, p.Referencia)).ToList(), ct);
+            // Customer account last (after stock): the limit is re-checked under the customer's lock.
+            if (saldoFavor > 0 && await clientes.UsarSaldoFavorAsync(cliente!.Id, c.VentaId, saldoFavor, ct) is { IsFailure: true } sinSaldo) return sinSaldo.Error!;
+            if (fiado > 0 && await clientes.CargarFiadoAsync(cliente!.Id, c.VentaId, comprobante.Value.ENcf, fiado,
+                    permitirExceso: permisos.Contains(Permisos.FiadoExcederLimite), ct) is { IsFailure: true } limite)
+                return limite.Error!;
 
             var venta = new Venta
             {
                 Id = c.VentaId, TurnoId = c.TurnoId, CajaId = turno.Value.CajaId, Caja = turno.Value.Caja, CajeroId = usuario.UsuarioId, Cajero = usuario.Nombre,
-                ClienteId = c.ClienteId, ClienteNombre = c.NombreCliente?.Trim(), RncCliente = Rnc.Normalizar(c.RncCliente), TipoComprobante = c.TipoComprobante,
+                ClienteId = c.ClienteId, ClienteNombre = nombreCliente, RncCliente = rnc, TipoComprobante = c.TipoComprobante,
                 ENcf = comprobante.Value.ENcf, CodigoSeguridad = comprobante.Value.CodigoSeguridad, UrlQr = comprobante.Value.UrlQr, Nivel = c.Nivel,
                 Bruto = t.Bruto, Descuento = t.Descuento, Subtotal = t.Subtotal, Itbis = t.Itbis, Total = t.Total, Cambio = pagos.Value.Cambio,
                 Estado = EstadoVenta.Completada, FechaUtc = reloj.GetUtcNow().UtcDateTime, SupervisorId = usuario.SupervisorId,
