@@ -170,6 +170,33 @@ Decisión: ADR-0008. Despliegue: `docs/despliegue-azure.md`.
 | TK-135 | Relevo e-CF en la nube (simulado; DGII en espera) | ✅ `POST /relay/v1/ecf` guarda el XML firmado y responde `Simulated`; un e-NCF repetido devuelve la misma respuesta. El proveedor real es TK-055 |
 | TK-136 | Bicep de Azure | 🟡 `deploy/azure/main.bicep` escrito; falta validarlo con `az bicep build` y desplegarlo |
 
+## M13 · e-CF propio con la DGII
+
+Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket en su §12). Sin proveedor de terceros: la PC principal firma y envía directo a la DGII; la nube publica los servicios de receptor.
+
+| Ticket | Qué | Estado |
+|---|---|---|
+| TK-140 | Investigación y diseño del camino propio (servicios, formatos, firma, certificación, arquitectura, riesgos) | ✅ `docs/ecf-propio.md` |
+| TK-141 | Acceso a TesteCF, certificado de prueba y ADR-0009 | ⬜ |
+| TK-142 | Firma XMLDSig con el certificado del almacén de Windows (`CertStoreEcfSigner`) e importación del `.p12` | ⬜ |
+| TK-143 | XML de e-CF 31/32/33/34 según el formato oficial, validado contra el XSD | ⬜ |
+| TK-144 | Cliente DGII en el nodo (semilla → token, recepción, RFCE, resultados, TrackIds, anulación, directorio) | ⬜ |
+| TK-145 | Resumen de factura de consumo (RFCE) y umbral de RD$250,000 | ⬜ |
+| TK-146 | Cola de envío directo a la DGII (TrackId → resultado) y relevo convertido en archivo | ⬜ |
+| TK-147 | Rechazos de la DGII: e-CF de reemplazo, no nota de crédito | ⬜ |
+| TK-148 | Representación impresa y QR por tipo y ambiente, leyenda de contingencia, PDF para certificación | ⬜ |
+| TK-149 | Secuencias por ambiente y vencimiento opcional (32/34) | ⬜ |
+| TK-150 | Anulación de e-NCF (ANECF) | ⬜ |
+| TK-151 | Copia del certificado en Key Vault con consentimiento y firmador de nube restringido | ⬜ |
+| TK-152 | Servicios de receptor en la nube: Recepción (acuse firmado) y Aprobación Comercial | ⬜ |
+| TK-153 | Entrega de la 31 al comprador electrónico | ⬜ |
+| TK-154 | Comprobantes recibidos de suplidores en la tienda (y aprobación comercial opcional) | ⬜ |
+| TK-155 | Asistente de certificación (set de pruebas, simulación, firmar XML de la DGII) | ⬜ |
+| TK-156 | Operación: salud, estatus de la DGII y guía de contingencia | ⬜ |
+| TK-157 | Contingencia por imposibilidad de emitir (serie B y regularización) | ⬜ |
+| TK-158 | Pruebas de contrato y de punta a punta contra TesteCF | ⬜ |
+| TK-159 | (Después de V1) Receptor sin custodia por túnel y E41 de compras | ⬜ |
+
 ## Revisiones
 
 | Revisión | Hito | Estado |
