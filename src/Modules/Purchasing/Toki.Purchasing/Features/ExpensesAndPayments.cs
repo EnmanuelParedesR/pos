@@ -81,10 +81,10 @@ internal static class RecordExpense
         {
             app.MapPost("/api/purchasing/expenses", async (Command c, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(c, ct)).ToHttp(r => Results.Created($"/api/purchasing/expenses/{r.Id}", r)))
-                .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
+                .RequirePermission(Permissions.PayablesPay).WithTags("Purchasing");
             app.MapGet("/api/purchasing/expenses", async (DateOnly from, DateOnly to, PurchasingDbContext db, CancellationToken ct) =>
                     Results.Ok(await db.Expenses.Where(e => e.Date >= from && e.Date <= to).OrderBy(e => e.Date).AsNoTracking().ToListAsync(ct)))
-                .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
+                .RequirePermission(Permissions.PayablesPay).WithTags("Purchasing");
         }
     }
 }
@@ -126,7 +126,7 @@ internal static class VoidExpense
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/purchasing/expenses/{id:guid}/void", async (Guid id, Body b, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.Reason), ct)).ToHttp(_ => Results.NoContent()))
-                .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
+                .RequirePermission(Permissions.PayablesPay).WithTags("Purchasing");
     }
 }
 
@@ -139,7 +139,7 @@ internal static class PaySupplier
         IReadOnlyList<Guid>? PayableIds = null, Guid? SupplierPaymentId = null, Guid? ShiftId = null, Guid? SupervisorApprovalId = null)
         : ICommand<Response>, IRequiresApproval
     {
-        public string Permission => ShiftId is null ? Permissions.PurchasingManage : Permissions.RegisterWithdraw;
+        public string Permission => ShiftId is null ? Permissions.PayablesPay : Permissions.RegisterWithdraw;
         public Guid ResourceId => ShiftId ?? SupplierId;
     }
 
@@ -206,7 +206,7 @@ internal static class PaySupplier
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/purchasing/payments", async (Command c, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(c, ct)).ToHttp())
-                .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
+                .RequirePermission(Permissions.PayablesPay).WithTags("Purchasing");
     }
 }
 
@@ -246,7 +246,7 @@ internal static class VoidSupplierPayment
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/purchasing/payments/{id:guid}/void", async (Guid id, Body b, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.Reason), ct)).ToHttp(_ => Results.NoContent()))
-                .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
+                .RequirePermission(Permissions.PayablesPay).WithTags("Purchasing");
     }
 }
 

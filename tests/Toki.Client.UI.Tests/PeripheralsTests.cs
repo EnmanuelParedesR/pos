@@ -17,7 +17,7 @@ public sealed class PeripheralsTests
 
     private static (BunitContext Ctx, FakeApi Api, TestDrivers Hw) Create(HardwareSettings settings, params string[] permissions)
     {
-        var (ctx, api) = ScreenContext.Create(permissions.Length == 0 ? ["sales.create", "register.operate"] : permissions);
+        var (ctx, api) = ScreenContext.Create(permissions.Length == 0 ? ["sales.create", "register.open", "register.close", "register.cash-in", "credit.collect"] : permissions);
         ctx.Services.GetRequiredService<Peripherals>().SaveAsync(settings).GetAwaiter().GetResult();
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Json("GET", "/api/inventory/products/by-code/2001", Chuleta)
@@ -171,7 +171,7 @@ public sealed class PeripheralsTests
     [Fact]
     public void Opening_the_drawer_without_a_sale_needs_the_permission_or_a_supervisor()
     {
-        var (ctx, _, hw) = Create(new(Printer: new("EPSON TM-T20")), "register.operate");
+        var (ctx, _, hw) = Create(new(Printer: new("EPSON TM-T20")), "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var menu = ctx.Render<RegisterMenu>();
         menu.FindAll("button").Single(b => b.TextContent.Contains("Abrir la gaveta", StringComparison.Ordinal)).Click();
@@ -183,7 +183,7 @@ public sealed class PeripheralsTests
         menu.WaitForAssertion(() => menu.FindAll("button").Single(b => b.TextContent.Contains("Abrir la gaveta", StringComparison.Ordinal)).HasAttribute("disabled").ShouldBeFalse());
         hw.Printer.DrawerOpenings.ShouldBe(0);
 
-        var (ctx2, _, hw2) = Create(new(Printer: new("EPSON TM-T20")), "register.operate", "register.open-drawer");
+        var (ctx2, _, hw2) = Create(new(Printer: new("EPSON TM-T20")), "register.open", "register.close", "register.cash-in", "credit.collect", "register.open-drawer");
         using var __ = ctx2;
         var allowed = ctx2.Render<RegisterMenu>();
         allowed.FindAll("button").Single(b => b.TextContent.Contains("Abrir la gaveta", StringComparison.Ordinal)).Click();

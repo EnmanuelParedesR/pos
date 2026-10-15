@@ -11,14 +11,21 @@ internal sealed class Role
     public static readonly Guid AdministratorId = new("0199e000-0000-7000-8000-000000000001");
     public static readonly Guid SupervisorId = new("0199e000-0000-7000-8000-000000000002");
     public static readonly Guid CashierId = new("0199e000-0000-7000-8000-000000000003");
+    public static readonly Guid CashierWithOpeningId = new("0199e000-0000-7000-8000-000000000004");
+    public static readonly Guid StockKeeperId = new("0199e000-0000-7000-8000-000000000005");
+    public static readonly Guid AccountantId = new("0199e000-0000-7000-8000-000000000006");
 
     public Guid Id { get; set; }
     public string Name { get; set; } = "";
     public List<string> Permissions { get; set; } = [];
 
-    /// <remarks>Supervisor and Cajero are written out on purpose, not derived from <see cref="P.All"/>: the owner edits them, and a new
+    /// <summary>What the user with this role may do: Administrador always everything, including permissions added after the database was created.</summary>
+    public IReadOnlyList<string> Effective => Id == AdministratorId ? P.All : Permissions;
+
+    /// <remarks>The roles other than Administrador are written out on purpose, not derived from <see cref="P.All"/>: the owner edits them, and a new
     /// permission must not become a migration that rewrites their roles in every store (R6 #9). Administrador always gets every permission anyway.
-    /// costs.view (TK-201) is the owner's: Supervisor does not get it by default (the owner grants it in Roles if the manager should see margins).</remarks>
+    /// costs.view (TK-201) is the owner's: Supervisor does not get it by default (the owner grants it in Roles if the manager should see margins).
+    /// TK-216: Cajero no longer opens the register (Cajero con apertura does); Inventario and Contador are starting points the owner copies or edits.</remarks>
     public static IEnumerable<Role> Defaults()
     {
         yield return new Role { Id = AdministratorId, Name = "Administrador", Permissions = [.. P.All] };
@@ -26,15 +33,27 @@ internal sealed class Role
         {
             Id = SupervisorId, Name = "Supervisor",
             Permissions = [P.ProductsManage, P.PricesChange, P.InventoryView, P.InventoryAdjust, P.InventoryCount, P.InventoryTransfer,
-                P.RegisterOperate, P.RegisterWithdraw, P.RegisterApproveClose, P.RegisterOpenDrawer,
+                P.RegisterOpen, P.RegisterClose, P.RegisterCashIn, P.RegisterWithdraw, P.RegisterApproveClose, P.RegisterOpenDrawer,
                 P.SalesCreate, P.SalesVoid, P.SalesReturn, P.SalesLargeDiscount, P.SalesPriceOverride, P.SalesRemoveLine,
-                P.PurchasingManage, P.CustomersManage, P.CreditManage, P.CreditExceedLimit, P.ReportsView],
+                P.PurchasingManage, P.PayablesPay, P.CustomersManage, P.CreditCollect, P.CreditManage, P.CreditExceedLimit,
+                P.ReportsView, P.ShiftsView, P.FiscalReports],
         };
         yield return new Role
         {
             Id = CashierId, Name = "Cajero",
-            Permissions = [P.SalesCreate, P.RegisterOperate, P.InventoryView, P.CustomersManage],
+            Permissions = [P.SalesCreate, P.RegisterClose, P.RegisterCashIn, P.CreditCollect, P.InventoryView, P.CustomersManage],
         };
+        yield return new Role
+        {
+            Id = CashierWithOpeningId, Name = "Cajero con apertura",
+            Permissions = [P.SalesCreate, P.RegisterOpen, P.RegisterClose, P.RegisterCashIn, P.CreditCollect, P.InventoryView, P.CustomersManage],
+        };
+        yield return new Role
+        {
+            Id = StockKeeperId, Name = "Inventario",
+            Permissions = [P.ProductsManage, P.InventoryView, P.InventoryAdjust, P.InventoryCount, P.InventoryTransfer, P.PurchasingManage],
+        };
+        yield return new Role { Id = AccountantId, Name = "Contador", Permissions = [P.ReportsView, P.FiscalReports, P.CostsView, P.ShiftsView] };
     }
 }
 
@@ -164,4 +183,9 @@ internal static class IdentityErrors
     public static readonly Error InvalidApproval = Error.Forbidden("Identity.InvalidApproval", "La autorización del supervisor no es válida, ya se usó o venció.");
     public static readonly Error UnknownPermission = Error.Validation("Identity.UnknownPermission", "Uno de los permisos no existe.");
     public static readonly Error AdministratorOnly = Error.Forbidden("Identity.AdministratorOnly", "Solo un administrador puede dar o quitar el rol Administrador.");
+    public static readonly Error RoleInUse = Error.Conflict("Identity.RoleInUse", "Ese rol tiene usuarios. Cámbieles el rol antes de borrarlo.");
+
+    /// <summary>TK-215: nobody gives a permission they do not have (a role with it, or a user with that role).</summary>
+    public static Error PermissionsNotHeld(IEnumerable<string> missing) =>
+        Error.Forbidden("Identity.PermissionsNotHeld", $"No puede dar permisos que usted no tiene: {string.Join(", ", missing)}.");
 }

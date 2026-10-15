@@ -107,19 +107,37 @@ namespace Toki.Identity.Persistence.Migrations
                         {
                             Id = new Guid("0199e000-0000-7000-8000-000000000001"),
                             Name = "Administrador",
-                            Permissions = "users.manage,devices.manage,settings.manage,products.manage,prices.change,inventory.view,inventory.adjust,inventory.count,inventory.transfer,register.operate,register.withdraw,register.approve-close,register.open-drawer,sales.create,sales.void,sales.return,sales.large-discount,sales.price-override,sales.remove-line,purchasing.manage,customers.manage,credit.manage,credit.exceed-limit,fiscal.manage,reports.view,costs.view"
+                            Permissions = "users.manage,devices.manage,settings.manage,registers.manage,backups.manage,audit.view,products.manage,prices.change,inventory.view,inventory.adjust,inventory.count,inventory.transfer,register.open,register.close,register.cash-in,register.withdraw,register.approve-close,register.open-drawer,sales.create,sales.void,sales.return,sales.large-discount,sales.price-override,sales.remove-line,purchasing.manage,payables.pay,customers.manage,credit.collect,credit.manage,credit.exceed-limit,fiscal.manage,fiscal.reports,reports.view,shifts.view,costs.view"
                         },
                         new
                         {
                             Id = new Guid("0199e000-0000-7000-8000-000000000002"),
                             Name = "Supervisor",
-                            Permissions = "products.manage,prices.change,inventory.view,inventory.adjust,inventory.count,inventory.transfer,register.operate,register.withdraw,register.approve-close,register.open-drawer,sales.create,sales.void,sales.return,sales.large-discount,sales.price-override,sales.remove-line,purchasing.manage,customers.manage,credit.manage,credit.exceed-limit,reports.view"
+                            Permissions = "products.manage,prices.change,inventory.view,inventory.adjust,inventory.count,inventory.transfer,register.open,register.close,register.cash-in,register.withdraw,register.approve-close,register.open-drawer,sales.create,sales.void,sales.return,sales.large-discount,sales.price-override,sales.remove-line,purchasing.manage,payables.pay,customers.manage,credit.collect,credit.manage,credit.exceed-limit,reports.view,shifts.view,fiscal.reports"
                         },
                         new
                         {
                             Id = new Guid("0199e000-0000-7000-8000-000000000003"),
                             Name = "Cajero",
-                            Permissions = "sales.create,register.operate,inventory.view,customers.manage"
+                            Permissions = "sales.create,register.close,register.cash-in,credit.collect,inventory.view,customers.manage"
+                        },
+                        new
+                        {
+                            Id = new Guid("0199e000-0000-7000-8000-000000000004"),
+                            Name = "Cajero con apertura",
+                            Permissions = "sales.create,register.open,register.close,register.cash-in,credit.collect,inventory.view,customers.manage"
+                        },
+                        new
+                        {
+                            Id = new Guid("0199e000-0000-7000-8000-000000000005"),
+                            Name = "Inventario",
+                            Permissions = "products.manage,inventory.view,inventory.adjust,inventory.count,inventory.transfer,purchasing.manage"
+                        },
+                        new
+                        {
+                            Id = new Guid("0199e000-0000-7000-8000-000000000006"),
+                            Name = "Contador",
+                            Permissions = "reports.view,fiscal.reports,costs.view,shifts.view"
                         });
                 });
 

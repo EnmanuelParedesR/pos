@@ -25,10 +25,12 @@
         .. s.Can("inventory.transfer") ? [("admin/inventory/transfers", "Transferencias")] : Array.Empty<(string, string)>(),
     ];
 
-    /// <summary>"Por pagar" comes from the reports, so it needs reports.view too.</summary>
+    /// <summary>Gastos takes payables.pay (TK-214); "Por pagar" comes from the reports, so it needs reports.view too.</summary>
     public static IReadOnlyList<(string, string)> Purchasing(Session s) =>
     [
-        ("admin/purchasing", "Compras"), ("admin/purchasing/suggested", "Pedido sugerido"), ("admin/purchasing/expenses", "Gastos"), ("admin/purchasing/suppliers", "Suplidores"),
-        .. s.Can("reports.view") ? [("admin/purchasing/payables", "Por pagar")] : Array.Empty<(string, string)>(),
+        .. s.Can("purchasing.manage") ? [("admin/purchasing", "Compras"), ("admin/purchasing/suggested", "Pedido sugerido")] : Array.Empty<(string, string)>(),
+        .. s.Can("payables.pay") ? [("admin/purchasing/expenses", "Gastos")] : Array.Empty<(string, string)>(),
+        .. s.Can("purchasing.manage") ? [("admin/purchasing/suppliers", "Suplidores")] : Array.Empty<(string, string)>(),
+        .. s.Can("reports.view") && (s.Can("purchasing.manage") || s.Can("payables.pay")) ? [("admin/purchasing/payables", "Por pagar")] : Array.Empty<(string, string)>(),
     ];
 }

@@ -45,7 +45,7 @@ public sealed class AdminInvoicesReportsTests
     [Fact]
     public void A_report_downloads_as_a_file_for_the_chosen_period()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view");
+        var (ctx, api) = ScreenContext.Create("fiscal.reports");
         using var _ = ctx;
         api.Respond("GET", "/api/reports/dgii/607", _ =>
         {

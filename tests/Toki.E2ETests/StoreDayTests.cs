@@ -12,7 +12,7 @@ namespace Toki.E2ETests;
 public sealed class StoreDayTests
 {
     private const string AdminPin = "1234", SupervisorPin = "2468", CashierPin = "4321";
-    private static readonly Guid SupervisorRole = new("0199e000-0000-7000-8000-000000000002"), CashierRole = new("0199e000-0000-7000-8000-000000000003");
+    private static readonly Guid SupervisorRole = new("0199e000-0000-7000-8000-000000000002"), CashierRole = new("0199e000-0000-7000-8000-000000000004"); // Cajero con apertura
     private static readonly decimal[] Denominations = [2000, 1000, 500, 200, 100, 50, 25, 10, 5, 1];
 
     /// <summary>A register: its device, cashier session, shift, and the cash the test expects in its drawer (an independent model of the server's).</summary>

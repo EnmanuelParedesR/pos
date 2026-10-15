@@ -197,7 +197,7 @@
                             <Button OnClick="() => Edit(row)">Editar datos</Button>
                         }
                         <Button Disabled="_sending" OnClick="() => DownloadStatementAsync(s, row?.TaxId)"><Icon Name="arrow-down" Size="16" /> Estado de cuenta para PDF</Button>
-                        @if (s.Debt > 0 && Session.Can("register.operate"))
+                        @if (s.Debt > 0 && Session.Can("credit.collect"))
                         {
                             <Button Variant="Button.Variants.Primary" OnClick="StartPaymentAsync"><Icon Name="cash" /> Registrar abono</Button>
                         }

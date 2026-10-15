@@ -46,7 +46,7 @@
                                 <td class="esc-num esc-hide-sm">@Cell(p.Overdue61To90)</td>
                                 <td class="esc-num esc-hide-sm" style="color:@(p.OverdueOver90 > 0 ? "var(--error)" : "inherit")">@Cell(p.OverdueOver90)</td>
                                 <td class="esc-num" style="font-weight:700">@Format.Amount(p.Total)</td>
-                                <td class="esc-table__chev"><button type="button" class="esc-button esc-button--small" @onclick="() => Open(p.SupplierId, true)" @onclick:stopPropagation="true">Pagar</button></td>
+                                <td class="esc-table__chev">@if (Session.Can("payables.pay")) { <button type="button" class="esc-button esc-button--small" @onclick="() => Open(p.SupplierId, true)" @onclick:stopPropagation="true">Pagar</button> }</td>
                             </tr>
                         }
                     }

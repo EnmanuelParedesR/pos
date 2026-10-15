@@ -182,7 +182,7 @@ internal static class RecordCustomerPayment
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/customers/{id:guid}/payments", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.CustomerPaymentId, b.ShiftId, b.Amount, b.Method, b.Reference), ct)).ToHttp())
-                .RequirePermission(Permissions.RegisterOperate).WithTags("Customers");
+                .RequirePermission(Permissions.CreditCollect).WithTags("Customers");
     }
 }
 
@@ -231,7 +231,7 @@ internal static class VoidCustomerPayment
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/customers/payments/{id:guid}/void", async (Guid id, Body b, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.Reason, b.SupervisorApprovalId), ct)).ToHttp(_ => Results.NoContent()))
-                .RequirePermission(Permissions.RegisterOperate).WithTags("Customers");
+                .RequirePermission(Permissions.CreditCollect).WithTags("Customers");
     }
 }
 

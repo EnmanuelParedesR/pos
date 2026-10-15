@@ -61,6 +61,10 @@
             @if (_error is not null) { <Notice Title="@_error" /> }
         </ChildContent>
         <Footer>
+            @if (f.Id is not null)
+            {
+                <Button Variant="Button.Variants.Ghost" Disabled="_sending" OnClick="DeleteAsync">Borrar rol</Button>
+            }
             <Button OnClick="() => _form = null" Shortcut="Esc">Cancelar</Button>
             <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SaveAsync">@(_sending ? "Guardando…" : "Guardar rol")</Button>
         </Footer>
@@ -75,20 +79,32 @@
 
     private static readonly (string, string[])[] Groups =
     [
-        ("Caja y ventas", ["register.operate", "sales.create", "register.withdraw", "register.open-drawer", "register.approve-close", "sales.void", "sales.return", "sales.large-discount", "sales.price-override", "sales.remove-line"]),
-        ("Clientes y fiado", ["customers.manage", "credit.manage", "credit.exceed-limit"]),
-        ("Productos e inventario", ["products.manage", "prices.change", "inventory.view", "inventory.adjust", "inventory.count", "inventory.transfer", "purchasing.manage"]),
-        ("Administración", ["reports.view", "costs.view", "fiscal.manage", "settings.manage", "users.manage", "devices.manage"]),
+        ("Caja", ["register.open", "register.close", "register.cash-in", "register.withdraw", "register.open-drawer", "register.approve-close"]),
+        ("Ventas", ["sales.create", "sales.void", "sales.return", "sales.large-discount", "sales.price-override", "sales.remove-line"]),
+        ("Clientes y fiado", ["customers.manage", "credit.collect", "credit.manage", "credit.exceed-limit"]),
+        ("Productos e inventario", ["products.manage", "prices.change", "inventory.view", "inventory.adjust", "inventory.count", "inventory.transfer"]),
+        ("Compras", ["purchasing.manage", "payables.pay"]),
+        ("Reportes", ["reports.view", "shifts.view", "costs.view", "fiscal.reports"]),
+        ("Administración", ["settings.manage", "registers.manage", "backups.manage", "audit.view", "fiscal.manage", "users.manage", "devices.manage"]),
     ];
 
     /// <summary>Each permission as the owner reads it. A new one the screen does not know yet shows its code under "Otros".</summary>
     public static string Label(string permission) => permission switch
     {
-        "register.operate" => "Abrir y operar una caja (cobrar abonos, entradas de efectivo)",
+        "register.open" => "Abrir turno con el fondo",
+        "register.close" => "Cerrar su propio turno (conteo ciego)",
+        "register.cash-in" => "Entradas de efectivo",
         "sales.create" => "Vender",
-        "register.withdraw" => "Sacar efectivo de la caja",
+        "register.withdraw" => "Retiros y gastos de caja",
         "register.open-drawer" => "Abrir la gaveta sin vender",
-        "register.approve-close" => "Autorizar cierres y usar cajas de otros",
+        "register.approve-close" => "Autorizar cierres con diferencia y cerrar turnos de otras cajas",
+        "credit.collect" => "Cobrar abonos de fiado en la caja",
+        "payables.pay" => "Pagar a suplidores y registrar gastos con NCF",
+        "shifts.view" => "Ver Turnos y cuadres de todas las cajas",
+        "fiscal.reports" => "Ver los reportes de la DGII (606, 607, 608)",
+        "registers.manage" => "Crear y renombrar cajas y asignarles equipo",
+        "backups.manage" => "Hacer y restaurar respaldos",
+        "audit.view" => "Ver la auditoría",
         "sales.void" => "Anular ventas",
         "sales.return" => "Hacer devoluciones",
         "sales.large-discount" => "Dar descuentos mayores que el tope",
@@ -103,11 +119,11 @@
         "inventory.adjust" => "Ajustar existencias",
         "inventory.count" => "Hacer conteos físicos",
         "inventory.transfer" => "Hacer transferencias entre almacenes",
-        "purchasing.manage" => "Compras, suplidores y gastos",
-        "reports.view" => "Ver la administración y los reportes",
+        "purchasing.manage" => "Suplidores, compras, pedido sugerido y recibir mercancía",
+        "reports.view" => "Ver los reportes de ventas e inventario",
         "costs.view" => "Ver costos y ganancias",
-        "fiscal.manage" => "Cargar secuencias de comprobantes",
-        "settings.manage" => "Cambiar la configuración del negocio y las cajas",
+        "fiscal.manage" => "Certificado, secuencias, anulaciones y padrón",
+        "settings.manage" => "Datos del negocio, recibo, autorizaciones, nube y licencia",
         "users.manage" => "Crear usuarios y editar roles",
         "devices.manage" => "Unir y revocar equipos",
         _ => permission,
@@ -156,5 +172,18 @@
         _form = null;
         await LoadAsync();
         (_messageKind, _message) = (Notice.Kinds.Success, $"Rol {body.Name} guardado. Aplica de inmediato; los menús de cada usuario cambian cuando vuelva a entrar.");
+    }
+
+    /// <summary>The server refuses a role someone has (TK-215); its message says so.</summary>
+    private async Task DeleteAsync()
+    {
+        if (_form is not { Id: { } id } f || _sending) return;
+        _sending = true;
+        var p = (await Api.DeleteAsync<Empty>($"/api/identity/roles/{id}")).Problem;
+        _sending = false;
+        if (p is not null) { _error = p.Message; return; }
+        _form = null;
+        await LoadAsync();
+        (_messageKind, _message) = (Notice.Kinds.Success, $"Rol {f.Name} borrado.");
     }
 }

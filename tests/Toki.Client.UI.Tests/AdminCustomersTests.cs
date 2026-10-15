@@ -37,7 +37,7 @@ public sealed class AdminCustomersTests
     [Fact]
     public void The_list_shows_what_each_customer_owes_and_the_statement_its_running_balance()
     {
-        var (ctx, api) = ScreenContext.Create("customers.manage", "credit.manage", "reports.view", "register.operate");
+        var (ctx, api) = ScreenContext.Create("customers.manage", "credit.manage", "reports.view", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         Customers(api);
         var page = ctx.Render<Customers>();
@@ -56,7 +56,7 @@ public sealed class AdminCustomersTests
     [Fact]
     public void A_payment_goes_to_the_open_register_with_one_id_even_when_retried()
     {
-        var (ctx, api) = ScreenContext.Create("customers.manage", "credit.manage", "reports.view", "register.operate");
+        var (ctx, api) = ScreenContext.Create("customers.manage", "credit.manage", "reports.view", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         Customers(api).Respond("POST", $"/api/customers/{Ana}/payments", _ => throw new TaskCanceledException());
         var page = ctx.Render<Customers>();
@@ -86,7 +86,7 @@ public sealed class AdminCustomersTests
     [Fact]
     public void Voiding_a_payment_asks_a_supervisor_when_the_user_cannot()
     {
-        var (ctx, api) = ScreenContext.Create("customers.manage", "reports.view", "register.operate");
+        var (ctx, api) = ScreenContext.Create("customers.manage", "reports.view", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var approval = Guid.NewGuid();
         Customers(api).Respond("POST", $"/api/customers/payments/{PaymentId}/void", body => body.Contains(approval.ToString())
@@ -165,7 +165,7 @@ public sealed class AdminCustomersTests
     [Fact]
     public void A_register_is_renamed_from_Cajas()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage");
+        var (ctx, api) = ScreenContext.Create("registers.manage");
         using var _ = ctx;
         var register = Guid.NewGuid();
         api.Json("GET", "/api/settings/business", new { name = "Mi tienda", discountCapPercent = 10m })

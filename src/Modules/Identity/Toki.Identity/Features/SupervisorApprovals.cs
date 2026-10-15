@@ -48,7 +48,7 @@ internal static class GrantSupervisorApproval
                 return new Response(null, null, null, pin == PinResult.Locked ? IdentityErrors.UserLocked : IdentityErrors.InvalidCredentials);
             }
 
-            var permissions = await db.Roles.Where(r => r.Id == supervisor.RoleId).Select(r => r.Permissions).SingleAsync(ct);
+            var permissions = (await db.Roles.AsNoTracking().SingleAsync(r => r.Id == supervisor.RoleId, ct)).Effective;
             if (!permissions.Contains(c.Permission)) return new Response(null, null, null, IdentityErrors.SupervisorLacksPermission);
 
             var approval = new SupervisorApproval

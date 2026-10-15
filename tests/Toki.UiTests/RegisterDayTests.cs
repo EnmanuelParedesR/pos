@@ -14,7 +14,7 @@ public sealed class RegisterDayTests(RegisterApp app) : IClassFixture<RegisterAp
 {
     private const string AdminPin = "1234", CashierPin = "4321";
     private const string Soda = "7461234567890", SodaPack = "7461234567906";
-    private static readonly Guid CashierRole = new("0199e000-0000-7000-8000-000000000003");
+    private static readonly Guid CashierRole = new("0199e000-0000-7000-8000-000000000004"); // Cajero con apertura
 
     private IPage Page => app.Page;
     private IKeyboard Keys => app.Page.Keyboard;

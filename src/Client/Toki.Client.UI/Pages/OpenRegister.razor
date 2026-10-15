@@ -1,6 +1,7 @@
 @page "/open-register"
 @inject TokiApi Api
 @inject Session Session
+@inject Approver Approver
 @inject NavigationManager Nav
 
 <div class="esc-page" data-keys @onkeydown="KeyAsync">
@@ -100,7 +101,10 @@
     {
         if (_register is null || _sending) return;
         _sending = true;
-        var r = await Api.PostAsync<ShiftOpened>("/api/cash/shifts", new { RegisterId = _register, OpeningFloat });
+        // Without register.open a supervisor who has it authorizes the opening (TK-212); the shift is still this cashier's.
+        var register = _register.Value;
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<ShiftOpened>("/api/cash/shifts", new { RegisterId = register, OpeningFloat, SupervisorApprovalId = id }),
+            register, $"Abrir turno con {Format.WithCurrency(OpeningFloat)}");
         // A retry after a timeout finds the shift the first try opened on this same register: that is a success.
         var current = r.Ok || r.Problem!.Code is "CashRegister.RegisterInUse" or "CashRegister.CashierHasShift"
             ? (await Api.GetAsync<CurrentShift>("/api/cash/shifts/current")).Value : null;

@@ -23,7 +23,7 @@ public sealed class ApprovalPolicyTests
 
     private static (BunitContext, FakeApi, Cart) WithOneLine(bool required)
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.operate");
+        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Json("GET", "/api/settings/approvals", new[] { new ApprovalRule("sales.remove-line", required), new ApprovalRule("sales.void", true) });
         var cart = ctx.Services.GetRequiredService<Cart>();
@@ -77,7 +77,7 @@ public sealed class ApprovalPolicyTests
            .Respond("PUT", "/api/settings/approvals", _ => new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NoContent));
         var page = ctx.Render<Settings>();
 
-        page.WaitForAssertion(() => page.FindAll("[role=tab]").Single(t => t.TextContent == "Cajas").Click());
+        page.WaitForAssertion(() => page.FindAll("[role=tab]").Single(t => t.TextContent == "Negocio").Click());
         page.WaitForAssertion(() => page.FindAll("input[role=switch]").Count.ShouldBe(2));
         page.Markup.ShouldContain("Quitar líneas o anular la venta en curso");
         page.FindAll("input[role=switch]")[0].Change(true);

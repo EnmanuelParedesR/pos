@@ -38,6 +38,9 @@ internal sealed class ReportsEndpoints : IEndpoint
     public void Map(IEndpointRouteBuilder app)
     {
         var g = app.MapGroup("/api/reports").RequirePermission(Permissions.ReportsView).WithTags("Reports");
+        // TK-213: Turnos y cuadres and the DGII formats have their own permissions (the accountant sees the 606/607 without the cashiers' Z).
+        var shifts = app.MapGroup("/api/reports").RequirePermission(Permissions.ShiftsView).WithTags("Reports");
+        var dgii = app.MapGroup("/api/reports").RequirePermission(Permissions.FiscalReports).WithTags("Reports");
 
         // TK-201: cost, profit and stock value only with costs.view; without it those columns come empty (null in JSON).
         static bool Costs(IUserContext user) => user.Has(Permissions.CostsView);
@@ -69,7 +72,7 @@ internal sealed class ReportsEndpoints : IEndpoint
         g.MapGet("/sales/by-cashier", async ([AsParameters] Period p, ISalesReports sales, CancellationToken ct) =>
             p.Invalid() ?? Export.As(await sales.ByCashierAsync(p.From, p.To, ct), p.Format, p.Name("ventas-por-cajero")));
 
-        g.MapGet("/shifts", async ([AsParameters] Period p, ICashRegisterReports cashRegister, CancellationToken ct) =>
+        shifts.MapGet("/shifts", async ([AsParameters] Period p, ICashRegisterReports cashRegister, CancellationToken ct) =>
             p.Invalid() ?? Export.As(await cashRegister.ShiftsAsync(p.From, p.To, ct), p.Format, p.Name("turnos")));
 
         g.MapGet("/inventory/value", async (string? format, IInventoryReports inventory, IUserContext user, TimeProvider clock, CancellationToken ct) =>
@@ -77,11 +80,11 @@ internal sealed class ReportsEndpoints : IEndpoint
                 $"inventario-{BusinessDay.Of(clock.GetUtcNow().UtcDateTime):yyyyMMdd}"));
 
         // shortcut: rows of the 607, 606 and 608 as CSV/Excel to paste into the DGII tool, which writes the TXT; the TXT layout comes with TK-055.
-        g.MapGet("/dgii/607", async ([AsParameters] Period p, ISalesReports sales, CancellationToken ct) =>
+        dgii.MapGet("/dgii/607", async ([AsParameters] Period p, ISalesReports sales, CancellationToken ct) =>
             p.Invalid() ?? Export.As(await sales.Report607Async(p.From, p.To, ct), p.Format, p.Name("607")));
-        g.MapGet("/dgii/606", async ([AsParameters] Period p, IPurchasingReports purchasing, CancellationToken ct) =>
+        dgii.MapGet("/dgii/606", async ([AsParameters] Period p, IPurchasingReports purchasing, CancellationToken ct) =>
             p.Invalid() ?? Export.As(await purchasing.Report606Async(p.From, p.To, ct), p.Format, p.Name("606")));
-        g.MapGet("/dgii/608", async ([AsParameters] Period p, IFiscalReports fiscal, CancellationToken ct) =>
+        dgii.MapGet("/dgii/608", async ([AsParameters] Period p, IFiscalReports fiscal, CancellationToken ct) =>
             p.Invalid() ?? Export.As(await fiscal.Report608Async(p.From, p.To, ct), p.Format, p.Name("608")));
 
         g.MapGet("/receivables", async (string? format, ICustomerReports customers, TimeProvider clock, CancellationToken ct) =>

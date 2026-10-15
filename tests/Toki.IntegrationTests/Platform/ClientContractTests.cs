@@ -196,6 +196,8 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         var role = (await Send<C.Created>(api, HttpMethod.Post, "/api/identity/roles", new C.SaveRole("Encargado", ["sales.create", "reports.view"]))).Id;
         await Send<C.Empty>(api, HttpMethod.Put, $"/api/identity/roles/{role}", new C.SaveRole("Encargado", ["sales.create"]));
         (await Send<C.RoleList>(api, HttpMethod.Get, "/api/identity/roles")).Roles.Single(r => r.Id == role).Permissions.ShouldBe(["sales.create"]);
+        await Send<C.Empty>(api, HttpMethod.Delete, $"/api/identity/roles/{role}"); // TK-215: nobody has it
+        (await Send<C.RoleList>(api, HttpMethod.Get, "/api/identity/roles")).Roles.ShouldNotContain(r => r.Id == role);
         await Send<C.Empty>(api, HttpMethod.Put, $"/api/cash/registers/{register}", new { Name = "Caja del frente" });
         (await Send<List<C.RegisterInfo>>(api, HttpMethod.Get, "/api/cash/registers")).ShouldHaveSingleItem().Name.ShouldBe("Caja del frente");
     }

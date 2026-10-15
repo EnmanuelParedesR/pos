@@ -21,7 +21,7 @@ public sealed class RegisterTests
     [Fact]
     public void F7_opens_the_line_discount_not_the_quantity()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.operate");
+        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Json("GET", $"/api/inventory/products/by-code/7460000000017", Salami);
