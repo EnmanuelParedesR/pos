@@ -25,6 +25,21 @@ public sealed class InventoryTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task A_cashier_reads_the_current_prices_of_the_cart_products_with_their_presentations()
+    {
+        var c = await Admin();
+        var beer = await c.ProductAsync(await c.CategoryAsync(), $"Cerveza {Guid.NewGuid().ToString()[..4]}", 120m);
+        var box = (await (await c.PostAsJsonAsync($"/api/inventory/products/{beer}/presentations",
+            new { Name = "Caja 12", Factor = 12m, Price = 1300m, WholesalePrice = 1250m })).Json()).GetProperty("id").GetGuid();
+        var cashier = app.Client(await app.UserAsync(Roles.Cashier));
+
+        var prices = await cashier.GetFromJsonAsync<JsonElement>($"/api/inventory/products/prices?ids={beer}&ids={Guid.NewGuid()}");
+        prices.EnumerateArray().Select(p => (p.GetProperty("presentationId").ValueKind == JsonValueKind.Null ? (Guid?)null : p.GetProperty("presentationId").GetGuid(),
+            p.GetProperty("price").GetDecimal())).OrderBy(p => p.Item2).ShouldBe([(null, 120m), (box, 1300m)]);
+        (await cashier.GetAsync("/api/inventory/products/prices")).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task A_scale_label_carries_the_weight()
     {
         var c = await Admin();

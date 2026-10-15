@@ -49,8 +49,8 @@
     private string Title => Mode switch { "Weight" => "Peso en libras", "Price" => "Cambiar precio", "Discount" => "Descuento", _ => "Cantidad" };
     private string Help => Mode switch
     {
-        "Weight" => $"Precio por libra: {Format.WithCurrency(Line.ListPrice)}",
-        "Price" => $"Precio de lista: {Format.WithCurrency(Line.ListPrice)}. Cambiarlo puede pedir un supervisor.",
+        "Weight" => $"Precio por libra: {Format.WithCurrency(Line.BasePrice)}{(Line.UsesWholesale ? " (mayorista)" : "")}",
+        "Price" => $"Precio {(Line.UsesWholesale ? "mayorista" : "de lista")}: {Format.WithCurrency(Line.BasePrice)}. Cambiarlo puede pedir un supervisor.",
         "Discount" => "Un descuento mayor que el tope del negocio pide un supervisor al cobrar.",
         _ => Line.ByWeight ? "Libras, con hasta 3 decimales." : "Unidades enteras.",
     };
@@ -100,7 +100,7 @@
         var value = Math.Round(v!.Value, Mode is "Quantity" or "Weight" ? 3 : 2);
         await OnDone.InvokeAsync(Mode switch
         {
-            "Price" => Line with { OverriddenPrice = value == Line.ListPrice ? null : value },
+            "Price" => Line with { OverriddenPrice = value == Line.BasePrice ? null : value },
             "Discount" => Line with { Discount = value == 0 ? null : new Discount(_percentage, value) },
             _ => Line with { Quantity = value },
         });

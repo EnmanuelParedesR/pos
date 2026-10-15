@@ -27,6 +27,11 @@
                 }
             </div>
             <div class="esc-status-bar__group">
+                @if (_queue is { } q)
+                {
+                    @* An e-CF waiting more than 24 h is amber (it must reach the DGII within 72 h); never red: principle 3. *@
+                    <span class="@(Late(q) ? "esc-offline" : "muted")" role="status">e-CF en cola: @q.Pending</span>
+                }
                 @if (Session.Online)
                 {
                     <span class="muted">En línea</span>
@@ -62,6 +67,10 @@
     private bool _ready;
     private Timer? _clock;
     private ErrorBoundary? _boundary;
+    private FiscalQueue? _queue;
+
+    /// <summary>The oldest pending e-CF is over 24 h old: its 72-hour deadline is less than 48 h away.</summary>
+    private static bool Late(FiscalQueue q) => q.Overdue > 0 || q.NextDeadlineUtc < DateTime.UtcNow.AddHours(48);
 
     protected override async Task OnInitializedAsync()
     {
@@ -77,6 +86,8 @@
     private async Task CheckAsync()
     {
         await Api.GetAsync<Empty>("/health");
+        // The e-CF send queue, only for whoever may manage it (the endpoint needs fiscal.manage); hidden for everyone else.
+        _queue = Session.Can("fiscal.manage") && !IsBackOffice ? (await Api.GetAsync<FiscalQueue>("/api/fiscal/queue")).Value ?? _queue : null;
         StateHasChanged();
     }
 

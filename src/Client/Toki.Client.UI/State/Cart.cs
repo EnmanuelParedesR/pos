@@ -2,11 +2,17 @@ using Toki.Client.UI.Api;
 
 namespace Toki.Client.UI.State;
 
+/// <param name="ListPrice">The retail price.</param>
+/// <param name="Wholesale">The sale's customer buys at wholesale; the cart keeps it in step with its customer.</param>
 public sealed record CartLine(Guid ProductId, Guid? PresentationId, string Name, string Unit, decimal ListPrice, decimal Quantity,
-    string? ScaleLabel = null, decimal? LabelAmount = null, Discount? Discount = null, decimal? OverriddenPrice = null)
+    string? ScaleLabel = null, decimal? LabelAmount = null, Discount? Discount = null, decimal? OverriddenPrice = null,
+    decimal? WholesalePrice = null, bool Wholesale = false)
 {
     public Guid Id { get; init; } = Guid.NewGuid();
-    public decimal Price => OverriddenPrice ?? ListPrice;
+    /// <summary>A wholesale customer pays the wholesale price where the product has one, as the server prices it.</summary>
+    public bool UsesWholesale => Wholesale && WholesalePrice is not null;
+    public decimal BasePrice => UsesWholesale ? WholesalePrice!.Value : ListPrice;
+    public decimal Price => OverriddenPrice ?? BasePrice;
     /// <summary>A price label carries the line total; otherwise price × quantity to the centavo.</summary>
     public decimal Gross => LabelAmount ?? Math.Round(Price * Quantity, 2, MidpointRounding.AwayFromZero);
     /// <summary>Not capped: the server refuses a fixed discount bigger than the line, so the screen shows it as an error instead.</summary>
@@ -32,7 +38,17 @@ public sealed class Cart
     public bool CheckoutUncertain { get; set; }
     public IReadOnlyList<CartLine> Lines => _lines;
     public Guid? Selected { get; set; }
-    public CustomerDetail? Customer { get; set; }
+    /// <summary>Choosing a wholesale customer re-prices the lines at wholesale; any other customer (or none) puts them back at retail.</summary>
+    public CustomerDetail? Customer
+    {
+        get;
+        set
+        {
+            field = value;
+            for (var i = 0; i < _lines.Count; i++) _lines[i] = _lines[i] with { Wholesale = IsWholesale };
+        }
+    }
+    public bool IsWholesale => Customer?.PriceLevel == nameof(PriceLevel.Wholesale);
     public EcfType DocumentType { get; set; } = EcfType.Consumer32;
     public string? ManualRnc { get; set; }
     public string? ManualName { get; set; }
@@ -56,8 +72,9 @@ public sealed class Cart
         if (scaleLabel is not null && (p.LabelQuantity is not null || p.LabelAmount is not null))
         {
             // The API ignores Quantity for labels but validates it > 0; a price label's weight is shown as its equivalent.
-            var labelQuantity = p.LabelQuantity ?? Math.Max(0.001m, Math.Round(p.LabelAmount!.Value / p.Price, 3));
-            line = new(p.ProductId, null, p.Name, p.Unit, p.Price, labelQuantity, scaleLabel, p.LabelAmount);
+            var price = IsWholesale ? p.WholesalePrice ?? p.Price : p.Price;
+            var labelQuantity = p.LabelQuantity ?? Math.Max(0.001m, Math.Round(p.LabelAmount!.Value / price, 3));
+            line = new(p.ProductId, null, p.Name, p.Unit, p.Price, labelQuantity, scaleLabel, p.LabelAmount, WholesalePrice: p.WholesalePrice, Wholesale: IsWholesale);
             _lines.Add(line);
         }
         else if (unit == nameof(UnitOfMeasure.Unit) && _lines.FindLastIndex(l => l.ProductId == p.ProductId && l.PresentationId == p.PresentationId
@@ -68,7 +85,7 @@ public sealed class Cart
         }
         else
         {
-            line = new(p.ProductId, p.PresentationId, p.Name, unit, p.Price, quantity);
+            line = new(p.ProductId, p.PresentationId, p.Name, unit, p.Price, quantity, WholesalePrice: p.WholesalePrice, Wholesale: IsWholesale);
             _lines.Add(line);
         }
         Selected = line.Id;
@@ -99,11 +116,19 @@ public sealed class Cart
     /// <summary>The server already used this id for a different sale (Sales.DuplicateId): this cart needs its own.</summary>
     public void NewSaleId() => SaleId = Guid.CreateVersion7();
 
-    // shortcut: always retail prices; a wholesale customer pays retail at the register. Send PriceLevel.Wholesale and price lines
-    // with WholesalePrice when the pilot has wholesale customers.
+    /// <summary>After Sales.TotalChanged: the lines take the server's current prices, so the screen matches what it charges.
+    /// A changed price, a price label's amount and a discount stay as the cashier set them.</summary>
+    public void UpdatePrices(IEnumerable<ProductPrice> prices)
+    {
+        var byId = prices.ToDictionary(p => (p.ProductId, p.PresentationId));
+        for (var i = 0; i < _lines.Count; i++)
+            if (byId.TryGetValue((_lines[i].ProductId, _lines[i].PresentationId), out var p))
+                _lines[i] = _lines[i] with { ListPrice = p.Price, WholesalePrice = p.WholesalePrice };
+    }
+
     public RegisterSale ToRegisterSale(Guid shiftId, List<Payment> payments, decimal expectedTotal, List<Guid> approvals) =>
         new(SaleId, shiftId, [.. _lines.Select(l => l.ToSaleLine())], payments, expectedTotal, DocumentType, Customer?.Id,
-            Customer is null ? ManualRnc : null, Customer is null ? ManualName : null, PriceLevel.Retail, null, approvals);
+            Customer is null ? ManualRnc : null, Customer is null ? ManualName : null, IsWholesale ? PriceLevel.Wholesale : PriceLevel.Retail, null, approvals);
 
     /// <summary>What a held sale stores on the server, and how it comes back.</summary>
     public SavedCart Save() => new([.. _lines], Customer, DocumentType, ManualRnc, ManualName);

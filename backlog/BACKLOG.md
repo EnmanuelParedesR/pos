@@ -221,12 +221,12 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-161 | Que un contador revise un mes de 606/607 (R5 #3) | ⬜ |
 | TK-162 | Importar el padrón en segundo plano o con `SqlBulkCopy` si con el archivo real tarda más de un minuto (R5 #10) | ⬜ |
 | TK-163 | Fijar la imagen de SQL Server de CI con etiqueta fechada (R1) | ⬜ |
-| TK-164 | Reembolso en efectivo con centavos (R3) | 🔨 |
+| TK-164 | Reembolso en efectivo con centavos (R3) | ✅ El efectivo se devuelve en pesos enteros hacia abajo y los centavos quedan como `Rounding` (como la devuelta); la nota de crédito y los reembolsos del Z guardan el monto exacto |
 | TK-165 | Nombres de cajeros y cajas en la nube (evento desde la tienda) para el panel y el asistente | ✅ `UserProfileChangedV1` y `RegisterChangedV1`, foto inicial al conectar; `cashierName`/`registerName` en el panel y el asistente |
 | TK-166 | Devoluciones con líneas en `ReturnRecordedV1` para restarlas en los más vendidos | ✅ `ReturnRecordedV2` con líneas (V1 se sigue proyectando) |
 | TK-167 | Proyectar en la réplica compras, clientes, apertura de turno y movimientos de caja | ✅ Más `GET /api/panel/receivables` y la herramienta `receivables` del asistente. Pendiente: abonos anulados y nombres de clientes no tienen evento |
-| TK-168 | Precio mayorista en la caja (R7 #16) | 🔨 |
-| TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | 🔨 |
+| TK-168 | Precio mayorista en la caja (R7 #16) | ✅ Con cliente mayorista las líneas toman `WholesalePrice` (si existe) y la venta va con `PriceLevel.Wholesale`; "Precio mayorista" en la línea; otro cliente vuelve al detalle |
+| TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | ✅ "e-CF en cola: N" (ámbar si el más viejo pasa de 24 h) solo con `fiscal.manage`; "Salir" de administración pide espera o anular; `GET /api/inventory/products/prices` (solo `sales.create`) re-precia las líneas |
 | TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ✅ Vitest 3, jsdom 30, Tiendas se refresca al conectar una caja |
 | TK-174 | Nube: evento de saldo de clientes (incluye anulación de abonos) y nombres de clientes, para que "Te deben" sea exacto y diga nombres | ⬜ |
 | TK-175 | Renombrar cajas desde Configuración (y enviar `RegisterChangedV1`) | 🔨 |

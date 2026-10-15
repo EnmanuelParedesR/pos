@@ -5,6 +5,7 @@
 @inject BackOffice BackOffice
 @inject TokiApi Api
 @inject NavigationManager Nav
+@inject Cart Cart
 
 @* data-keys: escuadra.js sends here the keys pressed while nothing has the focus (F1 right after the page loads). *@
 <div class="esc-admin esc-shell @(BackOffice.MenuCollapsed ? "esc-shell--collapsed" : "")" data-keys @onkeydown="KeyDown">
@@ -77,6 +78,11 @@
     </nav>
 </div>
 
+@if (_leaving)
+{
+    <Dialog Title="Salir" OnClose="() => _leaving = false"><UnpaidSaleChoice OnCleared="SignOutAsync" /></Dialog>
+}
+
 @code {
     private sealed record SectionLink(string Href, string Label, string Short, string Icon);
 
@@ -109,8 +115,15 @@
         if (e.Key == "F1") Nav.NavigateTo("sale");
     }
 
+    private bool _leaving;
+
     private async Task SignOutAsync()
     {
+        if (!Cart.IsEmpty)
+        {
+            _leaving = true; // the next user must not inherit the sale (R7 #26)
+            return;
+        }
         await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
         Session.Close();
         Nav.NavigateTo("sign-in");

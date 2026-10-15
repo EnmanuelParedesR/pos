@@ -19,7 +19,9 @@ public interface ICashRegisterOperations
     Task RecordSalePaymentAsync(Guid shiftId, Guid saleId, IReadOnlyList<PaymentByMethod> payments, decimal rounding, CancellationToken ct);
 
     /// <summary>Money given back to a customer (a return).</summary>
-    Task<Result> RecordRefundAsync(Guid shiftId, Guid referenceId, PaymentMethod method, decimal amount, CancellationToken ct);
+    /// <param name="amount">The credit note's amount (what the Z report shows as refunded).</param>
+    /// <param name="rounding">Cash centavos the drawer keeps because the refund is handed out in whole pesos.</param>
+    Task<Result> RecordRefundAsync(Guid shiftId, Guid referenceId, PaymentMethod method, decimal amount, decimal rounding, CancellationToken ct);
 
     /// <summary>A customer pays their credit (on account) at the register.</summary>
     /// <param name="rounding">Cash centavos kept because the customer paid in whole pesos.</param>

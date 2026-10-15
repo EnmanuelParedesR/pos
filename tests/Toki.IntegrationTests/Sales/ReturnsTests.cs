@@ -179,4 +179,24 @@ public sealed class ReturnsTests(TokiApp app) : IClassFixture<TokiApp>
         // Only one unit is left: a third return of 2 is rejected.
         (await (await ReturnAsync(cashier, saleId, line, 2m)).ErrorCode()).ShouldBe("Sales.ReturnQuantityExceeded");
     }
+
+    [Fact]
+    public async Task A_cash_refund_with_centavos_is_handed_out_in_whole_pesos_and_the_drawer_keeps_the_rest_as_rounding()
+    {
+        var cashier = await app.CashierWithShiftAsync(openingFloat: 2000m);
+        var chops = await ProductAsync("Chuleta", 194.29m);
+        // 2 × 194.29 = 388.58 paid with 389: the sale keeps 0.42 as rounding.
+        var (saleId, line) = await SellAsync(cashier, Sale(cashier.ShiftId, 388.58m, 389m, Line(chops, 2m)));
+
+        var r = await ReturnAsync(cashier, saleId, line, 1m);
+        r.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await r.Json()).GetProperty("total").GetDecimal().ShouldBe(194.29m); // the credit note is exact
+
+        var x = await app.XReportAsync(cashier.ShiftId);
+        var cash = x.GetProperty("byMethod").EnumerateArray().Single(m => m.GetProperty("method").GetString() == "Cash");
+        cash.GetProperty("refunds").GetDecimal().ShouldBe(194.29m);
+        x.GetProperty("rounding").GetDecimal().ShouldBe(0.71m); // 0.42 of the sale + 0.29 of the refund
+        // 2000 + 389 received − 194 handed back: a countable amount.
+        x.GetProperty("expectedCash").GetDecimal().ShouldBe(2195m);
+    }
 }

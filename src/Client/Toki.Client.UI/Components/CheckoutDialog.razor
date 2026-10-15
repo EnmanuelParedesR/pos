@@ -245,9 +245,9 @@
             }
             if (p.Code == "Sales.TotalChanged" && Format.ParseNumber(p.Error("total")) is { } correct)
             {
-                // The server rounds per line its own way, or a price changed: show its total and let the cashier confirm it again.
-                // shortcut: the lines keep the price shown when they were added; the invoice carries the server's. Reload them when the register
-                // gets a by-id price lookup it is allowed to call (product detail needs inventory.view).
+                // A price changed (or the server rounds its own way): the lines take the current prices, the cashier confirms the server's total.
+                var ids = string.Join("&", Cart.Lines.Select(l => l.ProductId).Distinct().Select(id => $"ids={id}"));
+                if ((await Api.GetAsync<List<ProductPrice>>($"/api/inventory/products/prices?{ids}")).Value is { } prices) Cart.UpdatePrices(prices);
                 _total = correct;
                 if (_payments.Sum(x => x.Amount) >= _total) _payments.Clear(); // they would pay more than the new total
                 if (_method == PaymentMethod.Cash && Received < MinimumCash) Suggest(MinimumCash);

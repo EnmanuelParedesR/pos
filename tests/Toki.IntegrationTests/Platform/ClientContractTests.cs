@@ -32,6 +32,7 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         foreach (var type in new[] { 32, 34 })
             await Send<C.Created>(api, HttpMethod.Post, "/api/fiscal/sequences", new { Type = type, From = 1, To = 1000, ExpiresOn = "2030-12-31" });
         (await Send<List<C.SequenceAlert>>(api, HttpMethod.Get, "/api/fiscal/alerts")).ShouldNotBeEmpty();
+        (await Send<C.FiscalQueue>(api, HttpMethod.Get, "/api/fiscal/queue")).Pending.ShouldBe(0);
         await Send<C.LicenseFeatures>(api, HttpMethod.Get, "/api/settings/features");
         (await Send<List<C.User>>(api, HttpMethod.Get, "/api/identity/users")).ShouldHaveSingleItem().Role.ShouldNotBeNullOrEmpty();
         (await Send<C.RoleList>(api, HttpMethod.Get, "/api/identity/roles")).AvailablePermissions.ShouldNotBeEmpty();
@@ -48,6 +49,8 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         (detail.Cost, detail.WholesalePrice, detail.Unit).ShouldBe((150m, 230m, C.UnitOfMeasure.Pound));
         var byCode = await Send<C.ProductByCode>(api, HttpMethod.Get, "/api/inventory/products/by-code/7460000000017");
         (byCode.ProductId, byCode.Price, byCode.Factor).ShouldBe((steak, 250m, 1m));
+        var prices = await Send<List<C.ProductPrice>>(api, HttpMethod.Get, $"/api/inventory/products/prices?ids={steak}");
+        prices.ShouldHaveSingleItem().ShouldBe(new C.ProductPrice(steak, null, 250m, 230m));
 
         // Register and shift
         var register = (await Send<C.Created>(api, HttpMethod.Post, "/api/cash/registers", new { Name = "Caja 1" })).Id;

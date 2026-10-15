@@ -71,6 +71,7 @@
                         <div class="esc-subtitle">
                             @Format.Quantity(l.Quantity, l.Unit) × @Format.Amount(l.Price)
                             @if (l.OverriddenPrice is not null) { <span> · precio cambiado</span> }
+                            else if (l.UsesWholesale) { <span> · Precio mayorista</span> }
                             @if (l.DiscountAmount > 0) { <span> · desc. −@Format.Amount(l.DiscountAmount)</span> }
                             @if (l.ScaleLabel is not null) { <span> · etiqueta</span> }
                         </div>
@@ -135,7 +136,7 @@
         <LineDialog Line="l" Mode="@_panel.ToString()" OnClose="Close" OnDone="UpdateLine" />
         break;
     case Panel.Weight when _pending is { } p:
-        <LineDialog Line="@(new CartLine(p.ProductId, p.PresentationId, p.Name, p.Unit, p.Price, 0m))" Mode="Weight" OnClose="Close" OnDone="AddWeighed" />
+        <LineDialog Line="@(new CartLine(p.ProductId, p.PresentationId, p.Name, p.Unit, p.Price, 0m, WholesalePrice: p.WholesalePrice, Wholesale: Cart.IsWholesale))" Mode="Weight" OnClose="Close" OnDone="AddWeighed" />
         break;
     case Panel.Customer:
         <CustomerDialog OnClose="Close" />

@@ -183,8 +183,10 @@ internal static class ReturnSale
             }
             if (c.Method != PaymentMethod.CreditBalance)
             {
-                // shortcut: a cash refund may carry centavos the drawer cannot pay; round refunds like sales if blind counts show it.
-                var refund = await cash.RecordRefundAsync(c.ShiftId, saleReturn.Id, c.Method, saleReturn.Total, ct);
+                // No coins under RD$ 1: like a sale's change, cash goes back in whole pesos rounded down and the drawer keeps the
+                // centavos as rounding, so expected cash stays countable. The credit note and the Z report's refunds keep the exact amount.
+                var rounding = c.Method == PaymentMethod.Cash ? saleReturn.Total - Math.Floor(saleReturn.Total) : 0m;
+                var refund = await cash.RecordRefundAsync(c.ShiftId, saleReturn.Id, c.Method, saleReturn.Total, rounding, ct);
                 if (refund.IsFailure) return refund.Error!;
             }
 

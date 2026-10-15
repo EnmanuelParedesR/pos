@@ -114,11 +114,12 @@ internal sealed class CashRegisterOperations(CashRegisterDbContext db, IUserCont
         return Task.CompletedTask;
     }
 
-    public async Task<Result> RecordRefundAsync(Guid shiftId, Guid referenceId, PaymentMethod method, decimal amount, CancellationToken ct)
+    public async Task<Result> RecordRefundAsync(Guid shiftId, Guid referenceId, PaymentMethod method, decimal amount, decimal rounding, CancellationToken ct)
     {
         var shift = await GetOpenShiftAsync(shiftId, ct);
         if (shift.IsFailure) return shift.Error!;
         Add(shiftId, CashMovementType.Refund, method, amount, referenceId, null);
+        if (rounding > 0) Add(shiftId, CashMovementType.Rounding, PaymentMethod.Cash, rounding, referenceId, null);
         return Result.Success();
     }
 

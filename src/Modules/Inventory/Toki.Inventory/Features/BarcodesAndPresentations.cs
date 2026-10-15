@@ -189,3 +189,26 @@ internal static class FindByCode
                 .RequireAuthorization().WithTags("Inventory");
     }
 }
+
+/// <summary>Current prices of the products in a cart, so the register can re-price its lines after the server answers Sales.TotalChanged.
+/// Only sales.create: the product detail needs inventory.view (a role may not have it) and shows the cost.</summary>
+internal static class PricesForSale
+{
+    /// <param name="PresentationId">Null for the product itself; each active presentation comes as its own row.</param>
+    public sealed record Item(Guid ProductId, Guid? PresentationId, decimal Price, decimal? WholesalePrice);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapGet("/api/inventory/products/prices", async (Guid[] ids, InventoryDbContext db, CancellationToken ct) =>
+                {
+                    if (ids.Length is 0 or > 300) return EndpointExtensions.Problem(Error.Validation("Inventory.InvalidIds", "Entre 1 y 300 productos."));
+                    var products = await db.Products.AsNoTracking().Where(p => ids.Contains(p.Id))
+                        .Select(p => new Item(p.Id, null, p.Price, p.WholesalePrice)).ToListAsync(ct);
+                    var presentations = await db.Presentations.AsNoTracking().Where(p => ids.Contains(p.ProductId) && p.IsActive)
+                        .Select(p => new Item(p.ProductId, p.Id, p.Price, p.WholesalePrice)).ToListAsync(ct);
+                    return Results.Ok(products.Concat(presentations));
+                })
+                .RequirePermission(Permissions.SalesCreate).WithTags("Inventory");
+    }
+}

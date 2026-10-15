@@ -41,6 +41,8 @@ public sealed record UpdateProduct(int Version, string Name, Guid CategoryId, Un
     decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive);
 public sealed record ProductByCode(Guid ProductId, Guid? PresentationId, string Name, string Unit, string ItbisRate, decimal Price,
     decimal? WholesalePrice, decimal Factor, decimal? LabelQuantity, decimal? LabelAmount, string[] Notes, decimal? Stock);
+/// <param name="PresentationId">Null for the product itself (GET /api/inventory/products/prices, to re-price a cart).</param>
+public sealed record ProductPrice(Guid ProductId, Guid? PresentationId, decimal Price, decimal? WholesalePrice);
 public sealed record StockItem(Guid ProductId, string Name, string Category, UnitOfMeasure Unit, decimal Quantity, bool BelowMinimum);
 public sealed record Created(Guid Id);
 
@@ -95,3 +97,5 @@ public sealed record ShiftSummary(Guid ShiftId, string Register, string Cashier,
     decimal? ExpectedCash, decimal? CountedCash, decimal? Difference);
 public sealed record Receivable(Guid CustomerId, string Customer, decimal Over90, decimal Total, decimal CreditLimit);
 public sealed record SequenceAlert(string Type, long Available, DateOnly? ExpiresOn, bool Alert);
+/// <summary>e-CF waiting to be sent; each must go out before its 72-hour deadline.</summary>
+public sealed record FiscalQueue(int Pending, int Overdue, DateTime? NextDeadlineUtc, int Rejected, int Simulated);

@@ -8,15 +8,7 @@
     <ChildContent>
         @if (_leaving)
         {
-            <Notice Kind="Notice.Kinds.Warning" Title="Hay una venta sin cobrar.">Póngala en espera o anúlela antes de cambiar de usuario; si no, el siguiente usuario la encontraría en su caja.</Notice>
-            @if (Cart.CheckoutUncertain)
-            {
-                <Notice Kind="Notice.Kinds.Warning" Title="El último cobro no recibió respuesta.">Cóbrela de nuevo (F12) antes de salir: no se cobra dos veces.</Notice>
-            }
-            <div class="esc-col">
-                <Button Wide="true" Disabled="@(Cart.CheckoutUncertain || _sending)" OnClick="HoldAndSignOutAsync">Ponerla en espera y salir</Button>
-                <Button Wide="true" Variant="Button.Variants.Danger" Disabled="@(Cart.CheckoutUncertain || _sending)" OnClick="VoidAndSignOutAsync">Anularla y salir</Button>
-            </div>
+            <UnpaidSaleChoice OnCleared="SignOutAsync" />
         }
         else if (_kind is null)
         {
@@ -154,22 +146,5 @@
         await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
         Session.Close();
         Nav.NavigateTo("sign-in");
-    }
-
-    private async Task HoldAndSignOutAsync()
-    {
-        if (_sending || Cart.CheckoutUncertain) return;
-        _sending = true;
-        var p = await HeldSalesDialog.HoldAsync(Api, Cart, Session.Shift!.ShiftId, null);
-        _sending = false;
-        if (p is not null) { (_messageKind, _message) = (p.Kind, p.Message); return; }
-        await SignOutAsync();
-    }
-
-    private async Task VoidAndSignOutAsync()
-    {
-        if (Cart.CheckoutUncertain) return;
-        Cart.Clear();
-        await SignOutAsync();
     }
 }
