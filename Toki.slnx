@@ -27,6 +27,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Toki.ArchitectureTests/Toki.ArchitectureTests.csproj" />
+    <Project Path="tests/Toki.E2ETests/Toki.E2ETests.csproj" />
     <Project Path="tests/Toki.IntegrationTests/Toki.IntegrationTests.csproj" />
     <Project Path="tests/Toki.UnitTests/Toki.UnitTests.csproj" />
   </Folder>

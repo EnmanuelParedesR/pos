@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Testcontainers.MsSql" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Only to build the API first: the tests start its real process, they never load it. -->
+    <ProjectReference Include="..\..\src\Hosts\Toki.Host.Local\Toki.Host.Local.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

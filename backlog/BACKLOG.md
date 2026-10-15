@@ -122,7 +122,7 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 
 | Ticket | Qué | Estado |
 |---|---|---|
-| TK-095 | Suite e2e: el proceso real de la API y un día completo de tienda por HTTP (instalar, catálogo, abrir caja, vender, anular, devolver, comprar, cerrar, reportes) | ⬜ |
+| TK-095 | Suite e2e: el proceso real de la API y un día completo de tienda por HTTP (instalar, catálogo, abrir caja, vender, anular, devolver, comprar, cerrar, reportes) | ✅ `tests/Toki.E2ETests`: proceso real (SQLite o SQL Server en CI), 3 cajas en paralelo, reinicio a mitad del día, fiado, compras, cierres ciegos; al final cuadran cajas, kardex, e-NCF, documentos, clientes, suplidores y auditoría, sin ningún 500 |
 
 ## Revisiones
 
