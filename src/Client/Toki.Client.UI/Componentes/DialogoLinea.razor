@@ -1,0 +1,99 @@
+@* Quantity / weight, price change and discount for one line. The server decides whether a supervisor must allow it, at charge time. *@
+<Dialogo Titulo="@Titulo" Subtitulo="@Linea.Nombre" OnCerrar="OnCerrar" OnTecla="Teclado">
+    <ChildContent>
+        @if (Modo == "Descuento")
+        {
+            <div class="esc-fila" role="group" aria-label="Tipo de descuento">
+                <button type="button" class="esc-chip" aria-pressed="@(_porcentaje ? "true" : "false")" @onclick="() => _porcentaje = true">Porcentaje</button>
+                <button type="button" class="esc-chip" aria-pressed="@(!_porcentaje ? "true" : "false")" @onclick="() => _porcentaje = false">Monto RD$</button>
+            </div>
+        }
+        <div style="display:flex;flex-direction:column;gap:12px">
+            <input @ref="_entrada" class="esc-entrada esc-entrada--grande esc-num" inputmode="decimal" aria-label="@Titulo" @bind="_texto" @bind:event="oninput" />
+            <div class="esc-subtitulo">@Ayuda</div>
+            <TecladoNumerico ConPunto="@(Modo != "Cantidad" || Linea.PorPeso)" OnTecla="t => _texto = TecladoNumerico.Aplicar(_texto, t)" />
+        </div>
+        @if (_error is not null)
+        {
+            <Aviso Titulo="@_error" />
+        }
+    </ChildContent>
+    <Pie>
+        @if (Modo == "Descuento" && Linea.Descuento is not null)
+        {
+            <Boton Variante="Boton.Variantes.Fantasma" OnClick="() => OnListo.InvokeAsync(Linea with { Descuento = null })">Quitar descuento</Boton>
+        }
+        @if (Modo == "Precio" && Linea.PrecioCambiado is not null)
+        {
+            <Boton Variante="Boton.Variantes.Fantasma" OnClick="() => OnListo.InvokeAsync(Linea with { PrecioCambiado = null })">Volver al precio de lista</Boton>
+        }
+        <Boton OnClick="OnCerrar" Tecla="Esc">Cancelar</Boton>
+        <Boton Variante="Boton.Variantes.Primario" Tecla="Enter" OnClick="Listo">Aceptar</Boton>
+    </Pie>
+</Dialogo>
+
+@code {
+    [Parameter, EditorRequired] public LineaCarrito Linea { get; set; } = default!;
+    /// <summary>Cantidad, Peso (a new by-the-pound line), Precio or Descuento.</summary>
+    [Parameter, EditorRequired] public string Modo { get; set; } = "Cantidad";
+    [Parameter] public EventCallback OnCerrar { get; set; }
+    [Parameter] public EventCallback<LineaCarrito> OnListo { get; set; }
+
+    private string _texto = "";
+    private string? _error;
+    private bool _porcentaje = true;
+    private ElementReference _entrada;
+
+    private string Titulo => Modo switch { "Peso" => "Peso en libras", "Precio" => "Cambiar precio", "Descuento" => "Descuento", _ => "Cantidad" };
+    private string Ayuda => Modo switch
+    {
+        "Peso" => $"Precio por libra: {Formato.ConMoneda(Linea.PrecioLista)}",
+        "Precio" => $"Precio de lista: {Formato.ConMoneda(Linea.PrecioLista)}. Cambiarlo puede pedir un supervisor.",
+        "Descuento" => "Un descuento mayor que el tope del negocio pide un supervisor al cobrar.",
+        _ => Linea.PorPeso ? "Libras, con hasta 3 decimales." : "Unidades enteras.",
+    };
+
+    protected override void OnInitialized()
+    {
+        _texto = Modo switch
+        {
+            "Cantidad" => Linea.Cantidad.ToString(Linea.PorPeso ? "0.000" : "0", System.Globalization.CultureInfo.InvariantCulture),
+            "Precio" => Linea.Precio.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture),
+            "Descuento" when Linea.Descuento is { } d => d.Valor.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture),
+            _ => "",
+        };
+        _porcentaje = Linea.Descuento?.EsPorcentaje ?? true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await _entrada.FocusAsync();
+    }
+
+    private async Task Teclado(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Listo();
+    }
+
+    private async Task Listo()
+    {
+        var v = Formato.LeerNumero(_texto);
+        _error = v switch
+        {
+            null or < 0 => "Escriba un número.",
+            0 when Modo is "Cantidad" or "Peso" or "Precio" => "Debe ser mayor que cero.",
+            _ when Modo == "Cantidad" && !Linea.PorPeso && v != Math.Floor(v.Value) => "Este producto se vende por unidad: use números enteros.",
+            > 100 when Modo == "Descuento" && _porcentaje => "El porcentaje no puede pasar de 100.",
+            _ when Modo == "Descuento" && !_porcentaje && v > Linea.Bruto => "El descuento no puede ser mayor que la línea.",
+            _ => null,
+        };
+        if (_error is not null) return;
+        var valor = Math.Round(v!.Value, Modo is "Cantidad" or "Peso" ? 3 : 2);
+        await OnListo.InvokeAsync(Modo switch
+        {
+            "Precio" => Linea with { PrecioCambiado = valor == Linea.PrecioLista ? null : valor },
+            "Descuento" => Linea with { Descuento = valor == 0 ? null : new Descuento(_porcentaje, valor) },
+            _ => Linea with { Cantidad = valor },
+        });
+    }
+}

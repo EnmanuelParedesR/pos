@@ -1,0 +1,122 @@
+@page "/entrar"
+@inject TokiApi Api
+@inject Sesion Sesion
+@inject NavigationManager Nav
+
+<div class="esc-pagina" style="align-items:center;justify-content:center">
+    <div style="display:flex;flex-wrap:wrap;gap:24px;width:min(1040px,100%);align-items:flex-start;justify-content:center">
+        <section class="esc-col" style="flex:1 1 420px;max-width:640px;gap:12px" aria-label="¿Quién entra?">
+            <h1 class="esc-titulo">¿Quién entra?</h1>
+            @if (Expirada)
+            {
+                <Aviso Tipo="Aviso.Tipos.Aviso" Titulo="Su sesión terminó. Entre de nuevo con su PIN." />
+            }
+            @if (_usuarios is null)
+            {
+                <div class="esc-tenue">Cargando…</div>
+            }
+            else if (_usuarios.Count == 0)
+            {
+                <Aviso Tipo="Aviso.Tipos.Aviso" Titulo="@(_errorLista ?? "No hay usuarios activos.")" />
+            }
+            else
+            {
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+                    @foreach (var u in _usuarios)
+                    {
+                        <button type="button" class="esc-mosaico" aria-pressed="@(u == _elegido ? "true" : "false")"
+                                style="@(u == _elegido ? "border:2px solid var(--marca);background:var(--marca-tinte)" : "")" @onclick="() => Elegir(u)">
+                            <Icono Nombre="usuario" Tamano="24" />
+                            <span class="esc-mosaico__nombre">@u.Nombre</span>
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="esc-tarjeta esc-tarjeta--relleno esc-col" style="flex:0 1 360px;gap:16px" @onkeydown="Teclado" tabindex="0" @ref="_zonaPin" aria-label="PIN">
+            <div>
+                <div style="font-size:var(--t-20);font-weight:700">@(_elegido?.Nombre ?? "Elija su nombre")</div>
+                <div class="esc-subtitulo">Escriba su PIN</div>
+            </div>
+            <PuntosPin Largo="_pin.Length" Maximo="Math.Max(4, _pin.Length)" />
+            @if (_error is not null)
+            {
+                <Aviso Titulo="@_error" />
+            }
+            <TecladoNumerico OnTecla="Tecla" />
+            <Boton Variante="Boton.Variantes.Primario" Dinero="true" Tecla="Enter" Deshabilitado="@(_elegido is null || _pin.Length < 4 || _enviando)" OnClick="EntrarAsync">Entrar</Boton>
+        </section>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public bool Expirada { get; set; }
+
+    private List<UsuarioActivo>? _usuarios;
+    private UsuarioActivo? _elegido;
+    private string _pin = "";
+    private string? _error, _errorLista;
+    private bool _enviando;
+    private ElementReference _zonaPin;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Sesion.CargarAsync();
+        var r = await Api.GetAsync<List<UsuarioActivo>>("/api/identidad/usuarios/activos");
+        if (r.Problema?.Codigo == "Identidad.DispositivoNoEmparejado")
+        {
+            // This PC was revoked by the owner: pair it again.
+            await Sesion.OlvidarDispositivoAsync();
+            Nav.NavigateTo("configurar");
+            return;
+        }
+        _errorLista = r.Problema?.Mensaje;
+        _usuarios = r.Valor ?? [];
+    }
+
+    private async Task Elegir(UsuarioActivo u)
+    {
+        (_elegido, _pin, _error) = (u, "", null);
+        await _zonaPin.FocusAsync();
+    }
+
+    private void Tecla(string t) => _pin = TecladoNumerico.Aplicar(_pin, t, 8);
+
+    private async Task Teclado(KeyboardEventArgs e)
+    {
+        if (e.Key.Length == 1 && char.IsAsciiDigit(e.Key[0])) Tecla(e.Key);
+        else if (e.Key == "Backspace") Tecla("borrar");
+        else if (e.Key == "Enter" && _elegido is not null && _pin.Length >= 4) await EntrarAsync();
+    }
+
+    private async Task EntrarAsync()
+    {
+        if (_elegido is null) return;
+        _enviando = true;
+        var r = await Api.PostAsync<SesionAbierta>("/api/identidad/sesiones", new { _elegido.Codigo, Pin = _pin });
+        if (r.Valor is not { } s)
+        {
+            _enviando = false;
+            _pin = "";
+            _error = r.Problema!.Codigo switch
+            {
+                "Identidad.CredencialesInvalidas" => "PIN incorrecto.",
+                "Identidad.UsuarioBloqueado" => "Demasiados intentos. Espere unos minutos o pida a un supervisor que lo desbloquee.",
+                _ => r.Problema.Mensaje,
+            };
+            return;
+        }
+
+        // The profile needs the new session token on the request.
+        Sesion.Abrir(s, new Yo(s.UsuarioId, s.Nombre, Guid.Empty, []));
+        var yo = await Api.GetAsync<Yo>("/api/identidad/yo");
+        Sesion.Abrir(s, yo.Valor ?? new Yo(s.UsuarioId, s.Nombre, Guid.Empty, []));
+        _enviando = false;
+
+        if (Sesion.EsAdministracion) { Nav.NavigateTo("admin"); return; }
+        var turno = await Api.GetAsync<TurnoActual>("/api/caja/turnos/actual");
+        Sesion.Turno = turno.Valor;
+        Nav.NavigateTo(turno.Valor is null ? "abrir-caja" : "venta");
+    }
+}

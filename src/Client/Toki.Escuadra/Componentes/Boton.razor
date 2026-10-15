@@ -1,0 +1,26 @@
+<button type="@Tipo" class="@Clases" disabled="@Deshabilitado" @onclick="OnClick" @attributes="Atributos">
+    @ChildContent
+    @if (Tecla is not null)
+    {
+        <Tecla>@Tecla</Tecla>
+    }
+</button>
+
+@code {
+    public enum Variantes { Normal, Primario, Peligro, Fantasma }
+
+    [Parameter] public Variantes Variante { get; set; }
+    [Parameter] public string? Tecla { get; set; }
+    /// <summary>72 px: actions that move money (Cobrar, Confirmar cobro).</summary>
+    [Parameter] public bool Dinero { get; set; }
+    [Parameter] public bool Ancho { get; set; }
+    [Parameter] public bool Deshabilitado { get; set; }
+    [Parameter] public string Tipo { get; set; } = "button";
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? Atributos { get; set; }
+
+    private string Clases => "esc-boton"
+        + Variante switch { Variantes.Primario => " esc-boton--primario", Variantes.Peligro => " esc-boton--peligro", Variantes.Fantasma => " esc-boton--fantasma", _ => "" }
+        + (Dinero ? " esc-boton--dinero" : "") + (Ancho ? " esc-boton--ancho" : "");
+}

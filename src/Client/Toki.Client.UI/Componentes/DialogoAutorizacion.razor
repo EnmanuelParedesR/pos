@@ -1,0 +1,99 @@
+@implements IDisposable
+@inject Autorizador Autorizador
+@inject TokiApi Api
+@inject Sesion Sesion
+
+@if (Autorizador.Actual is { } s)
+{
+    <Dialogo Titulo="Autoriza un supervisor" Subtitulo="@Autorizador.Explicar(s.Permiso)" OnCerrar="Cancelar" OnTecla="Teclado">
+        <ChildContent>
+            <div class="esc-aviso esc-aviso--info"><div class="esc-aviso__cuerpo">@s.Motivo</div></div>
+            @if (_supervisores is null)
+            {
+                <div class="esc-tenue">Cargando…</div>
+            }
+            else
+            {
+                <div class="esc-fila" role="group" aria-label="Supervisor">
+                    @foreach (var u in _supervisores)
+                    {
+                        <button type="button" class="esc-chip" aria-pressed="@(u.Codigo == _codigo ? "true" : "false")" @onclick="() => Elegir(u.Codigo)">@u.Nombre</button>
+                    }
+                </div>
+            }
+            <div tabindex="0" @ref="_zonaPin" style="outline:none;display:flex;flex-direction:column;gap:12px">
+                <PuntosPin Largo="_pin.Length" Maximo="Math.Max(4, _pin.Length)" />
+                <TecladoNumerico OnTecla="Tecla" />
+            </div>
+            @if (_error is not null)
+            {
+                <Aviso Titulo="@_error" />
+            }
+        </ChildContent>
+        <Pie>
+            <Boton OnClick="Cancelar" Tecla="Esc">Cancelar</Boton>
+            <Boton Variante="Boton.Variantes.Primario" Tecla="Enter" Deshabilitado="@(_codigo is null || _pin.Length < 4 || _enviando)" OnClick="AutorizarAsync">Autorizar</Boton>
+        </Pie>
+    </Dialogo>
+}
+
+@code {
+    private List<UsuarioActivo>? _supervisores;
+    private string? _codigo, _error;
+    private string _pin = "";
+    private bool _enviando;
+    private ElementReference _zonaPin;
+
+    protected override void OnInitialized() => Autorizador.Cambio += AlCambiar;
+
+    private void AlCambiar() => InvokeAsync(async () =>
+    {
+        (_codigo, _pin, _error, _supervisores) = (null, "", null, null);
+        StateHasChanged();
+        if (Autorizador.Actual is null) return;
+        var r = await Api.GetAsync<List<UsuarioActivo>>("/api/identidad/usuarios/activos");
+        // Anyone can be chosen; the API checks that the person has the permiso (Identidad.SupervisorSinPermiso).
+        _supervisores = r.Valor?.Where(u => u.Id != Sesion.UsuarioId).ToList() ?? [];
+        if (_supervisores.Count == 1) _codigo = _supervisores[0].Codigo;
+        StateHasChanged();
+        await _zonaPin.FocusAsync();
+    });
+
+    private async Task Elegir(string codigo)
+    {
+        (_codigo, _pin, _error) = (codigo, "", null);
+        await _zonaPin.FocusAsync();
+    }
+
+    private void Tecla(string t) => _pin = TecladoNumerico.Aplicar(_pin, t, 8);
+
+    private async Task Teclado(KeyboardEventArgs e)
+    {
+        if (e.Key.Length == 1 && char.IsAsciiDigit(e.Key[0])) Tecla(e.Key);
+        else if (e.Key == "Backspace") Tecla("borrar");
+        else if (e.Key == "Enter" && _codigo is not null && _pin.Length >= 4) await AutorizarAsync();
+    }
+
+    private async Task AutorizarAsync()
+    {
+        if (Autorizador.Actual is not { } s || _codigo is null) return;
+        _enviando = true;
+        var r = await Api.PostAsync<AutorizacionDada>("/api/identidad/autorizaciones", new { Codigo = _codigo, Pin = _pin, s.Permiso, s.RecursoId });
+        _enviando = false;
+        if (r.Valor is { } a)
+        {
+            Autorizador.Responder(a.AutorizacionId);
+            return;
+        }
+        (_pin, _error) = ("", r.Problema!.Codigo switch
+        {
+            "Identidad.SupervisorSinPermiso" => "Esa persona no puede autorizar esto. Llame a otro supervisor.",
+            "Identidad.CredencialesInvalidas" => "PIN incorrecto.",
+            _ => r.Problema.Mensaje,
+        });
+    }
+
+    private void Cancelar() => Autorizador.Responder(null);
+
+    public void Dispose() => Autorizador.Cambio -= AlCambiar;
+}

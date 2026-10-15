@@ -1,0 +1,32 @@
+/* Register screen layout. Pieces come from Escuadra; this file only places them. */
+
+.venta { flex: 1 1 auto; min-height: 0; display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; align-items: stretch; }
+.venta__izquierda { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.venta__escaner { flex: 1 1 auto; min-width: 0; height: 56px; border: 0; outline: 0; background: transparent; font-size: var(--t-20); font-weight: 600; }
+.venta__mosaicos { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; align-content: start; overflow: auto; }
+.venta__carrito { flex: 1 1 380px; min-width: 0; display: flex; flex-direction: column; min-height: 420px; }
+.venta__cliente { padding: 8px; border-bottom: 1px solid var(--borde-tarjeta); display: flex; }
+.venta__lineas { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; overflow: auto; min-height: 120px; }
+.venta__linea { display: flex; justify-content: space-between; gap: 12px; align-items: center; min-height: 56px; padding: 6px 16px; border-bottom: 1px solid var(--borde-tarjeta); cursor: pointer; }
+.venta__linea.activa { background: var(--marca-tinte); box-shadow: inset 4px 0 0 var(--marca); }
+.venta__lista { padding: 16px; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; }
+.venta__totales { padding: 16px; border-top: 1px solid var(--borde-tarjeta); display: flex; flex-direction: column; gap: 12px; background: var(--superficie-2); border-radius: 0 0 6px 6px; }
+
+.cobro { display: flex; flex-wrap: wrap; gap: 24px; }
+.cobro__izq { flex: 1 1 300px; display: flex; flex-direction: column; gap: 12px; }
+.cobro__der { flex: 1 1 280px; display: flex; flex-direction: column; gap: 12px; }
+.cobro__metodos { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.cobro__metodos button { min-height: 56px; justify-content: space-between; }
+.cobro__metodos button[aria-pressed="true"] { border: 2px solid var(--marca); background: var(--marca-tinte); color: var(--marca); }
+
+.recibo { width: 320px; max-width: 100%; margin: 0 auto; padding: 16px; background: #FFFFFF; border: 1px dashed var(--borde-control); font-family: "Consolas", "Courier New", monospace; font-size: 13px; line-height: 1.4; }
+.recibo hr { border: 0; border-top: 1px dashed var(--borde-control); margin: 8px 0; }
+.recibo .fila { display: flex; justify-content: space-between; gap: 8px; }
+.recibo .centro { text-align: center; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.kpi { padding: 16px; display: flex; flex-direction: column; gap: 4px; }
+.kpi__valor { font-size: var(--t-32); font-weight: 700; }
+.barras { display: flex; align-items: flex-end; gap: 8px; height: 160px; padding: 8px 0; }
+.barras__barra { flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; font-size: var(--t-12); color: var(--texto-2); }
+.barras__barra > div { width: 100%; max-width: 48px; background: var(--marca); border-radius: 4px 4px 0 0; min-height: 2px; }

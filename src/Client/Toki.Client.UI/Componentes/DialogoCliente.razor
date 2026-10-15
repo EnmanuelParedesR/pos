@@ -1,0 +1,121 @@
+@inject TokiApi Api
+@inject Carrito Carrito
+
+<Dialogo Titulo="Cliente y comprobante" Ancho="true" OnCerrar="OnCerrar">
+    <ChildContent>
+        <div class="esc-fila" role="group" aria-label="Tipo de comprobante">
+            <button type="button" class="esc-chip" aria-pressed="@(Carrito.Comprobante == TipoEcf.Consumo32 ? "true" : "false")" @onclick="() => Carrito.Comprobante = TipoEcf.Consumo32">Consumo</button>
+            <button type="button" class="esc-chip" aria-pressed="@(Carrito.Comprobante == TipoEcf.CreditoFiscal31 ? "true" : "false")" @onclick="() => Carrito.Comprobante = TipoEcf.CreditoFiscal31">Crédito fiscal</button>
+        </div>
+
+        @if (Carrito.Cliente is { } c)
+        {
+            <div class="esc-tarjeta esc-tarjeta--relleno esc-fila" style="justify-content:space-between">
+                <div>
+                    <div style="font-size:var(--t-20);font-weight:700">@c.Nombre</div>
+                    <div class="esc-subtitulo">@(c.RncCedula ?? "Sin RNC ni cédula")</div>
+                </div>
+                <div class="esc-fila" style="gap:16px">
+                    <div><div class="esc-etiqueta">Debe</div><div style="font-weight:700">@Formato.ConMoneda(c.Deuda)</div></div>
+                    <div><div class="esc-etiqueta">Límite</div><div style="font-weight:700">@Formato.ConMoneda(c.LimiteCredito)</div></div>
+                    @if (c.SaldoFavor > 0)
+                    {
+                        <div><div class="esc-etiqueta">A favor</div><div style="font-weight:700;color:var(--exito)">@Formato.ConMoneda(c.SaldoFavor)</div></div>
+                    }
+                </div>
+                <Boton Variante="Boton.Variantes.Fantasma" OnClick="() => Carrito.Cliente = null">Quitar cliente</Boton>
+            </div>
+        }
+        else
+        {
+            <form class="esc-fila" style="flex-wrap:nowrap" @onsubmit="BuscarAsync">
+                <input @ref="_buscador" class="esc-entrada" placeholder="Nombre, RNC, cédula o teléfono" aria-label="Buscar cliente" @bind="_buscar" @bind:event="oninput" />
+                <Boton Tipo="submit" Tecla="Enter"><Icono Nombre="buscar" /> Buscar</Boton>
+            </form>
+            @if (_resultados is { Count: > 0 })
+            {
+                <div class="esc-tarjeta esc-tabla-marco">
+                    <table class="esc-tabla">
+                        <thead><tr><th>Cliente</th><th>RNC / cédula</th><th>Teléfono</th><th class="esc-num">Límite</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _resultados)
+                            {
+                                <tr class="seleccionable" @onclick="() => ElegirAsync(r.Id)" tabindex="0" @onkeydown='e => e.Key == "Enter" ? ElegirAsync(r.Id) : Task.CompletedTask'>
+                                    <td style="font-weight:600">@r.Nombre</td><td>@r.RncCedula</td><td>@r.Telefono</td><td class="esc-num">@Formato.Pesos(r.LimiteCredito)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else if (_resultados is not null)
+            {
+                <div class="esc-tenue">No hay clientes con "@_buscar".</div>
+            }
+
+            @if (Carrito.Comprobante == TipoEcf.CreditoFiscal31)
+            {
+                <div class="esc-subtitulo">O escriba los datos para una sola factura:</div>
+                <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px">
+                    <label class="esc-campo"><span>RNC o cédula</span><input class="esc-entrada" inputmode="numeric" maxlength="11" @bind="Carrito.RncManual" /></label>
+                    <label class="esc-campo"><span>Nombre o razón social</span><input class="esc-entrada" maxlength="150" @bind="Carrito.NombreManual" /></label>
+                </div>
+            }
+
+            <details>
+                <summary style="cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:center">Nuevo cliente</summary>
+                <form class="esc-col" style="gap:12px;padding-top:8px" @onsubmit="CrearAsync">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+                        <label class="esc-campo"><span>Nombre</span><input class="esc-entrada" maxlength="150" @bind="_nuevoNombre" /></label>
+                        <label class="esc-campo"><span>RNC o cédula</span><input class="esc-entrada" inputmode="numeric" maxlength="11" @bind="_nuevoRnc" /></label>
+                        <label class="esc-campo"><span>Teléfono</span><input class="esc-entrada" inputmode="tel" maxlength="30" @bind="_nuevoTelefono" /></label>
+                    </div>
+                    <div><Boton Tipo="submit">Crear y usar</Boton></div>
+                </form>
+            </details>
+        }
+        @if (_error is not null)
+        {
+            <Aviso Titulo="@_error" />
+        }
+    </ChildContent>
+    <Pie>
+        <Boton Variante="Boton.Variantes.Primario" Tecla="Esc" OnClick="OnCerrar">Listo</Boton>
+    </Pie>
+</Dialogo>
+
+@code {
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private string? _buscar, _error, _nuevoNombre, _nuevoRnc, _nuevoTelefono;
+    private List<ClienteResumen>? _resultados;
+    private ElementReference _buscador;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Carrito.Cliente is null) await _buscador.FocusAsync();
+    }
+
+    private async Task BuscarAsync()
+    {
+        var r = await Api.GetAsync<List<ClienteResumen>>($"/api/clientes?buscar={Uri.EscapeDataString(_buscar ?? "")}");
+        (_resultados, _error) = (r.Valor, r.Problema?.Mensaje);
+    }
+
+    private async Task ElegirAsync(Guid id)
+    {
+        var r = await Api.GetAsync<ClienteDetalle>($"/api/clientes/{id}");
+        Carrito.Cliente = r.Valor;
+        _error = r.Problema?.Mensaje;
+        if (r.Valor is { CreditoFiscal: true }) Carrito.Comprobante = TipoEcf.CreditoFiscal31;
+    }
+
+    private async Task CrearAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_nuevoNombre)) { _error = "Escriba el nombre."; return; }
+        var rnc = string.IsNullOrWhiteSpace(_nuevoRnc) ? null : _nuevoRnc.Trim();
+        var r = await Api.PostAsync<Creado>("/api/clientes", new NuevoCliente(_nuevoNombre.Trim(), rnc, _nuevoTelefono?.Trim(), null, rnc is not null && Carrito.Comprobante == TipoEcf.CreditoFiscal31));
+        if (r.Valor is { } c) await ElegirAsync(c.Id);
+        else _error = r.Problema!.Codigo == "Clientes.RncDuplicado" ? "Ya hay un cliente con ese RNC o cédula. Búsquelo." : r.Problema.Mensaje;
+    }
+}

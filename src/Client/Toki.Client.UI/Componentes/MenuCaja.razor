@@ -1,0 +1,119 @@
+@inject TokiApi Api
+@inject Sesion Sesion
+@inject Autorizador Autorizador
+@inject NavigationManager Nav
+
+<Dialogo Titulo="@(_tipo is null ? "Caja" : _tipo == TipoMovimientoCaja.Entrada ? "Entrada de efectivo" : "Salida de efectivo")" OnCerrar="Volver">
+    <ChildContent>
+        @if (_tipo is null)
+        {
+            <div class="esc-col">
+                <Boton Ancho="true" OnClick="() => Elegir(TipoMovimientoCaja.Entrada)" style="justify-content:space-between"><span>Entrada de efectivo</span></Boton>
+                <Boton Ancho="true" OnClick="() => Elegir(TipoMovimientoCaja.Retiro)" style="justify-content:space-between"><span>Salida de efectivo (retiro o gasto)</span></Boton>
+                <Boton Ancho="true" OnClick='() => Nav.NavigateTo("ventas")' style="justify-content:space-between"><span>Ventas de este turno · anular y devolver</span></Boton>
+                <Boton Ancho="true" OnClick='() => Nav.NavigateTo("cerrar-caja")' style="justify-content:space-between"><span>Cerrar caja</span></Boton>
+                @if (Sesion.EsAdministracion)
+                {
+                    <Boton Ancho="true" OnClick='() => Nav.NavigateTo("admin")' style="justify-content:space-between"><span>Ir a administración</span></Boton>
+                }
+                <Boton Ancho="true" Variante="Boton.Variantes.Fantasma" OnClick="SalirAsync" style="justify-content:space-between"><span>Cambiar de usuario (el turno sigue abierto)</span><Icono Nombre="salir" /></Boton>
+            </div>
+        }
+        else
+        {
+            @if (_tipo != TipoMovimientoCaja.Entrada)
+            {
+                <div class="esc-fila" role="group" aria-label="Tipo de salida">
+                    <button type="button" class="esc-chip" aria-pressed="@(_tipo == TipoMovimientoCaja.Retiro ? "true" : "false")" @onclick="() => _tipo = TipoMovimientoCaja.Retiro">Retiro</button>
+                    <button type="button" class="esc-chip" aria-pressed="@(_tipo == TipoMovimientoCaja.Gasto ? "true" : "false")" @onclick="() => _tipo = TipoMovimientoCaja.Gasto">Gasto</button>
+                </div>
+            }
+            <label class="esc-campo">
+                <span>Monto RD$</span>
+                <input class="esc-entrada esc-entrada--grande esc-num" inputmode="decimal" @bind="_monto" @bind:event="oninput" autofocus />
+            </label>
+            <label class="esc-campo">
+                <span>Motivo</span>
+                <select class="esc-select" @bind="_motivo">
+                    @foreach (var m in Motivos)
+                    {
+                        <option value="@m.Item1">@m.Item2</option>
+                    }
+                </select>
+            </label>
+            <label class="esc-campo">
+                <span>Nota @(_motivo == MotivoMovimiento.Otro ? "(obligatoria)" : "(opcional)")</span>
+                <input class="esc-entrada" maxlength="200" @bind="_nota" />
+            </label>
+            @if (_tipo != TipoMovimientoCaja.Entrada)
+            {
+                <div class="esc-fila esc-tenue"><Icono Nombre="candado" /> Sacar efectivo pide la autorización de un supervisor.</div>
+            }
+        }
+        @if (_mensaje is not null)
+        {
+            <Aviso Tipo="_mensajeTipo" Titulo="@_mensaje" />
+        }
+    </ChildContent>
+    <Pie>
+        <Boton OnClick="Volver" Tecla="Esc">@(_tipo is null ? "Cerrar" : "Volver")</Boton>
+        @if (_tipo is not null)
+        {
+            <Boton Variante="Boton.Variantes.Primario" Tecla="Enter" Deshabilitado="_enviando" OnClick="RegistrarAsync">Registrar</Boton>
+        }
+    </Pie>
+</Dialogo>
+
+@code {
+    [Parameter] public EventCallback OnCerrar { get; set; }
+
+    private TipoMovimientoCaja? _tipo;
+    private MotivoMovimiento _motivo = MotivoMovimiento.Recogida;
+    private string? _monto, _nota, _mensaje;
+    private Aviso.Tipos _mensajeTipo;
+    private bool _enviando;
+
+    private IEnumerable<(MotivoMovimiento, string)> Motivos => _tipo == TipoMovimientoCaja.Entrada
+        ? [(MotivoMovimiento.CambioAdicional, "Cambio adicional"), (MotivoMovimiento.Otro, "Otro")]
+        : [(MotivoMovimiento.Recogida, "Recogida a la bóveda"), (MotivoMovimiento.DepositoBanco, "Depósito al banco"), (MotivoMovimiento.PagoSuplidor, "Pago a suplidor"),
+           (MotivoMovimiento.GastoMenor, "Gasto menor"), (MotivoMovimiento.Otro, "Otro")];
+
+    private void Elegir(TipoMovimientoCaja t)
+    {
+        (_tipo, _monto, _nota, _mensaje) = (t, null, null, null);
+        _motivo = Motivos.First().Item1;
+    }
+
+    private Task Volver()
+    {
+        if (_tipo is null) return OnCerrar.InvokeAsync();
+        _tipo = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task RegistrarAsync()
+    {
+        var monto = Formato.LeerNumero(_monto);
+        if (monto is not > 0) { (_mensajeTipo, _mensaje) = (Aviso.Tipos.Error, "Escriba el monto."); return; }
+        if (_motivo == MotivoMovimiento.Otro && string.IsNullOrWhiteSpace(_nota)) { (_mensajeTipo, _mensaje) = (Aviso.Tipos.Error, "Escriba una nota para \"Otro\"."); return; }
+        var turno = Sesion.Turno!.TurnoId;
+        _enviando = true;
+        var r = await Autorizador.ConSupervisorAsync(id => Api.PostAsync<Vacio>($"/api/caja/turnos/{turno}/movimientos",
+                new { TipoMovimiento = _tipo, Monto = Math.Round(monto.Value, 2), Motivo = _motivo, Nota = string.IsNullOrWhiteSpace(_nota) ? null : _nota.Trim(), AutorizacionSupervisorId = id }),
+            turno, $"{(_tipo == TipoMovimientoCaja.Entrada ? "Entrada" : "Salida")} de {Formato.ConMoneda(monto.Value)}");
+        _enviando = false;
+        if (r.Ok)
+        {
+            (_mensajeTipo, _mensaje, _tipo) = (Aviso.Tipos.Exito, $"Registrado: {Formato.ConMoneda(monto.Value)}.", null);
+            return;
+        }
+        (_mensajeTipo, _mensaje) = (Aviso.Tipos.Error, r.Problema!.Mensaje);
+    }
+
+    private async Task SalirAsync()
+    {
+        await Api.DeleteAsync<Vacio>("/api/identidad/sesiones/actual");
+        Sesion.Cerrar();
+        Nav.NavigateTo("entrar");
+    }
+}

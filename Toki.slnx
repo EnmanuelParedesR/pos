@@ -4,6 +4,12 @@
     <Project Path="src/BuildingBlocks/Toki.BuildingBlocks/Toki.BuildingBlocks.csproj" />
     <Project Path="src/BuildingBlocks/Toki.SharedKernel/Toki.SharedKernel.csproj" />
   </Folder>
+  <Folder Name="/src/Client/">
+    <Project Path="src/Client/Toki.Client.UI/Toki.Client.UI.csproj" />
+    <Project Path="src/Client/Toki.Client.Web/Toki.Client.Web.csproj" />
+    <Project Path="src/Client/Toki.Client.Wpf/Toki.Client.Wpf.csproj" />
+    <Project Path="src/Client/Toki.Escuadra/Toki.Escuadra.csproj" />
+  </Folder>
   <Folder Name="/src/Hosts/">
     <Project Path="src/Hosts/Toki.Host.Local/Toki.Host.Local.csproj" />
   </Folder>
@@ -27,6 +33,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Toki.ArchitectureTests/Toki.ArchitectureTests.csproj" />
+    <Project Path="tests/Toki.Client.UI.Tests/Toki.Client.UI.Tests.csproj" />
     <Project Path="tests/Toki.E2ETests/Toki.E2ETests.csproj" />
     <Project Path="tests/Toki.IntegrationTests/Toki.IntegrationTests.csproj" />
     <Project Path="tests/Toki.UnitTests/Toki.UnitTests.csproj" />

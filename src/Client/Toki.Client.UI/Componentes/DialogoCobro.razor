@@ -1,0 +1,237 @@
+@inject TokiApi Api
+@inject Carrito Carrito
+@inject Autorizador Autorizador
+
+<Dialogo Titulo="Cobrar" Subtitulo="@($"{Carrito.Articulos} {(Carrito.Articulos == 1 ? "línea" : "líneas")} · {(Carrito.Cliente?.Nombre ?? Carrito.NombreManual ?? "cliente de contado")}")" Ancho="true" OnCerrar="Cancelar" OnTecla="TeclaAsync">
+    <ChildContent>
+        <div class="cobro">
+            <div class="cobro__izq">
+                <div>
+                    <div class="esc-etiqueta">Total a cobrar</div>
+                    <Dinero Valor="_total" Tamano="72" />
+                </div>
+                @if (_pagos.Count > 0)
+                {
+                    <div class="esc-tarjeta esc-tarjeta--relleno esc-col" style="gap:4px">
+                        @foreach (var p in _pagos)
+                        {
+                            <div class="esc-fila" style="justify-content:space-between"><span>@Nombre(p.Medio)</span><span>@Formato.Pesos(p.Monto)</span></div>
+                        }
+                        <div class="esc-fila" style="justify-content:space-between;font-weight:700"><span>Falta</span><span>@Formato.Pesos(Pendiente)</span></div>
+                    </div>
+                }
+                <div class="cobro__metodos" role="group" aria-label="Forma de pago">
+                    @foreach (var (m, tecla) in Metodos)
+                    {
+                        <button type="button" class="esc-boton" aria-pressed="@(m == _medio ? "true" : "false")" @onclick="() => Elegir(m)">
+                            <span>@Nombre(m)</span><Tecla>@tecla</Tecla>
+                        </button>
+                    }
+                </div>
+                @if (_medio == MedioPago.Efectivo)
+                {
+                    <div class="esc-etiqueta">Devuelta</div>
+                    <Dinero Valor="Devuelta" Tamano="52" />
+                }
+            </div>
+
+            <div class="cobro__der">
+                @if (_medio == MedioPago.Efectivo)
+                {
+                    <label class="esc-campo">
+                        <span>Efectivo recibido (pesos enteros)</span>
+                        <input @ref="_entrada" class="esc-entrada esc-entrada--grande esc-num" inputmode="numeric" @bind="_recibido" @bind:event="oninput" onfocus="this.select()" />
+                    </label>
+                    <div class="esc-fila">
+                        @foreach (var rapido in Rapidos)
+                        {
+                            <button type="button" class="esc-chip" @onclick="() => Sugerir(rapido)">@Formato.Pesos(rapido)</button>
+                        }
+                    </div>
+                    <TecladoNumerico OnTecla="TeclaEfectivo" />
+                }
+                else
+                {
+                    <label class="esc-campo">
+                        <span>Monto</span>
+                        <input @ref="_entrada" class="esc-entrada esc-entrada--grande esc-num" inputmode="decimal" @bind="_monto" @bind:event="oninput" />
+                    </label>
+                    @if (_medio is MedioPago.Tarjeta or MedioPago.Transferencia)
+                    {
+                        <label class="esc-campo">
+                            <span>Referencia (opcional)</span>
+                            <input class="esc-entrada" maxlength="60" @bind="_referencia" placeholder="@(_medio == MedioPago.Tarjeta ? "Aprobación del verifone" : "Número de la transferencia")" />
+                        </label>
+                    }
+                    @if (_medio == MedioPago.Fiado && Carrito.Cliente is { } c)
+                    {
+                        <div class="esc-subtitulo">Debe @Formato.ConMoneda(c.Deuda) de un límite de @Formato.ConMoneda(c.LimiteCredito).</div>
+                    }
+                    @if (MontoActual < Pendiente)
+                    {
+                        <Boton OnClick="AgregarPago">Agregar este pago y cobrar el resto con otro medio</Boton>
+                    }
+                }
+            </div>
+        </div>
+        @if (_aviso is not null)
+        {
+            <Aviso Tipo="_avisoTipo" Titulo="@_aviso" />
+        }
+    </ChildContent>
+    <Pie>
+        <Boton OnClick="Cancelar" Tecla="Esc">Volver a la venta</Boton>
+        <Boton Variante="Boton.Variantes.Primario" Dinero="true" Tecla="F12" Deshabilitado="@(!PuedeConfirmar || _enviando)" OnClick="ConfirmarAsync">
+            @(_enviando ? "Guardando…" : "Confirmar cobro")
+        </Boton>
+    </Pie>
+</Dialogo>
+
+@code {
+    [Parameter, EditorRequired] public Guid TurnoId { get; set; }
+    [Parameter] public EventCallback OnCerrar { get; set; }
+    [Parameter] public EventCallback<VentaRegistrada> OnVendida { get; set; }
+
+    private decimal _total;
+    private MedioPago _medio = MedioPago.Efectivo;
+    private string _recibido = "", _monto = "";
+    private string? _referencia, _aviso;
+    private Aviso.Tipos _avisoTipo = Aviso.Tipos.Error;
+    private bool _enviando, _sugerido;
+    private readonly List<Pago> _pagos = [];
+    private readonly List<Guid> _autorizaciones = [];
+    private ElementReference _entrada;
+
+    private IEnumerable<(MedioPago, string)> Metodos
+    {
+        get
+        {
+            yield return (MedioPago.Efectivo, "F5");
+            yield return (MedioPago.Tarjeta, "F6");
+            yield return (MedioPago.Transferencia, "F7");
+            if (Carrito.Cliente is { LimiteCredito: > 0 }) yield return (MedioPago.Fiado, "F8");
+            if (Carrito.Cliente is { SaldoFavor: > 0 }) yield return (MedioPago.SaldoFavor, "F9");
+        }
+    }
+
+    private decimal Pendiente => Math.Max(0, _total - _pagos.Sum(p => p.Monto));
+    /// <summary>Cash is handed over in whole pesos; the centavos of the total stay in the drawer as rounding.</summary>
+    private decimal EfectivoMinimo => Math.Ceiling(Pendiente);
+    private decimal Recibido => Formato.LeerNumero(_recibido) ?? 0;
+    private decimal MontoActual => _medio == MedioPago.Efectivo ? Recibido : Formato.LeerNumero(_monto) ?? 0;
+    private decimal Devuelta => Math.Max(0, Math.Floor(Recibido - Pendiente));
+    private bool PuedeConfirmar => _medio == MedioPago.Efectivo
+        ? Recibido >= EfectivoMinimo && Recibido == Math.Floor(Recibido)
+        : MontoActual == Pendiente && Pendiente > 0;
+
+    private IEnumerable<decimal> Rapidos => new[] { EfectivoMinimo, Math.Ceiling(Pendiente / 100) * 100, Math.Ceiling(Pendiente / 500) * 500, Math.Ceiling(Pendiente / 1000) * 1000, 2000m }
+        .Where(v => v >= EfectivoMinimo).Distinct().Order().Take(5);
+
+    protected override void OnInitialized()
+    {
+        _total = Carrito.Total;
+        Sugerir(EfectivoMinimo);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await _entrada.FocusAsync();
+    }
+
+    private static string Nombre(MedioPago m) => m switch
+    {
+        MedioPago.Efectivo => "Efectivo",
+        MedioPago.Tarjeta => "Tarjeta",
+        MedioPago.Transferencia => "Transferencia",
+        MedioPago.Fiado => "A crédito (fiado)",
+        _ => "Saldo a favor",
+    };
+
+    private async Task Elegir(MedioPago m)
+    {
+        _medio = m;
+        _monto = (m == MedioPago.SaldoFavor && Carrito.Cliente is { } c ? Math.Min(c.SaldoFavor, Pendiente) : Pendiente)
+            .ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+        Sugerir(EfectivoMinimo);
+        _aviso = null;
+        StateHasChanged();
+        await _entrada.FocusAsync();
+    }
+
+    /// <summary>A suggested amount: the first keypad press replaces it instead of appending to it.</summary>
+    private void Sugerir(decimal monto) => (_recibido, _sugerido) = (monto.ToString(System.Globalization.CultureInfo.InvariantCulture), true);
+
+    private void TeclaEfectivo(string t)
+    {
+        _recibido = TecladoNumerico.Aplicar(_sugerido ? "" : _recibido, t);
+        _sugerido = false;
+    }
+
+    private void AgregarPago()
+    {
+        if (MontoActual <= 0 || MontoActual >= Pendiente) return;
+        _pagos.Add(new Pago(_medio, Math.Round(MontoActual, 2), string.IsNullOrWhiteSpace(_referencia) ? null : _referencia.Trim()));
+        _referencia = null;
+        _medio = MedioPago.Efectivo;
+        Sugerir(EfectivoMinimo);
+    }
+
+    private async Task TeclaAsync(KeyboardEventArgs e)
+    {
+        var m = Metodos.FirstOrDefault(x => x.Item2 == e.Key);
+        if (m.Item2 is not null) await Elegir(m.Item1);
+        else if (e.Key is "F12" or "Enter" && PuedeConfirmar && !_enviando) await ConfirmarAsync();
+    }
+
+    private async Task ConfirmarAsync()
+    {
+        _enviando = true;
+        _aviso = null;
+        var pagos = _pagos.Append(new Pago(_medio, _medio == MedioPago.Efectivo ? Recibido : MontoActual,
+            string.IsNullOrWhiteSpace(_referencia) ? null : _referencia.Trim())).ToList();
+
+        // Up to one supervisor per permiso the sale needs (price change, big discount, credit over the limit).
+        for (var intento = 0; intento < 4; intento++)
+        {
+            var r = await Api.PostAsync<VentaRegistrada>("/api/ventas", Carrito.ParaRegistrar(TurnoId, pagos, _total, _autorizaciones));
+            if (r.Valor is { } venta)
+            {
+                await OnVendida.InvokeAsync(venta);
+                return;
+            }
+            var p = r.Problema!;
+            if (p.PermisoRequerido is { } permiso)
+            {
+                var id = await Autorizador.PedirAsync(permiso, Carrito.VentaId, $"Venta de {Formato.ConMoneda(_total)}");
+                if (id is null) { Fallo(Aviso.Tipos.Aviso, "Sin la autorización no se puede cobrar así. Quite el cambio o pida a otro supervisor."); return; }
+                _autorizaciones.Add(id.Value);
+                continue;
+            }
+            if (p.Codigo == "Ventas.TotalCambio" && Formato.LeerNumero(p.Error("total")) is { } correcto)
+            {
+                // The server rounds per line its own way: show its total and let the cashier confirm it again.
+                _total = correcto;
+                if (_medio == MedioPago.Efectivo && Recibido < EfectivoMinimo) Sugerir(EfectivoMinimo);
+                else if (_medio != MedioPago.Efectivo) _monto = Pendiente.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                Fallo(Aviso.Tipos.Aviso, $"El total correcto es {Formato.ConMoneda(correcto)}. Revíselo con el cliente y confirme de nuevo.");
+                return;
+            }
+            Fallo(Aviso.Tipos.Error, p.Codigo switch
+            {
+                "Inventario.SinExistencia" => "No hay existencia suficiente de un producto. Un supervisor puede permitir vender sin existencia en Productos.",
+                "Clientes.LimiteExcedido" => "El cliente pasa su límite de crédito.",
+                "Fiscal.SinSecuencia" => "Se acabaron los comprobantes de este tipo. El dueño debe cargar una nueva secuencia.",
+                "Fiscal.SinRncEmisor" => "Falta el RNC del negocio en Configuración.",
+                "Ventas.RncRequerido" => "Esta factura necesita el RNC o la cédula del cliente (F6).",
+                "Ventas.EtiquetaRepetida" => "Una etiqueta de peso ya se cobró en otra venta.",
+                _ => p.Mensaje,
+            });
+            return;
+        }
+        Fallo(Aviso.Tipos.Error, "No se pudo completar la autorización. Intente de nuevo.");
+    }
+
+    private void Fallo(Aviso.Tipos tipo, string mensaje) => (_avisoTipo, _aviso, _enviando) = (tipo, mensaje, false);
+
+    private Task Cancelar() => _enviando ? Task.CompletedTask : OnCerrar.InvokeAsync();
+}

@@ -1,0 +1,56 @@
+@* The invoice as the thermal printer would print it. *@
+<Dialogo Titulo="@($"Factura {Comprobante.ENcf}")" Subtitulo="@(Comprobante.Anulada ? "ANULADA" : null)" OnCerrar="OnCerrar">
+    <ChildContent>
+        <div class="recibo" aria-label="Factura">
+            <div class="centro" style="font-weight:700">@Comprobante.Negocio</div>
+            @if (Comprobante.Rnc is not null) { <div class="centro">RNC @Comprobante.Rnc</div> }
+            @if (Comprobante.Direccion is not null) { <div class="centro">@Comprobante.Direccion</div> }
+            @if (Comprobante.Telefono is not null) { <div class="centro">Tel. @Comprobante.Telefono</div> }
+            <hr />
+            <div class="centro" style="font-weight:700">@Comprobante.TipoComprobante</div>
+            <div class="fila"><span>e-NCF</span><span>@Comprobante.ENcf</span></div>
+            <div class="fila"><span>Factura</span><span>#@Comprobante.Numero</span></div>
+            @* fechaLocal is already store time even though it carries a Z: shown as is. *@
+            <div class="fila"><span>Fecha</span><span>@Comprobante.FechaLocal.ToString("dd/MM/yyyy h:mm tt", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))</span></div>
+            <div class="fila"><span>@Comprobante.Caja</span><span>@Comprobante.Cajero</span></div>
+            @if (Comprobante.Cliente is not null)
+            {
+                <div class="fila"><span>Cliente</span><span>@Comprobante.Cliente</span></div>
+                @if (Comprobante.RncCliente is not null) { <div class="fila"><span>RNC</span><span>@Comprobante.RncCliente</span></div> }
+            }
+            <hr />
+            @foreach (var l in Comprobante.Lineas)
+            {
+                <div>@l.Descripcion</div>
+                <div class="fila"><span>&nbsp;&nbsp;@Formato.Cantidad(l.Cantidad, l.Unidad) × @Formato.Pesos(l.Precio)</span><span>@Formato.Pesos(l.Total)</span></div>
+                @if (l.Descuento > 0) { <div class="fila"><span>&nbsp;&nbsp;Descuento</span><span>−@Formato.Pesos(l.Descuento)</span></div> }
+            }
+            <hr />
+            <div class="fila"><span>Subtotal</span><span>@Formato.Pesos(Comprobante.Subtotal)</span></div>
+            @if (Comprobante.Descuento > 0) { <div class="fila"><span>Descuento</span><span>−@Formato.Pesos(Comprobante.Descuento)</span></div> }
+            @foreach (var i in Comprobante.Itbis)
+            {
+                <div class="fila"><span>@i.Tasa</span><span>@Formato.Pesos(i.Itbis)</span></div>
+            }
+            <div class="fila" style="font-weight:700;font-size:16px"><span>TOTAL</span><span>RD$ @Formato.Pesos(Comprobante.Total)</span></div>
+            <hr />
+            @foreach (var p in Comprobante.Pagos)
+            {
+                <div class="fila"><span>@p.Medio</span><span>@Formato.Pesos(p.Recibido ?? p.Monto)</span></div>
+            }
+            @if (Comprobante.Cambio > 0) { <div class="fila"><span>Devuelta</span><span>@Formato.Pesos(Comprobante.Cambio)</span></div> }
+            <hr />
+            <div class="centro">Código de seguridad: @Comprobante.CodigoSeguridad</div>
+            @if (Comprobante.Pie is not null) { <div class="centro" style="margin-top:8px">@Comprobante.Pie</div> }
+        </div>
+    </ChildContent>
+    <Pie>
+        @* shortcut: no thermal printer driver yet (Toki.Hardware.EscPos); this is a preview. Wire IPrinter here when it exists. *@
+        <Boton Variante="Boton.Variantes.Primario" Tecla="Esc" OnClick="OnCerrar">Cerrar</Boton>
+    </Pie>
+</Dialogo>
+
+@code {
+    [Parameter, EditorRequired] public Comprobante Comprobante { get; set; } = default!;
+    [Parameter] public EventCallback OnCerrar { get; set; }
+}

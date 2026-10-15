@@ -1,0 +1,72 @@
+@page "/admin"
+@inject TokiApi Api
+
+<Admin Titulo="Resumen" Subtitulo="@($"Hoy, {DateTime.Now.ToString("dddd d 'de' MMMM", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))}")">
+    @foreach (var a in _alertas)
+    {
+        <Aviso Tipo="Aviso.Tipos.Aviso" Titulo="@a" />
+    }
+    <div class="kpis">
+        <div class="esc-tarjeta kpi"><span class="esc-etiqueta">Vendido hoy</span><span class="kpi__valor">@Formato.ConMoneda(_hoy?.VentasConItbis ?? 0)</span><span class="esc-subtitulo">@(_hoy?.Ventas ?? 0) facturas</span></div>
+        <div class="esc-tarjeta kpi"><span class="esc-etiqueta">Ganancia hoy</span><span class="kpi__valor">@Formato.ConMoneda(_hoy?.Utilidad ?? 0)</span><span class="esc-subtitulo">sin ITBIS, después del costo</span></div>
+        <div class="esc-tarjeta kpi"><span class="esc-etiqueta">Ticket promedio</span><span class="kpi__valor">@Formato.ConMoneda(_hoy is { Ventas: > 0 } h ? Math.Round(h.VentasConItbis / h.Ventas, 2) : 0)</span></div>
+        <div class="esc-tarjeta kpi"><span class="esc-etiqueta">Cajas abiertas</span><span class="kpi__valor">@_cajas.Count(c => c.TurnoAbiertoId is not null) de @_cajas.Count</span>
+            <span class="esc-subtitulo">@string.Join(" · ", _cajas.Where(c => c.Cajero is not null).Select(c => $"{c.Nombre}: {c.Cajero}"))</span></div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+        <section class="esc-tarjeta esc-tarjeta--relleno" style="flex:2 1 420px" aria-label="Últimos 7 días">
+            <div class="esc-etiqueta">Ventas de los últimos 7 días</div>
+            <div class="barras">
+                @foreach (var d in _semana)
+                {
+                    var alto = _maximo == 0 ? 0 : (int)(d.VentasConItbis / _maximo * 100);
+                    <div class="barras__barra" title="@Formato.ConMoneda(d.VentasConItbis)">
+                        <span>@(d.VentasConItbis >= 1000 ? $"{d.VentasConItbis / 1000:0.#}k" : Formato.Pesos(d.VentasConItbis))</span>
+                        <div style="height:@(alto)%"></div>
+                        <span>@d.Dia.ToString("ddd d", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))</span>
+                    </div>
+                }
+            </div>
+        </section>
+        <section class="esc-tarjeta" style="flex:1 1 320px" aria-label="Más vendidos hoy">
+            <table class="esc-tabla">
+                <thead><tr><th>Más vendidos hoy</th><th class="esc-num">Cant.</th><th class="esc-num">Venta sin ITBIS</th></tr></thead>
+                <tbody>
+                    @foreach (var p in _top)
+                    {
+                        <tr><td>@p.Producto</td><td class="esc-num">@p.Cantidad.ToString("0.###")</td><td class="esc-num">@Formato.Pesos(p.NetoSinItbis)</td></tr>
+                    }
+                    @if (_top.Count == 0)
+                    {
+                        <tr><td colspan="3" class="esc-tenue">Sin ventas todavía.</td></tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+    </div>
+</Admin>
+
+@code {
+    private VentasDia? _hoy;
+    private List<VentasDia> _semana = [];
+    private List<VentasProducto> _top = [];
+    private List<CajaInfo> _cajas = [];
+    private readonly List<string> _alertas = [];
+    private decimal _maximo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var hoy = DateOnly.FromDateTime(DateTime.Now);
+        var dias = (await Api.GetAsync<List<VentasDia>>($"/api/reportes/ventas/por-dia?desde={hoy.AddDays(-6):yyyy-MM-dd}&hasta={hoy:yyyy-MM-dd}")).Valor ?? [];
+        // Days without sales are missing from the report: fill them so the chart has 7 bars.
+        _semana = [.. Enumerable.Range(0, 7).Select(i => hoy.AddDays(i - 6)).Select(d => dias.Find(x => x.Dia == d) ?? new VentasDia(d, 0, 0, 0, 0, 0, 0, 0, 0))];
+        _hoy = _semana[^1];
+        _maximo = _semana.Max(d => d.VentasConItbis);
+        _top = [.. ((await Api.GetAsync<List<VentasProducto>>($"/api/reportes/ventas/por-producto?desde={hoy:yyyy-MM-dd}&hasta={hoy:yyyy-MM-dd}")).Valor ?? [])
+            .OrderByDescending(p => p.NetoSinItbis).Take(6)];
+        _cajas = (await Api.GetAsync<List<CajaInfo>>("/api/caja/cajas")).Valor ?? [];
+        foreach (var a in (await Api.GetAsync<List<AlertaFiscal>>("/api/fiscal/alertas")).Valor?.Where(a => a.Alerta) ?? [])
+            _alertas.Add($"{Nombres.Comprobante(a.Tipo)}: quedan {a.Disponibles} comprobantes{(a.VenceEl is { } v ? $", vencen el {v:dd/MM/yyyy}" : "")}. Cargue una nueva secuencia en Configuración.");
+    }
+}

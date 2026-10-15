@@ -1,4 +1,4 @@
-# Backlog de Toki V1 (backend primero)
+# Backlog de Toki V1
 
 Fuente del alcance: `docs/funcionalidades-v1.md` (sección 2) y `docs/arquitectura-v1-vsa.md` (sección 14).
 Estados: ✅ hecho · 🔨 en curso · ⬜ pendiente · ⏸ en espera (bloqueado por algo externo).
@@ -124,6 +124,37 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 |---|---|---|
 | TK-095 | Suite e2e: el proceso real de la API y un día completo de tienda por HTTP (instalar, catálogo, abrir caja, vender, anular, devolver, comprar, cerrar, reportes) | ✅ `tests/Toki.E2ETests`: proceso real (SQLite o SQL Server en CI), 3 cajas en paralelo, reinicio a mitad del día, fiado, compras, cierres ciegos; al final cuadran cajas, kardex, e-NCF, documentos, clientes, suplidores y auditoría, sin ningún 500 |
 
+## M11 · Frontend (caja y administración)
+
+Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-0007.
+
+| Ticket | Qué | Estado |
+|---|---|---|
+| TK-100 | Escuadra (RCL): tokens, botones, teclas visibles, avisos en línea, diálogo (único con sombra, foco al primer campo), teclado numérico, PIN, dinero, íconos, logo C5 | ✅ |
+| TK-101 | Cliente de la API tipado: dispositivo + sesión en cada pedido, ProblemDetails con `code`, sesión vencida → PIN, sin servidor → aviso ámbar | ✅ |
+| TK-102 | Configurar este equipo: primera instalación o unir con el código de 8 dígitos | ✅ |
+| TK-103 | Entrar con PIN (teclado en pantalla y físico), dueño/supervisor a administración, cajero a la caja | ✅ |
+| TK-104 | Abrir caja con el fondo contado por denominación | ✅ |
+| TK-105 | Venta: escáner (código, PLU, etiquetas de balanza), mosaicos por categoría, carrito, cantidad/peso (F3), precio (F4), descuento (F7), quitar, anular, teclas F | ✅ |
+| TK-106 | Cobro: efectivo en pesos enteros con montos rápidos y devuelta, tarjeta, transferencia, mixto, fiado, saldo a favor; total confirmado por el servidor (`Ventas.TotalCambio`), idempotente por `VentaId` | ✅ |
+| TK-107 | Diálogo único "Autoriza un supervisor": la pantalla manda el comando, si la API pide un permiso se autoriza y se reintenta | ✅ |
+| TK-108 | Cliente y comprobante (E32/E31), RNC escrito para una sola factura, alta rápida | ✅ |
+| TK-109 | Ventas en espera (F5): guardar, retomar, descartar | ✅ |
+| TK-110 | Caja (F9): entradas y salidas de efectivo, cambiar de usuario, ir a administración | ✅ |
+| TK-111 | Ventas del turno: ver, reimprimir, anular y devolver líneas con supervisor | ✅ |
+| TK-112 | Cerrar caja ciego por denominación, cierre con supervisor y resultado (cuadró/sobró/faltó, por medio) | ✅ |
+| TK-113 | Administración: Resumen (hoy, 7 días, más vendidos, cajas, alertas de comprobantes), Productos y categorías, Turnos y Z, Configuración (negocio, cajas, comprobantes, equipos, usuarios, respaldos, licencia) | ✅ |
+| TK-114 | App de la tienda: WPF + BlazorWebView, token del equipo cifrado con DPAPI | 🟡 Compila; falta abrirla una vez en una PC de caja (y en la VM limpia) |
+| TK-115 | Host web de desarrollo (`Toki.Client.Web`) para ver y probar las pantallas en el navegador | ✅ |
+| TK-116 | Pruebas bUnit: carrito, cobro con total corregido, supervisor, PIN equivocado, F7 | ✅ |
+| TK-117 | Balanza (`IScale`) por marca; hoy el peso se escribe | ⬜ |
+| TK-118 | Impresora térmica ESC/POS y gaveta; hoy la factura es una vista previa | ⬜ |
+| TK-119 | Incluir IBM Plex Sans (OFL) en `wwwroot/fuentes`; hoy usa la instalada o Segoe UI | ⬜ |
+| TK-120 | Administración que falta: inventario (ajustes, conteo, transferencias), compras, suplidores y gastos, clientes y abonos, facturas, reportes descargables, roles | ⬜ |
+| TK-121 | Abono de un cliente desde la caja | ⬜ |
+| TK-122 | Fijar el certificado del nodo en el cliente al emparejar (con TK-091) | ⬜ |
+| TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real | ⬜ |
+
 ## Revisiones
 
 | Revisión | Hito | Estado |
@@ -137,4 +168,4 @@ Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el c
 
 ## Fuera de V1 (no se construye ahora)
 
-Pantallas (WPF + Blazor), hardware (balanza, impresora, gaveta), DOP/USD, cotizaciones y conduces, combos, lotes, multisucursal, host en la nube, módulos vendibles (`funcionalidades-v1.md` §5).
+DOP/USD, cotizaciones y conduces, combos, lotes, multisucursal, host en la nube, módulos vendibles (`funcionalidades-v1.md` §5).

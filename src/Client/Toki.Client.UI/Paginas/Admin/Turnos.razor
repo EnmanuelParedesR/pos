@@ -1,0 +1,67 @@
+@page "/admin/turnos"
+@inject TokiApi Api
+
+<Admin Titulo="Turnos y cuadres" Subtitulo="Últimos 7 días. Toque un turno para ver su cierre Z.">
+    <div class="esc-tarjeta esc-tabla-marco">
+        <table class="esc-tabla" style="min-width:720px">
+            <thead><tr><th>Z</th><th>Caja</th><th>Cajero</th><th>Abierto</th><th>Cerrado</th><th class="esc-num">Esperado</th><th class="esc-num">Contado</th><th class="esc-num">Diferencia</th></tr></thead>
+            <tbody>
+                @foreach (var t in _turnos)
+                {
+                    <tr class="seleccionable" tabindex="0" @onclick="() => VerAsync(t.TurnoId)" @onkeydown='e => e.Key == "Enter" ? VerAsync(t.TurnoId) : Task.CompletedTask'>
+                        <td>@(t.NumeroZ?.ToString() ?? "—")</td><td>@t.Caja</td><td>@t.Cajero</td>
+                        <td>@Formato.Fecha(t.AbiertoUtc)</td>
+                        <td>@(t.CerradoUtc is { } c ? Formato.Hora(c) : "Abierto")</td>
+                        <td class="esc-num">@(t.EfectivoEsperado is { } e ? Formato.Pesos(e) : "—")</td>
+                        <td class="esc-num">@(t.EfectivoContado is { } k ? Formato.Pesos(k) : "—")</td>
+                        <td class="esc-num" style="font-weight:700;color:@(t.Diferencia is null or 0 ? "var(--texto)" : "var(--aviso)")">@(t.Diferencia is { } d ? Formato.Pesos(d) : "—")</td>
+                    </tr>
+                }
+                @if (_turnos.Count == 0)
+                {
+                    <tr><td colspan="8" class="esc-tenue">@(_mensaje ?? "No hay turnos en estos días.")</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</Admin>
+
+@if (_z is { } z)
+{
+    <Dialogo Titulo="@(z.NumeroZ is { } n ? $"Cierre Z #{n}" : "Reporte X (turno abierto)")" Subtitulo="@($"{z.Caja} · {z.Cajero}")" Ancho="true" OnCerrar="() => _z = null">
+        <ChildContent>
+            <div class="kpis">
+                <div class="esc-tarjeta kpi"><span class="esc-etiqueta">Fondo</span><span class="kpi__valor">@Formato.Pesos(z.FondoInicial)</span></div>
+                <div class="esc-tarjeta kpi"><span class="esc-etiqueta">Efectivo esperado</span><span class="kpi__valor">@Formato.Pesos(z.EfectivoEsperado)</span></div>
+                <div class="esc-tarjeta kpi"><span class="esc-etiqueta">Contado</span><span class="kpi__valor">@(z.EfectivoContado is { } c ? Formato.Pesos(c) : "—")</span></div>
+            </div>
+            <table class="esc-tabla">
+                <thead><tr><th>Forma de pago</th><th class="esc-num">Cobros</th><th class="esc-num">Anulaciones</th><th class="esc-num">Reembolsos</th><th class="esc-num">Abonos</th><th class="esc-num">Neto</th></tr></thead>
+                <tbody>
+                    @foreach (var m in z.PorMedio)
+                    {
+                        <tr><td>@m.Medio</td><td class="esc-num">@Formato.Pesos(m.Cobros)</td><td class="esc-num">@Formato.Pesos(m.Anulaciones)</td><td class="esc-num">@Formato.Pesos(m.Reembolsos)</td><td class="esc-num">@Formato.Pesos(m.Abonos)</td><td class="esc-num" style="font-weight:700">@Formato.Pesos(m.Neto)</td></tr>
+                    }
+                </tbody>
+            </table>
+            <div class="esc-subtitulo">@z.Ventas ventas · @z.VentasAnuladas anuladas · entradas @Formato.Pesos(z.Entradas) · retiros @Formato.Pesos(z.Retiros) · gastos @Formato.Pesos(z.Gastos) · redondeo @Formato.Pesos(z.Redondeo)</div>
+        </ChildContent>
+        <Pie><Boton Variante="Boton.Variantes.Primario" Tecla="Esc" OnClick="() => _z = null">Cerrar</Boton></Pie>
+    </Dialogo>
+}
+
+@code {
+    private List<ResumenTurno> _turnos = [];
+    private ReporteZ? _z;
+    private string? _mensaje;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var hoy = DateOnly.FromDateTime(DateTime.Now);
+        var r = await Api.GetAsync<List<ResumenTurno>>($"/api/reportes/turnos?desde={hoy.AddDays(-6):yyyy-MM-dd}&hasta={hoy:yyyy-MM-dd}");
+        _turnos = [.. (r.Valor ?? []).OrderByDescending(t => t.AbiertoUtc)];
+        _mensaje = r.Problema?.Mensaje;
+    }
+
+    private async Task VerAsync(Guid id) => _z = (await Api.GetAsync<ReporteZ>($"/api/caja/turnos/{id}/z")).Valor;
+}

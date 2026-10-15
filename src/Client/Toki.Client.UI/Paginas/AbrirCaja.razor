@@ -1,0 +1,115 @@
+@page "/abrir-caja"
+@inject TokiApi Api
+@inject Sesion Sesion
+@inject NavigationManager Nav
+
+<div class="esc-pagina" @onkeydown="TeclaAsync">
+    <div class="esc-fila" style="justify-content:space-between">
+        <div>
+            <h1 class="esc-titulo">Abrir caja</h1>
+            <p class="esc-subtitulo">Cuente el fondo que hay en la gaveta antes de vender.</p>
+        </div>
+        @if (Sesion.EsAdministracion)
+        {
+            <a href="admin" class="esc-boton">Volver a administración</a>
+        }
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+        <section class="esc-tarjeta" style="flex:999 1 480px" aria-label="Fondo por denominación">
+            <div style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr;gap:16px;padding:10px 16px;border-bottom:1px solid var(--borde-tarjeta)" class="esc-etiqueta">
+                <div>Efectivo en pesos</div><div class="esc-num">Cantidad</div><div class="esc-num">Importe RD$</div>
+            </div>
+            @foreach (var d in _denominaciones)
+            {
+                <label style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr;gap:16px;align-items:center;min-height:48px;padding:0 16px;border-bottom:1px solid var(--borde-tarjeta)">
+                    <span style="font-size:var(--t-20);font-weight:600">@d.ToString("#,##0")</span>
+                    <input class="esc-entrada esc-num" inputmode="numeric" style="font-size:var(--t-20);font-weight:600" aria-label="@($"Cantidad de {d:#,##0}")"
+                           value="@(_conteo.GetValueOrDefault(d) is var c and > 0 ? c : "")" @onchange="e => Contar(d, e.Value)" />
+                    <span class="esc-num" style="font-size:var(--t-20);font-weight:600">@Formato.Pesos(d * _conteo.GetValueOrDefault(d))</span>
+                </label>
+            }
+        </section>
+
+        <section class="esc-col" style="flex:1 1 360px;gap:16px">
+            <div class="esc-tarjeta esc-tarjeta--relleno esc-col">
+                <span class="esc-etiqueta">Caja</span>
+                @if (_cajas is null)
+                {
+                    <span class="esc-tenue">Cargando…</span>
+                }
+                else if (_cajas.Count == 0)
+                {
+                    <Aviso Tipo="Aviso.Tipos.Aviso" Titulo="No hay cajas libres." >El dueño las crea en Configuración → Cajas.</Aviso>
+                }
+                else
+                {
+                    <div class="esc-fila">
+                        @foreach (var c in _cajas)
+                        {
+                            <button type="button" class="esc-chip" aria-pressed="@(c.Id == _caja ? "true" : "false")" @onclick="() => _caja = c.Id">@c.Nombre</button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="esc-tarjeta esc-tarjeta--relleno esc-col" style="gap:4px">
+                <span class="esc-etiqueta">Fondo contado</span>
+                <Dinero Valor="Fondo" Tamano="52" />
+            </div>
+            @if (_error is not null)
+            {
+                <Aviso Titulo="@_error" />
+            }
+            <Boton Variante="Boton.Variantes.Primario" Dinero="true" Tecla="F12" Deshabilitado="@(_caja is null || _enviando)" OnClick="AbrirAsync">Abrir caja y vender</Boton>
+        </section>
+    </div>
+</div>
+
+@code {
+    private List<decimal> _denominaciones = [];
+    private readonly Dictionary<decimal, int> _conteo = [];
+    private List<CajaInfo>? _cajas;
+    private Guid? _caja;
+    private string? _error;
+    private bool _enviando;
+
+    private decimal Fondo => _conteo.Sum(c => c.Key * c.Value);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var d = await Api.GetAsync<List<decimal>>("/api/caja/denominaciones");
+        _denominaciones = d.Valor ?? [];
+        var c = await Api.GetAsync<List<CajaInfo>>("/api/caja/cajas");
+        _cajas = c.Valor?.Where(x => x.Activa && x.TurnoAbiertoId is null).ToList() ?? [];
+        if (_cajas.Count == 1) _caja = _cajas[0].Id;
+        _error = d.Problema?.Mensaje ?? c.Problema?.Mensaje;
+    }
+
+    private void Contar(decimal denominacion, object? valor) =>
+        _conteo[denominacion] = int.TryParse(valor?.ToString(), out var n) && n >= 0 ? n : 0;
+
+    private async Task TeclaAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "F12" && _caja is not null && !_enviando) await AbrirAsync();
+    }
+
+    private async Task AbrirAsync()
+    {
+        _enviando = true;
+        var r = await Api.PostAsync<TurnoAbierto>("/api/caja/turnos", new { CajaId = _caja, FondoInicial = Fondo });
+        if (r.Ok)
+        {
+            Sesion.Turno = (await Api.GetAsync<TurnoActual>("/api/caja/turnos/actual")).Valor;
+            Nav.NavigateTo("venta");
+            return;
+        }
+        _enviando = false;
+        _error = r.Problema!.Codigo switch
+        {
+            "Caja.CajeroConTurno" => "Usted ya tiene un turno abierto en otra caja.",
+            "Caja.CajaOcupada" => "Esa caja ya tiene un turno abierto.",
+            "Caja.OtroDispositivo" => "Esa caja se usa en otro equipo. Un supervisor puede abrirla aquí.",
+            _ => r.Problema.Mensaje,
+        };
+    }
+}

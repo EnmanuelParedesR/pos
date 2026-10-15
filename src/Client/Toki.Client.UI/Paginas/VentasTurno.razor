@@ -1,0 +1,212 @@
+@page "/ventas"
+@inject TokiApi Api
+@inject Sesion Sesion
+@inject Autorizador Autorizador
+@inject NavigationManager Nav
+
+<div class="esc-pagina">
+    <div class="esc-fila" style="justify-content:space-between">
+        <div>
+            <h1 class="esc-titulo">Ventas de este turno</h1>
+            <p class="esc-subtitulo">Anular devuelve todo mientras el turno siga abierto. Después, use devolución.</p>
+        </div>
+        <div class="esc-fila">
+            <form class="esc-fila" @onsubmit="CargarAsync">
+                <input class="esc-entrada" style="width:220px" placeholder="Número o e-NCF" aria-label="Buscar venta" @bind="_buscar" />
+                <Boton Tipo="submit"><Icono Nombre="buscar" /> Buscar</Boton>
+            </form>
+            <Boton OnClick='() => Nav.NavigateTo("venta")' Tecla="Esc">Volver a la venta</Boton>
+        </div>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start" @onkeydown="Tecla">
+        <section class="esc-tarjeta esc-tabla-marco" style="flex:999 1 520px">
+            <table class="esc-tabla">
+                <thead><tr><th>No.</th><th>Hora</th><th>e-NCF</th><th>Cliente</th><th>Estado</th><th class="esc-num">Total</th></tr></thead>
+                <tbody>
+                    @foreach (var v in _ventas)
+                    {
+                        <tr class="seleccionable @(v.Id == _detalle?.Id ? "activa" : "")" tabindex="0" @onclick="() => VerAsync(v.Id)"
+                            @onkeydown='e => e.Key == "Enter" ? VerAsync(v.Id) : Task.CompletedTask'>
+                            <td>@v.Numero</td><td>@Formato.Hora(v.FechaUtc)</td><td>@v.ENcf</td><td>@(v.Cliente ?? "Contado")</td>
+                            <td><span class="esc-pildora @(v.Estado == "Anulada" ? "esc-pildora--error" : "esc-pildora--exito")">@v.Estado</span></td>
+                            <td class="esc-num" style="font-weight:600">@Formato.Pesos(v.Total)</td>
+                        </tr>
+                    }
+                    @if (_ventas.Count == 0)
+                    {
+                        <tr><td colspan="6" class="esc-tenue">@(_cargando ? "Cargando…" : "Todavía no hay ventas en este turno.")</td></tr>
+                    }
+                </tbody>
+            </table>
+        </section>
+
+        @if (_detalle is { } d)
+        {
+            <section class="esc-tarjeta esc-tarjeta--relleno esc-col" style="flex:1 1 380px;gap:12px" aria-label="Detalle">
+                <div class="esc-fila" style="justify-content:space-between">
+                    <div>
+                        <div style="font-size:var(--t-20);font-weight:700">Factura #@d.Numero</div>
+                        <div class="esc-subtitulo">@d.ENcf · @Formato.Fecha(d.FechaUtc) · @d.Cajero</div>
+                    </div>
+                    <Dinero Valor="d.Total" Tamano="32" />
+                </div>
+                @if (d.MotivoAnulacion is not null)
+                {
+                    <Aviso Tipo="Aviso.Tipos.Aviso" Titulo="Anulada">@d.MotivoAnulacion</Aviso>
+                }
+                <table class="esc-tabla">
+                    <thead><tr><th>Producto</th><th class="esc-num">Cant.</th><th class="esc-num">Total</th>@if (_accion == "devolver") { <th class="esc-num">Devolver</th> }</tr></thead>
+                    <tbody>
+                        @foreach (var l in d.Lineas)
+                        {
+                            var disponible = l.Cantidad - l.CantidadDevuelta;
+                            <tr>
+                                <td>@l.Descripcion @if (l.CantidadDevuelta > 0) { <span class="esc-subtitulo">· devuelto @l.CantidadDevuelta.ToString("0.###")</span> }</td>
+                                <td class="esc-num">@l.Cantidad.ToString("0.###")</td>
+                                <td class="esc-num">@Formato.Pesos(l.Total)</td>
+                                @if (_accion == "devolver")
+                                {
+                                    <td class="esc-num" style="width:120px">
+                                        <input class="esc-entrada esc-num" inputmode="decimal" disabled="@(disponible <= 0)" aria-label="@($"Devolver de {l.Descripcion}")"
+                                               value="@(_devolver.GetValueOrDefault(l.Id) is var x and > 0 ? x.ToString("0.###") : "")"
+                                               @onchange="e => _devolver[l.Id] = Math.Min(disponible, Formato.LeerNumero(e.Value?.ToString()) ?? 0)" />
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                <div class="esc-subtitulo">Pagado: @string.Join(" · ", d.Pagos.Select(p => $"{p.Medio} {Formato.Pesos(p.Monto)}"))</div>
+                @foreach (var dev in d.Devoluciones)
+                {
+                    <div class="esc-subtitulo">Devolución @Formato.Hora(dev.FechaUtc): @Formato.ConMoneda(dev.Total) por @dev.Medio · @dev.ENcf</div>
+                }
+
+                @if (_accion is not null)
+                {
+                    <label class="esc-campo"><span>Motivo</span><input class="esc-entrada" maxlength="200" @bind="_motivo" autofocus /></label>
+                    @if (_accion == "devolver")
+                    {
+                        <label class="esc-campo">
+                            <span>Devolver el dinero por</span>
+                            <select class="esc-select" @bind="_medio">
+                                <option value="@MedioPago.Efectivo">Efectivo</option>
+                                <option value="@MedioPago.Tarjeta">Tarjeta</option>
+                                <option value="@MedioPago.Transferencia">Transferencia</option>
+                                @if (d.ClienteId is not null) { <option value="@MedioPago.SaldoFavor">Saldo a favor del cliente</option> }
+                            </select>
+                        </label>
+                    }
+                }
+                @if (_mensaje is not null)
+                {
+                    <Aviso Tipo="_mensajeTipo" Titulo="@_mensaje" />
+                }
+                <div class="esc-fila" style="justify-content:flex-end">
+                    @if (_accion is null)
+                    {
+                        <Boton OnClick="() => _comprobante = true"><Icono Nombre="impresora" /> Reimprimir</Boton>
+                        @if (d.Estado != "Anulada")
+                        {
+                            <Boton OnClick='() => Accion("devolver")'>Devolver líneas</Boton>
+                            <Boton Variante="Boton.Variantes.Peligro" OnClick='() => Accion("anular")'><Icono Nombre="candado" /> Anular venta</Boton>
+                        }
+                    }
+                    else
+                    {
+                        <Boton OnClick="() => _accion = null">Cancelar</Boton>
+                        <Boton Variante="@(_accion == "anular" ? Boton.Variantes.Peligro : Boton.Variantes.Primario)" Deshabilitado="_enviando" OnClick="ConfirmarAsync">
+                            @(_accion == "anular" ? "Anular venta" : "Devolver")
+                        </Boton>
+                    }
+                </div>
+            </section>
+        }
+    </div>
+</div>
+
+@if (_comprobante && _comprobanteDatos is { } c)
+{
+    <DialogoComprobante Comprobante="c" OnCerrar="() => _comprobante = false" />
+}
+
+@code {
+    private List<VentaResumen> _ventas = [];
+    private VentaDetalle? _detalle;
+    private Comprobante? _comprobanteDatos;
+    private string? _buscar, _accion, _motivo, _mensaje;
+    private Aviso.Tipos _mensajeTipo;
+    private MedioPago _medio = MedioPago.Efectivo;
+    private readonly Dictionary<Guid, decimal> _devolver = [];
+    private bool _cargando = true, _enviando, _comprobante;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Sesion.Turno ??= (await Api.GetAsync<TurnoActual>("/api/caja/turnos/actual")).Valor;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        var filtro = string.IsNullOrWhiteSpace(_buscar) ? $"turnoId={Sesion.Turno?.TurnoId}" : $"buscar={Uri.EscapeDataString(_buscar.Trim())}";
+        var r = await Api.GetAsync<List<VentaResumen>>($"/api/ventas?{filtro}");
+        (_ventas, _cargando) = (r.Valor ?? [], false);
+        if (r.Problema is { } p) (_mensajeTipo, _mensaje) = (Aviso.Tipos.Error, p.Mensaje);
+    }
+
+    private async Task VerAsync(Guid id)
+    {
+        (_accion, _mensaje) = (null, null);
+        _devolver.Clear();
+        _detalle = (await Api.GetAsync<VentaDetalle>($"/api/ventas/{id}")).Valor;
+        _comprobanteDatos = (await Api.GetAsync<Comprobante>($"/api/ventas/{id}/comprobante")).Valor;
+    }
+
+    private void Accion(string a) => (_accion, _motivo, _mensaje) = (a, null, null);
+
+    private void Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _accion is null && !_comprobante) Nav.NavigateTo("venta");
+    }
+
+    private async Task ConfirmarAsync()
+    {
+        if (_detalle is not { } d || Sesion.Turno is not { } turno) return;
+        if (string.IsNullOrWhiteSpace(_motivo)) { (_mensajeTipo, _mensaje) = (Aviso.Tipos.Error, "Escriba el motivo."); return; }
+        _enviando = true;
+        Problema? problema;
+        if (_accion == "anular")
+        {
+            var r = await Autorizador.ConSupervisorAsync(id => Api.PostAsync<Vacio>($"/api/ventas/{d.Id}/anular", new { Motivo = _motivo.Trim(), AutorizacionSupervisorId = id }),
+                d.Id, $"Anular la factura #{d.Numero} de {Formato.ConMoneda(d.Total)}");
+            problema = r.Problema;
+        }
+        else
+        {
+            var lineas = _devolver.Where(x => x.Value > 0).Select(x => new LineaDevolucion(x.Key, Math.Round(x.Value, 3))).ToList();
+            if (lineas.Count == 0) { (_mensajeTipo, _mensaje, _enviando) = (Aviso.Tipos.Error, "Escriba cuánto se devuelve de cada producto.", false); return; }
+            var devolucionId = Guid.CreateVersion7();
+            var r = await Autorizador.ConSupervisorAsync(id => Api.PostAsync<Vacio>($"/api/ventas/{d.Id}/devoluciones",
+                    new { DevolucionId = devolucionId, turno.TurnoId, Lineas = lineas, Medio = _medio, Motivo = _motivo.Trim(), AutorizacionSupervisorId = id }),
+                d.Id, $"Devolución de la factura #{d.Numero}");
+            problema = r.Problema;
+        }
+        _enviando = false;
+        if (problema is null)
+        {
+            var hecho = _accion == "anular" ? "Venta anulada. Se emitió la nota de crédito." : "Devolución registrada. Se emitió la nota de crédito.";
+            await CargarAsync();
+            await VerAsync(d.Id); // clears the form
+            (_mensajeTipo, _mensaje) = (Aviso.Tipos.Exito, hecho);
+            return;
+        }
+        (_mensajeTipo, _mensaje) = (Aviso.Tipos.Error, problema.Codigo switch
+        {
+            "Ventas.FueraDeTurno" => "Esa venta es de un turno cerrado: use Devolver líneas.",
+            "Ventas.ConDevoluciones" => "Esa venta ya tiene devoluciones: devuelva lo que queda en vez de anular.",
+            "Ventas.MedioExcedido" => "No se puede devolver por ese medio más de lo que se pagó con él.",
+            _ => problema.Mensaje,
+        });
+    }
+}

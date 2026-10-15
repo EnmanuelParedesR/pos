@@ -1,0 +1,51 @@
+@* Back office frame: the side menu and the page. "Vender" goes to the register (F1). *@
+@inject Sesion Sesion
+@inject TokiApi Api
+@inject NavigationManager Nav
+
+<div class="esc-admin" @onkeydown="Tecla">
+    <nav class="esc-menu" aria-label="Secciones">
+        <a href="venta" class="esc-menu__vender"><span>Vender</span><Tecla>F1</Tecla></a>
+        <NavLink href="admin" Match="NavLinkMatch.All">Resumen</NavLink>
+        <NavLink href="admin/productos">Productos</NavLink>
+        <NavLink href="admin/turnos">Turnos y cuadres</NavLink>
+        @if (Sesion.Puede("configuracion.gestionar") || Sesion.Puede("usuarios.gestionar"))
+        {
+            <NavLink href="admin/configuracion">Configuración</NavLink>
+        }
+        <div class="esc-espacio"></div>
+        <a href="" @onclick="SalirAsync" @onclick:preventDefault="true"><Icono Nombre="salir" /> &nbsp;Salir</a>
+    </nav>
+    <div class="esc-pagina">
+        <div class="esc-fila" style="justify-content:space-between">
+            <div>
+                <h1 class="esc-titulo">@Titulo</h1>
+                @if (Subtitulo is not null)
+                {
+                    <p class="esc-subtitulo">@Subtitulo</p>
+                }
+            </div>
+            @Acciones
+        </div>
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Titulo { get; set; } = "";
+    [Parameter] public string? Subtitulo { get; set; }
+    [Parameter] public RenderFragment? Acciones { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private void Tecla(KeyboardEventArgs e)
+    {
+        if (e.Key == "F1") Nav.NavigateTo("venta");
+    }
+
+    private async Task SalirAsync()
+    {
+        await Api.DeleteAsync<Vacio>("/api/identidad/sesiones/actual");
+        Sesion.Cerrar();
+        Nav.NavigateTo("entrar");
+    }
+}

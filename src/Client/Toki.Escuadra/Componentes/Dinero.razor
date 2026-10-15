@@ -1,0 +1,9 @@
+<span class="esc-dinero" style="font-size:@(Tamano)px">
+    <span class="esc-dinero__moneda">RD$</span>
+    <span>@Formato.Pesos(Valor)</span>
+</span>
+
+@code {
+    [Parameter] public decimal Valor { get; set; }
+    [Parameter] public int Tamano { get; set; } = 24;
+}
