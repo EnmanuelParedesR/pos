@@ -57,6 +57,10 @@
             <button type="button" class="esc-button esc-button--ghost" style="justify-content:flex-start;flex:1 1 auto;min-width:0" @onclick="() => OpenAsync(Panel.Customer)">
                 <Icon Name="user" />
                 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@(Cart.Customer?.Name ?? Cart.ManualName ?? "Cliente de contado")</span>
+                @if (Cart.OrderId is not null)
+                {
+                    <span class="esc-pill esc-pill--success">Pedido</span>
+                }
                 <span class="esc-pill esc-pill--neutral">@(Cart.DocumentType == EcfType.FiscalCredit31 ? "Crédito fiscal" : "Consumo")</span>
                 <Keycap>F6</Keycap>
             </button>
@@ -100,7 +104,14 @@
         }
         else if (Cart.IsEmpty)
         {
-            <div class="sale__list esc-muted">Escanee el primer producto.</div>
+            <div class="sale__list esc-muted">
+                Escanee el primer producto.
+                @if (_upcoming is { } u && (u.Today > 0 || u.Tomorrow > 0))
+                {
+                    @* TK-193: the reminder of the day's orders. *@
+                    <Button OnClick="() => OpenAsync(Panel.Orders)"><Icon Name="calendar" /> Pedidos: @u.Today para hoy · @u.Tomorrow para mañana <Keycap>F10</Keycap></Button>
+                }
+            </div>
         }
 
         <div class="sale__totals">
@@ -126,6 +137,7 @@
     <button type="button" @onclick="RemoveLineAsync" disabled="@(Cart.SelectedLine is null)"><Keycap>Supr</Keycap> Quitar línea</button>
     <button type="button" @onclick="() => OpenAsync(Panel.Void)" disabled="@Cart.IsEmpty"><Keycap>F8</Keycap> Anular venta</button>
     <button type="button" @onclick="() => OpenAsync(Panel.Register)"><Keycap>F9</Keycap> Caja</button>
+    <button type="button" @onclick="() => OpenAsync(Panel.Orders)"><Keycap>F10</Keycap> Pedidos</button>
 </nav>
 
 @switch (_panel)
@@ -151,6 +163,9 @@
     case Panel.Register:
         <RegisterMenu OnClose="Close" />
         break;
+    case Panel.Orders:
+        <OrdersDialog ShiftId="Session.Shift!.ShiftId" OnClose="CloseOrdersAsync" OnDone="OrdersDoneAsync" />
+        break;
     case Panel.Receipt when _last is { } u:
         <ReceiptDialog Receipt="u.Receipt" OnClose="Close" />
         break;
@@ -165,7 +180,7 @@
 }
 
 @code {
-    private enum Panel { None, Checkout, Quantity, Price, Discount, Weight, Scale, Customer, Hold, Register, Receipt, Void }
+    private enum Panel { None, Checkout, Quantity, Price, Discount, Weight, Scale, Customer, Hold, Register, Receipt, Void, Orders }
     private sealed record SaleNotice(Notice.Kinds Kind, string Title, string? Detail = null);
     /// <summary>The API's page size for products.</summary>
     // shortcut: one page of tiles per category; add "Ver más" (page=2) when a category grows past 50 products.
@@ -181,6 +196,7 @@
     private SaleRegistered? _last;
     private ElementReference _scanner;
     private bool _focusScanner = true;
+    private (int Today, int Tomorrow)? _upcoming;
 
     private bool CanCharge => !Cart.IsEmpty && Session.Shift is not null && !Cart.HasInvalidLine;
 
@@ -196,6 +212,28 @@
         }
         _categories = (await Api.GetAsync<List<Category>>("/api/inventory/categories")).Value?.Where(c => c.IsActive).ToList() ?? [];
         if (_categories.Count > 0) await CategoryAsync(_categories[0].Id);
+        await UpcomingAsync();
+    }
+
+    /// <summary>Open orders for today and tomorrow (TK-193's reminder). Only shown to whoever may take orders.</summary>
+    private async Task UpcomingAsync()
+    {
+        if (!Session.Can("sales.create")) return;
+        var list = (await Api.GetAsync<List<OrderItem>>($"/api/orders?kind=Order&from={Format.Today:yyyy-MM-dd}&to={Format.Today.AddDays(1):yyyy-MM-dd}&openOnly=true")).Value;
+        _upcoming = list is null ? null : (list.Count(o => o.PickupDate == Format.Today), list.Count(o => o.PickupDate != Format.Today));
+    }
+
+    private async Task CloseOrdersAsync()
+    {
+        Close();
+        await UpcomingAsync();
+    }
+
+    private async Task OrdersDoneAsync(string? message)
+    {
+        _last = null;
+        _notice = message is null ? null : new(Cart.IsEmpty ? Notice.Kinds.Success : Notice.Kinds.Warning, message);
+        await CloseOrdersAsync();
     }
 
     private void OnSessionChanged() => InvokeAsync(StateHasChanged); // online / offline: Cobrar follows
@@ -355,7 +393,7 @@
             }
         }
         if (p == Panel.Void && Cart.IsEmpty) return;
-        if (p is Panel.Hold or Panel.Customer or Panel.Void && !await EditableAsync()) return;
+        if (p is Panel.Hold or Panel.Customer or Panel.Void or Panel.Orders && !await EditableAsync()) return;
         _panel = p;
     }
 
@@ -380,8 +418,10 @@
     {
         _last = v;
         _notice = null;
+        var wasOrder = Cart.OrderId is not null;
         Cart.Clear();
         Close();
+        if (wasOrder) await UpcomingAsync();
         if (Peripherals.Printer is null) return;
         StateHasChanged(); // the sale shows as saved while the printer works
 
@@ -407,6 +447,7 @@
             case "F7": await OpenLineAsync(Panel.Discount); break;
             case "F8": await OpenAsync(Panel.Void); break;
             case "F9": await OpenAsync(Panel.Register); break;
+            case "F10": await OpenAsync(Panel.Orders); break;
             case "F12": await OpenAsync(Panel.Checkout); break;
             // Supr inside a scanner with text edits the text; on an empty scanner it removes the selected line.
             case "Delete" when string.IsNullOrEmpty(_code): await RemoveLineAsync(); break;

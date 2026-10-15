@@ -172,6 +172,21 @@ internal sealed class CustomerAccounts(CustomersDbContext db, IUserContext user,
         if (rest > 0) AddBalance(customerId, CreditBalanceMovementType.Return, rest, returnId);
     }
 
+    public async Task<Result> AddDepositAsync(Guid customerId, Guid orderId, decimal amount, CancellationToken ct)
+    {
+        if (await db.LockAsync(customerId, ct) == 0) return CustomersErrors.CustomerNotFound;
+        AddBalance(customerId, CreditBalanceMovementType.Deposit, amount, orderId);
+        return Result.Success();
+    }
+
+    public async Task<Result> RefundDepositAsync(Guid customerId, Guid orderId, decimal amount, CancellationToken ct)
+    {
+        if (await db.LockAsync(customerId, ct) == 0) return CustomersErrors.CustomerNotFound;
+        if (await db.CreditBalanceAsync(customerId, ct) < amount) return CustomersErrors.InsufficientCreditBalance;
+        AddBalance(customerId, CreditBalanceMovementType.DepositRefund, -amount, orderId);
+        return Result.Success();
+    }
+
     /// <summary>Applies an amount to open charges in the given order with one payment record. Returns what was applied.</summary>
     private decimal ApplyPayment(Guid customerId, CustomerPaymentSource source, Guid referenceId, decimal amount, IEnumerable<(OnAccountCharge Charge, decimal Balance)> open)
     {

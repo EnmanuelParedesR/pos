@@ -8,6 +8,7 @@ import { SalesPage } from "./pages/SalesPage";
 import { ShiftsPage } from "./pages/ShiftsPage";
 import { StoresPage } from "./pages/StoresPage";
 import { AssistantPage } from "./pages/AssistantPage";
+import { CatalogPage } from "./pages/CatalogPage";
 
 /** What every screen gets from the frame: the tenant's stores and the selected one ("" = all). */
 export interface PanelContext {
@@ -20,14 +21,23 @@ export interface PanelContext {
 export const usePanel = () => useOutletContext<PanelContext>();
 
 export function App() {
+  // The public catalog (TK-195) needs no session: a store's customers open it from a QR.
+  const isPublic = useLocation().pathname.startsWith("/c/");
   // undefined = checking a saved session, null = signed out.
-  const [me, setMe] = useState<Me | null | undefined>(hasSession() ? undefined : null);
+  const [me, setMe] = useState<Me | null | undefined>(hasSession() && !isPublic ? undefined : null);
 
   useEffect(() => {
     setOnSignedOut(() => setMe(null));
     if (me === undefined) api<Me>("/api/me").then(setMe, () => setMe(null));
     // Only on start: later sign-ins set `me` themselves.
   }, []);
+
+  if (isPublic)
+    return (
+      <Routes>
+        <Route path="/c/:storeId" element={<CatalogPage />} />
+      </Routes>
+    );
 
   if (me === undefined)
     return (

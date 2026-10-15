@@ -14,6 +14,16 @@ internal sealed class SalesDbContext(DbContextOptions<SalesDbContext> options) :
     public DbSet<SalePayment> Payments => Set<SalePayment>();
     public DbSet<SaleReturn> Returns => Set<SaleReturn>();
     public DbSet<HeldSale> HeldSales => Set<HeldSale>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<CatalogItem> CatalogItems => Set<CatalogItem>();
+    public DbSet<CatalogSettings> CatalogSettings => Set<CatalogSettings>();
+
+    /// <summary>Locks the order row until the transaction ends, then reads it (as <see cref="LockSaleAsync"/> does).</summary>
+    public async Task<Order?> LockOrderAsync(Guid id, CancellationToken ct)
+    {
+        await Orders.Where(o => o.Id == id).ExecuteUpdateAsync(u => u.SetProperty(o => o.Version, o => o.Version + 1), ct);
+        return await Orders.FirstOrDefaultAsync(o => o.Id == id, ct);
+    }
 
     public Task<Sale?> FullSaleAsync(Guid id, CancellationToken ct) =>
         Sales.Include(s => s.Lines.OrderBy(l => l.Position)).Include(s => s.Payments).FirstOrDefaultAsync(s => s.Id == id, ct);
@@ -28,7 +38,8 @@ internal sealed class SalesDbContext(DbContextOptions<SalesDbContext> options) :
 
 internal sealed class SalesConfiguration :
     IEntityTypeConfiguration<Sale>, IEntityTypeConfiguration<SaleLine>, IEntityTypeConfiguration<SalePayment>,
-    IEntityTypeConfiguration<SaleReturn>, IEntityTypeConfiguration<ReturnLine>, IEntityTypeConfiguration<HeldSale>
+    IEntityTypeConfiguration<SaleReturn>, IEntityTypeConfiguration<ReturnLine>, IEntityTypeConfiguration<HeldSale>,
+    IEntityTypeConfiguration<Order>, IEntityTypeConfiguration<CatalogItem>, IEntityTypeConfiguration<CatalogSettings>
 {
     public void Configure(EntityTypeBuilder<Sale> b)
     {
@@ -85,6 +96,33 @@ internal sealed class SalesConfiguration :
         b.ToTable("HeldSales");
         b.HasIndex(h => h.ShiftId);
         b.Property(h => h.Content).HasMaxLength(ModuleDbContext.LongText);
+    }
+
+    public void Configure(EntityTypeBuilder<Order> b)
+    {
+        b.ToTable("Orders");
+        b.HasIndex(o => new { o.Kind, o.PickupDate });
+        b.HasIndex(o => new { o.Kind, o.CreatedUtc });
+        b.Property(o => o.Kind).HasConversion<string>().HasMaxLength(10);
+        b.Property(o => o.Status).HasConversion<string>().HasMaxLength(12);
+        b.Property(o => o.DepositMethod).HasConversion<string>().HasMaxLength(20);
+        b.Property(o => o.CustomerName).HasMaxLength(150);
+        b.Property(o => o.Lines).HasMaxLength(ModuleDbContext.LongText);
+        b.Property(o => o.Version).IsConcurrencyToken();
+        b.Ignore(o => o.IsOpen);
+    }
+
+    public void Configure(EntityTypeBuilder<CatalogItem> b)
+    {
+        b.ToTable("CatalogItems");
+        b.HasKey(i => i.ProductId);
+    }
+
+    public void Configure(EntityTypeBuilder<CatalogSettings> b)
+    {
+        b.ToTable("CatalogSettings");
+        b.Property(s => s.Id).ValueGeneratedNever();
+        b.Property(s => s.WhatsApp).HasMaxLength(15);
     }
 }
 

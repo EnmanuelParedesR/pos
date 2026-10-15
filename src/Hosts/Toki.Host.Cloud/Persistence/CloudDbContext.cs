@@ -39,6 +39,8 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<ReplicaCustomerPayment> CustomerPayments => Set<ReplicaCustomerPayment>();
     public DbSet<ReplicaOpenedShift> OpenedShifts => Set<ReplicaOpenedShift>();
     public DbSet<ReplicaCashMovement> CashMovements => Set<ReplicaCashMovement>();
+    public DbSet<Catalog.ReplicaCatalogItem> CatalogItems => Set<Catalog.ReplicaCatalogItem>();
+    public DbSet<Catalog.ReplicaCatalogSettings> CatalogSettings => Set<Catalog.ReplicaCatalogSettings>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -216,6 +218,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(m => m.Method).HasMaxLength(30);
             e.HasIndex(m => new { m.TenantId, m.ShiftId });
         });
+        Catalog.PublicCatalogEndpoints.Configure(builder);
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

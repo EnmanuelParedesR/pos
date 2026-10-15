@@ -31,10 +31,12 @@ internal static class RegisterSale
 
     /// <param name="ExpectedTotal">The total the cashier saw. If the server computes another one, nothing is saved and the new total is returned.</param>
     /// <param name="SupervisorApprovals">One-time supervisor approvals (for a big discount and/or a price change), bound to <see cref="SaleId"/>.</param>
+    /// <param name="OrderId">The order or quote this sale charges (TK-193, TK-194): it is marked delivered in the same transaction.</param>
     public sealed record Command(
         Guid SaleId, Guid ShiftId, IReadOnlyList<Line> Lines, IReadOnlyList<Payment> Payments, decimal ExpectedTotal,
         EcfType DocumentType = EcfType.Consumer32, Guid? CustomerId = null, string? CustomerRnc = null, string? CustomerName = null,
-        SalePriceLevel PriceLevel = SalePriceLevel.Retail, Discount? GlobalDiscount = null, IReadOnlyList<Guid>? SupervisorApprovals = null) : ICommand<Response>;
+        SalePriceLevel PriceLevel = SalePriceLevel.Retail, Discount? GlobalDiscount = null, IReadOnlyList<Guid>? SupervisorApprovals = null,
+        Guid? OrderId = null) : ICommand<Response>;
 
     public sealed record Response(Guid SaleId, long Number, string ENcf, decimal Total, decimal Change, Receipt Receipt);
 
@@ -79,6 +81,11 @@ internal static class RegisterSale
             var shift = await cash.GetOpenShiftAsync(c.ShiftId, ct);
             if (shift.IsFailure) return shift.Error!;
             if (await db.FullSaleAsync(c.SaleId, ct) is { } existing) return Repeated(existing, c, business);
+
+            // After the shift lock: two registers charging the same order wait here, and the second finds it delivered.
+            var order = c.OrderId is { } orderId ? await db.LockOrderAsync(orderId, ct) : null;
+            if (c.OrderId is not null && order is null) return OrdersErrors.NotFound;
+            if (order is { IsOpen: false }) return OrdersErrors.Closed;
 
             var labels = c.Lines.Where(l => l.ScaleLabel is not null).Select(l => l.ScaleLabel).ToList();
             if (labels.Count != labels.Distinct().Count()) return SalesErrors.DuplicateScaleLabel;
@@ -195,13 +202,14 @@ internal static class RegisterSale
                 Payments = payments.Value.Payments.Select(p => new SalePayment { Id = Guid.CreateVersion7(), SaleId = c.SaleId, Method = p.Method, Amount = p.Amount, Received = p.Received, Reference = p.Reference }).ToList(),
             };
             db.Sales.Add(sale);
+            if (order is not null) (order.Status, order.SaleId, order.ClosedUtc) = (OrderStatus.Delivered, sale.Id, sale.DateUtc);
             await db.SaveChangesAsync(ct); // assigns the receipt number
 
             outbox.Add(new SaleRecordedV1(sale.Id, sale.Number, sale.ShiftId, sale.CashierId, sale.CustomerId, sale.ENcf, sale.Total, sale.Itbis,
                 sale.Discount, sale.Lines.Select(l => new SaleLineV1(l.ProductId, l.PresentationId, l.Description, l.Quantity, l.Total, l.Itbis, l.UnitCost)).ToList(),
                 sale.Payments.Select(p => new SalePaymentV1(p.Method.ToString(), p.Amount)).ToList()));
             await audit.RecordAsync("sales.create", "Sale", sale.Id,
-                new { sale.Number, sale.ENcf, sale.Total, sale.Discount, DiscountPercent = t.DiscountPercent, Permissions = permissions }, ct);
+                new { sale.Number, sale.ENcf, sale.Total, sale.Discount, DiscountPercent = t.DiscountPercent, Permissions = permissions, c.OrderId }, ct);
             return ToResponse(sale, business);
         }
 
