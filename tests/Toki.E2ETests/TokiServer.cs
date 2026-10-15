@@ -44,7 +44,7 @@ public sealed class TokiServer : IAsyncDisposable
         {
             container = new MsSqlBuilder(Toki.Tests.SqlServerImage.Name).Build();
             await container.StartAsync();
-            (provider, connectionString) = ("SqlServer", container.GetConnectionString().Replace("Database=master", "Database=toki_e2e", StringComparison.Ordinal));
+            (provider, connectionString) = ("SqlServer", Toki.Tests.SqlServerImage.ConnectionString(container).Replace("Database=master", "Database=toki_e2e", StringComparison.Ordinal));
         }
         else
         {

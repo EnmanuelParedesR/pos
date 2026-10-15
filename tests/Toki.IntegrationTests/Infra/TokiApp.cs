@@ -56,7 +56,7 @@ public sealed class TestSqlServer : IAsyncLifetime
         }
         _container = new MsSqlBuilder(Toki.Tests.SqlServerImage.Name).Build();
         await _container.StartAsync();
-        BaseConnectionString = _container.GetConnectionString();
+        BaseConnectionString = Toki.Tests.SqlServerImage.ConnectionString(_container);
     }
 
     public async ValueTask DisposeAsync()
