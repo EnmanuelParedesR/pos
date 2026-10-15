@@ -49,6 +49,8 @@ En desarrollo usa SQLite (`toki.dev.db`); la documentación de la API queda en `
 
 Pantallas: con la API corriendo en `http://localhost:5000`, `dotnet run --project src/Client/Toki.Client.Web` y abra `http://localhost:5280` (la primera vez pide instalar la tienda o unir el equipo con un código). La app de la tienda es `src/Client/Toki.Client.Wpf` (Windows; la URL de la API está en su `appsettings.json`). Ver docs/adr/0007-frontend-blazor-hybrid.md.
 
+Panel del dueño (nube, ADR-0008): `src/Cloud/panel` (React + Vite + TypeScript) habla con `Toki.Host.Cloud`. Con la API de la nube corriendo en `http://localhost:5100` (`dotnet run --project src/Hosts/Toki.Host.Cloud`), en `src/Cloud/panel`: `npm install`, `npm run dev` y abra `http://localhost:5173`; otra API se elige con `VITE_API_URL`. `npm run check` corre el chequeo de tipos y las pruebas (Vitest). `npm run dev` y `npm run build` necesitan Node 18 o más nuevo; la publicación está en docs/despliegue-azure.md.
+
 Contra SQL Server la API aplica sola las migraciones de cada módulo al arrancar. Para crear una migración nueva vea docs/adr/0005-migraciones-por-modulo.md (`dotnet tool restore` instala `dotnet-ef`).
 
 En producción (`appsettings.Production.json`) escucha solo HTTPS en el puerto 5443 con un certificado propio de la PC principal, y escribe logs diarios en C:\ProgramData\Toki\logs.

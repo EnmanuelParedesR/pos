@@ -55,8 +55,22 @@ Las salidas dan el nombre de la Web App, su identidad, el servidor SQL y la URL 
    ```
 
    Al arrancar crea las tablas. Si la base estaba en pausa, el primer arranque tarda hasta un minuto más.
-3. **Publicar el panel** en la Static Web App con su token de despliegue (`az staticwebapp secrets list -n <nombre del panel>`). El origen del panel ya está permitido en CORS (`Panel__Origins__0`). Si se le pone un dominio propio, se agrega como `Panel__Origins__1`.
+3. **Publicar el panel** en la Static Web App con su token de despliegue (`az staticwebapp secrets list -n <nombre del panel>`), como dice la sección siguiente. El origen del panel ya está permitido en CORS (`Panel__Origins__0`). Si se le pone un dominio propio, se agrega como `Panel__Origins__1`.
 4. Revisar `https://<api>/health/ready`: tiene que responder `Healthy`.
+
+## Publicar el panel (Static Web App)
+
+El panel (`src/Cloud/panel`, React + Vite) es un sitio estático: se compila con la URL de la API y se sube la carpeta `dist`. Necesita Node 18 o más nuevo (Vite 6); se recomienda Node 22 LTS.
+
+```
+cd src/Cloud/panel
+npm ci
+$env:VITE_API_URL = "https://<nombre de la Web App>.azurewebsites.net"
+npm run build
+npx @azure/static-web-apps-cli deploy dist --deployment-token <token> --env production
+```
+
+`public/staticwebapp.config.json` va dentro de `dist` y manda toda ruta del panel (`/sales`, `/stores`…) a `index.html`, así que recargar la página no da 404.
 
 ## Configuración de la API
 

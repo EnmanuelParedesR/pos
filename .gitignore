@@ -26,3 +26,7 @@ docs/nombres-mercado.md
 
 # Agent worktrees
 .claude/worktrees/
+
+# Owner's panel (React)
+node_modules/
+src/Cloud/panel/dist/

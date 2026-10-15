@@ -1,0 +1,89 @@
+/* Owner's panel layout. Colors, type and pieces come from Escuadra (escuadra.css); this file only places them. */
+
+/* Phone first: top bar, content, tab bar at the bottom. */
+.shell { min-height: 100vh; display: flex; flex-direction: column; }
+.topbar {
+  position: sticky; top: 0; z-index: 10; min-height: 56px; padding: 0 var(--s-4);
+  display: flex; align-items: center; gap: var(--s-3); background: var(--frame); color: var(--frame-text);
+}
+.topbar__tenant { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--frame-muted); font-size: var(--t-13); }
+.topbar__exit { color: var(--frame-text); }
+.topbar__exit:hover:not(:disabled) { background: #1F252C; }
+
+.nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; display: flex;
+  background: var(--surface); border-top: 1px solid var(--card-border); padding-bottom: env(safe-area-inset-bottom);
+}
+.nav a {
+  flex: 1 1 0; min-height: 56px; display: flex; align-items: center; justify-content: center;
+  color: var(--text-2); text-decoration: none; font-size: var(--t-13); font-weight: 600;
+}
+.nav a.active { color: var(--brand); box-shadow: inset 0 3px 0 var(--brand); }
+
+.page { flex: 1 1 auto; min-width: 0; padding: var(--s-4) var(--s-4) calc(56px + var(--s-5)); display: flex; flex-direction: column; gap: var(--s-4); }
+.page > * { flex-shrink: 0; }
+.page__head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-3); }
+.page__head > .esc-row { align-self: stretch; align-items: flex-end; }
+.page__head .esc-field { flex: 1 1 140px; }
+
+/* Desktop: menu on the left, like the register's administration. */
+@media (min-width: 900px) {
+  .shell { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: auto 1fr; }
+  .topbar { grid-column: 1 / -1; }
+  .nav {
+    position: sticky; top: 56px; align-self: start; height: calc(100vh - 56px); flex-direction: column; gap: 2px;
+    padding: var(--s-3) var(--s-2); border-top: 0; border-right: 1px solid var(--card-border);
+  }
+  .nav a { flex: none; min-height: var(--touch); justify-content: flex-start; padding: 0 var(--s-3); border-radius: var(--r-2); font-size: var(--t-15); color: var(--text); font-weight: 400; }
+  .nav a:hover { background: var(--surface-2); }
+  .nav a.active { background: var(--brand-tint); color: var(--text); font-weight: 700; box-shadow: none; }
+  .page { padding: 20px var(--s-5); max-width: 1200px; }
+}
+
+.empty { padding: var(--s-4); }
+.page > .esc-pill { align-self: flex-start; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: var(--s-4); align-items: start; }
+.esc-table td { white-space: nowrap; }
+/* 48 px touch targets: the owner uses the panel from the phone. */
+.esc-input, .esc-select { min-height: var(--touch); }
+
+/* KPI cards */
+.kpis { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-3); }
+.kpi:first-child { grid-column: 1 / -1; }
+.kpi { padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-1); }
+.kpi__value { font-size: var(--t-20); font-weight: 700; white-space: nowrap; }
+@media (min-width: 600px) {
+  .kpis { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+  .kpi:first-child { grid-column: auto; }
+  .kpi__value { font-size: var(--t-24); }
+}
+
+/* Bar chart (same look as the register's summary) */
+.bars { display: flex; align-items: flex-end; gap: var(--s-1); height: 180px; padding-top: var(--s-2); }
+.bars__bar { flex: 1 1 0; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: var(--s-1); font-size: var(--t-12); color: var(--text-2); }
+.bars__bar > div { width: 100%; max-width: 48px; min-height: 2px; background: var(--brand); border-radius: var(--r-1) var(--r-1) 0 0; }
+.bars__bar > span { white-space: nowrap; }
+.bars--crowded { gap: 2px; }
+.bars--crowded .bars__bar > span { font-size: 10px; }
+
+/* Payment mix */
+.mix { list-style: none; margin: var(--s-3) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); }
+.mix__track { height: 8px; margin-top: var(--s-1); background: var(--surface-2); border-radius: var(--r-1); overflow: hidden; }
+.mix__track > div { height: 100%; background: var(--brand); }
+
+/* Stores and connection code */
+.store__name { font-size: var(--t-20); font-weight: 700; }
+.nodes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); }
+.code { padding: var(--s-4); border: 1px solid var(--brand); border-radius: var(--r-2); background: var(--brand-tint); }
+.code__digits { font-size: var(--t-44); letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
+
+/* Assistant */
+.chat { display: flex; flex-direction: column; gap: var(--s-3); min-height: 200px; }
+.bubble { max-width: 85%; padding: var(--s-3) var(--s-4); border-radius: var(--r-3); white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble--user { align-self: flex-end; background: var(--brand); color: #FFFFFF; }
+.bubble--assistant { align-self: flex-start; background: var(--surface-2); border: 1px solid var(--card-border); }
+.chat__form { display: flex; gap: var(--s-2); }
+
+/* Sign in */
+.signin { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--s-4); }
+.signin__card { width: min(420px, 100%); display: flex; flex-direction: column; gap: var(--s-4); }
