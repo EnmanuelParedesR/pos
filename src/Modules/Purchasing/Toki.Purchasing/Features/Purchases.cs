@@ -36,7 +36,9 @@ internal static class SavePurchase
             RuleFor(c => c.InvoiceDate).Must(d => DocumentDate.IsValid(d, clock)).WithMessage(DocumentDate.Message);
             RuleFor(c => c.InvoiceItbis).GreaterThanOrEqualTo(0).PrecisionScale(19, 2, true);
             RuleFor(c => c.InvoiceTotal).GreaterThan(0).PrecisionScale(19, 2, true);
-            RuleFor(c => c.Ncf).Must(Domain.Ncf.IsValid).WithMessage("El NCF no es válido (B01… de 11 caracteres o E31… de 13).");
+            // A draft may wait for its invoice (TK-191: created from the suggested order); receiving it needs the NCF.
+            RuleFor(c => c.Ncf).Must(Domain.Ncf.IsValid).When(c => !string.IsNullOrWhiteSpace(c.Ncf))
+                .WithMessage("El NCF no es válido (B01… de 11 caracteres o E31… de 13).");
             RuleFor(c => c.Terms).IsInEnum();
             RuleFor(c => c.Method).IsInEnum();
             RuleFor(c => c.Lines).NotEmpty().Must(l => l.Count <= 500);
@@ -64,9 +66,9 @@ internal static class SavePurchase
             var supplier = await db.Suppliers.AsNoTracking().FirstOrDefaultAsync(s => s.Id == c.SupplierId && s.IsActive, ct);
             if (supplier is null) return PurchasingErrors.SupplierNotFound;
             if (supplier.Rnc is null) return PurchasingErrors.SupplierWithoutRnc;
-            var ncf = c.Ncf.Trim().ToUpperInvariant();
-            if (await db.Purchases.AnyAsync(x => x.SupplierId == c.SupplierId && x.Ncf == ncf && x.Status != PurchaseStatus.Voided && x.Id != c.Id, ct)
-                || await db.Expenses.AnyAsync(e => e.SupplierId == c.SupplierId && e.Ncf == ncf && !e.IsVoided, ct))
+            var ncf = (c.Ncf ?? "").Trim().ToUpperInvariant();
+            if (ncf.Length > 0 && (await db.Purchases.AnyAsync(x => x.SupplierId == c.SupplierId && x.Ncf == ncf && x.Status != PurchaseStatus.Voided && x.Id != c.Id, ct)
+                || await db.Expenses.AnyAsync(e => e.SupplierId == c.SupplierId && e.Ncf == ncf && !e.IsVoided, ct)))
                 return PurchasingErrors.DuplicateNcf;
 
             if (purchase is null)
@@ -89,6 +91,9 @@ internal static class SavePurchase
             }
 
             db.RemoveRange(purchase.Lines);
+            // Added explicitly: new lines (with their Guid already set) found only through the navigation of a saved draft were taken as existing
+            // rows to update, so editing a draft failed with a concurrency error.
+            db.AddRange(lines);
             purchase.Lines = lines;
             purchase.SupplierId = supplier.Id;
             purchase.SupplierName = supplier.Name;
@@ -135,8 +140,9 @@ internal static class PostPurchase
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
-            // Claim the draft: two posts of the same purchase cannot both put stock in.
+            // Claim the draft: two posts of the same purchase cannot both put stock in. A draft without its NCF yet cannot be received.
             var now = clock.GetUtcNow().UtcDateTime;
+            if (await db.Purchases.AnyAsync(x => x.Id == c.Id && x.Status == PurchaseStatus.Draft && x.Ncf == "", ct)) return PurchasingErrors.NcfRequired;
             if (await db.Purchases.Where(x => x.Id == c.Id && x.Status == PurchaseStatus.Draft)
                     .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, PurchaseStatus.Posted).SetProperty(x => x.PostedUtc, now), ct) == 0)
                 return await db.Purchases.AnyAsync(x => x.Id == c.Id, ct) ? PurchasingErrors.NotDraft : PurchasingErrors.PurchaseNotFound;

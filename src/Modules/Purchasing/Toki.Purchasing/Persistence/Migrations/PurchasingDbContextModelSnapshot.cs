@@ -261,7 +261,7 @@ namespace Toki.Purchasing.Persistence.Migrations
 
                     b.HasIndex("SupplierId", "Ncf")
                         .IsUnique()
-                        .HasFilter("[Status] <> 'Voided'");
+                        .HasFilter("[Status] <> 'Voided' AND [Ncf] <> ''");
 
                     b.ToTable("Purchases", "purchasing");
                 });

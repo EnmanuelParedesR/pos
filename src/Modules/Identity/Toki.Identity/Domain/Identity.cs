@@ -17,7 +17,8 @@ internal sealed class Role
     public List<string> Permissions { get; set; } = [];
 
     /// <remarks>Supervisor and Cajero are written out on purpose, not derived from <see cref="P.All"/>: the owner edits them, and a new
-    /// permission must not become a migration that rewrites their roles in every store (R6 #9). Administrador always gets every permission anyway.</remarks>
+    /// permission must not become a migration that rewrites their roles in every store (R6 #9). Administrador always gets every permission anyway.
+    /// costs.view (TK-201) is the owner's: Supervisor does not get it by default (the owner grants it in Roles if the manager should see margins).</remarks>
     public static IEnumerable<Role> Defaults()
     {
         yield return new Role { Id = AdministratorId, Name = "Administrador", Permissions = [.. P.All] };

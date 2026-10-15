@@ -6,10 +6,10 @@ namespace Toki.Sales.Contracts;
 /// <param name="NetWithoutItbis">Sales minus returns, without ITBIS: the revenue profit is measured on.</param>
 /// <param name="Cost">Historical cost of what was sold, minus the cost of returned goods put back on the shelf.</param>
 public sealed record DailySales(DateOnly Day, int SaleCount, decimal SalesWithItbis, decimal Discount, decimal Returns, decimal Itbis, decimal NetWithoutItbis,
-    decimal Cost, decimal Profit);
+    decimal? Cost, decimal? Profit);
 
 /// <param name="Quantity">Base units (pounds or units) sold minus returned in the period.</param>
-public sealed record ProductSales(Guid ProductId, Guid CategoryId, string Product, decimal Quantity, decimal NetWithoutItbis, decimal Cost, decimal Profit);
+public sealed record ProductSales(Guid ProductId, Guid CategoryId, string Product, decimal Quantity, decimal NetWithoutItbis, decimal? Cost, decimal? Profit);
 
 /// <param name="SoldWithItbis">What the cashier's completed sales charged, ITBIS included (returns are not per cashier).</param>
 public sealed record CashierSales(Guid CashierId, string Cashier, int SaleCount, int VoidedCount, decimal SoldWithItbis, decimal Discount);

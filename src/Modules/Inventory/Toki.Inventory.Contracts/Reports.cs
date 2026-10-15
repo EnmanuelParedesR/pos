@@ -2,7 +2,7 @@ namespace Toki.Inventory.Contracts;
 
 /// <summary>Stock of a product in all warehouses, valued at its average cost (without ITBIS) and at its shelf price (with ITBIS).</summary>
 public sealed record InventoryValue(Guid ProductId, string Product, Guid CategoryId, string Category, UnitOfMeasure Unit, bool IsActive,
-    decimal Stock, decimal Cost, decimal CostValue, decimal Price, decimal SaleValue);
+    decimal Stock, decimal? Cost, decimal? CostValue, decimal Price, decimal SaleValue);
 
 public interface IInventoryReports
 {

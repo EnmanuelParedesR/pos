@@ -1,6 +1,7 @@
 @page "/admin"
 @inject TokiApi Api
 @inject NavigationManager Nav
+@inject Session Session
 
 @* The owner's story of the day: how much and whether it is good (hero + comparison), what needs attention, then the detail. *@
 <Admin Title="Resumen" Subtitle="@Subtitle">
@@ -91,11 +92,15 @@
                         <span class="esc-stat__value">@Format.WithCurrency(_current.Average)</span>
                         <span class="esc-stat__note">@(_previous.Count == 0 ? "Sin ventas para comparar" : $"{Format.WithCurrency(_previous.Average)} {CompareShort}")</span>
                     </div>
-                    <div class="esc-stat">
-                        <span class="esc-stat__label"><Icon Name="chart" Size="16" /> Ganancia</span>
-                        <span class="esc-stat__value">@Format.WithCurrency(_current.Profit)</span>
-                        <span class="esc-stat__note">@(_current.Net > 0 ? $"{_current.Profit / _current.Net * 100:0} % de la venta sin ITBIS" : "Sin ITBIS, después del costo")</span>
-                    </div>
+                    @* TK-201: profit only with costs.view (the API sends it empty otherwise). *@
+                    @if (Session.Can("costs.view"))
+                    {
+                        <div class="esc-stat">
+                            <span class="esc-stat__label"><Icon Name="chart" Size="16" /> Ganancia</span>
+                            <span class="esc-stat__value">@Format.WithCurrency(_current.Profit)</span>
+                            <span class="esc-stat__note">@(_current.Net > 0 ? $"{_current.Profit / _current.Net * 100:0} % de la venta sin ITBIS" : "Sin ITBIS, después del costo")</span>
+                        </div>
+                    }
                 </div>
             </section>
 
@@ -214,7 +219,7 @@
     {
         public decimal Average => Count == 0 ? 0 : Math.Round(Sales / Count, 2);
         public static Totals Of(IEnumerable<DailySales> days) =>
-            days.Aggregate(new Totals(0, 0, 0, 0), (t, d) => new(t.Sales + d.SalesWithItbis, t.Count + d.SaleCount, t.Net + d.NetWithoutItbis, t.Profit + d.Profit));
+            days.Aggregate(new Totals(0, 0, 0, 0), (t, d) => new(t.Sales + d.SalesWithItbis, t.Count + d.SaleCount, t.Net + d.NetWithoutItbis, t.Profit + (d.Profit ?? 0)));
     }
 
     private sealed record Alert(string Kind, string Icon, string Title, string Meta, string Action, string Href);

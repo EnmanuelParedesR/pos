@@ -37,7 +37,7 @@
                             <tr class="selectable" tabindex="0" @onclick="() => OpenAsync(p)" @onkeydown='e => e.Key == "Enter" ? OpenAsync(p) : Task.CompletedTask' style="@(p.Status == "Voided" ? "color:var(--text-3)" : "")">
                                 <td><span style="font-weight:600">@p.Supplier</span><span class="esc-table__sub">Compra #@p.Number<span class="esc-only-sm"> · @AdminNames.Day(p.InvoiceDate)</span></span></td>
                                 <td class="esc-hide-sm" style="white-space:nowrap">@AdminNames.Day(p.InvoiceDate)</td>
-                                <td class="esc-hide-sm" style="font-variant-numeric:tabular-nums">@p.Ncf</td>
+                                <td class="esc-hide-sm" style="font-variant-numeric:tabular-nums">@(p.Ncf is { Length: > 0 } ? p.Ncf : "Sin NCF")</td>
                                 <td><span class="esc-pill @(p.Status switch { "Posted" => "esc-pill--success", "Draft" => "esc-pill--warning", _ => "esc-pill--neutral" })">@AdminNames.PurchaseStatus(p.Status)</span></td>
                                 <td class="esc-hide-sm">@AdminNames.Terms(p.Terms)</td>
                                 <td class="esc-num" style="font-weight:600">@Format.Amount(p.Total)</td>
@@ -255,7 +255,7 @@
         if (f.Lines.Any(l => l.ProductId == p.Id)) return;
         var line = new LineForm { ProductId = p.Id, Name = p.Name, Unit = p.Unit, Rate = Enum.TryParse<ItbisRate>(p.ItbisRate, out var rate) ? rate : ItbisRate.General18 };
         f.Lines.Add(line);
-        if ((await Api.GetAsync<ProductDetail>($"/api/inventory/products/{p.Id}")).Value is { Cost: > 0 } detail) line.Cost = AdminNames.Number(Math.Round(detail.Cost, 2));
+        if ((await Api.GetAsync<ProductDetail>($"/api/inventory/products/{p.Id}")).Value is { Cost: > 0 and var cost }) line.Cost = AdminNames.Number(Math.Round(cost, 2));
     }
 
     private async Task SaveAsync(bool post)
@@ -263,7 +263,7 @@
         if (_editing is not { } f) return;
         _errors.Clear();
         _error = null;
-        SupplierFields.Validate(f.SupplierId, f.Ncf, f.Date, _errors);
+        SupplierFields.Validate(f.SupplierId, f.Ncf, f.Date, _errors, ncfOptional: !post);
         if (f.Lines.Count == 0) _errors["lines"] = "Agregue al menos un producto.";
         foreach (var l in f.Lines)
         {
@@ -276,7 +276,7 @@
         if (!string.IsNullOrWhiteSpace(f.InvoiceTotal) && (invoiceTotal = Format.ParseNumber(f.InvoiceTotal)) is not > 0) _errors["invoiceTotal"] = "Escriba un número o déjelo vacío.";
         if (_errors.Count > 0 || f.Lines.Any(l => l.Error is not null)) return;
 
-        var body = new SavePurchase(f.SupplierId!.Value, f.Ncf!.Trim().ToUpperInvariant(), f.Date, f.Terms,
+        var body = new SavePurchase(f.SupplierId!.Value, (f.Ncf ?? "").Trim().ToUpperInvariant(), f.Date, f.Terms,
             [.. f.Lines.Select(l => new PurchaseLineInput(l.ProductId, null, Format.ParseNumber(l.Quantity)!.Value, Format.ParseNumber(l.Cost)!.Value, l.Rate))],
             Guid.TryParse(f.Warehouse, out var w) ? w : null, days, string.IsNullOrWhiteSpace(f.Notes) ? null : f.Notes.Trim(), null, invoiceTotal,
             f.Saved ? null : f.Id, f.Terms == PaymentTerms.Cash ? f.Method : null);

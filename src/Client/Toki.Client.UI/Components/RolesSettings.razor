@@ -78,7 +78,7 @@
         ("Caja y ventas", ["register.operate", "sales.create", "register.withdraw", "register.open-drawer", "register.approve-close", "sales.void", "sales.return", "sales.large-discount", "sales.price-override"]),
         ("Clientes y fiado", ["customers.manage", "credit.manage", "credit.exceed-limit"]),
         ("Productos e inventario", ["products.manage", "prices.change", "inventory.view", "inventory.adjust", "inventory.count", "inventory.transfer", "purchasing.manage"]),
-        ("Administración", ["reports.view", "fiscal.manage", "settings.manage", "users.manage", "devices.manage"]),
+        ("Administración", ["reports.view", "costs.view", "fiscal.manage", "settings.manage", "users.manage", "devices.manage"]),
     ];
 
     /// <summary>Each permission as the owner reads it. A new one the screen does not know yet shows its code under "Otros".</summary>
@@ -104,6 +104,7 @@
         "inventory.transfer" => "Hacer transferencias entre almacenes",
         "purchasing.manage" => "Compras, suplidores y gastos",
         "reports.view" => "Ver la administración y los reportes",
+        "costs.view" => "Ver costos y ganancias",
         "fiscal.manage" => "Cargar secuencias de comprobantes",
         "settings.manage" => "Cambiar la configuración del negocio y las cajas",
         "users.manage" => "Crear usuarios y editar roles",

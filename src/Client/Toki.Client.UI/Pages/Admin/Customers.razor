@@ -2,6 +2,8 @@
 @inject TokiApi Api
 @inject Session Session
 @inject Approver Approver
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
 <Admin Title="Clientes" Subtitle="Quién le debe, cuánto y desde cuándo. Toque un cliente para ver su cuenta.">
     <Actions>
@@ -194,6 +196,7 @@
                         {
                             <Button OnClick="() => Edit(row)">Editar datos</Button>
                         }
+                        <Button Disabled="_sending" OnClick="() => DownloadStatementAsync(s, row?.TaxId)"><Icon Name="arrow-down" Size="16" /> Estado de cuenta para PDF</Button>
                         @if (s.Debt > 0 && Session.Can("register.operate"))
                         {
                             <Button Variant="Button.Variants.Primary" OnClick="StartPaymentAsync"><Icon Name="cash" /> Registrar abono</Button>
@@ -319,6 +322,17 @@
     private CancellationTokenSource? _typing;
 
     private bool CanCredit => Session.Can("credit.manage");
+
+    /// <summary>TK-200: the statement as a one-page document (A4 HTML) through the reports' download; opened, it prints or saves as PDF.</summary>
+    private async Task DownloadStatementAsync(CustomerStatement s, string? taxId)
+    {
+        _sending = true;
+        var business = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value ?? new BusinessProfile("Mi negocio", null, null, null, null, 0);
+        var (name, content) = Printables.Statement(s, taxId, business, DateTime.UtcNow);
+        await JS.InvokeVoidAsync("escuadra.download", name, "text/html", content);
+        _sending = false;
+        (_noticeKind, _notice) = (Notice.Kinds.Success, $"Listo: {name}. Ábralo y elija “Imprimir o guardar como PDF”.");
+    }
     private IEnumerable<CustomerRow> Visible => _onlyOwing ? _customers.Where(c => Aging(c.Id) is { Total: > 0 }) : _customers;
     private ReceivableAging? Aging(Guid id) => _aging?.GetValueOrDefault(id);
     private string? Err(string field) => _errors.GetValueOrDefault(field);

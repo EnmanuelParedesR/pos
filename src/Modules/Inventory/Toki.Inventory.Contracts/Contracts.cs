@@ -25,7 +25,13 @@ public interface ICatalogQueries
 
     /// <summary>Reads a scale label (weight or price) and finds its product by PLU. A sale trusts this, never an amount sent by the register.</summary>
     Task<Result<ScaleLabelReading>> ReadScaleLabelAsync(string code, CancellationToken ct);
+
+    /// <summary>TK-191: active products with a minimum whose stock (all warehouses together) is at or under it, by name.</summary>
+    Task<IReadOnlyList<ProductToReorder>> BelowMinimumAsync(CancellationToken ct);
 }
+
+/// <param name="MaximumStock">0 when the owner did not set one.</param>
+public sealed record ProductToReorder(Guid ProductId, string Name, UnitOfMeasure Unit, ItbisRate ItbisRate, decimal Stock, decimal MinimumStock, decimal MaximumStock);
 
 /// <summary>Exactly one of <see cref="Weight"/> (pounds) or <see cref="Amount"/> (line total) is set.</summary>
 public sealed record ScaleLabelReading(Guid ProductId, decimal? Weight, decimal? Amount);

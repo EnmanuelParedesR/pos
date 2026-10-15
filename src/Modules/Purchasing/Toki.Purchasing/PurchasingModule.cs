@@ -75,7 +75,8 @@ internal sealed class PurchasingConfiguration :
         b.Property(p => p.Number).ValueGeneratedOnAdd();
         b.HasAlternateKey(p => p.Id);
         // One live invoice per supplier NCF, enforced by the database too (a double click cannot create two drafts).
-        b.HasIndex(p => new { p.SupplierId, p.Ncf }).IsUnique().HasFilter("[Status] <> 'Voided'");
+        // A draft from the suggested order (TK-191) has no NCF yet: those do not collide.
+        b.HasIndex(p => new { p.SupplierId, p.Ncf }).IsUnique().HasFilter("[Status] <> 'Voided' AND [Ncf] <> ''");
         b.Property(p => p.Version).IsConcurrencyToken();
         b.HasIndex(p => p.InvoiceDate);
         b.Property(p => p.Ncf).HasMaxLength(13);

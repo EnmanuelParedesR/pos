@@ -53,16 +53,17 @@ internal static class Warehouses
     }
 }
 
-/// <summary>Stock per product with value at average cost and flags for low stock and pending counts.</summary>
+/// <summary>Stock per product with value at average cost (only with costs.view, TK-201) and flags for low stock and pending counts.</summary>
 internal static class ListStock
 {
-    public sealed record Item(Guid ProductId, string Name, string Category, UnitOfMeasure Unit, decimal Quantity, decimal Cost,
-        decimal Value, bool BelowMinimum, bool NeedsCount);
+    public sealed record Item(Guid ProductId, string Name, string Category, UnitOfMeasure Unit, decimal Quantity, decimal? Cost,
+        decimal? Value, bool BelowMinimum, bool NeedsCount);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/inventory/stock", async (Guid? warehouseId, bool? belowMinimumOnly, bool? needsCountOnly, InventoryDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/inventory/stock", async (Guid? warehouseId, bool? belowMinimumOnly, bool? needsCountOnly, IUserContext user, InventoryDbContext db,
+                CancellationToken ct) =>
                 {
                     var warehouse = warehouseId ?? Warehouse.MainId;
                     // Filter before projecting: EF cannot translate a Where on the record's members (TK-178).
@@ -75,7 +76,8 @@ internal static class ListStock
                             select new Item(p.Id, p.Name, c.Name, p.Unit, e.Quantity, p.Cost, e.Quantity * p.Cost,
                                 e.Quantity <= p.MinimumStock, e.NeedsCount);
                     var items = await q.AsNoTracking().ToListAsync(ct);
-                    return Results.Ok(items.OrderBy(i => i.Name).Select(i => i with { Value = Money.Round(i.Value) }));
+                    var costs = user.Has(Permissions.CostsView);
+                    return Results.Ok(items.OrderBy(i => i.Name).Select(i => costs ? i with { Value = Money.Round(i.Value!.Value) } : i with { Cost = null, Value = null }));
                 })
                 .RequirePermission(Permissions.InventoryView).WithTags("Inventory");
     }
@@ -83,16 +85,20 @@ internal static class ListStock
 
 internal static class ListStockMovements
 {
-    public sealed record Item(long Sequence, DateTime DateUtc, StockMovementType Type, Guid WarehouseId, decimal Quantity, decimal UnitCost,
+    /// <param name="UnitCost">Null without costs.view (TK-201).</param>
+    public sealed record Item(long Sequence, DateTime DateUtc, StockMovementType Type, Guid WarehouseId, decimal Quantity, decimal? UnitCost,
         decimal ResultingStock, Guid? ReferenceId, string? Reason);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/inventory/products/{id:guid}/movements", async (Guid id, int? last, InventoryDbContext db, CancellationToken ct) =>
-                    Results.Ok(await db.StockMovements.Where(m => m.ProductId == id).OrderByDescending(m => m.Sequence).Take(Math.Clamp(last ?? 100, 1, 1000))
-                        .Select(m => new Item(m.Sequence, m.DateUtc, m.Type, m.WarehouseId, m.Quantity, m.UnitCost, m.ResultingStock, m.ReferenceId, m.Reason))
-                        .AsNoTracking().ToListAsync(ct)))
+            app.MapGet("/api/inventory/products/{id:guid}/movements", async (Guid id, int? last, IUserContext user, InventoryDbContext db, CancellationToken ct) =>
+                {
+                    var costs = user.Has(Permissions.CostsView);
+                    return Results.Ok(await db.StockMovements.Where(m => m.ProductId == id).OrderByDescending(m => m.Sequence).Take(Math.Clamp(last ?? 100, 1, 1000))
+                        .Select(m => new Item(m.Sequence, m.DateUtc, m.Type, m.WarehouseId, m.Quantity, costs ? m.UnitCost : null, m.ResultingStock, m.ReferenceId, m.Reason))
+                        .AsNoTracking().ToListAsync(ct));
+                })
                 .RequirePermission(Permissions.InventoryView).WithTags("Inventory");
     }
 }

@@ -7,10 +7,11 @@ public enum AdjustmentReason { Shrinkage, Damage, InternalUse, Gift, Correction 
 public enum StockCountStatus { Open, Applied }
 
 public sealed record Warehouse(Guid Id, string Name, bool IsActive, bool IsMain);
-public sealed record StockLevel(Guid ProductId, string Name, string Category, UnitOfMeasure Unit, decimal Quantity, decimal Cost, decimal Value,
+/// <param name="Cost">Cost and value come null without costs.view (TK-201), like every cost and profit below.</param>
+public sealed record StockLevel(Guid ProductId, string Name, string Category, UnitOfMeasure Unit, decimal Quantity, decimal? Cost, decimal? Value,
     bool BelowMinimum, bool NeedsCount);
 /// <param name="Quantity">Signed: negative went out.</param>
-public sealed record StockMovement(long Sequence, DateTime DateUtc, StockMovementType Type, Guid WarehouseId, decimal Quantity, decimal UnitCost,
+public sealed record StockMovement(long Sequence, DateTime DateUtc, StockMovementType Type, Guid WarehouseId, decimal Quantity, decimal? UnitCost,
     decimal ResultingStock, Guid? ReferenceId, string? Reason);
 
 /// <param name="Quantity">Positive adds, negative takes out.</param>
@@ -31,5 +32,5 @@ public sealed record StockCountSheet(Guid Id, StockCountStatus Status, Guid Ware
 public sealed record CountedLine(Guid ProductId, decimal Counted);
 public sealed record RecordCount(IReadOnlyList<CountedLine> Lines);
 public sealed record ApplyStockCount(Guid? SupervisorApprovalId);
-public sealed record CountDifference(Guid ProductId, string Product, decimal SystemStock, decimal Counted, decimal Difference, decimal Value);
-public sealed record StockCountApplied(CountDifference[] Differences, decimal DifferenceValue);
+public sealed record CountDifference(Guid ProductId, string Product, decimal SystemStock, decimal Counted, decimal Difference, decimal? Value);
+public sealed record StockCountApplied(CountDifference[] Differences, decimal? DifferenceValue);

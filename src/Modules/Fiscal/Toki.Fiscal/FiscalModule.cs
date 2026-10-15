@@ -25,6 +25,7 @@ public static class FiscalModule
         services.AddModuleDbContext<FiscalDbContext>();
         services.AddScoped<IFiscalDocuments, FiscalDocuments>();
         services.AddScoped<FiscalDocuments>();
+        services.AddScoped<IFiscalReports, FiscalReports>();
         var signer = config["Fiscal:Signer"] ?? "Simulated";
         _ = signer switch
         {

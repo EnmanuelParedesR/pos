@@ -252,8 +252,8 @@ Origen: `docs/competencia-poszy.md` (TK-188). Alcance y criterios de aceptación
 
 | Ticket | Qué | Estado |
 |---|---|---|
-| TK-191 | Mínimos, máximos y pedido sugerido con el último suplidor; crear compra en borrador (M, depende de TK-178) | ⬜ |
-| TK-192 | Reporte 608 de comprobantes anulados (CSV/Excel y TXT oficial) (S) | ⬜ |
+| TK-191 | Mínimos, máximos y pedido sugerido con el último suplidor; crear compra en borrador (M, depende de TK-178) | ✅ Máximo por producto (`MaximumStock`), `GET /api/purchasing/suggested-order` (en su mínimo o debajo, todas las existencias juntas; pedir = máximo − existencia, o hasta el mínimo sin máximo, redondeado arriba a libras o unidades enteras; último suplidor activo y su último costo) y pantalla Compras → Pedido sugerido; "Crear compra" deja un borrador sin NCF (se pide al recibir). Se corrigió editar un borrador guardado (409). Falta: lista en el panel de la nube, cantidades en la presentación de compra |
+| TK-192 | Reporte 608 de comprobantes anulados (CSV/Excel y TXT oficial) (S) | ✅ `GET /api/reports/dgii/608` (JSON/CSV/Excel) y descarga en Reportes: e-NCF anulados por ANECF (tipo 08) y rechazados por la DGII (tipo 04); la anulación en el turno queda en el 607 con su nota de crédito. Falta: el TXT (lo arma la herramienta de la DGII, como el 606/607) y que el contador confirme los tipos 08/04 (TK-177) |
 | TK-193 | Encargos: fecha y hora de entrega, abono como anticipo, conversión en venta con el peso real, recordatorio (M) | ⬜ |
 | TK-194 | Cotizaciones que se convierten en venta (primer paso del módulo Mayorista) (M) | ⬜ |
 | TK-195 | Catálogo público con QR y pedido por WhatsApp, desde la réplica de la nube (M) | ⬜ |
@@ -261,8 +261,8 @@ Origen: `docs/competencia-poszy.md` (TK-188). Alcance y criterios de aceptación
 | TK-197 | Sitio: precios públicos y páginas Carnicería, Colmado y Deli con FAQ (S–M, depende de TK-203) | ⬜ |
 | TK-198 | Contenido e-CF: "¿Ya te toca?" y plazo del 15/11/2026 (S) | ⬜ |
 | TK-199 | Programa de referidos para revendedores y contadores (S, decisión del dueño) | ⬜ |
-| TK-200 | Cierre de turno (Z) y estado de cuenta de fiado en PDF de una página (S) | ⬜ |
-| TK-201 | Costo, utilidad y valor de inventario visibles solo con permiso, en caja, administración, panel y exportaciones (S) | ⬜ |
+| TK-200 | Cierre de turno (Z) y estado de cuenta de fiado en PDF de una página (S) | ✅ Turnos y cuadres → Z y Clientes → cuenta: "para PDF" descarga una página A4 (negocio, logo C5, totales, diferencia, quién autorizó) que se imprime o guarda como PDF; sin librería de PDF (QuestPDF no es MIT/Apache; `Printables.cs`). Falta: el panel de la nube |
+| TK-201 | Costo, utilidad y valor de inventario visibles solo con permiso, en caja, administración, panel y exportaciones (S) | ✅ Permiso `costs.view` ("Ver costos y ganancias"; Administrador sí, Supervisor no por defecto): sin él la API manda null en costo de producto, existencias y valor, kardex, conteo aplicado, reportes de ventas e inventario (y sus columnas vacías en CSV/Excel), y la administración los oculta (Inventario, Resumen "Ganancia"). Las líneas de compra siguen con `purchasing.manage`. Falta: el panel de la nube |
 | TK-202 | Investigación: caja ligera o toma de pedidos en tablet Android contra la PC principal (M, spike → ADR) | ⬜ |
 | TK-203 | Revisar el plan de entrada frente a Poszy (colmado de una caja) (S, decisión del dueño) | ⬜ |
 

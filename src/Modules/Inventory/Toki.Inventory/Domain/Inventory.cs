@@ -32,6 +32,8 @@ internal sealed class Product
     public decimal Cost { get; set; }
     public bool SellWithoutStock { get; set; }
     public decimal MinimumStock { get; set; }
+    /// <summary>TK-191: the suggested order fills up to it; 0 = not set (it fills up to the minimum).</summary>
+    public decimal MaximumStock { get; set; }
     public bool IsActive { get; set; } = true;
     public int Version { get; set; }
 }

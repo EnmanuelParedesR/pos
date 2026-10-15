@@ -171,6 +171,10 @@ namespace Toki.Inventory.Persistence.Migrations
                         .HasMaxLength(12)
                         .HasColumnType("nvarchar(12)");
 
+                    b.Property<decimal>("MaximumStock")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
                     b.Property<decimal>("MinimumStock")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");

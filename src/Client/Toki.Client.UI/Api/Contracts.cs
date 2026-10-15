@@ -36,11 +36,11 @@ public sealed record BackupFile(string FileName, long Bytes, DateTime DateUtc);
 public sealed record Category(Guid Id, string Name, string Color, string[] Notes, bool IsActive);
 public sealed record ProductSummary(Guid Id, string Name, string Category, string Unit, string ItbisRate, decimal Price, decimal? WholesalePrice, decimal? Stock, bool IsActive);
 public sealed record ProductDetail(Guid Id, int Version, string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate,
-    decimal Price, decimal? WholesalePrice, decimal Cost, bool SellWithoutStock, decimal MinimumStock, bool IsActive);
+    decimal Price, decimal? WholesalePrice, decimal? Cost, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal MaximumStock = 0);
 public sealed record CreateProduct(string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate, decimal Price,
-    decimal? WholesalePrice, decimal Cost, bool SellWithoutStock, decimal MinimumStock, string[]? Barcodes, decimal InitialStock);
+    decimal? WholesalePrice, decimal Cost, bool SellWithoutStock, decimal MinimumStock, string[]? Barcodes, decimal InitialStock, decimal MaximumStock = 0);
 public sealed record UpdateProduct(int Version, string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate,
-    decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive);
+    decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal MaximumStock = 0);
 public sealed record ProductByCode(Guid ProductId, Guid? PresentationId, string Name, string Unit, string ItbisRate, decimal Price,
     decimal? WholesalePrice, decimal Factor, decimal? LabelQuantity, decimal? LabelAmount, string[] Notes, decimal? Stock);
 /// <param name="PresentationId">Null for the product itself (GET /api/inventory/products/prices, to re-price a cart).</param>
@@ -56,7 +56,7 @@ public sealed record DenominationCount(decimal Denomination, int Quantity);
 public sealed record MethodTotal(PaymentMethod Method, decimal SalePayments, decimal Voids, decimal Refunds, decimal CustomerPayments, decimal Net);
 public sealed record ZReport(Guid ShiftId, long? ZNumber, string Register, string Cashier, DateTime OpenedUtc, DateTime? ClosedUtc, decimal OpeningFloat,
     MethodTotal[] ByMethod, int SaleCount, int VoidedCount, decimal CustomerPayments, decimal Rounding, decimal CashIn, decimal Withdrawals, decimal Expenses,
-    decimal ExpectedCash, decimal? CountedCash, decimal? Difference);
+    decimal ExpectedCash, decimal? CountedCash, decimal? Difference, Guid? ClosingSupervisorId = null, string? AuditChainHead = null);
 
 // Sales
 public sealed record Discount(bool IsPercentage, decimal Value);
@@ -86,8 +86,8 @@ public sealed record NewCustomer(string Name, string? TaxId, string? Phone, stri
 
 // Reports and fiscal
 public sealed record DailySales(DateOnly Day, int SaleCount, decimal SalesWithItbis, decimal Discount, decimal Returns, decimal Itbis,
-    decimal NetWithoutItbis, decimal Cost, decimal Profit);
-public sealed record ProductSales(Guid ProductId, string Product, decimal Quantity, decimal NetWithoutItbis, decimal Profit);
+    decimal NetWithoutItbis, decimal? Cost, decimal? Profit);
+public sealed record ProductSales(Guid ProductId, string Product, decimal Quantity, decimal NetWithoutItbis, decimal? Profit);
 public sealed record ShiftSummary(Guid ShiftId, string Register, string Cashier, DateTime OpenedUtc, DateTime? ClosedUtc, long? ZNumber, decimal OpeningFloat,
     decimal? ExpectedCash, decimal? CountedCash, decimal? Difference);
 public sealed record Receivable(Guid CustomerId, string Customer, decimal Over90, decimal Total, decimal CreditLimit);

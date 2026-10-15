@@ -31,6 +31,8 @@ public static class Permissions
     public const string CreditExceedLimit = "credit.exceed-limit";
     public const string FiscalManage = "fiscal.manage";
     public const string ReportsView = "reports.view";
+    /// <summary>TK-201: cost, average cost, profit, margin and stock value. Without it the API answers those fields as null.</summary>
+    public const string CostsView = "costs.view";
 
     public static readonly IReadOnlyList<string> All =
     [
@@ -38,6 +40,6 @@ public static class Permissions
         ProductsManage, PricesChange, InventoryView, InventoryAdjust, InventoryCount, InventoryTransfer,
         RegisterOperate, RegisterWithdraw, RegisterApproveClose, RegisterOpenDrawer,
         SalesCreate, SalesVoid, SalesReturn, SalesLargeDiscount, SalesPriceOverride,
-        PurchasingManage, CustomersManage, CreditManage, CreditExceedLimit, FiscalManage, ReportsView,
+        PurchasingManage, CustomersManage, CreditManage, CreditExceedLimit, FiscalManage, ReportsView, CostsView,
     ];
 }

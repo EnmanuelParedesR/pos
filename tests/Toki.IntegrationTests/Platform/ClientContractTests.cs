@@ -142,6 +142,19 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         (supplierStatement.Balance, supplierStatement.Lines.Single(l => l.Type == "Pago").PaymentId).ShouldBe((1152m, supplierPaid.SupplierPaymentId));
         (await Send<List<C.SupplierPayable>>(api, HttpMethod.Get, "/api/reports/payables")).ShouldHaveSingleItem().NotYetDue.ShouldBe(1152m);
         await Send<C.Empty>(api, HttpMethod.Post, $"/api/purchasing/payments/{supplierPaid.SupplierPaymentId}/void", new C.VoidReason("Monto equivocado"));
+        // Suggested order (TK-191): costilla is under its minimum and was never bought; "Crear compra" saves a draft without NCF.
+        await Send<C.Empty>(api, HttpMethod.Put, $"/api/inventory/products/{ribs}", new C.UpdateProduct(0, "Costilla", category, C.UnitOfMeasure.Pound, null,
+            C.ItbisRate.Exempt, 180, null, false, 50, true, 80));
+        (await Send<C.ProductDetail>(api, HttpMethod.Get, $"/api/inventory/products/{ribs}")).MaximumStock.ShouldBe(80m);
+        var reorder = (await Send<List<C.SuggestedGroup>>(api, HttpMethod.Get, "/api/purchasing/suggested-order")).ShouldHaveSingleItem();
+        (reorder.SupplierId, reorder.Lines.ShouldHaveSingleItem().ProductId).ShouldBe((null, ribs));
+        var suggestedDraft = await Send<C.PurchaseSaved>(api, HttpMethod.Post, "/api/purchasing/purchases", new C.SavePurchase(supplier, "", today, C.PaymentTerms.Credit,
+            [new C.PurchaseLineInput(ribs, null, reorder.Lines[0].Suggested, 120, C.ItbisRate.Exempt)], null, null, "Pedido sugerido", null, null, Guid.CreateVersion7(), null));
+        (await Send<C.PurchaseDetail>(api, HttpMethod.Get, $"/api/purchasing/purchases/{suggestedDraft.Id}")).Status.ShouldBe("Draft");
+        // Costs (TK-201): the owner gets them; the DGII 608 (TK-192) downloads like the other reports.
+        (await Send<List<C.StockLevel>>(api, HttpMethod.Get, "/api/inventory/stock")).ShouldAllBe(s => s.Cost != null && s.Value != null);
+        using (var r608 = await api.GetAsync($"/api/reports/dgii/608?format=xlsx&{range}"))
+            r608.Content.Headers.ContentDisposition!.FileName.ShouldNotBeNullOrEmpty();
         // Back office: customers and credit (TK-186) and the register's payment (TK-121)
         await Send<C.Empty>(api, HttpMethod.Put, $"/api/customers/{customer}",
             new C.SaveCustomer("Ana Pérez", null, "809-555-0102", "Calle 2", false, C.PriceLevel.Retail, 5_000, true));

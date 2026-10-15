@@ -22,7 +22,7 @@ public sealed class AdminInventoryTests
     [Fact]
     public void The_stock_list_values_the_inventory_filters_what_is_low_and_an_adjustment_takes_stock_out_with_its_reason()
     {
-        var (ctx, api) = ScreenContext.Create("inventory.view", "inventory.adjust");
+        var (ctx, api) = ScreenContext.Create("inventory.view", "inventory.adjust", "costs.view");
         using var _ = ctx;
         Warehouses(api);
         api.Json("GET", "/api/inventory/stock", new[]
