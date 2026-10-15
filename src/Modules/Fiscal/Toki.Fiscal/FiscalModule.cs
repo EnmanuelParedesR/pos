@@ -50,6 +50,7 @@ public static class FiscalModule
                 throw new InvalidOperationException($"Unknown Fiscal:Provider '{other}': use Simulated or Dgii.");
         }
         services.AddScoped<EcfSubmissionQueue>();
+        services.AddSingleton<Features.TaxpayerImport>();
         services.AddHostedService<EcfSubmissionWorker>();
         services.AddHealthChecks().AddCheck<EcfQueueHealthCheck>("ecf-queue");
         return services;

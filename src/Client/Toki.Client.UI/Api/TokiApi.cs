@@ -12,6 +12,8 @@ namespace Toki.Client.UI.Api;
 public sealed record Problem(int Status, string Code, string Message, IReadOnlyDictionary<string, string[]>? Errors = null)
 {
     public const string NoServer = "NoServer";
+    /// <summary>The server's certificate is not the one pinned when this PC paired (TK-122).</summary>
+    public const string UnknownServer = "UnknownServer";
 
     /// <summary>The permission a supervisor must grant (<c>errors.permission</c> of <c>Approval.Required</c>).</summary>
     public string? PermissionRequired => Code == "Approval.Required" ? Error("permission") : null;
@@ -58,13 +60,21 @@ public sealed class TokiApi(HttpClient http, Session session)
         using var request = new HttpRequestMessage(method, url);
         if (session.DeviceToken is { } device) request.Headers.Add("X-Device", device);
         if (session.Token is { } token) request.Headers.Authorization = new("Bearer", token);
-        if (body is not null) request.Content = JsonContent.Create(body, body.GetType(), options: Json);
+        // A file upload (the DGII registry) goes as is; everything else as JSON.
+        if (body is not null) request.Content = body as HttpContent ?? JsonContent.Create(body, body.GetType(), options: Json);
 
         HttpResponseMessage r;
         try
         {
             using var cts = new CancellationTokenSource(timeout);
             r = await http.SendAsync(request, cts.Token);
+        }
+        catch (HttpRequestException e) when (e.InnerException is System.Security.Authentication.AuthenticationException)
+        {
+            // TK-122: the TLS handshake failed before anything was sent; most likely not the server this PC paired with.
+            session.SetOnline(false);
+            return new(default, new Problem(0, Problem.UnknownServer,
+                "El servidor que respondió no es el de la tienda con el que se unió esta PC, así que no se envió nada. Llame al dueño o al técnico."));
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
         {
