@@ -56,6 +56,13 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | comprobante fiscal, secuencia | `FiscalDocument`, `NcfSequence` |
 | tipo de e-CF: crédito fiscal 31, consumo 32, nota de débito 33, nota de crédito 34 | `EcfType`: `FiscalCredit31`, `Consumer32`, `DebitNote33`, `CreditNote34` |
 | código de seguridad, cola de envío | `SecurityCode`, `SubmissionQueue` |
+| ambiente de la DGII (simulado, pre-certificación, certificación, producción) | `FiscalEnvironment`: `Simulated`, `TesteCF`, `CerteCF`, `eCF` |
+| resumen de factura de consumo (RFCE), canal de envío | `Rfce`, `EcfChannel` (`Ecf`, `Rfce`) |
+| enviado (con TrackId, esperando resultado), aceptado, aceptado condicional, rechazado | `SubmissionStatus`: `Sent`, `Accepted`, `AcceptedConditional`, `Rejected` |
+| e-CF de reemplazo de un rechazado | `ReplaceRejected`, `ReplacesENcf` / `ReplacedByENcf` |
+| anulación de e-NCF (ANECF) | `EcfVoid`, `VoidSequence` |
+| cliente de los servicios de la DGII, semilla, archivo e-CF en la nube | `DgiiClient`, seed, `/fiscal/v1/archive` |
+| leyenda de contingencia | `ContingencyLegend` |
 | padrón, contribuyente | `TaxpayerRegistry`, `Taxpayer` |
 | usuario, rol, permiso | `User`, `Role`, `Permission` |
 | equipo (dispositivo), emparejar, código | `Device`, `Pair`, `PairingCode` |

@@ -85,7 +85,7 @@ public sealed class TestSqlServer : IAsyncLifetime
 }
 
 /// <summary>The real API in memory, on a fresh database. One per test class.</summary>
-public sealed class TokiApp : WebApplicationFactory<Program>
+public class TokiApp : WebApplicationFactory<Program>
 {
     public const string AdminPin = "1234";
     private readonly string _provider;
@@ -127,16 +127,25 @@ public sealed class TokiApp : WebApplicationFactory<Program>
         builder.UseSetting("License:PublicKey", LicenseKey.ExportSubjectPublicKeyInfoPem());
         builder.UseSetting("License:File", Path.Combine(Path.GetTempPath(), $"toki_license_{Guid.NewGuid():N}.jws"));
         builder.UseSetting("Backup:Folder", TestSqlServer.BackupFolder());
+        foreach (var (key, value) in Settings) builder.UseSetting(key, value);
+        Dgii.Now = Clock.GetUtcNow;
         builder.ConfigureTestServices(s =>
         {
             s.AddSingleton<TimeProvider>(Clock);
             TestCommands.Register(s);
             s.AddHttpClient(Toki.Sync.CloudClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Cloud);
+            s.AddHttpClient(Toki.Fiscal.DgiiClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Dgii);
         });
     }
 
     /// <summary>The cloud this app talks to (ADR-0008), in memory.</summary>
     public FakeCloud Cloud { get; } = new();
+
+    /// <summary>The DGII web services this app talks to when <c>Fiscal:Provider</c> is <c>Dgii</c>, in memory.</summary>
+    public FakeDgii Dgii { get; } = new();
+
+    /// <summary>Extra configuration of a subclass (e.g. the real signer and the DGII provider).</summary>
+    protected virtual IReadOnlyDictionary<string, string> Settings { get; } = new Dictionary<string, string>();
 
     /// <summary>Signs this app's test licenses; the app trusts its public key instead of Toki's (allowed outside Production only).</summary>
     public System.Security.Cryptography.ECDsa LicenseKey { get; } = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);

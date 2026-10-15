@@ -180,6 +180,7 @@ internal static class RegisterSale
                 Id = c.SaleId, ShiftId = c.ShiftId, RegisterId = shift.Value.RegisterId, Register = shift.Value.Register, CashierId = user.UserId, Cashier = user.Name,
                 CustomerId = c.CustomerId, CustomerName = customerName, CustomerRnc = rnc, DocumentType = c.DocumentType,
                 ENcf = document.Value.ENcf, SecurityCode = document.Value.SecurityCode, QrUrl = document.Value.QrUrl, PriceLevel = c.PriceLevel,
+                SignedUtc = document.Value.SignedUtc, SequenceExpiresOn = document.Value.SequenceExpiresOn, Contingency = document.Value.Contingency,
                 Gross = t.Gross, Discount = t.Discount, Subtotal = t.Subtotal, Itbis = t.Itbis, Total = t.Total, Change = payments.Value.Change,
                 Rounding = payments.Value.Rounding, Status = SaleStatus.Completed, DateUtc = clock.GetUtcNow().UtcDateTime, SupervisorId = user.SupervisorId,
                 Lines = inputs.Select((e, i) => new SaleLine

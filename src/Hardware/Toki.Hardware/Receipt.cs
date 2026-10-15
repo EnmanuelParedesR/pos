@@ -7,4 +7,5 @@ public sealed record ReceiptItbis(string Rate, decimal Base, decimal Itbis);
 public sealed record ReceiptPayment(string Method, decimal Amount, decimal? Received);
 public sealed record Receipt(string BusinessName, string? Rnc, string? Address, string? Phone, string DocumentType, string ENcf, long Number,
     DateTime LocalDateTime, string Register, string Cashier, string? Customer, string? CustomerRnc, ReceiptLine[] Lines, decimal Subtotal, decimal Discount,
-    ReceiptItbis[] Itbis, decimal Total, ReceiptPayment[] Payments, decimal Change, string SecurityCode, string QrUrl, string? Footer, bool IsVoided);
+    ReceiptItbis[] Itbis, decimal Total, ReceiptPayment[] Payments, decimal Change, string SecurityCode, string QrUrl, string? Footer, bool IsVoided,
+    DateTime? SignedAt = null, DateOnly? SequenceExpiresOn = null, string? ContingencyLegend = null);

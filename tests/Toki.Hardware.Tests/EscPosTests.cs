@@ -63,6 +63,20 @@ public sealed class EscPosTests
     }
 
     [Fact]
+    public void The_dgii_fields_print_when_present()
+    {
+        var text = EscPos.EscPos.Text(Sample with
+        {
+            SignedAt = new DateTime(2026, 10, 15, 14, 5, 9),
+            SequenceExpiresOn = new DateOnly(2027, 12, 31),
+            ContingencyLegend = "Emitido en contingencia",
+        }, 48);
+        text.ShouldContain("Firmada: 15/10/2026 2:05:09 PM");
+        text.ShouldContain("31/12/2027");
+        text.ShouldContain("Emitido en contingencia");
+    }
+
+    [Fact]
     public void A_receipt_without_qr_url_prints_no_qr()
     {
         Contains(EscPos.EscPos.Render(Sample with { QrUrl = "" }, 48, false), [0x1D, 0x28, 0x6B]).ShouldBeFalse();

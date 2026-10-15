@@ -74,7 +74,7 @@ public sealed class AssistantTests(AssistantApp app) : IClassFixture<AssistantAp
     }
 }
 
-public sealed class RelayAndConfigurationTests(CloudApp app) : IClassFixture<CloudApp>
+public sealed class ArchiveAndConfigurationTests(CloudApp app) : IClassFixture<CloudApp>
 {
     [Fact]
     public async Task Without_Azure_OpenAI_configuration_the_assistant_says_so()
@@ -94,38 +94,39 @@ public sealed class RelayAndConfigurationTests(CloudApp app) : IClassFixture<Clo
     }
 
     [Fact]
-    public async Task The_relay_answers_Simulated_and_the_same_e_NCF_gets_the_same_answer()
+    public async Task The_archive_keeps_the_signed_document_and_its_DGII_result_and_a_later_upload_updates_it()
     {
         var owner = await app.OwnerAsync();
         var node = await app.StoreWithNodeAsync(owner);
-        var body = new { encf = "E320000000123", signedXmlGzip = Gzip("<ECF>firmado</ECF>") };
+        var body = new
+        {
+            encf = "E320000000123", environment = "TesteCF", status = "Rejected", trackId = (string?)null, dgiiCode = 2, messages = "145: RNC inválido",
+            signedUtc = DateTime.UtcNow, signedXmlGzip = Gzip("<ECF>firmado</ECF>"), rfceGzip = Gzip("<RFCE>firmado</RFCE>"),
+            replacesENcf = (string?)null, replacedByENcf = (string?)null,
+        };
 
-        var first = await node.Client.PostAsJsonAsync("/relay/v1/ecf", body);
-        first.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var answer = await first.Json();
-        answer.GetProperty("status").GetString().ShouldBe("Simulated");
-        answer.GetProperty("trackId").GetString()!.ShouldStartWith("SIM-");
-        answer.GetProperty("message").GetString().ShouldNotBeNullOrWhiteSpace();
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { replacedByENcf = (string?)"E320000000124" })).StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var again = await (await node.Client.PostAsJsonAsync("/relay/v1/ecf", body)).Json();
-        again.GetProperty("trackId").GetString().ShouldBe(answer.GetProperty("trackId").GetString());
         var saved = await app.InDbAsync(db => db.EcfRelays.SingleAsync(x => x.ENcf == "E320000000123"));
-        saved.StoreId.ShouldBe(node.StoreId);
-        saved.EcfType.ShouldBe(Toki.Fiscal.Contracts.EcfType.Consumer32);
+        (saved.StoreId, saved.EcfType, saved.Status, saved.DgiiCode, saved.Environment).ShouldBe(
+            (node.StoreId, Toki.Fiscal.Contracts.EcfType.Consumer32, Toki.Host.Cloud.Persistence.EcfRelayStatus.Rejected, 2, "TesteCF"));
+        (saved.Message, saved.ReplacedByENcf).ShouldBe(("145: RNC inválido", "E320000000124"));
+        saved.RfceGzip.ShouldNotBeNull();
     }
 
     [Fact]
-    public async Task The_relay_needs_node_credentials_and_a_gzipped_document()
+    public async Task The_archive_needs_node_credentials_and_a_gzipped_document()
     {
         var node = await app.StoreWithNodeAsync(await app.OwnerAsync());
-        var body = new { encf = "E310000000001", signedXmlGzip = Gzip("<ECF/>") };
+        var body = new { encf = "E310000000001", status = "Accepted", signedXmlGzip = Gzip("<ECF/>") };
 
-        (await app.CreateClient().PostAsJsonAsync("/relay/v1/ecf", body)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-        (await node.Client.PostAsJsonAsync("/relay/v1/ecf", body)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await app.CreateClient().PostAsJsonAsync("/fiscal/v1/archive", body)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body)).StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var notGzip = await node.Client.PostAsJsonAsync("/relay/v1/ecf", body with { signedXmlGzip = Convert.ToBase64String("<ECF/>"u8.ToArray()) });
+        var notGzip = await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { signedXmlGzip = Convert.ToBase64String("<ECF/>"u8.ToArray()) });
         notGzip.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await notGzip.ErrorCode()).ShouldBe("Relay.InvalidDocument");
-        (await node.Client.PostAsJsonAsync("/relay/v1/ecf", body with { encf = "B0100000001" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await notGzip.ErrorCode()).ShouldBe("Archive.InvalidDocument");
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { encf = "B0100000001" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 }

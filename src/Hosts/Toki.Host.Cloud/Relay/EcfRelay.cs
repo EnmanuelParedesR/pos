@@ -10,87 +10,73 @@ using Toki.SharedKernel;
 namespace Toki.Host.Cloud.Relay;
 
 /// <param name="SignedXmlGzip">The signed e-CF XML, gzip-compressed, base64.</param>
-public sealed record RelayEcfRequest(string? Encf, string? SignedXmlGzip);
-public sealed record RelayEcfResponse(EcfRelayStatus Status, string TrackId, string Message);
+/// <param name="RfceGzip">The signed RFCE of a 32 under RD$250,000 (gzip, base64), when there is one.</param>
+public sealed record ArchiveEcfRequest(string? Encf, string? Environment, EcfRelayStatus? Status, string? TrackId, int? DgiiCode, string? Messages,
+    DateTime? SignedUtc, string? SignedXmlGzip, string? RfceGzip, string? ReplacesENcf, string? ReplacedByENcf);
 
-public sealed record EcfSubmission(Guid TenantId, Guid StoreId, string ENcf, EcfType Type, byte[] SignedXml);
-public sealed record EcfSubmissionResult(EcfRelayStatus Status, string TrackId, string Message);
-
-/// <summary>Who actually talks to DGII from the cloud. A real provider's API key lives only here (Key Vault), never in the store.</summary>
-public interface ICloudEcfProvider
-{
-    Task<EcfSubmissionResult> SubmitAsync(EcfSubmission submission, CancellationToken ct);
-}
-
-/// <summary>shortcut: DGII is on hold; every document is answered as Simulated. The real provider is TK-055.</summary>
-internal sealed class SimulatedCloudEcfProvider : ICloudEcfProvider
-{
-    public Task<EcfSubmissionResult> SubmitAsync(EcfSubmission submission, CancellationToken ct) =>
-        Task.FromResult(new EcfSubmissionResult(EcfRelayStatus.Simulated, $"SIM-{Guid.CreateVersion7():N}",
-            "Simulado: el envío a la DGII está en espera; el documento quedó guardado en la nube."));
-}
-
-internal static class EcfRelayEndpoint
+/// <summary>The e-CF archive (docs/ecf-propio.md §10.4; replaces the ADR-0008 relay). The store talks to the DGII itself and, once a document has
+/// its final result, uploads the signed XML, the RFCE and the DGII answer here: the 10-year copy outside the store and the panel's fiscal status.
+/// Nothing is sent to the DGII from here. The e-NCF is the natural key: a later upload (a rejection that got its replacement) updates the row.</summary>
+/// <remarks>shortcut: stored in the SQL database (table <c>EcfRelays</c>, kept from the relay); cold storage (Blob cool/archive) is still to do.</remarks>
+internal static class EcfArchiveEndpoint
 {
     public const int MaxXmlBytes = 1_000_000;
 
-    public static void MapEcfRelay(this IEndpointRouteBuilder app) =>
-        app.MapPost("/relay/v1/ecf", async (RelayEcfRequest request, ClaimsPrincipal user, CloudDbContext db, ICloudEcfProvider provider, TimeProvider clock, CancellationToken ct) =>
+    public static void MapEcfArchive(this IEndpointRouteBuilder app) =>
+        app.MapPost("/fiscal/v1/archive", async (ArchiveEcfRequest request, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
             var node = NodeIdentity.From(user);
             var encf = request.Encf?.Trim() ?? "";
-            var gzip = request.SignedXmlGzip is null ? null : TryBase64(request.SignedXmlGzip);
-            var xml = gzip is null ? null : TryGunzip(gzip);
-            if (TypeOf(encf) is not { } type || xml is not { Length: > 0 })
-                return EndpointExtensions.Problem(Error.Validation("Relay.InvalidDocument", "El documento no trae un e-NCF válido o el XML firmado (gzip, base64)."));
+            var gzip = Unpacked(request.SignedXmlGzip);
+            var rfce = request.RfceGzip is null ? null : Unpacked(request.RfceGzip);
+            if (TypeOf(encf) is not { } type || gzip is null || (request.RfceGzip is not null && rfce is null) || request.Status is null)
+                return EndpointExtensions.Problem(Error.Validation("Archive.InvalidDocument", "El documento no trae un e-NCF válido, el estado o el XML firmado (gzip, base64)."));
 
-            // The e-NCF is the natural key: a node that retries gets the first answer back, and DGII never sees it twice.
-            var existing = await db.EcfRelays.AsNoTracking().SingleOrDefaultAsync(r => r.TenantId == node.TenantId && r.ENcf == encf, ct);
-            if (existing is not null) return Results.Ok(new RelayEcfResponse(existing.Status, existing.TrackId, existing.Message));
-
-            var result = await provider.SubmitAsync(new EcfSubmission(node.TenantId, node.StoreId, encf, type, xml), ct);
-            db.EcfRelays.Add(new EcfRelayRecord
+            var now = clock.GetUtcNow().UtcDateTime;
+            for (var attempt = 1; ; attempt++)
             {
-                Id = Guid.CreateVersion7(), TenantId = node.TenantId, StoreId = node.StoreId, NodeId = node.NodeId, ENcf = encf, EcfType = type,
-                SignedXmlGzip = gzip!, ReceivedUtc = clock.GetUtcNow().UtcDateTime, Status = result.Status, TrackId = result.TrackId, Message = result.Message,
-            });
-            try { await db.SaveChangesAsync(ct); }
-            catch (DbUpdateException)
-            {
-                // The same e-NCF arrived twice at once: answer with the one that was saved first.
-                db.ChangeTracker.Clear();
-                var first = await db.EcfRelays.AsNoTracking().SingleAsync(r => r.TenantId == node.TenantId && r.ENcf == encf, ct);
-                return Results.Ok(new RelayEcfResponse(first.Status, first.TrackId, first.Message));
+                var row = await db.EcfRelays.SingleOrDefaultAsync(r => r.TenantId == node.TenantId && r.ENcf == encf, ct);
+                if (row is null)
+                    db.EcfRelays.Add(row = new EcfRelayRecord { Id = Guid.CreateVersion7(), TenantId = node.TenantId, ENcf = encf, EcfType = type, ReceivedUtc = now });
+                (row.StoreId, row.NodeId, row.SignedXmlGzip, row.RfceGzip, row.Status, row.TrackId, row.DgiiCode, row.Message) =
+                    (node.StoreId, node.NodeId, gzip, rfce, request.Status.Value, Cut(request.TrackId, 100), request.DgiiCode, Cut(request.Messages, 1000));
+                (row.Environment, row.SignedUtc, row.ReplacesENcf, row.ReplacedByENcf, row.UpdatedUtc) =
+                    (Cut(request.Environment, 10), request.SignedUtc, Cut(request.ReplacesENcf, 13), Cut(request.ReplacedByENcf, 13), now);
+                try
+                {
+                    await db.SaveChangesAsync(ct);
+                    return Results.Ok();
+                }
+                catch (DbUpdateException) when (attempt == 1)
+                {
+                    db.ChangeTracker.Clear(); // the same e-NCF arrived twice at once: update the row the other request saved
+                }
             }
-            return Results.Ok(new RelayEcfResponse(result.Status, result.TrackId, result.Message));
         }).RequireAuthorization(CloudAuth.NodePolicy);
+
+    private static string Cut(string? s, int max) => s is null ? "" : s.Length > max ? s[..max] : s;
 
     /// <summary>An e-NCF is "E" + the 2-digit e-CF type + 10 digits (E320000000001).</summary>
     private static EcfType? TypeOf(string encf) =>
         encf.Length == 13 && encf[0] == 'E' && encf[1..].All(char.IsAsciiDigit) && Enum.IsDefined((EcfType)int.Parse(encf[1..3], System.Globalization.CultureInfo.InvariantCulture))
             ? (EcfType)int.Parse(encf[1..3], System.Globalization.CultureInfo.InvariantCulture) : null;
 
-    private static byte[]? TryBase64(string value)
+    /// <summary>The gzip bytes, or null when it is not base64 gzip or unpacks to more than <see cref="MaxXmlBytes"/>.</summary>
+    private static byte[]? Unpacked(string? base64)
     {
-        var buffer = new byte[value.Length * 3 / 4 + 3];
-        return Convert.TryFromBase64String(value, buffer, out var written) ? buffer[..written] : null;
-    }
-
-    /// <summary>Null when it is not gzip or unpacks to more than <see cref="MaxXmlBytes"/>.</summary>
-    private static byte[]? TryGunzip(byte[] gzip)
-    {
+        if (base64 is null) return null;
+        var buffer = new byte[base64.Length * 3 / 4 + 3];
+        if (!Convert.TryFromBase64String(base64, buffer, out var written)) return null;
+        var gzip = buffer[..written];
         try
         {
             using var input = new GZipStream(new MemoryStream(gzip), CompressionMode.Decompress);
-            using var output = new MemoryStream();
-            var buffer = new byte[81920];
+            var chunk = new byte[81920];
+            long total = 0;
             int read;
-            while ((read = input.Read(buffer)) > 0)
-            {
-                output.Write(buffer, 0, read);
-                if (output.Length > MaxXmlBytes) return null;
-            }
-            return output.ToArray();
+            while ((read = input.Read(chunk)) > 0)
+                if ((total += read) > MaxXmlBytes) return null;
+            return total > 0 ? gzip : null;
         }
         catch (InvalidDataException) { return null; }
     }

@@ -10,7 +10,7 @@ namespace Toki.Sales;
 /// so a closed period never changes and the reports agree with each other.
 /// Profit = revenue without ITBIS − historical cost (returned goods put back on the shelf give their cost back).</summary>
 /// <remarks>shortcut: aggregates in memory over at most a year of one-row-per-sale projections; move to SQL GROUP BY if stores keep years online.</remarks>
-internal sealed class SalesReports(SalesDbContext db) : ISalesReports
+internal sealed class SalesReports(SalesDbContext db, Toki.Fiscal.Contracts.IFiscalDocuments fiscal) : ISalesReports
 {
     public async Task<IReadOnlyList<DailySales>> ByDayAsync(DateOnly from, DateOnly to, CancellationToken ct)
     {
@@ -81,11 +81,13 @@ internal sealed class SalesReports(SalesDbContext db) : ISalesReports
             new(rnc, IdType(rnc), ncf, modified, 1, BusinessDay.Of(dateUtc), null, total - itbis, itbis, 0, 0, 0, 0, 0, 0, 0, cash, check, card, credit, 0, 0, other);
         decimal ByMethod(Sale s, PaymentMethod method) => s.Payments.Where(p => p.Method == method).Sum(p => p.Amount);
 
+        // TK-149: e-CF of the DGII test environments are not fiscal (a day of margin: a void or return can be signed after the sale).
+        var test = await fiscal.TestENcfsAsync(f.AddDays(-1), t.AddDays(1), ct);
         return sales.Select(s => Row(s.CustomerRnc, s.ENcf, null, s.DateUtc, s.Total, s.Itbis, ByMethod(s, PaymentMethod.Cash), ByMethod(s, PaymentMethod.Transfer),
                 ByMethod(s, PaymentMethod.Card), ByMethod(s, PaymentMethod.OnAccount), ByMethod(s, PaymentMethod.CreditBalance)))
             .Concat(voided.Select(s => Row(s.CustomerRnc, s.VoidENcf!, s.ENcf, s.VoidedUtc!.Value, s.Total, s.Itbis)))
             .Concat(returns.Select(x => Row(x.CustomerRnc, x.ENcf, x.Modified, x.DateUtc, x.Total, x.Itbis)))
-            .OrderBy(x => x.DocumentDate).ThenBy(x => x.Ncf, StringComparer.Ordinal).ToList();
+            .Where(x => !test.Contains(x.Ncf)).OrderBy(x => x.DocumentDate).ThenBy(x => x.Ncf, StringComparer.Ordinal).ToList();
     }
 
     /// <summary>A line sold (positive) or returned (negative) in the period.</summary>

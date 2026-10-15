@@ -107,6 +107,9 @@ namespace Toki.Sales.Persistence.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
 
+                    b.Property<bool>("Contingency")
+                        .HasColumnType("bit");
+
                     b.Property<Guid?>("CustomerId")
                         .HasColumnType("uniqueidentifier");
 
@@ -171,8 +174,14 @@ namespace Toki.Sales.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<DateOnly?>("SequenceExpiresOn")
+                        .HasColumnType("date");
+
                     b.Property<Guid>("ShiftId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("SignedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Status")
                         .IsRequired()

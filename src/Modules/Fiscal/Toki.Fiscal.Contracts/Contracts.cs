@@ -31,13 +31,32 @@ public sealed record DocumentToIssue(
     ModificationCode? ModificationCode = null, EcfPaymentType PaymentType = EcfPaymentType.Cash,
     IReadOnlyList<FiscalPayment>? Payments = null);
 
-/// <param name="QrUrl">What the printed QR code points to.</param>
-public sealed record IssuedDocument(Guid DocumentId, string ENcf, string SecurityCode, DateTime SignedUtc, string QrUrl);
+/// <param name="QrUrl">What the printed QR code points to (per type, amount and DGII environment).</param>
+/// <param name="SignedUtc">Signing moment: printed under the QR as "fecha y hora de firma" (DR time).</param>
+/// <param name="SequenceExpiresOn">Expiry of the e-NCF range, printed on 31 and 33 only.</param>
+/// <param name="Contingency">The DGII cannot be reached right now: the receipt carries the contingency legend.</param>
+public sealed record IssuedDocument(Guid DocumentId, string ENcf, string SecurityCode, DateTime SignedUtc, string QrUrl,
+    DateOnly? SequenceExpiresOn = null, bool Contingency = false);
 
 /// <summary>Issues e-CF inside the caller's transaction: reserves the next e-NCF (no gaps), signs locally and queues it for the 72-hour submission.</summary>
 public interface IFiscalDocuments
 {
     Task<Result<IssuedDocument>> IssueAsync(DocumentToIssue document, CancellationToken ct);
+
+    /// <summary>e-NCF of documents issued in a DGII test environment (TesteCF, CerteCF) in the period: the 606/607 leave them out.</summary>
+    Task<IReadOnlySet<string>> TestENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct);
+}
+
+/// <summary>The legend the receipt of an e-CF issued in contingency carries (Decreto 587-24; DGII "Representación Impresa").</summary>
+public static class EcfReceiptTexts
+{
+    public const string ContingencyLegend =
+        "e-CF emitido en modalidad de Contingencia, el cual podrá ser consultado para su validez fiscal, a partir de las setenta y dos (72) horas.";
 }
 
 public sealed record FiscalDocumentIssuedV1(Guid DocumentId, string ENcf, EcfType Type, Guid ReferenceId, decimal Total, decimal Itbis) : IntegrationEvent(DocumentId);
+
+/// <summary>TK-147: the DGII rejected <paramref name="RejectedENcf"/> and a new e-CF with the same data replaces it. The sale (or void, or return)
+/// with the rejected number now points to the new one, so its receipt and the 607 use the valid e-CF.</summary>
+public sealed record FiscalDocumentReplacedV1(Guid DocumentId, string RejectedENcf, string ENcf, EcfType Type, Guid ReferenceId, string SecurityCode,
+    string QrUrl, DateTime SignedUtc, DateOnly? SequenceExpiresOn) : IntegrationEvent(DocumentId);

@@ -38,7 +38,7 @@ public sealed class CertificateSigningTests(TokiApp app) : IClassFixture<TokiApp
     {
         var db = sp.GetRequiredService<FiscalDbContext>();
         var issued = await new FiscalDocuments(db, sp.GetRequiredService<ISettingsQueries>(), new CertificateEcfSigner(Certificate),
-            sp.GetRequiredService<IOutbox>(), app.Clock).IssueAsync(doc, CancellationToken.None);
+            sp.GetRequiredService<IEcfProvider>(), sp.GetRequiredService<IOutbox>(), app.Clock).IssueAsync(doc, CancellationToken.None);
         if (issued.IsFailure) return (issued, (string?)null);
         await db.SaveChangesAsync();
         var stored = db.Documents.Local.Single(d => d.ENcf == issued.Value.ENcf);
