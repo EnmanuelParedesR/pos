@@ -6,12 +6,10 @@ internal static class SqlServerImage
 {
     public const string Name = "mcr.microsoft.com/mssql/server:2025-CU9-GDR1-ubuntu-22.04";
 
-    // TEMP TK-211 diagnostic
-    public static async Task SaveLogsAsync(Testcontainers.MsSql.MsSqlContainer c)
-    {
-        if (Environment.GetEnvironmentVariable("TOKI_SQL_LOGS") is not { } dir) return;
-        var (o, e) = await c.GetLogsAsync();
-        Directory.CreateDirectory(dir);
-        await File.WriteAllTextAsync(Path.Combine(dir, $"{c.Id}.log"), o + e);
-    }
+    /// <summary>TK-211: the container logs in as sa with a password. EF builds its "master" connection (to create the database)
+    /// from the already opened connection, whose string has lost the password unless Persist Security Info is on; when a new
+    /// database is briefly unavailable, EF goes back to master and fails with "Login failed for user 'sa'".
+    /// Stores use Windows authentication (no password), so only the container needs this.</summary>
+    public static string ConnectionString(Testcontainers.MsSql.MsSqlContainer container) =>
+        container.GetConnectionString() + ";Persist Security Info=True";
 }

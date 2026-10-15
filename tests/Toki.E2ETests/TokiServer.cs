@@ -44,7 +44,7 @@ public sealed class TokiServer : IAsyncDisposable
         {
             container = new MsSqlBuilder(Toki.Tests.SqlServerImage.Name).Build();
             await container.StartAsync();
-            (provider, connectionString) = ("SqlServer", container.GetConnectionString().Replace("Database=master", "Database=toki_e2e", StringComparison.Ordinal));
+            (provider, connectionString) = ("SqlServer", Toki.Tests.SqlServerImage.ConnectionString(container).Replace("Database=master", "Database=toki_e2e", StringComparison.Ordinal));
         }
         else
         {
@@ -136,7 +136,6 @@ public sealed class TokiServer : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
-        if (_container is not null) await Toki.Tests.SqlServerImage.SaveLogsAsync(_container);
         if (_container is not null) await _container.DisposeAsync();
         if (_externalDatabase is not null) await DropDatabaseAsync(_externalDatabase);
         if (_sqliteFile is not null)
