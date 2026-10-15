@@ -5,6 +5,12 @@
 @inject NavigationManager Nav
 @inject Peripherals Peripherals
 
+@if (_customerPayment)
+{
+    <CustomerPaymentDialog OnClose="OnClose" OnBack="() => _customerPayment = false" />
+}
+else
+{
 <Dialog Title="@Title" OnClose="Back" OnKey="KeyAsync">
     <ChildContent>
         @if (_leaving)
@@ -20,6 +26,7 @@
                 {
                     <Button Wide="true" Disabled="_sending" OnClick="OpenDrawerAsync" style="justify-content:space-between"><span>Abrir la gaveta sin venta</span>@if (!Session.Can("register.open-drawer")) { <Icon Name="lock" /> }</Button>
                 }
+                <Button Wide="true" OnClick="() => (_customerPayment, _message) = (true, null)" style="justify-content:space-between"><span>Abono de cliente (paga su fiado)</span></Button>
                 <Button Wide="true" OnClick='() => Nav.NavigateTo("shift-sales")' style="justify-content:space-between"><span>Ventas de este turno · anular y devolver</span></Button>
                 <Button Wide="true" OnClick='() => Nav.NavigateTo("close-register")' style="justify-content:space-between"><span>Cerrar caja</span></Button>
                 @if (Session.IsBackOffice)
@@ -73,6 +80,7 @@
         }
     </Footer>
 </Dialog>
+}
 
 @code {
     [Parameter] public EventCallback OnClose { get; set; }
@@ -81,7 +89,7 @@
     private MovementReason _reason = MovementReason.CashPickup;
     private string? _amount, _note, _message;
     private Notice.Kinds _messageKind;
-    private bool _sending, _leaving, _focusAmount;
+    private bool _sending, _leaving, _focusAmount, _customerPayment;
     /// <summary>The movement's idempotency key: made when the form opens, kept across retries until the server records it.</summary>
     private Guid _movementId;
     private ElementReference _amountInput;

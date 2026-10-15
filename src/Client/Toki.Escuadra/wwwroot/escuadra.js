@@ -103,6 +103,15 @@
       if (!el) return;
       const field = el.querySelector('[autofocus]') || el.querySelector('input:not([type=hidden]):not([disabled]), select, textarea');
       (field || el).focus();
+    },
+    // A file the API answered (a report): the browser saves it; in the store app (WebView2) the window asks where (MainWindow).
+    download: (name, type, bytes) => {
+      const url = URL.createObjectURL(new Blob([bytes], { type }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
   };
 })();

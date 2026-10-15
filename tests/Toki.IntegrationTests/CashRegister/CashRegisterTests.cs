@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Toki.IntegrationTests.Infra;
 
@@ -155,5 +157,31 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
         var other = app.Client(await app.UserAsync(Roles.Cashier));
         var r = await other.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementId = Guid.NewGuid(), MovementType = "CashIn", Amount = 1m, Reason = "ExtraChange" });
         (await r.ErrorCode()).ShouldBe("CashRegister.NotYourShift");
+    }
+
+    [Fact]
+    public async Task Renaming_a_register_sends_RegisterChangedV1_in_the_same_transaction()
+    {
+        var register = await RegisterAsync();
+        var admin = app.Client(await app.AdminAsync());
+
+        (await admin.PutAsJsonAsync($"/api/cash/registers/{register}", new { Name = "  Caja del frente  " })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        (await admin.GetFromJsonAsync<JsonElement>("/api/cash/registers")).EnumerateArray().Single(r => r.GetProperty("id").GetGuid() == register)
+            .GetProperty("name").GetString().ShouldBe("Caja del frente");
+        var events = await app.InScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Persistence.InfraDbContext>().Outbox
+            .Where(m => m.Type == typeof(Toki.CashRegister.Contracts.RegisterChangedV1).FullName).OrderBy(m => m.Sequence).Select(m => m.Payload).ToListAsync());
+        events.Select(p => JsonSerializer.Deserialize<Toki.CashRegister.Contracts.RegisterChangedV1>(p, Toki.BuildingBlocks.Persistence.Json.Options)!)
+            .Where(e => e.RegisterId == register).Select(e => e.Name).Skip(1).ShouldBe(["Caja del frente"]); // the first is the creation
+        (await app.VerifyAuditAsync()).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task A_register_cannot_be_renamed_to_nothing_or_by_a_cashier()
+    {
+        var register = await RegisterAsync();
+        (await app.Client(await app.AdminAsync()).PutAsJsonAsync($"/api/cash/registers/{register}", new { Name = " " })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await app.Client(await app.UserAsync(Roles.Cashier)).PutAsJsonAsync($"/api/cash/registers/{register}", new { Name = "Mía" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await (await app.Client(await app.AdminAsync()).PutAsJsonAsync($"/api/cash/registers/{Guid.NewGuid()}", new { Name = "Caja 9" })).ErrorCode()).ShouldBe("CashRegister.RegisterNotFound");
     }
 }

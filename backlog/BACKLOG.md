@@ -153,9 +153,9 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 | TK-120 | Administración que falta (dividido en TK-184..187) | ↪ Reemplazado por TK-184, TK-185, TK-186 y TK-187 |
 | TK-184 | Administración: inventario (existencias, ajustes, conteo físico, transferencias, kardex por producto) | ✅ |
 | TK-185 | Administración: compras, suplidores, gastos con NCF y pagos a suplidores | ✅ |
-| TK-186 | Administración: clientes, fiado (estado de cuenta, abonos, anular abono) y roles y permisos | 🔨 |
-| TK-187 | Administración: facturas (buscar, ver, reimprimir) y reportes descargables (CSV/Excel, 606/607) | 🔨 |
-| TK-121 | Abono de un cliente desde la caja | 🔨 |
+| TK-186 | Administración: clientes, fiado (estado de cuenta, abonos, anular abono) y roles y permisos | ✅ Clientes (lista con deuda y antigüedad, crear y editar respetando `credit.manage`, estado de cuenta con balance, abono a una caja abierta, anular abono con supervisor) y Configuración → Roles y permisos (Administrador no se edita). La API da `paymentId` en el estado de cuenta y `address`/`fiscalCredit` en la búsqueda |
+| TK-187 | Administración: facturas (buscar, ver, reimprimir) y reportes descargables (CSV/Excel, 606/607) | ✅ Facturas (número o e-NCF, periodo, estado, detalle, vista para reimprimir) y Reportes (periodo; Excel y CSV de ventas por día/producto/categoría/cajero, turnos, inventario, por cobrar y por pagar, 606 y 607). Descarga con `escuadra.download` (blob); en la app de la tienda Windows pregunta dónde guardar |
+| TK-121 | Abono de un cliente desde la caja | ✅ F9 → Abono de cliente: buscar, ver la deuda, efectivo en pesos enteros (F5/F6/F7), id idempotente, recibo de abono; sin respuesta no deja cambiar de cliente |
 | TK-122 | Fijar el certificado del nodo en el cliente al emparejar (con TK-091) | ⬜ |
 | TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real; incluye las de R7 #5 (escaneo ignorado en efectivo/PIN) y #8 (el foco nunca se pierde) | ⬜ |
 | TK-124 | Prueba de contratos en `Toki.IntegrationTests`: llamar a los endpoints reales y deserializar cada respuesta con `TokiApi.Json` en los records de `Contracts.cs` (R7 #13b) | ✅ `ClientContractTests`: el flujo de la caja de punta a punta con los records del cliente; falla si llega un campo no anulable vacío (también en registros anidados) |
@@ -232,7 +232,7 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-169 | Pendientes de R7: cola e-CF en la barra (#18), "Salir" con carrito (#26), recargar precios tras `Sales.TotalChanged` (#27) | ✅ "e-CF en cola: N" (ámbar si el más viejo pasa de 24 h) solo con `fiscal.manage`; "Salir" de administración pide espera o anular; `GET /api/inventory/products/prices` (solo `sales.create`) re-precia las líneas |
 | TK-170 | Panel: Node 22, `vite build`, Vitest 3 y refrescar Tiendas al conectar una caja | ✅ Vitest 3, jsdom 30, Tiendas se refresca al conectar una caja |
 | TK-174 | Nube: evento de saldo de clientes (incluye anulación de abonos) y nombres de clientes, para que "Te deben" sea exacto y diga nombres | ⬜ |
-| TK-175 | Renombrar cajas desde Configuración (y enviar `RegisterChangedV1`) | 🔨 |
+| TK-175 | Renombrar cajas desde Configuración (y enviar `RegisterChangedV1`) | ✅ `PUT /api/cash/registers/{id}` con `RegisterChangedV1` en la misma transacción; prueba de integración |
 | TK-178 | Bug: `GET /api/inventory/stock?belowMinimumOnly=true` responde 500 | ✅ |
 | TK-179 | Reportes en la tienda: mezcla de medios de pago y ventas por hora (hoy el Resumen suma los Z y no compara a la misma hora) | ⬜ |
 | TK-180 | Nube: unidad (lb/unidad) en más vendidos | ⬜ |

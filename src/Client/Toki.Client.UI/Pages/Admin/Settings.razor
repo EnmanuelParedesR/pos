@@ -53,12 +53,28 @@
                 <div class="esc-setting__body">
                     <div class="esc-table-wrap">
                         <table class="esc-table">
-                            <thead><tr><th>Caja</th><th>Estado</th></tr></thead>
+                            <thead><tr><th>Caja</th><th class="esc-hide-sm">Estado</th><th><span class="esc-visually-hidden">Acción</span></th></tr></thead>
                             <tbody>
                                 @foreach (var register in _registers)
                                 {
-                                    <tr><td style="font-weight:600">@register.Name</td>
-                                        <td>@if (register.Cashier is { } q) { <span class="esc-pill esc-pill--success">Abierta · @q</span> } else { <span class="esc-pill esc-pill--neutral">Cerrada</span> }</td></tr>
+                                    @if (_renaming == register.Id)
+                                    {
+                                        <tr><td colspan="3" style="padding-top:8px;padding-bottom:8px;height:auto">
+                                            <form class="esc-row" style="align-items:flex-start" @onsubmit="() => RenameRegisterAsync(register)" novalidate>
+                                                <Field Label="@($"Nuevo nombre de {register.Name}")" Error="@Err("rename")" Hint="Sale en la factura, en los cierres y en el panel.">
+                                                    <input @ref="_renameInput" class="esc-input" style="width:min(240px,100%)" maxlength="60" @bind="_renameTo" @bind:after='() => Clear("rename")' aria-invalid="@Invalid("rename")" autofocus />
+                                                </Field>
+                                                <Button Type="submit" Variant="Button.Variants.Primary" style="margin-top:25px">Guardar</Button>
+                                                <Button OnClick="() => _renaming = null" style="margin-top:25px">Cancelar</Button>
+                                            </form>
+                                        </td></tr>
+                                    }
+                                    else
+                                    {
+                                        <tr><td><span style="font-weight:600">@register.Name</span><span class="esc-table__sub esc-only-sm esc-muted">@(register.Cashier is { } who ? $"Abierta · {who}" : "Cerrada")</span></td>
+                                            <td class="esc-hide-sm">@if (register.Cashier is { } q) { <span class="esc-pill esc-pill--success">Abierta · @q</span> } else { <span class="esc-pill esc-pill--neutral">Cerrada</span> }</td>
+                                            <td class="esc-num"><Button class="esc-button esc-button--small" aria-label="@($"Cambiar el nombre de {register.Name}")" OnClick="() => StartRename(register)">Cambiar nombre</Button></td></tr>
+                                    }
                                 }
                             </tbody>
                         </table>
@@ -236,6 +252,10 @@
             </form>
             break;
 
+        case Section.Roles:
+            <RolesSettings />
+            break;
+
         case Section.Backups:
             <section class="esc-card esc-setting">
                 <div class="esc-setting__about"><h2>Frase de los respaldos</h2><p>Los respaldos se cifran con esta frase. Guárdela fuera de la PC: sin ella no se pueden restaurar.</p></div>
@@ -321,7 +341,7 @@
 </Admin>
 
 @code {
-    private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, Users, Backups, Cloud, License }
+    private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, Users, Roles, Backups, Cloud, License }
     private sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
     private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; }
     private sealed record Sequence(Guid Id, string Type, string From, string To, string Next, long Available, decimal PercentUsed, DateOnly ExpiresOn);
@@ -337,6 +357,7 @@
         Section.Devices => "Equipos",
         Section.Hardware => "Equipos de la caja",
         Section.Users => "Usuarios",
+        Section.Roles => "Roles y permisos",
         Section.Backups => "Respaldos",
         Section.Cloud => "Nube",
         _ => "Licencia",
@@ -346,7 +367,8 @@
     {
         Session.Can("settings.manage") ? Section.Business : null, Session.Can("settings.manage") ? Section.Registers : null,
         Session.Can("fiscal.manage") ? Section.FiscalSequences : null, Session.Can("devices.manage") ? Section.Devices : null, Session.Can("settings.manage") ? Section.Hardware : null,
-        Session.Can("users.manage") ? Section.Users : null, Session.Can("settings.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License,
+        Session.Can("users.manage") ? Section.Users : null, Session.Can("users.manage") ? Section.Roles : null,
+        Session.Can("settings.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License,
     }.OfType<Section>()];
 
     private Section _section;
@@ -512,6 +534,35 @@
         await GoAsync(Section.Registers);
         ShowResult(r.Problem, $"{_newRegister} creada.");
         _newRegister = null;
+    }
+
+    private Guid? _renaming;
+    private ElementReference _renameInput;
+    private bool _focusRename;
+    private string? _renameTo;
+
+    /// <summary>The inline rename opens with the cursor in its field (HTML autofocus only works on page load).</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusRename || _renaming is null) return;
+        _focusRename = false;
+        await _renameInput.FocusAsync();
+    }
+
+    private void StartRename(RegisterInfo r)
+    {
+        Clear("rename");
+        (_renaming, _renameTo, _message, _focusRename) = (r.Id, r.Name, null, true);
+    }
+
+    private async Task RenameRegisterAsync(RegisterInfo register)
+    {
+        if (string.IsNullOrWhiteSpace(_renameTo)) { _errors["rename"] = "Escriba el nombre de la caja."; return; }
+        var name = _renameTo.Trim();
+        var r = await Api.PutAsync<Empty>($"/api/cash/registers/{register.Id}", new { Name = name });
+        if (r.Ok) _renaming = null;
+        await GoAsync(Section.Registers);
+        ShowResult(r.Problem, $"{register.Name} ahora se llama {name}.");
     }
 
     private async Task LoadSequenceAsync()

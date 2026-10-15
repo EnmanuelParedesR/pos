@@ -87,7 +87,9 @@ internal static class SaveCustomer
 
 internal static class SearchCustomers
 {
-    public sealed record Item(Guid Id, string Name, string? TaxId, string? Phone, PriceLevel PriceLevel, decimal CreditLimit, bool IsActive);
+    /// <param name="Address">So the back office can edit a customer without losing it (an update replaces every field).</param>
+    public sealed record Item(Guid Id, string Name, string? TaxId, string? Phone, PriceLevel PriceLevel, decimal CreditLimit, bool IsActive,
+        string? Address, bool FiscalCredit);
 
     internal sealed class Endpoint : IEndpoint
     {
@@ -104,7 +106,7 @@ internal static class SearchCustomers
                         q = q.Where(c => c.Name.Contains(search.Trim()) || c.TaxId == rnc || c.Phone == search.Trim());
                     }
                     return Results.Ok(await q.OrderBy(c => c.Name).Take(50)
-                        .Select(c => new Item(c.Id, c.Name, c.TaxId, c.Phone, c.PriceLevel, c.CreditLimit, c.IsActive)).ToListAsync(ct));
+                        .Select(c => new Item(c.Id, c.Name, c.TaxId, c.Phone, c.PriceLevel, c.CreditLimit, c.IsActive, c.Address, c.FiscalCredit)).ToListAsync(ct));
                 })
                 .RequirePermission(Permissions.CustomersManage).WithTags("Customers");
             app.MapGet("/api/customers/{id:guid}", async (Guid id, ICustomerAccounts accounts, CancellationToken ct) =>
@@ -234,7 +236,8 @@ internal static class VoidCustomerPayment
 /// so the running debt always ends at the debt on the customer card.</summary>
 internal static class CustomerStatement
 {
-    public sealed record StatementLine(DateTime DateUtc, string Type, string? Document, decimal Charge, decimal Payment, decimal Debt);
+    /// <param name="PaymentId">Set on a live payment taken at the register: the one the back office can void.</param>
+    public sealed record StatementLine(DateTime DateUtc, string Type, string? Document, decimal Charge, decimal Payment, decimal Debt, Guid? PaymentId);
     public sealed record Response(Guid CustomerId, string Name, decimal Debt, decimal CreditBalance, decimal CreditLimit, IReadOnlyList<StatementLine> Lines);
 
     internal sealed class Endpoint : IEndpoint
@@ -244,22 +247,22 @@ internal static class CustomerStatement
                 {
                     var c = await db.Customers.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
                     if (c is null) return EndpointExtensions.Problem(CustomersErrors.CustomerNotFound);
-                    var entries = new List<(DateTime Date, string Type, string? Doc, decimal Charge, decimal Payment)>();
+                    var entries = new List<(DateTime Date, string Type, string? Doc, decimal Charge, decimal Payment, Guid? PaymentId)>();
                     foreach (var x in await db.Charges.Where(x => x.CustomerId == id).AsNoTracking().ToListAsync(ct))
                     {
-                        entries.Add((x.DateUtc, "Fiado", x.Document, x.Amount, 0));
+                        entries.Add((x.DateUtc, "Fiado", x.Document, x.Amount, 0, null));
                         if (x.VoidedUtc is not { } voided) continue;
-                        entries.Add((voided, "Venta anulada", x.Document, 0, x.Amount));
-                        if (x.PaidAtVoid > 0) entries.Add((voided, "Lo pagado de la venta anulada", x.Document, x.PaidAtVoid, 0));
+                        entries.Add((voided, "Venta anulada", x.Document, 0, x.Amount, null));
+                        if (x.PaidAtVoid > 0) entries.Add((voided, "Lo pagado de la venta anulada", x.Document, x.PaidAtVoid, 0, null));
                     }
                     foreach (var p in await db.Payments.Where(x => x.CustomerId == id).AsNoTracking().ToListAsync(ct))
                     {
                         entries.Add((p.DateUtc, p.Source switch { CustomerPaymentSource.Register => "Abono", CustomerPaymentSource.Return => "Devolución", _ => "Pago de venta anulada" },
-                            p.Reference, 0, p.Amount));
-                        if (p.VoidedUtc is { } voided) entries.Add((voided, "Abono anulado", p.Reference, p.Amount, 0));
+                            p.Reference, 0, p.Amount, p.Source == CustomerPaymentSource.Register && !p.IsVoided ? p.Id : null));
+                        if (p.VoidedUtc is { } voided) entries.Add((voided, "Abono anulado", p.Reference, p.Amount, 0, null));
                     }
                     var debt = 0m;
-                    var lines = entries.OrderBy(m => m.Date).Select(m => new StatementLine(m.Date, m.Type, m.Doc, m.Charge, m.Payment, debt += m.Charge - m.Payment)).ToList();
+                    var lines = entries.OrderBy(m => m.Date).Select(m => new StatementLine(m.Date, m.Type, m.Doc, m.Charge, m.Payment, debt += m.Charge - m.Payment, m.PaymentId)).ToList();
                     var open = (await db.OpenChargesAsync(id, ct)).Sum(x => x.Balance);
                     return Results.Ok(new Response(c.Id, c.Name, open, await db.CreditBalanceAsync(id, ct), c.CreditLimit, lines));
                 })

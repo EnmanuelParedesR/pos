@@ -136,12 +136,45 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
             C.ExpenseType.WorkSuppliesAndServices, 100, 18, C.PaymentTerms.Cash, null, Guid.CreateVersion7(), C.SupplierPaymentMethod.Transfer));
         (await Send<List<C.Expense>>(api, HttpMethod.Get, $"/api/purchasing/expenses?{range}")).ShouldHaveSingleItem().Total.ShouldBe(118m);
         await Send<C.Empty>(api, HttpMethod.Post, $"/api/purchasing/expenses/{expense.Id}/void", new C.VoidReason("Repetido"));
-        var paid = await Send<C.SupplierPaid>(api, HttpMethod.Post, "/api/purchasing/payments", new C.PaySupplier(supplier, 500, C.SupplierPaymentMethod.Transfer, today, "T-1", Guid.CreateVersion7()));
-        paid.Allocations.ShouldHaveSingleItem().RemainingBalance.ShouldBe(1152m);
-        var statement = await Send<C.SupplierStatement>(api, HttpMethod.Get, $"/api/purchasing/suppliers/{supplier}/statement");
-        (statement.Balance, statement.Lines.Single(l => l.Type == "Pago").PaymentId).ShouldBe((1152m, paid.SupplierPaymentId));
+        var supplierPaid = await Send<C.SupplierPaid>(api, HttpMethod.Post, "/api/purchasing/payments", new C.PaySupplier(supplier, 500, C.SupplierPaymentMethod.Transfer, today, "T-1", Guid.CreateVersion7()));
+        supplierPaid.Allocations.ShouldHaveSingleItem().RemainingBalance.ShouldBe(1152m);
+        var supplierStatement = await Send<C.SupplierStatement>(api, HttpMethod.Get, $"/api/purchasing/suppliers/{supplier}/statement");
+        (supplierStatement.Balance, supplierStatement.Lines.Single(l => l.Type == "Pago").PaymentId).ShouldBe((1152m, supplierPaid.SupplierPaymentId));
         (await Send<List<C.SupplierPayable>>(api, HttpMethod.Get, "/api/reports/payables")).ShouldHaveSingleItem().NotYetDue.ShouldBe(1152m);
-        await Send<C.Empty>(api, HttpMethod.Post, $"/api/purchasing/payments/{paid.SupplierPaymentId}/void", new C.VoidReason("Monto equivocado"));
+        await Send<C.Empty>(api, HttpMethod.Post, $"/api/purchasing/payments/{supplierPaid.SupplierPaymentId}/void", new C.VoidReason("Monto equivocado"));
+        // Back office: customers and credit (TK-186) and the register's payment (TK-121)
+        await Send<C.Empty>(api, HttpMethod.Put, $"/api/customers/{customer}",
+            new C.SaveCustomer("Ana Pérez", null, "809-555-0102", "Calle 2", false, C.PriceLevel.Retail, 5_000, true));
+        (await Send<List<C.CustomerRow>>(api, HttpMethod.Get, "/api/customers?includeInactive=true")).ShouldHaveSingleItem().Address.ShouldBe("Calle 2");
+        var onAccount = await Send<C.SaleRegistered>(api, HttpMethod.Post, "/api/sales", new C.RegisterSale(Guid.CreateVersion7(), shift,
+            [new C.SaleLine(steak, null, 1)], [new C.Payment(C.PaymentMethod.OnAccount, 250)], 250, C.EcfType.Consumer32, customer, null, null, C.PriceLevel.Retail, null, []));
+        (await Send<List<C.ReceivableAging>>(api, HttpMethod.Get, "/api/reports/receivables")).ShouldHaveSingleItem().Days0To30.ShouldBe(250m);
+        var paid = await Send<C.CustomerPaymentRecorded>(api, HttpMethod.Post, $"/api/customers/{customer}/payments",
+            new C.RecordCustomerPayment(Guid.CreateVersion7(), shift, 100, C.PaymentMethod.Cash, null));
+        (paid.Applied, paid.RemainingDebt).ShouldBe((100m, 150m));
+        var statement = await Send<C.CustomerStatement>(api, HttpMethod.Get, $"/api/customers/{customer}/statement");
+        (statement.Debt, statement.Lines.Length).ShouldBe((150m, 2));
+        statement.Lines.Single(l => l.Type == "Abono").PaymentId.ShouldBe(paid.CustomerPaymentId);
+        statement.Lines.Single(l => l.Type == "Fiado").Document.ShouldBe(onAccount.ENcf);
+        await Send<C.Empty>(api, HttpMethod.Post, $"/api/customers/payments/{paid.CustomerPaymentId}/void", new { Reason = "Monto equivocado", SupervisorApprovalId = (Guid?)null });
+        (await Send<C.CustomerStatement>(api, HttpMethod.Get, $"/api/customers/{customer}/statement")).Lines.ShouldAllBe(l => l.PaymentId == null);
+
+        // Back office: invoices and reports (TK-187)
+        (await Send<List<C.SaleSummary>>(api, HttpMethod.Get, $"/api/sales?{range}&page=1")).Count.ShouldBe(2);
+        (await Send<List<C.SaleSummary>>(api, HttpMethod.Get, $"/api/sales?search={onAccount.ENcf}&page=1")).ShouldHaveSingleItem().Customer.ShouldBe("Ana Pérez");
+        using (var csv = await api.GetAsync($"/api/reports/sales/by-day?format=csv&{range}"))
+        {
+            csv.IsSuccessStatusCode.ShouldBeTrue();
+            csv.Content.Headers.ContentDisposition!.FileName.ShouldNotBeNullOrEmpty(); // TokiApi names the download from it
+            (await csv.Content.ReadAsByteArrayAsync()).ShouldNotBeEmpty();
+        }
+
+        // Back office: roles (TK-186) and renaming a register (TK-175)
+        var role = (await Send<C.Created>(api, HttpMethod.Post, "/api/identity/roles", new C.SaveRole("Encargado", ["sales.create", "reports.view"]))).Id;
+        await Send<C.Empty>(api, HttpMethod.Put, $"/api/identity/roles/{role}", new C.SaveRole("Encargado", ["sales.create"]));
+        (await Send<C.RoleList>(api, HttpMethod.Get, "/api/identity/roles")).Roles.Single(r => r.Id == role).Permissions.ShouldBe(["sales.create"]);
+        await Send<C.Empty>(api, HttpMethod.Put, $"/api/cash/registers/{register}", new { Name = "Caja del frente" });
+        (await Send<List<C.RegisterInfo>>(api, HttpMethod.Get, "/api/cash/registers")).ShouldHaveSingleItem().Name.ShouldBe("Caja del frente");
     }
 
     [Fact]
