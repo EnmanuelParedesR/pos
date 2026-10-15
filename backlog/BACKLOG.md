@@ -157,12 +157,17 @@ Diseño: canvas "Toki" (pantallas) y `docs/critica-diseno.md`. Decisión: ADR-00
 
 ## M12 · Nube
 
-Decisión: ADR-0008.
+Decisión: ADR-0008. Despliegue: `docs/despliegue-azure.md`.
 
 | Ticket | Qué | Estado |
 |---|---|---|
 | TK-130 | Sync: conectar la tienda con el código del panel y subir el outbox | ✅ Módulo `Toki.Sync`: `/api/sync/connect`, `/status` y `/disconnect`; secreto del nodo cifrado con Data Protection; lotes de 200 con gzip cada 5 s, marca solo los ids aceptados, reintentos de 1 s a 15 min con jitter y nunca pierde un evento; health `sync` |
 | TK-131 | Relevo e-CF en el nodo | ✅ `RelayEcfProvider` manda el e-CF firmado a `/relay/v1/ecf` como el nodo; `Fiscal:Provider` = `Simulated` (por defecto) o `Relay`; contrato en ADR-0008 |
+| TK-132 | API nube (registro, tiendas, ingesta, réplica) | ✅ `Toki.Host.Cloud`: cuentas con Identity y tenant propio, tiendas, código de conexión de 8 dígitos (30 min, un solo uso), nodos con secreto (solo el hash), ingesta gzip idempotente por evento, aplicador por evento y proyectores a `replica.*` |
+| TK-133 | API del panel | ✅ Resumen del día, ventas por día, más vendidos, por cajero, medios de pago, cuadres y estado de sincronización, siempre filtrado por el tenant del token. Pendiente: nombres de cajeros (los eventos solo traen el id) |
+| TK-134 | Asistente (Azure OpenAI) | ✅ *Function calling* por HTTP con 6 herramientas de solo lectura (máximo 92 días); sin configuración responde 503. Pendiente: probarlo contra el modelo real y la herramienta de documentos fiscales pendientes |
+| TK-135 | Relevo e-CF en la nube (simulado; DGII en espera) | ✅ `POST /relay/v1/ecf` guarda el XML firmado y responde `Simulated`; un e-NCF repetido devuelve la misma respuesta. El proveedor real es TK-055 |
+| TK-136 | Bicep de Azure | 🟡 `deploy/azure/main.bicep` escrito; falta validarlo con `az bicep build` y desplegarlo |
 
 ## Revisiones
 

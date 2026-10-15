@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hosts\Toki.Host.Cloud\Toki.Host.Cloud.csproj" />
+    <!-- An event type the cloud does not project yet -->
+    <ProjectReference Include="..\..\src\Modules\Purchasing\Toki.Purchasing.Contracts\Toki.Purchasing.Contracts.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "env": { "value": "prod" },
+    "location": { "value": "eastus2" },
+    "staticWebAppLocation": { "value": "eastus2" },
+    "sqlAdminLogin": { "value": "<correo o grupo de Entra del administrador>" },
+    "sqlAdminObjectId": { "value": "<object id de ese usuario o grupo>" },
+    "openAiModelName": { "value": "gpt-4.1-nano" },
+    "openAiModelVersion": { "value": "2025-04-14" },
+    "openAiDeploymentSku": { "value": "GlobalStandard" },
+    "openAiCapacity": { "value": 10 }
+  }
+}

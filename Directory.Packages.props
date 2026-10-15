@@ -17,6 +17,8 @@
     <PackageVersion Include="Scrutor" Version="7.0.0" />
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
+    <!-- Cloud host: panel accounts (bearer tokens) -->
+    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
     <!-- Excel export (MIT) -->
     <PackageVersion Include="ClosedXML" Version="0.105.0" />
     <!-- Client (Blazor) -->
