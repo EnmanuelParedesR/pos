@@ -102,7 +102,9 @@ internal static class OperationsErrors
         $"Contingencia activa y no quedan comprobantes serie B para {FiscalErrors.Name(type).Replace(" Electrónica", "", StringComparison.Ordinal)}. Cargue un rango B.");
     public static readonly Error CanStillSign = Error.Conflict("Fiscal.CanStillSign",
         "La tienda puede firmar comprobantes electrónicos: la serie B solo se usa cuando no se puede emitir e-CF.");
-    public static readonly Error AlreadyActive = Error.Conflict("Fiscal.ContingencyActive", "La contingencia ya está activa.");
+    public static readonly Error OverLimit = Error.Conflict("Fiscal.ContingencyOverLimit",
+        $"La contingencia pasó el límite de {EcfContingency.MaxDays} días: ya no se pueden emitir comprobantes serie B. Resuelva el certificado digital para volver a emitir e-CF, o consulte con la DGII.");
+    public static readonly Error AlreadyActive =Error.Conflict("Fiscal.ContingencyActive", "La contingencia ya está activa.");
     public static readonly Error NotActive = Error.Conflict("Fiscal.ContingencyNotActive", "No hay una contingencia activa.");
     public static readonly Error StillActive = Error.Conflict("Fiscal.ContingencyStillActive",
         "Termine la contingencia antes de regularizar: los e-CF de reemplazo se emiten cuando la tienda vuelve a firmar.");

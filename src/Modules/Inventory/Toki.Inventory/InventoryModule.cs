@@ -25,6 +25,9 @@ public static class InventoryModule
 
 internal sealed class CatalogQueries(InventoryDbContext db) : ICatalogQueries
 {
+    public Task<bool> AnySampleAsync(IReadOnlyCollection<Guid> productIds, CancellationToken ct) =>
+        db.Products.AnyAsync(p => productIds.Contains(p.Id) && p.IsSample, ct);
+
     public async Task<IReadOnlyList<ProductToReorder>> BelowMinimumAsync(CancellationToken ct)
     {
         var stock = db.Stock.GroupBy(e => e.ProductId).Select(g => new { ProductId = g.Key, Quantity = g.Sum(e => e.Quantity) });

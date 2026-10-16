@@ -139,6 +139,58 @@ public sealed class PaperContingencyTests(NoCertificateTokiApp app) : IClassFixt
     }
 }
 
+/// <summary>R9 #11 and #18: the 15 days, the 607 with B receipts pending, and B03/B04 left for the accountant. Own app: it moves the clock.</summary>
+public sealed class PaperContingencyLimitsTests(NoCertificateTokiApp app) : IClassFixture<NoCertificateTokiApp>
+{
+    [Fact]
+    public async Task Series_B_stops_after_15_days_holds_the_607_and_credit_notes_are_not_regularized_automatically()
+    {
+        var cashier = await app.CashierWithShiftAsync();
+        var admin = await app.WithAddressAsync();
+        var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco", 59m, stock: 50);
+        object Sale() => Store.Sale(cashier.ShiftId, 59m, 59m, Line(soda, 1));
+        (await admin.PostAsJsonAsync("/api/fiscal/contingency/start", new { Reason = "Certificado vencido" })).EnsureSuccessStatusCode();
+        (await admin.PostAsJsonAsync("/api/fiscal/contingency/sequences", new { Type = "Consumer32", From = 1, To = 50 })).EnsureSuccessStatusCode();
+        var sale = await (await cashier.SellAsync(Sale())).Json();
+        // A B04 that corrects the B02 (a return during the contingency).
+        await app.InScopeAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<FiscalDbContext>();
+            var contingency = await db.Set<EcfContingency>().Select(c => c.Id).SingleAsync();
+            var note = new DocumentToIssue(EcfType.CreditNote34, Guid.NewGuid(), null, null, [], 0m, 59m, "B0200000001", ModificationCode.AmountCorrection);
+            db.Set<PaperDocument>().Add(new PaperDocument
+            {
+                Id = Guid.CreateVersion7(), Ncf = "B0400000001", Type = EcfType.CreditNote34, ReferenceId = note.ReferenceId, ContingencyId = contingency,
+                IssuedUtc = app.Clock.GetUtcNow().UtcDateTime, Total = 59m, Data = JsonSerializer.Serialize(note),
+            });
+            return await db.SaveChangesAsync();
+        });
+
+        var today = DateOnly.FromDateTime(app.Clock.GetUtcNow().UtcDateTime.AddHours(-4));
+        var blocked = await admin.GetAsync($"/api/reports/dgii/607?from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}");
+        (await blocked.ErrorCode()).ShouldBe("Reports.DocumentsToReplace");
+
+        // Day 16: no more B receipts. Sessions last 12 hours, so the cashier and the owner sign in again.
+        app.Clock.Advance(TimeSpan.FromDays(15));
+        cashier = cashier with { Client = app.Client(await app.SignInAsync(await CodeOfAsync(cashier.Session.UserId), "4321", cashier.Session.Device)) };
+        admin = app.Client(await app.SignInAsync("admin", TokiApp.AdminPin, (await app.AdminAsync()).Device));
+        (await (await cashier.SellAsync(Sale())).ErrorCode()).ShouldBe("Fiscal.ContingencyOverLimit");
+
+        using var cert = TestCertificates.Create(app.Clock.GetUtcNow().AddYears(1), app.Clock.GetUtcNow().AddDays(-1));
+        (await admin.PostAsJsonAsync("/api/fiscal/certificate", new { File = Convert.ToBase64String(cert.Export(X509ContentType.Pkcs12, "c")), Password = "c" }))
+            .EnsureSuccessStatusCode();
+        (await admin.PostAsync("/api/fiscal/contingency/end", null)).EnsureSuccessStatusCode();
+        var regularized = await (await admin.PostAsync("/api/fiscal/contingency/regularize", null)).Json();
+        (regularized.GetProperty("regularized").GetInt32(), regularized.GetProperty("manual").GetInt32()).ShouldBe((1, 1));
+        (await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Set<PaperDocument>().SingleAsync(d => d.Ncf == "B0400000001")))
+            .RegularizedByENcf.ShouldBeNull();
+        sale.GetProperty("eNcf").GetString().ShouldBe("B0200000001");
+    }
+
+    private Task<string> CodeOfAsync(Guid userId) => app.InScopeAsync(sp =>
+        sp.GetRequiredService<Toki.Identity.Persistence.IdentityDbContext>().Users.Where(u => u.Id == userId).Select(u => u.Code).SingleAsync());
+}
+
 /// <summary>TK-156 with the DGII simulated: the queue's age, the last contact and the on-demand DGII check.</summary>
 public sealed class EcfHealthTests(DgiiTokiApp app) : IClassFixture<DgiiTokiApp>
 {
@@ -287,6 +339,25 @@ public sealed class CertificationOutsideCerteCfTests(TokiApp app) : IClassFixtur
         (await (await admin.PostAsync("/api/fiscal/dgii-status", null)).Json()).GetProperty("state").GetString().ShouldBe("Simulated");
         (await (await admin.PostAsJsonAsync("/api/fiscal/certification/sign", new { Xml = "<Postulacion/>" })).ErrorCode()).ShouldBe("Fiscal.NoCertificate");
         (await (await admin.PostAsJsonAsync("/api/fiscal/contingency/start", new { Reason = "x" })).ErrorCode()).ShouldBe("Fiscal.CanStillSign");
+    }
+}
+
+/// <summary>R9 #20: a certificate imported before the RNC was set is checked when the RNC is saved. Own app: no RNC at first.</summary>
+public sealed class CertificateRncOnSaveTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    [Fact]
+    public async Task Saving_an_RNC_that_is_not_the_certificates_is_refused()
+    {
+        var admin = app.Client(await app.AdminAsync());
+        using var certificate = TestCertificates.Create(DateTimeOffset.UtcNow.AddYears(1), serial: "RNC-131245678");
+        (await admin.PostAsJsonAsync("/api/fiscal/certificate",
+            new { File = Convert.ToBase64String(certificate.Export(X509ContentType.Pkcs12, "k")), Password = "k" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var wrong = await admin.PutAsJsonAsync("/api/settings/business", new { Name = "Carnicería", Rnc = "101672919", DiscountCapPercent = 10m });
+        (await wrong.ErrorCode()).ShouldBe("Settings.CertificateWrongRnc");
+        (await admin.GetFromJsonAsync<JsonElement>("/api/settings/business")).GetProperty("rnc").ValueKind.ShouldBe(JsonValueKind.Null);
+        (await admin.PutAsJsonAsync("/api/settings/business", new { Name = "Carnicería", Rnc = "131-24567-8", DiscountCapPercent = 10m })).StatusCode
+            .ShouldBe(HttpStatusCode.NoContent);
     }
 }
 

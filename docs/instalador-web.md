@@ -10,6 +10,7 @@ Plan corto de lo que falta para que una persona baje Toki de la web y empiece la
 4. **App de caja:** instalar la app WPF en la misma PC con acceso directo en el escritorio y abrirla al terminar. Abre en "Primera instalación" (el servidor está en esta PC) con la casilla de datos de ejemplo.
 5. **Sin licencia:** no pide código. La prueba empieza sola con la primera venta; "Comprar licencia" está en Configuración → Licencia.
 6. **Desinstalar:** detener y borrar el servicio y la app; **nunca** borrar la base de datos ni `C:\ProgramData\Toki` sin preguntar (ahí están las ventas y los respaldos).
+7. **Mudarse a una PC nueva (R9 #16):** se instala como arriba y se restaura el respaldo con su frase. El respaldo trae **los datos, no las llaves** de la PC vieja: `C:\ProgramData\Toki\keys` está protegido con DPAPI de esa máquina y el certificado digital de e-CF está en su almacén de Windows, no exportable. En la PC nueva hay que: importar otra vez el certificado `.p12` (Configuración → Comprobantes), volver a escribir la frase de los respaldos, y volver a unir cada caja (la tienda crea una CA nueva; las cajas viejas aparecen en salud como "vuelva a unir"). Los números e-NCF no se repiten: siguen desde lo que tenga el respaldo, así que se restaura **el respaldo más nuevo**, y si la PC vieja firmó después, se cargan los rangos desde el siguiente número libre como en TK-221.
 
 ## Empaquetado: qué usar
 

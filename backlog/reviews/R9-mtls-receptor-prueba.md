@@ -74,3 +74,17 @@ Estado de R8: #2 sigue abierta por el hallazgo 7, #4 por el 20 y #11 por el 9; #
 ## Estado de las correcciones
 
 TK-229: nube (#1, #2, #4, #5, #6, #10, #14, #17, #21) y tienda (#3, #7, #8, #9, #11, #12, #13, #15, #16, #18, #19, #20).
+
+Tienda, todas cerradas (pruebas en Sqlite y SQL Express; sin migraciones):
+- **#3:** cada módulo lee antes de restaurar lo que no se puede rebobinar (`IRestoreGuard`) y lo vuelve a poner después de las migraciones. Fiscal: `Next = max(antes, restaurado)` en los rangos e-NCF y B, y vuelven los rangos cargados después del respaldo. Identidad: las cajas revocadas siguen revocadas, las unidas después siguen unidas, los usuarios desactivados siguen inactivos, los PIN cambiados se quedan, las sesiones cerradas siguen cerradas y se invalidan los códigos de unión. Si el respaldo es más viejo que el último e-CF firmado (no simulado) o B emitido, responde `Backup.OlderThanLastDocument` y pide `ConfirmOlder` (casilla en el diálogo). La restauración completa sigue probándose solo en Sqlite; la lógica de los guardias se prueba en los dos motores.
+- **#7:** un documento pendiente con `SentUtc` (reclamado antes de una caída) se consulta con `FindAsync` antes de reenviarlo.
+- **#8:** una CA que no se puede leer se aparta (`store-ca.*.unreadable-…`), se crea otra y el chequeo de salud `store-ca` nombra las cajas unidas antes de la CA nueva para volver a unirlas.
+- **#9:** "Unir a una tienda" exige la casilla "La huella es igual" (y que el servidor no haya cambiado) antes de enviar el código.
+- **#11:** "Regularizar" deja fuera los B03 y B04 y dice cuántos quedan para hacerlos con el contador; pregunta abierta en `docs/ecf-propio.md` §11 #42.
+- **#12:** la prueba arranca solo con una venta de `eCF` o B, o simulada sin productos de ejemplo; nunca con TesteCF ni CerteCF.
+- **#13:** opción más chica: un supervisor cierra desde la PC principal el turno de otra caja (Turnos y cuadres → "Cerrar este turno"); el mensaje de Restringido lo explica. El servidor ya lo permitía con `register.approve-close`.
+- **#15:** el certificado del servidor se guarda en `store-server.pfx` (protegido) y se reutiliza; la CA libera sus certificados al detenerse el servicio, así que Windows borra su archivo de llave.
+- **#16:** documentado en `docs/instalador-web.md` (paso 7) y en el diálogo de restaurar: en una PC nueva se importa otra vez el certificado y se vuelven a unir las cajas.
+- **#18:** después del día 15 no se emiten B (`Fiscal.ContingencyOverLimit`), y el 607 no sale con B sin regularizar en el período. Los 30 días quedan como alerta de salud: regularizar tarde sigue siendo obligatorio y bloquear las ventas no ayuda.
+- **#19:** solo se entregan al comprador los 31 aceptados dentro de las últimas 72 horas.
+- **#20:** guardar un RNC distinto al del certificado instalado da `Settings.CertificateWrongRnc`.

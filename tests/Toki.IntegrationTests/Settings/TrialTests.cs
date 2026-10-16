@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Toki.BuildingBlocks.Messaging;
@@ -115,4 +116,70 @@ public sealed class TrialTests(TokiApp app) : IClassFixture<TokiApp>
         await (await app.Anonymous(device).PostAsJsonAsync("/api/identity/sessions", new { Code = "admin", Pin = TokiApp.AdminPin })).ErrorCode();
 
     private Task<int> ProcessOutboxAsync() => app.InScopeAsync(sp => sp.GetRequiredService<OutboxProcessor>().ProcessAsync(CancellationToken.None));
+}
+
+/// <summary>R9 #13: a register beyond the license cannot sign in, and its open shift is closed from the main PC. Own app.</summary>
+public sealed class UnlicensedRegisterShiftTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    [Fact]
+    public async Task The_main_PC_closes_the_open_shift_of_a_register_the_license_no_longer_covers()
+    {
+        var admin = app.Client(await app.AdminAsync());
+        async Task<string> PairAsync()
+        {
+            app.Clock.Advance(TimeSpan.FromMinutes(1)); // registers count in the order they were paired
+            var code = (await (await admin.PostAsJsonAsync("/api/identity/devices/pairing-codes", new { DeviceName = "Caja" })).Json()).GetProperty("code").GetString();
+            return (await (await app.Anonymous().PostAsJsonAsync("/api/identity/devices/pair", new { Code = code })).Json()).GetProperty("token").GetString()!;
+        }
+        await PairAsync();
+        var last = await PairAsync();
+        (await admin.PostAsJsonAsync("/api/identity/users", new { Name = "Cajera", Code = "c7", Pin = "4321", RoleId = Roles.Cashier })).EnsureSuccessStatusCode();
+        var cashier = app.Client(await app.SignInAsync("c7", "4321", last));
+        var register = (await (await admin.PostAsJsonAsync("/api/cash/registers", new { Name = "Caja 3" })).Json()).GetProperty("id").GetGuid();
+        var shift = (await (await cashier.PostAsJsonAsync("/api/cash/shifts", new { RegisterId = register, OpeningFloat = 500m })).Json()).GetProperty("shiftId").GetGuid();
+
+        var license = new LicenseData("Carnicería de prueba", "Negocio", [], new Dictionary<string, int> { ["Registers"] = 1 },
+            app.Clock.GetUtcNow().UtcDateTime, app.Clock.GetUtcNow().UtcDateTime.AddYears(1));
+        (await admin.PutAsJsonAsync("/api/settings/license", new { License = Jws.Sign(license, app.LicenseKey) })).EnsureSuccessStatusCode();
+        var refused = await app.Anonymous(last).PostAsJsonAsync("/api/identity/sessions", new { Code = "c7", Pin = "4321" });
+        (await refused.ErrorCode()).ShouldBe("Identity.RegisterNotLicensed");
+        (await refused.Content.ReadAsStringAsync()).ShouldContain("Turnos y cuadres");
+
+        var closed = await admin.PostAsJsonAsync($"/api/cash/shifts/{shift}/close", new { CashCount = new[] { new { Denomination = 500m, Quantity = 1 } } });
+        closed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await closed.Json()).GetProperty("difference").GetDecimal().ShouldBe(0m);
+    }
+}
+
+/// <summary>R9 #12: a sale with the sample products or in a DGII test environment does not start the 14 days. Own app.</summary>
+public sealed class TrialRealSaleTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    [Fact]
+    public async Task Only_a_real_sale_starts_the_trial()
+    {
+        var cashier = await app.CashierWithShiftAsync();
+        var admin = app.Client(await app.AdminAsync());
+        var category = await admin.CategoryAsync();
+        var sample = await admin.ProductAsync(category, "Refresco de ejemplo", 59m, stock: 10);
+        var real = await admin.ProductAsync(category, "Refresco", 59m, stock: 10);
+        await app.InScopeAsync(sp => sp.GetRequiredService<Toki.Inventory.Persistence.InventoryDbContext>().Products.Where(p => p.Id == sample)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.IsSample, true)));
+        async Task<bool> Started()
+        {
+            await app.InScopeAsync(sp => sp.GetRequiredService<OutboxProcessor>().ProcessAsync(CancellationToken.None));
+            return (await admin.GetFromJsonAsync<JsonElement>("/api/settings/features")).GetProperty("trialEndsUtc").ValueKind != JsonValueKind.Null;
+        }
+
+        (await cashier.SellAsync(Sale(cashier.ShiftId, 59m, 59m, Line(sample, 1)))).EnsureSuccessStatusCode();
+        (await Started()).ShouldBeFalse();
+
+        // A sale of the DGII certification (CerteCF).
+        var certification = await (await cashier.SellAsync(Sale(cashier.ShiftId, 59m, 59m, Line(real, 1)))).Json();
+        await app.InScopeAsync(sp => sp.GetRequiredService<Toki.Fiscal.FiscalDbContext>().Documents.Where(d => d.ENcf == certification.GetProperty("eNcf").GetString())
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.Environment, Toki.Fiscal.Domain.FiscalEnvironment.CerteCF)));
+        (await Started()).ShouldBeFalse();
+
+        (await cashier.SellAsync(Sale(cashier.ShiftId, 59m, 59m, Line(real, 1)))).EnsureSuccessStatusCode();
+        (await Started()).ShouldBeTrue();
+    }
 }

@@ -30,6 +30,9 @@ public interface ICatalogQueries
 
     /// <summary>TK-191: active products with a minimum whose stock (all warehouses together) is at or under it, by name.</summary>
     Task<IReadOnlyList<ProductToReorder>> BelowMinimumAsync(CancellationToken ct);
+
+    /// <summary>R9 #12: whether any of these products is one of the sample products (TK-196).</summary>
+    Task<bool> AnySampleAsync(IReadOnlyCollection<Guid> productIds, CancellationToken ct);
 }
 
 /// <param name="MaximumStock">0 when the owner did not set one.</param>

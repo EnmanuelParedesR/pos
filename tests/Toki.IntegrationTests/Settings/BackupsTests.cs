@@ -7,7 +7,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
+using Toki.BuildingBlocks.Persistence;
+using Toki.Fiscal;
+using Toki.Fiscal.Contracts;
+using Toki.Identity.Persistence;
 using Toki.Settings;
+using Toki.IntegrationTests.Fiscal;
 using Toki.IntegrationTests.Infra;
 
 namespace Toki.IntegrationTests.Settings;
@@ -103,5 +108,106 @@ public sealed class RestoreBackupTests(TokiApp app) : IClassFixture<TokiApp>
         // A register selling right now: refused, nothing replaced.
         await app.CashierWithShiftAsync();
         (await (await admin.PostAsJsonAsync($"/api/backups/{file}/restore", new { Passphrase })).ErrorCode()).ShouldBe("Backup.RegistersOpen");
+    }
+}
+
+/// <summary>R9 #3: a restore never rewinds what already left the store. Own app: it replaces the database.</summary>
+public sealed class RestoreGuardTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    private const string Passphrase = "la chuleta de los viernes 2026";
+
+    private async Task<(Guid Id, string Token)> PairAsync(HttpClient admin, string name)
+    {
+        var code = await (await admin.PostAsJsonAsync("/api/identity/devices/pairing-codes", new { DeviceName = name })).Json();
+        var paired = await (await app.Anonymous().PostAsJsonAsync("/api/identity/devices/pair", new { Code = code.GetProperty("code").GetString() })).Json();
+        return (paired.GetProperty("deviceId").GetGuid(), paired.GetProperty("token").GetString()!);
+    }
+
+    private Task<long> NextAsync(EcfType type) => app.InScopeAsync(sp =>
+        sp.GetRequiredService<FiscalDbContext>().Sequences.Where(s => s.Type == type).Select(s => s.Next).SingleAsync());
+
+    private async Task<bool> CanSignInAsync(string device) =>
+        (await app.Anonymous(device).PostAsJsonAsync("/api/identity/sessions", new { Code = "admin", Pin = TokiApp.AdminPin })).IsSuccessStatusCode;
+
+    /// <summary>The guards on their own (both databases): the restored data is played by rewinding the rows by hand.</summary>
+    [Fact]
+    public async Task The_guards_put_back_the_numbers_used_the_revocations_and_the_registers_paired_since()
+    {
+        var admin = app.Client(await app.AdminAsync());
+        await app.LoadSequencesAsync();
+        var revoked = await PairAsync(admin, "Caja revocada");
+        var newer = await PairAsync(admin, "Caja nueva");
+        (await admin.PostAsync($"/api/identity/devices/{revoked.Id}/revoke", null)).EnsureSuccessStatusCode();
+        await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Sequences.Where(s => s.Type == EcfType.Consumer32)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.Next, 40)));
+
+        await app.InScopeAsync(async sp =>
+        {
+            var snapshots = new List<RestoreSnapshot>();
+            foreach (var guard in sp.GetServices<IRestoreGuard>()) snapshots.Add(await guard.CaptureAsync(CancellationToken.None));
+            // The backup: before the sales, the revocation and the newer register.
+            var fiscal = sp.GetRequiredService<FiscalDbContext>();
+            await fiscal.Sequences.Where(s => s.Type == EcfType.Consumer32).ExecuteUpdateAsync(s => s.SetProperty(x => x.Next, 3));
+            var identity = sp.GetRequiredService<IdentityDbContext>();
+            await identity.Devices.Where(d => d.Id == revoked.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.IsRevoked, false));
+            await identity.Devices.Where(d => d.Id == newer.Id).ExecuteDeleteAsync();
+            foreach (var s in snapshots) await s.ReapplyAsync(CancellationToken.None);
+            return 0;
+        });
+
+        (await NextAsync(EcfType.Consumer32)).ShouldBe(40);
+        (await CanSignInAsync(revoked.Token)).ShouldBeFalse();
+        (await CanSignInAsync(newer.Token)).ShouldBeTrue();
+    }
+
+}
+
+/// <summary>R9 #3 through the endpoint. Own app: it replaces the database, and the license counts its registers.</summary>
+public sealed class RestoreGuardEndpointTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    private const string Passphrase = "la chuleta de los viernes 2026";
+
+    private async Task<(Guid Id, string Token)> PairAsync(HttpClient admin, string name)
+    {
+        var code = await (await admin.PostAsJsonAsync("/api/identity/devices/pairing-codes", new { DeviceName = name })).Json();
+        var paired = await (await app.Anonymous().PostAsJsonAsync("/api/identity/devices/pair", new { Code = code.GetProperty("code").GetString() })).Json();
+        return (paired.GetProperty("deviceId").GetGuid(), paired.GetProperty("token").GetString()!);
+    }
+
+    private Task<long> NextAsync(EcfType type) => app.InScopeAsync(sp =>
+        sp.GetRequiredService<FiscalDbContext>().Sequences.Where(s => s.Type == type).Select(s => s.Next).SingleAsync());
+
+    private async Task<bool> CanSignInAsync(string device) =>
+        (await app.Anonymous(device).PostAsJsonAsync("/api/identity/sessions", new { Code = "admin", Pin = TokiApp.AdminPin })).IsSuccessStatusCode;
+
+    [Fact]
+    public async Task A_restore_keeps_the_sequences_and_revocations_and_asks_before_losing_signed_documents()
+    {
+        if (TestSqlServer.IsEnabled) Assert.Skip("SQL Server writes the .bak on its own machine (the container); this test uses Sqlite.");
+        var admin = app.Client(await app.AdminAsync());
+        await app.LoadSequencesAsync();
+        (await admin.PutAsJsonAsync("/api/backups/passphrase", new { Passphrase })).EnsureSuccessStatusCode();
+        var revoked = await PairAsync(admin, "Caja revocada");
+        app.Clock.Advance(TimeSpan.FromSeconds(1));
+        var file = (await (await admin.PostAsync("/api/backups", null)).Json()).GetProperty("fileName").GetString()!;
+        app.Clock.Advance(TimeSpan.FromSeconds(1));
+
+        // After the backup: e-CF signed (the DGII has them), a register revoked, another paired, a range loaded.
+        await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Sequences.Where(s => s.Type == EcfType.Consumer32)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.Next, 40)));
+        await app.PendingAsync("E320000000039", app.Clock.GetUtcNow().UtcDateTime.AddHours(72));
+        (await admin.PostAsync($"/api/identity/devices/{revoked.Id}/revoke", null)).EnsureSuccessStatusCode();
+        var newer = await PairAsync(admin, "Caja nueva");
+        (await admin.PostAsJsonAsync("/api/fiscal/sequences", new { Type = 33, From = 1, To = 100, ExpiresOn = "2030-12-31" })).EnsureSuccessStatusCode();
+
+        var refused = await admin.PostAsJsonAsync($"/api/backups/{file}/restore", new { Passphrase });
+        (await refused.ErrorCode()).ShouldBe("Backup.OlderThanLastDocument");
+        (await admin.PostAsJsonAsync($"/api/backups/{file}/restore", new { Passphrase, ConfirmOlder = true })).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        (await NextAsync(EcfType.Consumer32)).ShouldBe(40);
+        (await NextAsync(EcfType.DebitNote33)).ShouldBe(1);
+        (await CanSignInAsync(revoked.Token)).ShouldBeFalse();
+        (await CanSignInAsync(newer.Token)).ShouldBeTrue();
+        (await app.VerifyAuditAsync()).ShouldBeNull();
     }
 }

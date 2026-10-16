@@ -11,7 +11,10 @@
             case Step.Passphrase:
                 <Notice Kind="Notice.Kinds.Warning" Title="Todos los datos de la tienda se reemplazan por los de este respaldo.">
                     Lo que se hizo después (ventas, compras, cambios de precios, usuarios) se pierde de esta PC. Antes de restaurar, Toki guarda un respaldo de los datos de ahora.
+                    Los números de comprobante ya usados, las cajas quitadas y los PIN cambiados se mantienen.
                 </Notice>
+                @* R9 #16: the keys stay on the old PC (DPAPI, non-exportable certificate). *@
+                <p class="esc-muted" style="margin:0">En una PC nueva, el respaldo no trae el certificado digital ni las llaves de las cajas: después de restaurar, importe el certificado otra vez y vuelva a unir cada caja.</p>
                 <Field Label="Frase de los respaldos" Error="@_error" Hint="La que se usó cuando se hizo este respaldo.">
                     <input class="esc-input" type="password" maxlength="200" autocomplete="off" aria-label="Frase de los respaldos" @bind="_passphrase" @bind:event="oninput" />
                 </Field>
@@ -24,6 +27,15 @@
                 <Notice Kind="Notice.Kinds.Error" Title="@($"¿Reemplazar los datos de la tienda con el respaldo del {Format.Date(Backup.DateUtc)}?")">
                     No se puede deshacer desde aquí; solo restaurando el respaldo que Toki guarda antes. Puede tardar unos minutos: no cierre Toki.
                 </Notice>
+                @if (_older is not null)
+                {
+                    @* R9 #3: the backup is older than the last e-CF signed or B receipt issued. *@
+                    <Notice Kind="Notice.Kinds.Warning" Title="Este respaldo es anterior al último comprobante emitido.">@_older</Notice>
+                    <label class="esc-row" style="gap:8px;align-items:flex-start">
+                        <input type="checkbox" aria-label="Restaurar aunque se pierdan comprobantes" @bind="_confirmOlder" />
+                        <span>Entiendo que los comprobantes emitidos después de este respaldo no estarán en los datos restaurados.</span>
+                    </label>
+                }
                 @if (_error is not null) { <Notice Title="@_error" /> }
                 break;
             case Step.Done:
@@ -43,7 +55,7 @@
                 break;
             case Step.Confirm:
                 <Button Disabled="_sending" OnClick="() => (_step, _error) = (Step.Passphrase, null)">Volver</Button>
-                <Button Variant="Button.Variants.Danger" Disabled="_sending" OnClick="RestoreAsync">@(_sending ? "Restaurando… puede tardar unos minutos" : "Sí, reemplazar los datos")</Button>
+                <Button Variant="Button.Variants.Danger" Disabled="@(_sending || (_older is not null && !_confirmOlder))" OnClick="RestoreAsync">@(_sending ? "Restaurando… puede tardar unos minutos" : "Sí, reemplazar los datos")</Button>
                 break;
             case Step.Done:
                 <Button Variant="Button.Variants.Primary" OnClick="SignInAgain">Volver a entrar</Button>
@@ -59,15 +71,15 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     private Step _step;
-    private string? _passphrase, _error, _before;
-    private bool _closed, _sending;
+    private string? _passphrase, _error, _before, _older;
+    private bool _closed, _sending, _confirmOlder;
 
     private async Task RestoreAsync()
     {
         _sending = true;
         // Decrypting and restoring a few GB takes minutes; the server never cuts it halfway.
-        var r = await Api.PostAsync<BackupRestored>($"/api/backups/{Uri.EscapeDataString(Backup.FileName)}/restore", new { Passphrase = _passphrase },
-            timeout: TimeSpan.FromHours(1));
+        var r = await Api.PostAsync<BackupRestored>($"/api/backups/{Uri.EscapeDataString(Backup.FileName)}/restore",
+            new { Passphrase = _passphrase, ConfirmOlder = _confirmOlder }, timeout: TimeSpan.FromHours(1));
         _sending = false;
         if (r.Value is { } done)
         {
@@ -75,6 +87,7 @@
             return;
         }
         if (r.Problem!.Code == "Backup.WrongPassphrase") (_step, _error) = (Step.Passphrase, "Esa frase no abre este respaldo.");
+        else if (r.Problem.Code == "Backup.OlderThanLastDocument") (_older, _error) = (r.Problem.Message, null);
         else _error = r.Problem.Message;
     }
 

@@ -32,12 +32,17 @@
             {
                 @* TK-122, R8 #11: this PC pairs only with the server whose fingerprint is shown here; the owner sees the same one next to the code. *@
                 <Notice Kind="Notice.Kinds.Info" Title="@($"Huella del servidor: {_fingerprint}")">Debe ser igual a la que ve el dueño junto al código. Si no es igual, no una este equipo y avise al técnico.</Notice>
+                @* R9 #9: the code goes out only after the fingerprint was compared, as in Install. *@
+                @if (MustConfirm)
+                {
+                    <label class="esc-row" style="gap:8px;align-items:center"><input type="checkbox" @bind="_confirmed" /> La huella es igual a la que ve el dueño</label>
+                }
             }
             @if (_error is not null)
             {
                 <Notice Title="@_error" />
             }
-            <Button Type="submit" Variant="Button.Variants.Primary" Shortcut="Enter" Disabled="@(_code?.Length != 8 || _sending)">Unir este equipo</Button>
+            <Button Type="submit" Variant="Button.Variants.Primary" Shortcut="Enter" Disabled="@(_code?.Length != 8 || _sending || (MustConfirm && !_confirmed))">Unir este equipo</Button>
         </form>
     }
     else
@@ -96,6 +101,8 @@
 
     private async Task JoinAsync()
     {
+        if (_code?.Length != 8 || (MustConfirm && !_confirmed)) return; // Enter submits the form even with the button disabled
+        if (!string.Equals(Pin.Seen, _shown, StringComparison.OrdinalIgnoreCase)) { _error = ServerChanged; return; }
         _sending = true;
         var r = await Api.PostAsync<Paired>("/api/identity/devices/pair", new { Code = _code, CertificateRequest = Session.CertificateRequest() });
         _sending = false;

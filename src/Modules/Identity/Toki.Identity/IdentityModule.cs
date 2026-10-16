@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Toki.BuildingBlocks;
@@ -34,6 +35,8 @@ public static class IdentityModule
     {
         services.AddModuleDbContext<IdentityDbContext>();
         services.AddSingleton<StoreCertificateAuthority>();
+        services.AddHealthChecks().AddCheck<StoreCaHealthCheck>("store-ca");
+        services.AddScoped<IRestoreGuard, IdentityRestoreGuard>();
         services.AddScoped<ISupervisorApprovals, SupervisorApprovals>();
         services.AddScoped<ICloudSnapshot, UserSnapshot>();
         services.AddScoped<IUserDirectory, UserDirectory>();
@@ -42,6 +45,19 @@ public static class IdentityModule
         // Secure by default: an endpoint that forgets its authorization call still requires a session.
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
         return services;
+    }
+}
+
+/// <summary>R9 #8: registers paired with a certificate of a store CA that could not be read and was replaced cannot connect any more.</summary>
+internal sealed class StoreCaHealthCheck(StoreCertificateAuthority ca, IdentityDbContext db) : IHealthCheck
+{
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        var created = ca.CreatedUtc;
+        var stale = await db.Devices.Where(d => !d.IsRevoked && d.CertificateThumbprint != null && d.CreatedUtc < created)
+            .Select(d => d.Name).ToListAsync(cancellationToken);
+        return stale.Count == 0 ? HealthCheckResult.Healthy() : HealthCheckResult.Degraded(
+            $"El certificado de la tienda no se pudo leer y se creó uno nuevo. Vuelva a unir estas cajas (Configuración → Equipos: revocar y generar código): {string.Join(", ", stale)}.");
     }
 }
 

@@ -128,9 +128,11 @@ internal sealed class EcfDeliveryQueue(FiscalDbContext db, IEcfProvider provider
         if (provider is not DgiiClient dgii) return 0; // simulated: nothing leaves the store
         var now = clock.GetUtcNow().UtcDateTime;
         var deliveries = db.Set<EcfDelivery>();
+        // R9 #19: only 31 accepted within the delivery window. When the update that brings TK-153 arrives, the old ones are not handed out.
+        var since = now - GiveUpAfter;
         var accepted = await db.Documents
             .Where(d => d.Type == EcfType.FiscalCredit31 && d.BuyerRnc != null && (d.Status == SubmissionStatus.Accepted || d.Status == SubmissionStatus.AcceptedConditional)
-                && !deliveries.Any(x => x.DocumentId == d.Id))
+                && d.ResultUtc >= since && !deliveries.Any(x => x.DocumentId == d.Id))
             .Select(d => new { d.Id, d.ENcf, d.BuyerRnc }).Take(EcfSubmissionQueue.BatchSize).ToListAsync(ct);
         foreach (var a in accepted)
             deliveries.Add(new EcfDelivery { DocumentId = a.Id, ENcf = a.ENcf, BuyerRnc = a.BuyerRnc!, Status = DeliveryStatus.Pending, CreatedUtc = now });

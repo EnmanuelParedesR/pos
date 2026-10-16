@@ -24,7 +24,10 @@ internal static class PaperContingency
     public static async Task<Result<IssuedDocument>> IssueAsync(FiscalDbContext db, DocumentToIssue doc, DateTime now, CancellationToken ct)
     {
         var today = BusinessDay.Of(now);
-        var contingency = await db.Set<EcfContingency>().Where(c => c.EndedUtc == null).Select(c => c.Id).FirstAsync(ct);
+        var active = await db.Set<EcfContingency>().Where(c => c.EndedUtc == null).Select(c => new { c.Id, c.StartedUtc }).FirstAsync(ct);
+        var contingency = active.Id;
+        // R9 #18: series B only within the days the decree allows.
+        if (Days(active.StartedUtc, now) >= EcfContingency.MaxDays) return OperationsErrors.OverLimit;
         var candidates = await db.Set<PaperSequence>().Where(s => s.Type == doc.Type && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today))
             .OrderBy(s => s.From).Select(s => s.Id).ToListAsync(ct);
         foreach (var id in candidates)
@@ -191,7 +194,14 @@ internal static class LoadPaperSequence
 internal static class RegularizePaper
 {
     public sealed record Command : ICommand<Response>;
-    public sealed record Response(int Regularized);
+
+    /// <param name="Manual">R9 #11: B03 and B04 left for the owner and the accountant (see <see cref="IsManual"/>).</param>
+    public sealed record Response(int Regularized, int Manual);
+
+    /// <summary>R9 #11: a B04 (or B03) already modifies another receipt, and the e-CF that regularizes it would reference the B04 itself
+    /// (<c>CodigoModificacion</c> 4) and lose that one. Until the DGII or the accountant say how (docs/ecf-propio.md §11), they are
+    /// regularized by hand in the OFV.</summary>
+    public static bool IsManual(EcfType type) => type is EcfType.DebitNote33 or EcfType.CreditNote34;
 
     internal sealed class Handler(FiscalDbContext db, FiscalDocuments documents, ISettingsQueries settings, IAuditLog audit, TimeProvider clock)
         : ICommandHandler<Command, Response>
@@ -201,7 +211,8 @@ internal static class RegularizePaper
             if (await db.Set<EcfContingency>().AnyAsync(x => x.EndedUtc == null, ct)) return OperationsErrors.StillActive;
             if (documents.CannotSign() is { } why) return OperationsErrors.CannotSign(why);
             var business = await settings.GetBusinessProfileAsync(ct);
-            var pending = await db.Set<PaperDocument>().Where(d => d.RegularizedByENcf == null).OrderBy(d => d.IssuedUtc).ToListAsync(ct);
+            var all = await db.Set<PaperDocument>().Where(d => d.RegularizedByENcf == null).OrderBy(d => d.IssuedUtc).ToListAsync(ct);
+            var pending = all.Where(d => !IsManual(d.Type)).ToList();
             foreach (var p in pending)
             {
                 var r = await RegularizeAsync(p, business, ct);
@@ -210,7 +221,7 @@ internal static class RegularizePaper
                 (p.RegularizedByENcf, p.RegularizedUtc) = (r.Value.ENcf, r.Value.SignedUtc);
                 await audit.RecordAsync("fiscal.regularize-paper", "PaperDocument", p.Id, new { p.Ncf, ENcf = r.Value.ENcf }, ct);
             }
-            return new Response(pending.Count);
+            return new Response(pending.Count, all.Count - pending.Count);
         }
 
         private async Task<Result<IssuedDocument>> RegularizeAsync(PaperDocument p, BusinessProfile business, CancellationToken ct)

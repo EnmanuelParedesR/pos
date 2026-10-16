@@ -173,6 +173,26 @@ public sealed class EcfVoidRaceTests(TokiApp app) : IClassFixture<TokiApp>
     }
 }
 
+/// <summary>R9 #7: the process died after the DGII got the document and before its answer was saved. Own app.</summary>
+public sealed class EcfSubmissionCrashTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    [Fact]
+    public async Task A_document_claimed_before_a_crash_is_looked_up_before_it_is_sent_again()
+    {
+        await app.AdminAsync();
+        var id = await app.PendingAsync("E310000094001", app.Clock.GetUtcNow().UtcDateTime.AddHours(72));
+        // Only the claim (SentUtc) was saved: no failure was recorded, so Attempts is still 0.
+        await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Documents.Where(d => d.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.SentUtc, app.Clock.GetUtcNow().UtcDateTime)));
+        var dgii = new TestEcfProvider();
+        dgii.Responses.Enqueue(() => new DgiiAnswer(DgiiState.Accepted, "TRACK-CRASH", true));
+
+        (await app.ProcessAsync(dgii)).ShouldBe(1);
+        (await app.DocumentAsync(id)).Status.ShouldBe(SubmissionStatus.Accepted);
+        dgii.Calls.ShouldBe(["find E310000094001"]);
+    }
+}
+
 /// <summary>TK-146/147: a rejection. Own app.</summary>
 public sealed class EcfSubmissionRejectionTests(TokiApp app) : IClassFixture<TokiApp>
 {

@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Toki.Fiscal.Contracts;
 using Toki.Fiscal.Domain;
 using Toki.SharedKernel;
 
@@ -21,8 +22,10 @@ namespace Toki.Fiscal;
 /// Anywhere else (<c>ImportTo</c> = <c>KeysFolder</c>: development, tests) it goes to the keys folder, encrypted with Data Protection.</summary>
 /// <remarks>shortcut: the machine key is not restricted to the service account (docs/ecf-propio.md §10.3); the installer runs the service as
 /// NT SERVICE\Toki, which normally cannot write LocalMachine\My, so a store PC ends up with CurrentUser\My until TK-160 grants it.</remarks>
-internal sealed class EcfCertificate
+internal sealed class EcfCertificate : IEcfCertificateHolder
 {
+    public string? TaxId => Describe()?.TaxId;
+
     public const string FileName = "ecf-certificate.json";
     public const string ProtectedFileName = "ecf-certificate.pfx.protected";
 
@@ -111,8 +114,8 @@ internal sealed class EcfCertificate
                 if (key is null) return FiscalErrors.CertificateWithoutKey;
             if (opened.NotAfter.ToUniversalTime() <= nowUtc) return FiscalErrors.CertificateExpired;
             if (opened.NotBefore.ToUniversalTime() > nowUtc) return FiscalErrors.CertificateNotYetValid;
-            if (CertificateInfo.Of(opened, "").TaxId is { } taxId && businessRnc is { } rnc && taxId.Length == rnc.Length && taxId != rnc)
-                return FiscalErrors.CertificateWrongRnc(taxId, rnc);
+            if (CertificateInfo.Of(opened, "").TaxId is { } taxId && !IEcfCertificateHolder.Fits(taxId, businessRnc))
+                return FiscalErrors.CertificateWrongRnc(taxId, businessRnc!);
 
             Directory.CreateDirectory(_folder);
             var (certificate, source) = _toStore ? ToStore(pfx, password) : ToKeysFolder(opened);
