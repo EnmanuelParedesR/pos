@@ -30,7 +30,7 @@
             </label>
             @if (_fingerprint is not null)
             {
-                @* TK-122: this PC pins the certificate it sees now; the owner sees the same fingerprint next to the code. *@
+                @* TK-122, R8 #11: this PC pairs only with the server whose fingerprint is shown here; the owner sees the same one next to the code. *@
                 <Notice Kind="Notice.Kinds.Info" Title="@($"Huella del servidor: {_fingerprint}")">Debe ser igual a la que ve el dueño junto al código. Si no es igual, no una este equipo y avise al técnico.</Notice>
             }
             @if (_error is not null)
@@ -53,11 +53,17 @@
                 <label class="esc-field"><span>PIN (4 a 8 dígitos)</span><input class="esc-input" type="password" inputmode="numeric" @bind="_pin" maxlength="8" autocomplete="new-password" /></label>
                 <label class="esc-field"><span>Nombre de este equipo</span><input class="esc-input" @bind="_deviceName" maxlength="100" /></label>
             </div>
+            @if (MustConfirm)
+            {
+                @* R8 #11: the owner's code and PIN only go to a server whose fingerprint was compared (or that runs on this PC). *@
+                <Notice Kind="Notice.Kinds.Info" Title="@($"Huella del servidor: {_fingerprint}")">La PC principal la anota en su registro al arrancar (C:\ProgramData\Toki\logs). Si no es igual, no instale desde este equipo y avise al técnico.</Notice>
+                <label class="esc-row" style="gap:8px;align-items:center"><input type="checkbox" @bind="_confirmed" /> La huella es igual a la de la PC principal</label>
+            }
             @if (_error is not null)
             {
                 <Notice Title="@_error" />
             }
-            <Button Type="submit" Variant="Button.Variants.Primary" Disabled="@_sending">Instalar Toki</Button>
+            <Button Type="submit" Variant="Button.Variants.Primary" Disabled="@(_sending || (MustConfirm && !_confirmed))">Instalar Toki</Button>
         </form>
     }
 </div>
@@ -65,16 +71,20 @@
 @code {
     private enum Mode { Join, Install }
     private Mode _mode = Mode.Join;
-    private string? _code, _error, _name, _userCode, _pin, _fingerprint;
+    private string? _code, _error, _name, _userCode, _pin, _fingerprint, _shown;
     private string _deviceName = "PC principal";
-    private bool _sending;
+    private bool _sending, _confirmed;
+    private const string ServerChanged = "El servidor cambió desde que se mostró la huella, así que este equipo no se unió. Vuelva a abrir esta pantalla y compare la huella otra vez.";
+
+    private bool MustConfirm => _fingerprint is not null && !Api.ServerIsThisPc;
 
     protected override async Task OnInitializedAsync()
     {
         await Session.LoadAsync();
         if (Session.IsPaired) { Nav.NavigateTo("sign-in"); return; }
         await Api.GetAsync<Empty>("/health"); // connects, so the server's certificate is known before the code is typed
-        _fingerprint = NodeCertificatePin.Fingerprint(Pin.Seen);
+        _shown = Pin.Seen;
+        _fingerprint = NodeCertificatePin.Fingerprint(_shown);
     }
 
     private void Switch(Mode m) => (_mode, _error) = (m, null);
@@ -82,11 +92,12 @@
     private async Task JoinAsync()
     {
         _sending = true;
-        var r = await Api.PostAsync<Paired>("/api/identity/devices/pair", new { Code = _code });
+        var r = await Api.PostAsync<Paired>("/api/identity/devices/pair", new { Code = _code, CertificateRequest = Session.CertificateRequest() });
         _sending = false;
         if (r.Value is { } p)
         {
-            await Session.PairAsync(p.Token);
+            // The code is used up: the owner revokes this half-made entry in Configuración → Equipos.
+            if (!await Session.PairAsync(_shown, p.Token, p.Certificate, p.StoreCa)) { _error = ServerChanged; return; }
             Nav.NavigateTo("sign-in");
             return;
         }
@@ -105,12 +116,14 @@
             _error = "Complete su nombre, su código y un PIN de 4 a 8 dígitos.";
             return;
         }
+        if (!string.Equals(Pin.Seen, _shown, StringComparison.OrdinalIgnoreCase)) { _error = ServerChanged; return; }
         _sending = true;
-        var r = await Api.PostAsync<SetupResult>("/api/identity/setup", new SetupRequest(_name.Trim(), _userCode.Trim(), _pin, _deviceName.Trim()));
+        var r = await Api.PostAsync<SetupResult>("/api/identity/setup",
+            new SetupRequest(_name.Trim(), _userCode.Trim(), _pin, _deviceName.Trim(), Session.CertificateRequest()));
         _sending = false;
         if (r.Value is { } s)
         {
-            await Session.PairAsync(s.DeviceToken);
+            if (!await Session.PairAsync(_shown, s.DeviceToken, s.Certificate, s.StoreCa)) { _error = ServerChanged; return; }
             Nav.NavigateTo("sign-in");
             return;
         }

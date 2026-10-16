@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
@@ -144,10 +145,9 @@ internal static class ListCashiers
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/identity/users/active", async (HttpRequest req, IdentityDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/identity/users/active", async (HttpContext http, IdentityDbContext db, IConfiguration config, CancellationToken ct) =>
                 {
-                    var hash = Token.Hash(req.Headers[IdentityModule.DeviceHeader].ToString());
-                    if (!await db.Devices.AnyAsync(d => d.TokenHash == hash && !d.IsRevoked, ct))
+                    if (await db.IdOfAsync(http, config, ct) is null)
                         return EndpointExtensions.Problem(IdentityErrors.DeviceNotPaired);
                     return Results.Ok(await db.Users.Where(u => u.IsActive).OrderBy(u => u.Name)
                         .Select(u => new Item(u.Id, u.Name, u.Code)).AsNoTracking().ToListAsync(ct));

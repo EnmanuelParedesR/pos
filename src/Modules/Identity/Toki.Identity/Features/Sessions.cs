@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
@@ -19,7 +20,8 @@ internal static class OpenSession
 {
     public sealed record Command(string Code, string Pin) : ICommand<Response>
     {
-        public string DeviceToken { get; init; } = "";
+        /// <summary>The paired device it comes from (client certificate or secret), resolved by the endpoint.</summary>
+        public Guid? DeviceId { get; init; }
     }
 
     /// <summary>A wrong PIN is a successful command (the failed attempt must be saved); <see cref="Failure"/> carries the error.</summary>
@@ -38,9 +40,7 @@ internal static class OpenSession
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            var deviceHash = Token.Hash(c.DeviceToken);
-            var device = await db.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.TokenHash == deviceHash && !d.IsRevoked, ct);
-            if (device is null) return IdentityErrors.DeviceNotPaired;
+            if (c.DeviceId is not { } deviceId) return IdentityErrors.DeviceNotPaired;
 
             var user = await db.Users.FirstOrDefaultAsync(u => u.Code == User.NormalizeCode(c.Code), ct);
             if (user is null) return IdentityErrors.InvalidCredentials;
@@ -49,14 +49,14 @@ internal static class OpenSession
             var result = user.TryPin(c.Pin, now);
             if (result != PinResult.Correct)
             {
-                await audit.RecordAsync("identity.pin-failed", "User", user.Id, new { user.Code, Device = device.Id, Result = result }, ct);
+                await audit.RecordAsync("identity.pin-failed", "User", user.Id, new { user.Code, Device = deviceId, Result = result }, ct);
                 return new Response(null, null, null, null, result == PinResult.Locked ? IdentityErrors.UserLocked : IdentityErrors.InvalidCredentials);
             }
 
             var token = Token.New();
             var session = new Session
             {
-                Id = Guid.CreateVersion7(), UserId = user.Id, DeviceId = device.Id,
+                Id = Guid.CreateVersion7(), UserId = user.Id, DeviceId = deviceId,
                 TokenHash = Token.Hash(token), CreatedUtc = now, ExpiresUtc = now + Session.Duration,
             };
             db.Sessions.Add(session);
@@ -67,9 +67,9 @@ internal static class OpenSession
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/identity/sessions", async (Command c, HttpRequest req, ICommandHandler<Command, Response> h, CancellationToken ct) =>
+            app.MapPost("/api/identity/sessions", async (Command c, HttpContext http, IdentityDbContext db, IConfiguration config, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                 {
-                    var result = await h.Handle(c with { DeviceToken = req.Headers[IdentityModule.DeviceHeader].ToString() }, ct);
+                    var result = await h.Handle(c with { DeviceId = await db.IdOfAsync(http, config, ct) }, ct);
                     if (result.IsFailure) return EndpointExtensions.Problem(result.Error!);
                     return result.Value.Failure is { } failure ? EndpointExtensions.Problem(failure) : Results.Ok(result.Value);
                 })

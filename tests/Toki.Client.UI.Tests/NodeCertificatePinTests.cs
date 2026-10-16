@@ -58,7 +58,8 @@ public sealed class NodeCertificatePinTests
         {
             var api = scope.ServiceProvider.GetRequiredService<TokiApi>();
             (await api.GetAsync<Empty>("/health")).Ok.ShouldBeTrue();
-            await scope.ServiceProvider.GetRequiredService<Session>().PairAsync("device-secret");
+            var shown = scope.ServiceProvider.GetRequiredService<NodeCertificatePin>().Seen;
+            (await scope.ServiceProvider.GetRequiredService<Session>().PairAsync(shown, "device-secret")).ShouldBeTrue();
         }
         (await store.ReadAsync("node-certificate")).ShouldBe(node.GetCertHashString(HashAlgorithmName.SHA256));
         var requests = server.Requests;
@@ -69,12 +70,39 @@ public sealed class NodeCertificatePinTests
             var r = await scope.ServiceProvider.GetRequiredService<TokiApi>().GetAsync<Empty>("/api/identity/me");
             r.Problem!.Code.ShouldBe(Problem.UnknownServer);
             r.Problem.IsUncertain.ShouldBeFalse();
+            // R8 #9: not "no network"; the register offers to pair again, and that forgets the pin.
+            var session = scope.ServiceProvider.GetRequiredService<Session>();
+            session.UnknownServer.ShouldBeTrue();
+            await session.ForgetDeviceAsync();
+            session.IsPaired.ShouldBeFalse();
+            (await store.ReadAsync("node-certificate")).ShouldBeNull();
         }
         server.Requests.ShouldBe(requests); // the device secret never left the PC
+    }
 
-        server.Certificate = node;
-        await using (var scope = provider.CreateAsyncScope())
-            (await scope.ServiceProvider.GetRequiredService<TokiApi>().GetAsync<Empty>("/health")).Ok.ShouldBeTrue();
+    [Fact]
+    public async Task R8_11_pairing_is_refused_when_the_server_changed_since_its_fingerprint_was_shown()
+    {
+        using var node = Certificate("Toki Nodo");
+        using var impostor = Certificate("Toki Nodo");
+        await using var server = new TlsServer(node);
+        var store = new InMemoryStore();
+        var services = new ServiceCollection().AddSingleton<ILocalStore>(store).AddTokiClient(new Uri($"https://localhost:{server.Port}"));
+        await using var provider = services.BuildServiceProvider();
+        await using var scope = provider.CreateAsyncScope();
+        var api = scope.ServiceProvider.GetRequiredService<TokiApi>();
+        var pin = scope.ServiceProvider.GetRequiredService<NodeCertificatePin>();
+
+        (await api.GetAsync<Empty>("/health")).Ok.ShouldBeTrue();
+        var shown = pin.Seen; // the fingerprint on screen
+        server.Certificate = impostor; // the pairing request reaches someone else
+        (await api.GetAsync<Empty>("/health")).Ok.ShouldBeTrue(); // not pinned yet: accepted, and seen (the server closes each connection)
+        pin.Seen.ShouldNotBe(shown);
+
+        (await scope.ServiceProvider.GetRequiredService<Session>().PairAsync(shown, "device-secret")).ShouldBeFalse();
+        scope.ServiceProvider.GetRequiredService<Session>().IsPaired.ShouldBeFalse();
+        (await store.ReadAsync("device")).ShouldBeNull();
+        pin.IsPinned.ShouldBeFalse();
     }
 
     [Fact]

@@ -29,6 +29,10 @@ namespace Toki.Identity.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("CertificateThumbprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -46,6 +50,10 @@ namespace Toki.Identity.Persistence.Migrations
                         .HasColumnType("varbinary(32)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CertificateThumbprint")
+                        .IsUnique()
+                        .HasFilter("[CertificateThumbprint] IS NOT NULL");
 
                     b.HasIndex("TokenHash")
                         .IsUnique();

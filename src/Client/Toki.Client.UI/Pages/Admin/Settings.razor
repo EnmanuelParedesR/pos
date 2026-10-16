@@ -216,7 +216,7 @@
                         <div class="esc-code" role="status">
                             <span class="esc-code__digits">@pc.Code[..4] @pc.Code[4..]</span>
                             <span class="esc-muted">Vence a las @Format.Time(pc.ExpiresUtc) · sirve una vez</span>
-                            @if (NodeCertificatePin.Fingerprint(Pin.Pinned) is { } fingerprint)
+                            @if (Pin.IsPinned && NodeCertificatePin.Fingerprint(Pin.Seen) is { } fingerprint)
                             {
                                 <span class="esc-muted">Huella del servidor: <strong>@fingerprint</strong> · el equipo nuevo debe mostrar la misma</span>
                             }

@@ -16,10 +16,11 @@ namespace Toki.Identity.Features;
 /// <summary>First run: creates the administrator and pairs the main PC. Only works while there are no users.</summary>
 internal static class Setup
 {
-    public sealed record Command(string AdministratorName, string AdministratorCode, string Pin, string DeviceName)
+    /// <param name="CertificateRequest">PEM CSR of the main PC's own register (TK-091); none over plain http (development).</param>
+    public sealed record Command(string AdministratorName, string AdministratorCode, string Pin, string DeviceName, string? CertificateRequest = null)
         : ICommand<Response>;
 
-    public sealed record Response(Guid UserId, Guid DeviceId, string DeviceToken);
+    public sealed record Response(Guid UserId, Guid DeviceId, string? DeviceToken, string? Certificate, string? StoreCa);
 
     internal sealed class Validator : AbstractValidator<Command>
     {
@@ -29,10 +30,12 @@ internal static class Setup
             RuleFor(c => c.AdministratorCode).NotEmpty().MaximumLength(20);
             RuleFor(c => c.Pin).Must(Domain.Pin.IsValid).WithMessage("El PIN debe tener de 4 a 8 dígitos.");
             RuleFor(c => c.DeviceName).NotEmpty().MaximumLength(100);
+            RuleFor(c => c.CertificateRequest).ValidCertificateRequest();
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, StoreCertificateAuthority ca, TimeProvider clock)
+        : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -42,16 +45,16 @@ internal static class Setup
 
             var admin = new User { Id = Guid.CreateVersion7(), Name = c.AdministratorName.Trim(), Code = User.NormalizeCode(c.AdministratorCode), RoleId = Role.AdministratorId };
             admin.ChangePin(c.Pin);
-            var token = Token.New();
             var device = new Device
             {
-                Id = Guid.CreateVersion7(), Name = c.DeviceName.Trim(), TokenHash = Token.Hash(token), CreatedUtc = clock.GetUtcNow().UtcDateTime,
+                Id = Guid.CreateVersion7(), Name = c.DeviceName.Trim(), CreatedUtc = clock.GetUtcNow().UtcDateTime,
             };
+            var (token, certificate, storeCa) = DeviceCredentials.Issue(device, c.CertificateRequest, ca);
             db.Users.Add(admin);
             db.Devices.Add(device);
             outbox.Add(new UserProfileChangedV1(admin.Id, admin.Name, admin.IsActive));
             await audit.RecordAsync("identity.setup", "User", admin.Id, new { admin.Name, admin.Code, Device = device.Name }, ct);
-            return new Response(admin.Id, device.Id, token);
+            return new Response(admin.Id, device.Id, token, certificate, storeCa);
         }
     }
 

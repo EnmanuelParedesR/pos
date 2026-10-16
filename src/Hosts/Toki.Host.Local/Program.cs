@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Scalar.AspNetCore;
 using Serilog;
 using Toki.BuildingBlocks;
@@ -60,10 +61,23 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(o => o.ServiceName = "Toki");
 builder.Host.UseSerilog((ctx, cfg) => cfg.ReadFrom.Configuration(ctx.Configuration).WriteTo.Console());
 // The store server listens on the LAN over HTTPS only (appsettings.Production.json); never plain HTTP between registers and server.
-if (builder.Configuration.GetValue<bool>("Toki:HttpsWithNodeCertificate"))
+// TK-091 (ADR-0009): its certificate comes from the store CA, and registers prove who they are with a client certificate from the same CA.
+var https = builder.Configuration.GetValue<bool>("Toki:HttpsWithNodeCertificate");
+var legacySecrets = https && builder.Configuration.GetValue<bool>("Toki:LegacyDeviceSecrets");
+if (https)
 {
-    var certificate = NodeCertificate.GetOrCreate(StoreLocation.LocalMachine, TimeProvider.System);
-    builder.WebHost.ConfigureKestrel(k => k.ConfigureHttpsDefaults(h => h.ServerCertificate = certificate));
+    // Registers paired before TK-091 pinned the old self-signed certificate: while they are kept (dual mode), the server keeps showing it.
+    var legacy = legacySecrets ? NodeCertificate.GetOrCreate(StoreLocation.LocalMachine, TimeProvider.System) : null;
+    builder.WebHost.ConfigureKestrel(k => k.ConfigureHttpsDefaults(h =>
+    {
+        StoreCertificateAuthority Ca() => k.ApplicationServices.GetRequiredService<StoreCertificateAuthority>();
+        if (legacy is not null) h.ServerCertificate = legacy;
+        else h.ServerCertificateSelector = (_, _) => Ca().ServerCertificate;
+        // Allow, not Require: pairing and /health come before the register has a certificate. A certificate that is sent must be one of
+        // ours (else the handshake fails); the requirement for everything else is the middleware below.
+        h.ClientCertificateMode = ClientCertificateMode.AllowCertificate;
+        h.ClientCertificateValidation = (certificate, _, _) => Ca().IsDeviceCertificate(certificate);
+    }));
 }
 
 Assembly[] modules =
@@ -101,6 +115,15 @@ var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
+if (https && !legacySecrets)
+{
+    // Over the LAN every API call comes from a paired register's certificate; only what comes before pairing goes without one.
+    app.Use((context, next) => context.Connection.ClientCertificate is not null || DeviceCertificates.IsOptional(context.Request.Path)
+        ? next(context)
+        : EndpointExtensions.Problem(DeviceCertificates.Missing).ExecuteAsync(context));
+    var ca = app.Services.GetRequiredService<StoreCertificateAuthority>();
+    app.Logger.LogInformation("Huella del servidor para unir cajas: {Fingerprint}", DeviceCertificates.Fingerprint(ca.ServerCertificate));
+}
 app.UseAuthentication();
 app.UseAuthorization();
 
