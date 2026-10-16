@@ -1,8 +1,11 @@
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using Shouldly;
+using Abastalia.Fiscal;
 using Abastalia.Fiscal.Contracts;
 using Abastalia.Fiscal.Features;
 using Abastalia.Tests;
@@ -19,12 +22,34 @@ public sealed class DgiiPublicLookupTests
         public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
     }
 
-    private static (DgiiPublicSite Site, FakeDgiiPublic Fake, FakeTimeProvider Clock) Site(params (string Key, string Value)[] settings)
+    private static (DgiiPublicSite Site, FakeDgiiPublic Fake, FakeTimeProvider Clock) Site(params (string Key, string Value)[] settings) =>
+        Site(Database(), new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 15, 0, 0, TimeSpan.Zero)), settings);
+
+    /// <summary>A store database (a Sqlite file) that outlives the app instances built on it.</summary>
+    private static string Database()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"abastalia_dgii_{Guid.NewGuid():N}.db");
+        using var db = new FiscalDbContext(new DbContextOptionsBuilder<FiscalDbContext>().UseSqlite(Connection(file)).Options);
+        db.Database.EnsureCreated();
+        return file;
+    }
+
+    private static string Connection(string file) => $"Data Source={file};Pooling=False";
+
+    /// <summary>One app instance (what a restart of the store server builds anew) on <paramref name="database"/>.</summary>
+    private static (DgiiPublicSite Site, FakeDgiiPublic Fake, FakeTimeProvider Clock) Site(string database, FakeTimeProvider clock, params (string Key, string Value)[] settings)
     {
         var fake = new FakeDgiiPublic();
-        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 15, 0, 0, TimeSpan.Zero));
         var config = new ConfigurationBuilder().AddInMemoryCollection(settings.Select(s => new KeyValuePair<string, string?>(s.Key, s.Value))).Build();
-        return (new DgiiPublicSite(new Factory(fake), config, clock, NullLogger<DgiiPublicSite>.Instance), fake, clock);
+        var scopes = new ServiceCollection().AddDbContext<FiscalDbContext>(o => o.UseSqlite(Connection(database))).BuildServiceProvider()
+            .GetRequiredService<IServiceScopeFactory>();
+        return (new DgiiPublicSite(new Factory(fake), scopes, config, clock, NullLogger<DgiiPublicSite>.Instance), fake, clock);
+    }
+
+    private static int Rows(string database)
+    {
+        using var db = new FiscalDbContext(new DbContextOptionsBuilder<FiscalDbContext>().UseSqlite(Connection(database)).Options);
+        return db.DgiiPublicAnswers.Count();
     }
 
     private static int Posts(FakeDgiiPublic fake) => fake.Requests.Count(r => r.Method == HttpMethod.Post);
@@ -151,6 +176,55 @@ public sealed class DgiiPublicLookupTests
         Posts(fake).ShouldBe(1);
         clock.Advance(TimeSpan.FromMinutes(1));
         (await site.RncAsync("401506254", default)).Kind.ShouldBe(DgiiAnswerKind.Found);
+    }
+
+    [Fact]
+    public async Task The_answers_survive_a_restart_until_they_expire_and_expired_rows_are_purged()
+    {
+        var database = Database();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 15, 0, 0, TimeSpan.Zero));
+        var (first, fake, _) = Site(database, clock);
+        fake.Rnc("401506254", "rnc-found").Ncf("401506254", "B0100000001", "ncf-expired").Ncf("401506254", "B0199999999", "ncf-not-matching");
+        var expired = await first.NcfAsync("401506254", "B0100000001", default);
+        await first.RncAsync("401506254", default);
+        await first.NcfAsync("401506254", "B0199999999", default);
+        await first.Written;
+
+        clock.Advance(TimeSpan.FromDays(6));
+        var (second, nobody, _) = Site(database, clock); // a new app instance, the DGII programmed for nothing
+        (await second.RncAsync("401506254", default)).ShouldBe(new RncLookup(DgiiAnswerKind.Found, Dgii));
+        (await second.NcfAsync("401506254", "B0100000001", default)).ShouldBe(expired);
+        (await second.NcfAsync("401506254", "B0199999999", default)).ShouldBe(NcfCheck.Unknown); // "does not match" lasted an hour: asks, no answer
+        nobody.Requests.Count(r => r.Method == HttpMethod.Get).ShouldBe(1);
+        await second.Written;
+
+        clock.Advance(TimeSpan.FromDays(2)); // the RNC is 8 days old: asked again
+        var (third, again, _) = Site(database, clock);
+        again.Rnc("401506254", "rnc-found");
+        await third.RncAsync("401506254", default);
+        Posts(again).ShouldBe(1);
+        await third.Written;
+        // Left: the NCF kept for good, the RNC just asked, today's count. Gone: the RNC of 8 days ago (replaced), "does not match", the past days' counts.
+        Rows(database).ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task The_day_allowance_survives_a_restart()
+    {
+        var database = Database();
+        var clock = new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 15, 0, 0, TimeSpan.Zero));
+        var (first, fake, _) = Site(database, clock, ("Fiscal:DgiiPublic:PerDay", "2"));
+        fake.Rnc("101000001", "rnc-not-registered").Rnc("101000002", "rnc-not-registered");
+        await first.RncAsync("101000001", default);
+        await first.RncAsync("101000002", default);
+        await first.Written;
+
+        var (second, again, _) = Site(database, clock, ("Fiscal:DgiiPublic:PerDay", "2"));
+        again.Rnc("101000003", "rnc-not-registered");
+        (await second.RncAsync("101000003", default)).Kind.ShouldBe(DgiiAnswerKind.Unavailable);
+        again.Requests.ShouldBeEmpty();
+        clock.Advance(TimeSpan.FromDays(1));
+        (await second.RncAsync("101000003", default)).Kind.ShouldBe(DgiiAnswerKind.NotRegistered);
     }
 
     [Fact]

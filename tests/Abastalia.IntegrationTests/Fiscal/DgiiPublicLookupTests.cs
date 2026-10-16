@@ -36,6 +36,10 @@ public sealed class DgiiPublicLookupTests(DgiiPublicApp app) : IClassFixture<Dgi
         dgii.GetProperty("fromDgii").GetBoolean().ShouldBeTrue();
         (await (await c.GetAsync("/api/fiscal/taxpayers/130000001")).ErrorCode()).ShouldBe("Fiscal.RncNotFound");
         app.DgiiPublic.Requests.ShouldAllBe(r => r.UserAgent!.StartsWith("AbastaliaPOS/")); // never pretends to be a browser
+        // Kept in the store database, so a restart does not ask again (and the day's count with it).
+        await ((Abastalia.Fiscal.Features.DgiiPublicSite)app.Services.GetRequiredService<Abastalia.Fiscal.Contracts.IDgiiPublicLookup>()).Written;
+        (await app.InScopeAsync(sp => sp.GetRequiredService<Abastalia.Fiscal.FiscalDbContext>().DgiiPublicAnswers
+            .Select(a => a.Key).Where(k => k == "rnc:401506254" || k.StartsWith("day:")).CountAsync())).ShouldBe(2);
 
         // The DGII is down (the fake answers 503 to what nobody programmed): the loaded registry answers, here empty.
         (await (await c.GetAsync("/api/fiscal/taxpayers/101999999")).ErrorCode()).ShouldBe("Fiscal.RegistryNotLoaded");

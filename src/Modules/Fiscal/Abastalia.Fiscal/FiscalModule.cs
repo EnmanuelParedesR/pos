@@ -76,11 +76,21 @@ internal sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options)
     public DbSet<FiscalDocument> Documents => Set<FiscalDocument>();
     public DbSet<EcfVoid> Voids => Set<EcfVoid>();
     public DbSet<Taxpayer> Taxpayers => Set<Taxpayer>();
+    public DbSet<Features.DgiiPublicAnswer> DgiiPublicAnswers => Set<Features.DgiiPublicAnswer>();
 }
 
 internal sealed class FiscalConfiguration : IEntityTypeConfiguration<NcfSequence>, IEntityTypeConfiguration<FiscalDocument>, IEntityTypeConfiguration<Taxpayer>,
-    IEntityTypeConfiguration<EcfVoid>
+    IEntityTypeConfiguration<EcfVoid>, IEntityTypeConfiguration<Features.DgiiPublicAnswer>
 {
+    public void Configure(EntityTypeBuilder<Features.DgiiPublicAnswer> b)
+    {
+        b.ToTable("DgiiPublicAnswers");
+        b.HasKey(a => a.Key);
+        b.Property(a => a.Key).HasMaxLength(40);
+        b.Property(a => a.Answer).HasMaxLength(2000);
+        b.HasIndex(a => a.ExpiresUtc);
+    }
+
     public void Configure(EntityTypeBuilder<Taxpayer> b)
     {
         b.ToTable("Taxpayers");
