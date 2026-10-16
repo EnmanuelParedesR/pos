@@ -13,6 +13,7 @@ public sealed class UpdateServiceScriptTests : IDisposable
     private const string Feed = "https://releases.abastalia.example/stable";
     private const string Hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     private const string Thumbprint = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
+    private const string WindowsOnly = "Windows only: runs update-service.ps1 with powershell.exe (the Windows CI job runs it).";
     private readonly string _root = Directory.CreateTempSubdirectory("abastalia-update-").FullName;
 
     [Fact]
@@ -27,12 +28,13 @@ public sealed class UpdateServiceScriptTests : IDisposable
         Should.Throw<InvalidOperationException>(() => UpdateMarker.Create(Feed, "1.2.3", "<html>not found</html>", true, DateTime.UtcNow));
     }
 
-    [Theory]
+    [Theory, Trait("Category", "Windows")]
     [InlineData(@"..\..\Windows\evil", Feed + "/AbastaliaSetup-1.2.3.exe", Hash, "trae una versi")]
     [InlineData("1.2.3", "https://evil.example/AbastaliaSetup-1.2.3.exe", Hash, "no es " + Feed)]
     [InlineData("1.2.3", Feed + "/AbastaliaSetup-1.2.3.exe", "", "no trae SHA-256")]
     public void The_script_refuses_a_marker_it_cannot_trust(string version, string setupUrl, string sha256, string error)
     {
+        if (!OperatingSystem.IsWindows()) Assert.Skip(WindowsOnly);
         var (exit, stderr) = Run(version, setupUrl, sha256, DateTime.UtcNow, allowUnsigned: true);
 
         exit.ShouldBe(1);
@@ -40,9 +42,10 @@ public sealed class UpdateServiceScriptTests : IDisposable
         Directory.Exists(Path.Combine(_root, "updates")).ShouldBeFalse(); // refused before downloading anything
     }
 
-    [Fact]
+    [Fact, Trait("Category", "Windows")]
     public void C3_without_a_Abastalia_signer_nothing_is_installed_unless_the_pilot_flag_allows_it()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Skip(WindowsOnly);
         var (exit, stderr) = Run("1.2.3", Feed + "/AbastaliaSetup-1.2.3.exe", Hash, DateTime.UtcNow);
         exit.ShouldBe(1);
         stderr.ShouldContain("No hay certificado de Abastalia");
@@ -53,17 +56,19 @@ public sealed class UpdateServiceScriptTests : IDisposable
         stderr.ShouldContain("https");
     }
 
-    [Fact]
+    [Fact, Trait("Category", "Windows")]
     public void C13_an_older_or_the_same_version_is_never_installed()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Skip(WindowsOnly);
         var (exit, stderr) = Run("1.2.3", Feed + "/AbastaliaSetup-1.2.3.exe", Hash, DateTime.UtcNow, thumbprints: [Thumbprint], installed: "1.2.3");
         exit.ShouldBe(1);
         stderr.ShouldContain("que la instalada");
     }
 
-    [Fact]
+    [Fact, Trait("Category", "Windows")]
     public void C13_a_link_planted_where_the_setup_is_downloaded_is_refused_and_what_it_points_to_is_kept()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Skip(WindowsOnly);
         var target = Directory.CreateTempSubdirectory("abastalia-target-").FullName;
         File.WriteAllText(Path.Combine(target, "keep.txt"), "x");
         Junction(Path.Combine(_root, "updates"), target);
@@ -81,16 +86,18 @@ public sealed class UpdateServiceScriptTests : IDisposable
         }
     }
 
-    [Fact]
+    [Fact, Trait("Category", "Windows")]
     public void A_stale_marker_is_left_for_the_next_check_and_a_fresh_utc_one_is_not_read_as_local_time()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Skip(WindowsOnly);
         Run("bad", Feed, Hash, DateTime.UtcNow.AddHours(-2)).Exit.ShouldBe(0);
         Run("bad", Feed, Hash, DateTime.UtcNow).Exit.ShouldBe(1); // fresh: reaches validation in any time zone
     }
 
-    [Fact]
+    [Fact, Trait("Category", "Windows")]
     public void TK254_a_register_waits_when_the_cloud_says_so_and_otherwise_goes_to_the_feed()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Skip(WindowsOnly);
         File.WriteAllText(Path.Combine(_root, "appsettings.json"), JsonSerializer.Serialize(new { Updates = new { FeedUrl = Feed, SignerThumbprints = new[] { Thumbprint } } }));
         var policy = Path.Combine(_root, "update-policy.json");
         (int, string) Register()

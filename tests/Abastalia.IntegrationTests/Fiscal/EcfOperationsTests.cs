@@ -407,10 +407,11 @@ public sealed class CertificateRulesTests(AbastaliaApp app) : IClassFixture<Abas
         certificate.Problem.ShouldBeNull();
     }
 
-    [Fact]
+    [Fact, Trait("Category", "Windows")]
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     public void R11_C8_on_the_store_PC_the_key_is_non_exportable_and_only_this_account_and_SYSTEM_may_use_it()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only: CNG keys and Windows ACLs (the Windows CI job runs it).");
         var keys = Path.Combine(Path.GetTempPath(), $"abastalia_keys_{Guid.NewGuid():N}");
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {

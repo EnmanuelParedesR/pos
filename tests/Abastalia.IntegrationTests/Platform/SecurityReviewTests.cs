@@ -119,7 +119,7 @@ public sealed class SecurityReviewTests(AbastaliaApp app) : IClassFixture<Abasta
     }
 
     [Fact]
-    public async Task A3_backups_manage_alone_cannot_take_over_the_backups_or_send_them_to_a_network_folder()
+    public async Task A3_backups_manage_alone_cannot_take_over_the_backups()
     {
         const string Phrase = "la frase del dueño de la tienda";
         var admin = await Admin();
@@ -134,9 +134,7 @@ public sealed class SecurityReviewTests(AbastaliaApp app) : IClassFixture<Abasta
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await admin.PutAsJsonAsync("/api/backups/passphrase", new { Passphrase = Phrase })).StatusCode.ShouldBe(HttpStatusCode.NoContent); // the owner may
 
-        // A copy to another computer only when an administrator listed the folder in appsettings (R11 C14); the audit keeps before and after.
-        (await (await manager.PutAsJsonAsync("/api/backups/settings", new { CopyTo = @"\\otra-pc\respaldos", Time = "23:30", Keep = 14, Automatic = true })).ErrorCode())
-            .ShouldBe("Backup.CopyNotAllowed");
+        // The audit keeps before and after.
         (await manager.PutAsJsonAsync("/api/backups/settings", new { CopyTo = "", Time = "23:30", Keep = 14, Automatic = true })).EnsureSuccessStatusCode();
         (await manager.PutAsJsonAsync("/api/backups/settings", new { CopyTo = "", Time = "23:30", Keep = 10, Automatic = true })).EnsureSuccessStatusCode();
         var today = Abastalia.SharedKernel.BusinessDay.Of(app.Clock.GetUtcNow().UtcDateTime);
@@ -148,6 +146,16 @@ public sealed class SecurityReviewTests(AbastaliaApp app) : IClassFixture<Abasta
         // The PIN hashes in the database (and so in any backup) are keyed with a secret of this server.
         var hashes = await app.InScopeAsync(sp => sp.GetRequiredService<Abastalia.Identity.Persistence.IdentityDbContext>().Users.Select(u => u.PinHash).ToListAsync());
         hashes.ShouldAllBe(h => h.StartsWith("p1:"));
+    }
+
+    [Fact, Trait("Category", "Windows")]
+    public async Task A3_backups_manage_alone_cannot_send_them_to_a_network_folder()
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only: \\\\server\\share is a UNC path only on Windows (the Windows CI job runs it).");
+        var manager = await WithAsync("backups.manage");
+        // A copy to another computer only when an administrator listed the folder in appsettings (R11 C14).
+        (await (await manager.PutAsJsonAsync("/api/backups/settings", new { CopyTo = @"\\otra-pc\respaldos", Time = "23:30", Keep = 14, Automatic = true })).ErrorCode())
+            .ShouldBe("Backup.CopyNotAllowed");
     }
 
     [Fact]

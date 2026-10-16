@@ -30,6 +30,20 @@ jobs:
           # Run as a store PC would (UTC-4) so time-zone bugs show up in CI.
           TZ: America/Santo_Domingo
 
+  windows:
+    # TK-271: the tests marked [Trait("Category", "Windows")] (powershell.exe, CNG keys, UNC paths) skip on ubuntu; they run here, on Sqlite.
+    name: Pruebas solo de Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet build tests/Abastalia.UnitTests/Abastalia.UnitTests.csproj -c Release
+      - run: dotnet build tests/Abastalia.IntegrationTests/Abastalia.IntegrationTests.csproj -c Release
+      - run: dotnet test --project tests/Abastalia.UnitTests/Abastalia.UnitTests.csproj -c Release --no-build --filter-trait "Category=Windows"
+      - run: dotnet test --project tests/Abastalia.IntegrationTests/Abastalia.IntegrationTests.csproj -c Release --no-build --filter-trait "Category=Windows"
+
   web:
     # TK-228: the public site and the owner's panel are one React app (src/Cloud/panel).
     name: Sitio y panel (pruebas y compilación)

@@ -9,9 +9,10 @@ public sealed class StoreSettingsScriptTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("abastalia-settings-").FullName;
 
-    [Fact]
+    [Fact, Trait("Category", "Windows")]
     public void The_app_reaches_the_installed_server_and_the_server_the_production_cloud()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only: runs store-settings.ps1 with powershell.exe (the Windows CI job runs it).");
         var app = Copy(@"src\Client\Abastalia.Client.Wpf\appsettings.json", "app.json");
         var server = Copy(@"src\Hosts\Abastalia.Host.Local\appsettings.json", "server.json");
 
