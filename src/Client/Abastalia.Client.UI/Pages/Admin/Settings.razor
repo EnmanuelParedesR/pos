@@ -71,13 +71,25 @@
                 <div class="esc-setting__body">
                     <div class="esc-table-wrap">
                         <table class="esc-table">
-                            <thead><tr><th>Caja</th><th class="esc-hide-sm">Estado</th><th><span class="esc-visually-hidden">Acción</span></th></tr></thead>
+                            <thead><tr><th>Caja</th><th class="esc-hide-sm">Estado</th><th class="esc-hide-sm esc-num">Fondo estándar</th><th><span class="esc-visually-hidden">Acción</span></th></tr></thead>
                             <tbody>
                                 @foreach (var register in _registers)
                                 {
-                                    @if (_renaming == register.Id)
+                                    @if (_floatFor == register.Id)
                                     {
-                                        <tr><td colspan="3" style="padding-top:8px;padding-bottom:8px;height:auto">
+                                        <tr><td colspan="4" style="padding-top:8px;padding-bottom:8px;height:auto">
+                                            <form class="esc-row" style="align-items:flex-start" @onsubmit="() => SaveStandardFloatAsync(register)" novalidate>
+                                                <Field Label="@($"Fondo estándar de {register.Name}")" Error="@Err("float")" Hint="Abrir el turno con otro monto pide un supervisor. Déjelo vacío para no fijar uno.">
+                                                    <input class="esc-input esc-num" style="width:min(160px,100%)" inputmode="numeric" @bind="_floatTo" @bind:after='() => Clear("float")' aria-invalid="@Invalid("float")" />
+                                                </Field>
+                                                <Button Type="submit" Variant="Button.Variants.Primary" style="margin-top:25px">Guardar</Button>
+                                                <Button OnClick="() => _floatFor = null" style="margin-top:25px">Cancelar</Button>
+                                            </form>
+                                        </td></tr>
+                                    }
+                                    else if (_renaming == register.Id)
+                                    {
+                                        <tr><td colspan="4" style="padding-top:8px;padding-bottom:8px;height:auto">
                                             <form class="esc-row" style="align-items:flex-start" @onsubmit="() => RenameRegisterAsync(register)" novalidate>
                                                 <Field Label="@($"Nuevo nombre de {register.Name}")" Error="@Err("rename")" Hint="Sale en la factura, en los cierres y en el panel.">
                                                     <input @ref="_renameInput" class="esc-input" style="width:min(240px,100%)" maxlength="60" @bind="_renameTo" @bind:after='() => Clear("rename")' aria-invalid="@Invalid("rename")" autofocus />
@@ -91,7 +103,9 @@
                                     {
                                         <tr><td><span style="font-weight:600">@register.Name</span><span class="esc-table__sub esc-only-sm esc-muted">@(register.Cashier is { } who ? $"Abierta · {who}" : "Cerrada")</span></td>
                                             <td class="esc-hide-sm">@if (register.Cashier is { } q) { <span class="esc-pill esc-pill--success">Abierta · @q</span> } else { <span class="esc-pill esc-pill--neutral">Cerrada</span> }</td>
-                                            <td class="esc-num"><Button class="esc-button esc-button--small" aria-label="@($"Cambiar el nombre de {register.Name}")" OnClick="() => StartRename(register)">Cambiar nombre</Button></td></tr>
+                                            <td class="esc-hide-sm esc-num">@(register.StandardFloat is { } standard ? Format.WithCurrency(standard) : "Sin fijar")</td>
+                                            <td class="esc-num"><Button class="esc-button esc-button--small" aria-label="@($"Fondo estándar de {register.Name}")" OnClick="() => StartStandardFloat(register)">Fondo</Button>
+                                                <Button class="esc-button esc-button--small" aria-label="@($"Cambiar el nombre de {register.Name}")" OnClick="() => StartRename(register)">Cambiar nombre</Button></td></tr>
                                     }
                                 }
                             </tbody>
@@ -762,7 +776,31 @@
     private void StartRename(RegisterInfo r)
     {
         Clear("rename");
-        (_renaming, _renameTo, _message, _focusRename) = (r.Id, r.Name, null, true);
+        (_renaming, _renameTo, _message, _focusRename, _floatFor) = (r.Id, r.Name, null, true, null);
+    }
+
+    private Guid? _floatFor;
+    private string? _floatTo;
+
+    /// <summary>R11 A7 (TK-268): the float the register usually opens with; another one asks a supervisor.</summary>
+    private void StartStandardFloat(RegisterInfo r)
+    {
+        Clear("float");
+        (_floatFor, _floatTo, _message, _renaming) = (r.Id, r.StandardFloat?.ToString("0", System.Globalization.CultureInfo.InvariantCulture), null, null);
+    }
+
+    private async Task SaveStandardFloatAsync(RegisterInfo register)
+    {
+        decimal? amount = string.IsNullOrWhiteSpace(_floatTo) ? null : Format.ParseNumber(_floatTo);
+        if (amount is null && !string.IsNullOrWhiteSpace(_floatTo) || amount is { } v && (v < 0 || v != Math.Truncate(v)))
+        {
+            _errors["float"] = "Escriba el monto en pesos enteros.";
+            return;
+        }
+        var r = await Api.PutAsync<Empty>($"/api/cash/registers/{register.Id}/standard-float", new { Amount = amount });
+        if (r.Ok) _floatFor = null;
+        await GoAsync(Section.Registers);
+        ShowResult(r.Problem, amount is { } set ? $"{register.Name} abre con {Format.WithCurrency(set)}." : $"{register.Name} ya no tiene fondo estándar.");
     }
 
     private async Task RenameRegisterAsync(RegisterInfo register)

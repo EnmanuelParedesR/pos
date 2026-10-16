@@ -6,9 +6,8 @@ namespace Abastalia.Host.Cloud.Assistant;
 
 /// <summary>R11 B-Low8: whether a business may use the paid extras (the AI invoice reader), decided here and not on the store's word. Allowed while the cloud subscription is paid (TK-249), with a
 /// license Abastalia signed (the JWS the heartbeat carries, verified with Abastalia's public key) until its expiry plus the 15-day grace, or within the trial:
-/// 14 days from the business's first sale as the cloud's replica has it (or no sale yet). A store that says it is Restricted is believed.</summary>
-/// <remarks>shortcut: the license is not tied to the business (LicenseData.Store is a name): another business's license would pass. Bind it to the
-/// tenant id when licenses are issued from the console.</remarks>
+/// 14 days from the business's first sale as the cloud's replica has it (or no sale yet). A store that says it is Restricted is believed.
+/// The signed license only counts for the business it names (<see cref="LicenseData.TenantId"/>, TK-268): another business's, or one naming none, does not.</summary>
 internal sealed class LicenseCheck
 {
     public static readonly TimeSpan Grace = TimeSpan.FromDays(15);
@@ -39,14 +38,14 @@ internal sealed class LicenseCheck
         // TK-249: what the business paid through the cloud (Paddle or staff override) counts as a license the cloud itself signed.
         var paid = await db.TenantSubscriptions.AsNoTracking().Where(s => s.TenantId == tenantId).Select(s => new { s.PaidThroughUtc, s.ManualUntilUtc }).FirstOrDefaultAsync(ct);
         if (new[] { paid?.PaidThroughUtc, paid?.ManualUntilUtc }.Max() is { } until && now <= until + Grace) return true;
-        if (beats.Any(b => b.LicenseJws is { } jws && ExpiresUtc(jws) is { } expires && now <= expires + Grace)) return true;
+        if (beats.Any(b => b.LicenseJws is { } jws && ExpiresUtc(jws, tenantId) is { } expires && now <= expires + Grace)) return true;
         var firstSale = await db.Sales.Where(s => s.TenantId == tenantId).MinAsync(s => (DateTime?)s.SoldUtc, ct);
         return firstSale is null || now <= firstSale + Trial;
     }
 
-    /// <summary>The expiry of a compact JWS (ES256) signed with Abastalia's key, or null when it is not one.</summary>
-    internal DateTime? ExpiresUtc(string jws) =>
-        Abastalia.BuildingBlocks.Security.Jws.Verify(jws, _key) is { IsSuccess: true } ok
+    /// <summary>The expiry of a compact JWS (ES256) signed with Abastalia's key for <paramref name="tenantId"/>, or null when it is not one.</summary>
+    internal DateTime? ExpiresUtc(string jws, Guid tenantId) =>
+        Abastalia.BuildingBlocks.Security.Jws.Verify(jws, _key) is { IsSuccess: true } ok && ok.Value.TenantId == tenantId
             ? ok.Value.ExpiresUtc.Kind == DateTimeKind.Local ? ok.Value.ExpiresUtc.ToUniversalTime() : DateTime.SpecifyKind(ok.Value.ExpiresUtc, DateTimeKind.Utc)
             : null;
 }

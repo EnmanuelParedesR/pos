@@ -86,6 +86,9 @@ internal static class CustomersErrors
     public static readonly Error CustomerNotFound = Error.NotFound("Customers.CustomerNotFound", "El cliente no existe o está desactivado.");
     public static readonly Error InsufficientCreditBalance = Error.Conflict("Customers.InsufficientCreditBalance", "El cliente no tiene ese saldo a favor.");
     public static readonly Error PaymentExceedsDebt = Error.Validation("Customers.PaymentExceedsDebt", "El abono es mayor que la deuda del cliente.");
+    /// <summary>R11 A16 (TK-268): same rule as a sale's card or transfer payment.</summary>
+    public static readonly Error ReferenceRequired = Error.Validation("Customers.ReferenceRequired",
+        "Escriba el número de autorización de la tarjeta o el de la transferencia.");
     public static readonly Error DuplicateTaxId = Error.Conflict("Customers.DuplicateTaxId", "Ya hay un cliente con ese RNC o cédula.");
     public static readonly Error CreditPermissionRequired = Error.Forbidden("Customers.CreditPermissionRequired",
         "Dar crédito, precio mayorista o reactivar un cliente necesita el permiso de fiado.");

@@ -67,7 +67,7 @@ internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, Bi
             .Take(Count(config, catalog, plan, addOns, nameof(AbastaliaProduct.Stores), t => t.Stores) ?? 1).Select(s => s.Id).ToListAsync(ct);
         if (!licensed.Contains(storeId)) return null;
         var store = await db.Stores.AsNoTracking().Where(s => s.Id == storeId).Select(s => s.Name).SingleOrDefaultAsync(ct) ?? tenant.Name;
-        var data = Data(config, catalog, store, plan, addOns, Truncate(subscription.UpdatedUtc), expires);
+        var data = Data(config, catalog, store, plan, addOns, Truncate(subscription.UpdatedUtc), expires) with { TenantId = tenantId };
         var input = Jws.SigningInput(data);
         return Jws.Compose(input, await signer.SignSha256Async(SHA256.HashData(Encoding.ASCII.GetBytes(input)), ct));
     }

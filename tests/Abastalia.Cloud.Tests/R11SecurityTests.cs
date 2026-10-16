@@ -169,13 +169,18 @@ public sealed class R11SecurityTests(StrictCloudApp app) : IClassFixture<StrictC
             return await db.SaveChangesAsync();
         });
         using var forger = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        await Beat(Jws(forger, Now.AddDays(30)));
+        await Beat(Jws(forger, Now.AddDays(30), owner.TenantId));
         (await Allowed()).ShouldBeFalse();
-        await Beat(Jws(abastalia, Now.AddDays(-20)));
+        await Beat(Jws(abastalia, Now.AddDays(-20), owner.TenantId));
         (await Allowed()).ShouldBeFalse(); // expired beyond the 15 days of grace
-        await Beat(Jws(abastalia, Now.AddDays(30)));
+        // TK-268: another business's license, or one bound to no business, does not pass.
+        await Beat(Jws(abastalia, Now.AddDays(30), Guid.NewGuid()));
+        (await Allowed()).ShouldBeFalse();
+        await Beat(Jws(abastalia, Now.AddDays(30), null));
+        (await Allowed()).ShouldBeFalse();
+        await Beat(Jws(abastalia, Now.AddDays(30), owner.TenantId));
         (await Allowed()).ShouldBeTrue();
-        await Beat(Jws(abastalia, Now.AddDays(30)), status: "Restricted");
+        await Beat(Jws(abastalia, Now.AddDays(30), owner.TenantId), status: "Restricted");
         (await Allowed()).ShouldBeFalse(); // a store that says it is restricted is believed
     }
 
@@ -209,12 +214,12 @@ public sealed class R11SecurityTests(StrictCloudApp app) : IClassFixture<StrictC
         [new SaleLineV2(Guid.NewGuid(), null, "Pollo", 1, "Unit", total, 0m, 50m)], [new SalePaymentV1("Cash", total)]);
 
     /// <summary>A license as Abastalia issues it (compact JWS, ES256), with the store's fields.</summary>
-    private static string Jws(ECDsa key, DateTime expiresUtc)
+    private static string Jws(ECDsa key, DateTime expiresUtc, Guid? tenantId)
     {
         static string B64(byte[] data) => Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var header = B64("""{"alg":"ES256","typ":"JWT"}"""u8.ToArray());
-        var body = B64(JsonSerializer.SerializeToUtf8Bytes(new { store = "Carnicería", plan = "Default", features = Array.Empty<string>(), limits = new { }, issuedUtc = expiresUtc.AddYears(-1), expiresUtc },
-            Web));
+        var body = B64(JsonSerializer.SerializeToUtf8Bytes(new { store = "Carnicería", plan = "Default", features = Array.Empty<string>(), limits = new { }, issuedUtc = expiresUtc.AddYears(-1), expiresUtc,
+            tenantId }, Web));
         return $"{header}.{body}.{B64(key.SignData(Encoding.ASCII.GetBytes($"{header}.{body}"), HashAlgorithmName.SHA256))}";
     }
 }

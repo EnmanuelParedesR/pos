@@ -69,7 +69,7 @@ public sealed record StockItem(Guid ProductId, string Name, string Category, Uni
 public sealed record Created(Guid Id);
 
 // Cash register
-public sealed record RegisterInfo(Guid Id, string Name, bool IsActive, Guid? OpenShiftId, string? Cashier);
+public sealed record RegisterInfo(Guid Id, string Name, bool IsActive, Guid? OpenShiftId, string? Cashier, decimal? StandardFloat = null);
 public sealed record CurrentShift(Guid ShiftId, Guid RegisterId, string Register, decimal OpeningFloat, DateTime OpenedUtc);
 public sealed record ShiftOpened(Guid ShiftId);
 public sealed record DenominationCount(decimal Denomination, int Quantity);
