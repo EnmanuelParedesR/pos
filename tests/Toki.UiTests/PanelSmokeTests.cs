@@ -34,6 +34,7 @@ public sealed class PanelSmokeTests
             ["Database__Provider"] = "Sqlite",
             ["Database__ConnectionString"] = $"Data Source={Path.Combine(folder, "cloud.db")};Pooling=False",
             ["Panel__Origins__0"] = origin,
+            ["Auth__RequireConfirmedEmail"] = "false", // R11 B-High1: the test does not read the confirmation e-mail
         }, readyPath: "/health");
         try
         {
