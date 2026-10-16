@@ -1,0 +1,39 @@
+# R11 · Revisión de seguridad: cajero, nube, equipos y red (16/10/2026)
+
+Tres revisiones en paralelo, solo lectura, sobre main en `35c1da4`/`07738ee`. Correcciones en TK-253. Lo ya corregido en R7 a R10 no se repite.
+
+## A · Lo que un cajero o supervisor puede ver o hacer (tienda)
+
+Altos:
+1. **La autorización de supervisor no está atada al monto ni a las líneas** (`Approval.cs:114-125`, `IdentityModule.cs:387-398`; retiros `Shifts.cs:179-184`, devoluciones `VoidAndReturn.cs:95-100`, fondo `Shifts.cs:107-111`, precio/fiado/cierre `RegisterSale.cs:156,222-241`, `Shifts.cs:324-326`). Se pide "Salida de RD$100" y se usa la misma autorización con RD$20,000. Arreglo: hash del contenido (monto, tipo, líneas, total) guardado en la autorización, mostrado al supervisor desde el servidor y comparado al consumirla; atada también al usuario que pide.
+2. **El cierre a ciegas se puede sondear** (`Shifts.cs:318`): un id de autorización inventado evita que cuente el fallo; además el esperado se deduce de `/shifts/current` y `/api/sales`. Arreglo: contar cada conteo distinto sin `approve-close` aunque traiga id; mejor cerrar siempre y marcar "pendiente de aprobación"; ocultar pagos y devueltas al cajero hasta cerrar.
+3. **`backups.manage` lleva al PIN del dueño** (`Backups.cs:263-289,439-505`): cambia la frase sin la anterior, copia a un recurso compartido propio, descifra con `decrypt-backup` y rompe los PIN de 4 dígitos. Arreglo: pedir la frase actual o Administrador, carpetas permitidas, auditoría con antes y después, sacar o salar con secreto del servidor los `PinHash` del respaldo.
+
+Medios: 4) PIN ajeno por `me/pin` sin bloqueo y sesiones de 12 h sin bloqueo por inactividad (`Sessions.cs:135-148`); 5) quitar líneas y anular la venta en curso solo se controla en la pantalla (`Sale.razor:372-396`); 6) fiado y saldo a favor de cualquier cliente con solo `sales.create` (`RegisterSale.cs:64,152-154,183-188`); 7) el cajero declara su propio fondo (`Shifts.cs:107-141`); 8) E31 a cualquier RNC escrito a mano (`RegisterSale.cs:60-62,102`); 9) el Cajero sembrado tiene `inventory.view` y `customers.manage` (`Identity.cs:44,49`); 10) la cadena de auditoría sin llave se puede recalcular con acceso a la base (`OutboxAndAudit.cs:76-81`); 11) Supervisor sembrado con compras + pagos + retiros (`Identity.cs:34-39`); 12) costos visibles sin `costs.view` en compras, 606 y auditoría.
+
+Bajos: 13) lecturas sin dueño (ventas, carritos en espera, pedidos, comprobantes B); 14) cualquier cajero bloquea al dueño con PIN malos y el error revela el PIN correcto; 15) `users.manage` quita permisos que no tiene y restablece PIN para entrar como otro; 16) pagos con tarjeta o transferencia sin referencia; 17) llave del equipo copiable; 18) reloj atrasado solo avisa; 19) gastos y pagos con fecha atrasada sin límite.
+
+## B · Nube
+
+Altos:
+1. **Pre-secuestro de cuentas**: se puede entrar sin confirmar el correo (`Program.cs:45-50`, `Members.cs:166-184`). Arreglo: `RequireConfirmedEmail`; al confirmar o restablecer por primera vez, rotar el sello y quitar miembros e invitaciones previos.
+2. **Cualquier certificado de cédula pasa por el de una empresa** (`FeSigning.cs:256-257`, usado en `FeReceiver.cs:114,159-160`, `FeRemoteSigning.cs:180-182`, `FeEndpoints.cs:155`): facturas falsas de cualquier empresa, aprobaciones falsas, ocupar el RNC del receptor. Arreglo: no aceptarlo hasta poder verificar la delegación; marcar "firmante sin verificar" y dejarlo fuera de compras y del 606; activación con cédula para RNC de empresa solo con soporte.
+
+Medios: 1) SSRF y lentitud al armar la cadena de certificados (descargas AIA/CRL) (`FeSigning.cs:236-251`); 2) correos ilimitados por `/api/auth/manage/info`; 3) un nodo comprometido llena la base (ingesta sin límite por nodo ni tamaño por evento); 4) dentro de un negocio, la PC de una tienda pisa datos de otra y apaga el receptor; 5) token de refresco en localStorage y panel sin CSP, `frame-ancestors`, HSTS; 6) administrador de plataforma sin MFA y el rol vive en el token 1 h; 7) cualquiera agota el cupo por RNC del receptor con semillas anónimas.
+
+Bajos: 1) códigos y correos en la telemetría por la URL; 2) datos de clientes en logs de errores del proyector; 3) secreto compartido de nodos aún aceptado (TK-251 ya lo quitó) y nonces en memoria; 4) `/health/ready` anónimo despierta la base; 5) registro con pocos límites y códigos de conexión adivinables; 6) bloqueo de cuentas por terceros; 7) permisos de Azure más amplios de lo necesario; 8) la licencia del lector de IA confía en la tienda.
+
+## C · Equipos, red y datos en reposo
+
+Altos:
+1. **El instalador hace sysadmin de SQL al usuario diario** (`toki.iss:176-178`) y de ahí a SYSTEM; reutiliza cualquier `SQLEXPRESS`. Arreglo: `/SQLSYSADMINACCOUNTS="BUILTIN\Administrators"`, instancia propia `TOKI` o revisar la existente.
+2. **PC principal robada**: sin cifrado de disco se sacan la llave del e-CF, la CA, la llave del nodo y la base. Arreglo: el instalador avisa y la salud marca degradado sin BitLocker/Device Encryption; llave del e-CF en TPM donde se pueda; guía "PC robada".
+3. **Actualizaciones sin firma de código** (`appsettings.json:22`, `toki.iss:43`, `ServerUpdates.cs:182`, `AppUpdates.cs:184-191`, `build.ps1:93`). Arreglo: firmar instalador y paquetes, huellas de firmante obligatorias o manifiesto firmado con llave fuera de línea, exigir https.
+
+Medios: 4) instalación inicial desde la red (TK-251 ya la limitó a la PC principal); 5) llave del equipo de caja exportable; 6) app de caja instalada por usuario y modificable; 7) el servicio conserva SeImpersonate; 8) un administrador saca la llave del e-CF (TK-160); 9) "Borrar datos" deja la llave del e-CF.
+
+Bajos: 10) PII en logs 60 días; 11) http aceptado (TK-251 corrigió las URL); 12) códigos de emparejamiento y bloqueos sin límite; 13) borrado recursivo y sin control de versión en scripts; 14) `CopyTo` acepta UNC; 15) frase de respaldo en variable de entorno.
+
+## Estado de las correcciones
+
+TK-253.
