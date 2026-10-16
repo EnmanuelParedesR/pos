@@ -72,9 +72,35 @@ public sealed class FakePaddle : HttpMessageHandler
             {
                 Content = JsonContent.Create(new { data = new { id = "cpls_1", urls = new { general = new { overview = "https://customer-portal.paddle.com/cpl_1?token=x" } } } }),
             },
-            var p when p.StartsWith("/subscriptions/", StringComparison.Ordinal) => Json(new { data = new { } }),
+            "/discounts" when request.Method == HttpMethod.Post => new HttpResponseMessage(HttpStatusCode.Created) { Content = JsonContent.Create(new { data = new { id = $"dsc_{Interlocked.Increment(ref _discounts)}" } }) },
+            var p when p.StartsWith("/subscriptions/", StringComparison.Ordinal) => Subscription(request.Method, p["/subscriptions/".Length..], body),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         };
+    }
+
+    private int _discounts;
+
+    /// <summary>TK-255: each subscription's status in Paddle (default active) and the discount set on it.</summary>
+    public Dictionary<string, string> Statuses { get; } = [];
+    public Dictionary<string, string?> Discounts { get; } = [];
+
+    private HttpResponseMessage Subscription(HttpMethod method, string path, JsonElement body)
+    {
+        var id = path.Split('/')[0];
+        lock (Discounts)
+        {
+            if (method == HttpMethod.Patch && !path.EndsWith("/preview", StringComparison.Ordinal) && body.TryGetProperty("discount", out var d))
+                Discounts[id] = d.ValueKind == JsonValueKind.Object ? d.GetProperty("id").GetString() : null;
+            var discount = Discounts.GetValueOrDefault(id);
+            return Json(new
+            {
+                data = new
+                {
+                    id, status = Statuses.GetValueOrDefault(id, "active"), discount = discount is null ? null : new { id = discount, starts_at = (string?)null },
+                    items = new[] { new { quantity = 1, price = new { id = Registers } }, new { quantity = 1, price = new { id = Invoices } } },
+                },
+            });
+        }
     }
 
     private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
@@ -100,6 +126,10 @@ public sealed class BillingApp : CloudApp
         builder.UseSetting("Billing:Paddle:ClientToken", "test_client_token");
         builder.UseSetting("Billing:Paddle:SyncInBackground", "false");
         builder.UseSetting("Billing:License:PrivateKey", LicenseKey.ExportPkcs8PrivateKeyPem());
+        builder.UseSetting("Billing:Referrals:QualifyingPlans:0", "MultiRegister"); // TK-255
+        builder.UseSetting("Billing:Referrals:Amount", "10");
+        builder.UseSetting("Billing:Referrals:MonthlyLimitPerReferrer", "3");
+        builder.UseSetting("Billing:Referrals:LookupsPerMinute", "5");
         builder.ConfigureTestServices(s => s.AddHttpClient<PaddleApi>().ConfigurePrimaryHttpMessageHandler(() => Paddle));
     }
 

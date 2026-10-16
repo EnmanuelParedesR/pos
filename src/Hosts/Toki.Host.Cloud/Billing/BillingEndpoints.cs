@@ -23,7 +23,8 @@ public sealed record BillingResponse(bool Enabled, string? Environment, string P
 /// <summary>The public /precios page: the prices as Paddle has them; empty lists with billing off (the page says "Precio por confirmar").</summary>
 public sealed record PublicPricesResponse(bool Enabled, IReadOnlyList<BillingOption> Plans, IReadOnlyList<BillingOption> AddOns);
 
-public sealed record CheckoutRequest(string? Plan, IReadOnlyList<string>? AddOns, BillingInterval Interval = BillingInterval.Monthly);
+/// <param name="ReferralCode">TK-255: the code from <c>/precios?ref=</c> the panel kept; ignored when it is the business's own or one is kept already.</param>
+public sealed record CheckoutRequest(string? Plan, IReadOnlyList<string>? AddOns, BillingInterval Interval = BillingInterval.Monthly, string? ReferralCode = null);
 
 public sealed record CheckoutItem(string PriceId, int Quantity);
 
@@ -62,6 +63,7 @@ internal static class BillingEndpoints
         services.AddScoped<PaddleCatalogSync>();
         services.AddHostedService<CatalogSyncWorker>();
         services.AddHttpClient<PaddleApi>(c => c.Timeout = TimeSpan.FromSeconds(20));
+        ReferralEndpoints.AddReferrals(services, config); // TK-255
         CloudLicenses.AddCloudLicenses(services, config, environment);
     }
 
@@ -105,7 +107,7 @@ internal static class BillingEndpoints
 
         // A business without a live subscription buys one with Paddle.js (overlay checkout); one that has it changes its items instead.
         owner.MapPost("/checkout", async (CheckoutRequest r, ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, BillingCatalog catalog, PlanLimits limits,
-            PaddleApi api, CancellationToken ct) =>
+            PaddleApi api, ReferralRewards referrals, CancellationToken ct) =>
         {
             if (!paddle.IsConfigured) return EndpointExtensions.Problem(Off);
             var tenantId = user.GetTenantId();
@@ -126,7 +128,7 @@ internal static class BillingEndpoints
                     ? Results.Ok(new BillingChangeResponse(true))
                     : EndpointExtensions.Problem(Error.Conflict("Billing.PaddleFailed", "Paddle no aceptó el cambio. Intente de nuevo en un momento."));
             return Results.Ok(new CheckoutResponse(paddle.Environment, paddle.ClientToken, [.. prices.Select(p => new CheckoutItem(p!, 1))],
-                user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, new Dictionary<string, string> { ["tenantId"] = tenantId.ToString() }));
+                user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, await ReferralEndpoints.CheckoutDataAsync(db, referrals, tenantId, r.ReferralCode, ct)));
         });
 
         owner.MapPost("/portal", async (ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, PaddleApi api, CancellationToken ct) =>
@@ -140,6 +142,8 @@ internal static class BillingEndpoints
                 ? Results.Ok(new PortalResponse(url))
                 : EndpointExtensions.Problem(Error.Conflict("Billing.PaddleFailed", "Paddle no respondió. Intente de nuevo en un momento."));
         });
+
+        ReferralEndpoints.MapReferrals(app, owner); // TK-255
     }
 
     /// <summary>Toki staff (the platform group: authorized and audited). The override is for special deals and payments outside Paddle.</summary>
@@ -169,5 +173,7 @@ internal static class BillingEndpoints
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
         });
+
+        ReferralEndpoints.MapPlatformReferrals(platform); // TK-255
     }
 }
