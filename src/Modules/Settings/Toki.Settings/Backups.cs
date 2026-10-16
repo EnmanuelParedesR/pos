@@ -4,14 +4,18 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Toki.BuildingBlocks;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.BuildingBlocks.Messaging;
+using Toki.CashRegister.Contracts;
 using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
 using Toki.SharedKernel;
@@ -36,6 +40,9 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
     public static readonly Error NoPassphrase = Error.Conflict("Backup.NoPassphrase", "Configure la frase de los respaldos antes de respaldar.");
     public static readonly Error UnreadablePassphrase = Error.Conflict("Backup.UnreadablePassphrase",
         "Vuelva a escribir la frase de los respaldos: la clave guardada no se puede leer en esta PC.");
+    public static readonly Error NotFound = Error.NotFound("Backup.NotFound", "Ese respaldo ya no está en esta PC.");
+    public static readonly Error WrongPassphrase = Error.Validation("Backup.WrongPassphrase", "La frase no abre este respaldo, o el archivo está dañado.");
+    public static readonly Error OtherDatabase = Error.Validation("Backup.OtherDatabase", "Este respaldo es de otro tipo de instalación de Toki y no se puede restaurar aquí.");
 
     public string Folder => config["Backup:Folder"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki", "backups");
     public string WorkFolder => Path.Combine(Folder, "work");
@@ -58,7 +65,8 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
         }
     }
 
-    public async Task<Result<BackupFile>> CreateAsync(CancellationToken ct)
+    /// <param name="label">Added to the name of a backup made for a reason ("antes-de-restaurar"); such a backup prunes nothing and is not copied off the PC.</param>
+    public async Task<Result<BackupFile>> CreateAsync(CancellationToken ct, string? label = null)
     {
         var key = await KeyAsync(ct);
         if (key.IsFailure) return key.Error!;
@@ -66,7 +74,8 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
         Directory.CreateDirectory(WorkFolder);
         foreach (var leftover in Directory.EnumerateFiles(WorkFolder)) File.Delete(leftover); // a plain copy left by a crash never stays
         var now = clock.GetUtcNow().UtcDateTime;
-        var name = $"toki-{now + BusinessDay.Offset:yyyyMMdd-HHmmss}";
+        var name = $"toki-{now + BusinessDay.Offset:yyyyMMdd-HHmmss}" + (label is null ? "" : "-" + label);
+        if (File.Exists(Path.Combine(Folder, name + Extension))) name += $"-{Guid.NewGuid().ToString()[..4]}"; // two in the same second
         var plain = Path.Combine(WorkFolder, name + (options.Provider == DbProvider.SqlServer ? ".bak" : ".tmp"));
         var target = Path.Combine(Folder, name + Extension);
         try
@@ -86,6 +95,7 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
             File.Delete(plain);
             File.Delete(target + ".partial");
         }
+        if (label is not null) return new BackupFile(Path.GetFileName(target), new FileInfo(target).Length, now);
 
         Prune(Folder);
         status.CopyError = null;
@@ -109,6 +119,98 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
 
     /// <summary>Encrypted backups, newest first.</summary>
     public IEnumerable<FileInfo> List() => List(Folder);
+
+    /// <summary>Replaces the whole database with a backup of this folder. The current data is backed up first (when the stored key works) as
+    /// "…-antes-de-restaurar", so a wrong choice can be undone by restoring that file. The caller checks that the registers are closed.</summary>
+    /// <returns>The name of that backup of the current data, or null when there is no usable key to make it.</returns>
+    public async Task<Result<string?>> RestoreAsync(string fileName, string passphrase, CancellationToken ct)
+    {
+        var source = Path.Combine(Folder, fileName);
+        if (Path.GetFileName(fileName) != fileName || !fileName.EndsWith(Extension, StringComparison.Ordinal) || !File.Exists(source)) return NotFound;
+
+        string? before = null;
+        if ((await KeyAsync(ct)).IsSuccess)
+        {
+            var made = await CreateAsync(ct, "antes-de-restaurar");
+            if (made.IsFailure) return made.Error!;
+            before = made.Value.FileName;
+        }
+
+        Directory.CreateDirectory(WorkFolder);
+        var plain = Path.Combine(WorkFolder, "restore" + (options.Provider == DbProvider.SqlServer ? ".bak" : ".tmp"));
+        try
+        {
+            try
+            {
+                await using var input = File.OpenRead(source);
+                await using var output = File.Create(plain);
+                await BackupEncryption.DecryptAsync(input, output, passphrase, ct);
+            }
+            catch (CryptographicException)
+            {
+                return WrongPassphrase;
+            }
+            if (IsSqlite(plain) != (options.Provider == DbProvider.Sqlite)) return OtherDatabase;
+
+            // From here on nothing is cancelled: a restore cut halfway would leave the store without data.
+            if (options.Provider == DbProvider.SqlServer) await RestoreSqlServerAsync(plain);
+            else RestoreSqlite(plain);
+            log.LogWarning("The database was restored from {Backup}; the data before it is in {Before}", fileName, before ?? "(no backup: no usable key)");
+            return before;
+        }
+        finally
+        {
+            File.Delete(plain);
+        }
+    }
+
+    private static bool IsSqlite(string file)
+    {
+        var header = new byte[16];
+        using var f = File.OpenRead(file);
+        return f.ReadAtLeast(header, 16, throwOnEndOfStream: false) == 16 && header.AsSpan().SequenceEqual("SQLite format 3\0"u8);
+    }
+
+    private void RestoreSqlite(string plain)
+    {
+        using (var from = new SqliteConnection($"Data Source={plain};Mode=ReadOnly;Pooling=False"))
+        using (var to = new SqliteConnection(options.ConnectionString))
+        {
+            from.Open();
+            to.Open();
+            from.BackupDatabase(to);
+        }
+        SqliteConnection.ClearAllPools();
+    }
+
+    /// <summary>The service's login owns the database (dbcreator, see PrepareService), so it may restore over it. SINGLE_USER closes the other connections.</summary>
+    private async Task RestoreSqlServerAsync(string plain)
+    {
+        var server = new SqlConnectionStringBuilder(options.ConnectionString);
+        var database = "[" + server.InitialCatalog.Replace("]", "]]", StringComparison.Ordinal) + "]";
+        server.InitialCatalog = "master";
+        server.Pooling = false;
+        await using (var sql = new SqlConnection(server.ConnectionString))
+        {
+            await sql.OpenAsync();
+            await using var command = sql.CreateCommand();
+            command.CommandTimeout = 3600;
+            command.CommandText = $"""
+                ALTER DATABASE {database} SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+                BEGIN TRY
+                    RESTORE DATABASE {database} FROM DISK = @file WITH REPLACE, CHECKSUM;
+                END TRY
+                BEGIN CATCH
+                    ALTER DATABASE {database} SET MULTI_USER;
+                    THROW;
+                END CATCH;
+                ALTER DATABASE {database} SET MULTI_USER;
+                """;
+            command.Parameters.AddWithValue("@file", plain);
+            await command.ExecuteNonQueryAsync();
+        }
+        SqlConnection.ClearAllPools(); // the pooled connections were closed by SINGLE_USER
+    }
 
     private static IEnumerable<FileInfo> List(string folder) =>
         Directory.Exists(folder) ? new DirectoryInfo(folder).GetFiles("*" + Extension).OrderByDescending(f => f.Name) : [];
@@ -156,6 +258,46 @@ internal static class SetBackupPassphrase
                     Results.Ok(backups.List().Select(f => new BackupFile(f.Name, f.Length, f.LastWriteTimeUtc))))
                 .RequirePermission(Permissions.BackupsManage).WithTags("Backups");
         }
+    }
+}
+
+/// <summary>TK-213: replaces the store's data with one of the backups listed, from the back office. Only with every register closed (a sale halfway
+/// would be lost or half-restored); the data before it is backed up first. The restore itself is audited in the restored database.</summary>
+internal static class RestoreBackup
+{
+    public sealed record Request(string Passphrase);
+    public sealed record Response(string? BackupBefore);
+
+    /// <summary>Only records the restore: it runs after it, in the restored database's audit chain.</summary>
+    internal sealed record Restored(string FileName, string? BackupBefore) : ICommand<Ok>;
+
+    internal sealed class Handler(IAuditLog audit) : ICommandHandler<Restored, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Restored c, CancellationToken ct)
+        {
+            await audit.RecordAsync("settings.restore-backup", "Business", Guid.Empty, c, ct);
+            return Ok.Value;
+        }
+    }
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapPost("/api/backups/{fileName}/restore", async (string fileName, Request r, Backups backups, ICashRegisterReports cash,
+                    ICommandHandler<Restored, Ok> record, HttpContext http, IHostApplicationLifetime lifetime) =>
+                {
+                    if (string.IsNullOrEmpty(r.Passphrase)) return EndpointExtensions.Problem(Backups.WrongPassphrase);
+                    if (await cash.OpenRegistersAsync(http.RequestAborted) is { Count: > 0 } open)
+                        return EndpointExtensions.Problem(Error.Conflict("Backup.RegistersOpen", $"Cierre las cajas antes de restaurar: {string.Join(", ", open)}."));
+
+                    var restored = await backups.RestoreAsync(fileName, r.Passphrase, lifetime.ApplicationStopping);
+                    if (restored.IsFailure) return EndpointExtensions.Problem(restored.Error!);
+                    // An older backup gets the migrations of this version, as at startup.
+                    await TokiServices.CreateDatabaseAsync(http.RequestServices, CancellationToken.None);
+                    await record.Handle(new Restored(fileName, restored.Value), CancellationToken.None);
+                    return Results.Ok(new Response(restored.Value));
+                })
+                .RequirePermission(Permissions.BackupsManage).WithTags("Backups");
     }
 }
 

@@ -34,6 +34,11 @@ public sealed record LicenseFeatures(string Status, string? Plan, DateTime? Expi
 public sealed record ApprovalRule(string Permission, bool Required);
 public sealed record ApprovalPolicy(string[] Required);
 public sealed record BackupFile(string FileName, long Bytes, DateTime DateUtc);
+/// <summary>BackupBefore: the backup of the data replaced (null when the store's backup key could not be used to make it).</summary>
+public sealed record BackupRestored(string? BackupBefore);
+/// <summary>TK-213. Data is the JSON the action saved; ResourceId is null for store-wide records.</summary>
+public sealed record AuditRow(long Sequence, DateTime DateUtc, Guid? UserId, string? User, string? Supervisor, string Action, string ResourceType, Guid? ResourceId, string Data);
+public sealed record AuditUser(Guid Id, string Name);
 
 // Inventory
 public sealed record Category(Guid Id, string Name, string Color, string[] Notes, bool IsActive);

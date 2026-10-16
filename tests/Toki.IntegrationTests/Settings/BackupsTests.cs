@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
@@ -59,5 +60,48 @@ public sealed class BackupsTests(TokiApp app) : IClassFixture<TokiApp>
         await using var command = connection.CreateCommand();
         command.CommandText = "SELECT Name FROM Business";
         (await command.ExecuteScalarAsync()).ShouldBe("Carnicería del respaldo");
+    }
+}
+
+/// <summary>TK-213. Own app: it replaces the database.</summary>
+public sealed class RestoreBackupTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    private const string Passphrase = "la chuleta de los viernes 2026";
+
+    [Fact]
+    public async Task The_back_office_restores_a_backup_only_with_the_registers_closed_and_the_right_passphrase()
+    {
+        if (TestSqlServer.IsEnabled) Assert.Skip("SQL Server writes the .bak on its own machine (the container); this test uses Sqlite.");
+        var admin = app.Client(await app.AdminAsync());
+        (await admin.PutAsJsonAsync("/api/backups/passphrase", new { Passphrase })).EnsureSuccessStatusCode();
+        (await admin.PutAsJsonAsync("/api/settings/business", new { Name = "Antes", DiscountCapPercent = 10m })).EnsureSuccessStatusCode();
+        app.Clock.Advance(TimeSpan.FromSeconds(1));
+        var file = (await (await admin.PostAsync("/api/backups", null)).Json()).GetProperty("fileName").GetString()!;
+        (await admin.PutAsJsonAsync("/api/settings/business", new { Name = "Después", DiscountCapPercent = 10m })).EnsureSuccessStatusCode();
+
+        (await (await admin.PostAsJsonAsync("/api/backups/no-existe.toki-backup/restore", new { Passphrase })).ErrorCode()).ShouldBe("Backup.NotFound");
+        (await (await admin.PostAsJsonAsync("/api/backups/..%5Cotro.toki-backup/restore", new { Passphrase })).ErrorCode()).ShouldBe("Backup.NotFound");
+        (await (await admin.PostAsJsonAsync($"/api/backups/{file}/restore", new { Passphrase = "otra frase cualquiera" })).ErrorCode()).ShouldBe("Backup.WrongPassphrase");
+        var cashier = app.Client(await app.UserAsync(Roles.Cashier));
+        (await cashier.PostAsJsonAsync($"/api/backups/{file}/restore", new { Passphrase })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        app.Clock.Advance(TimeSpan.FromSeconds(1));
+        var restored = await admin.PostAsJsonAsync($"/api/backups/{file}/restore", new { Passphrase });
+        restored.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var before = (await restored.Json()).GetProperty("backupBefore").GetString()!;
+        before.ShouldContain("-antes-de-restaurar");
+
+        (await admin.GetFromJsonAsync<JsonElement>("/api/settings/business")).GetProperty("name").GetString().ShouldBe("Antes");
+        (await app.VerifyAuditAsync()).ShouldBeNull(); // the restore is recorded on the restored chain
+        var folder = app.Services.GetRequiredService<IConfiguration>()["Backup:Folder"]!;
+        Directory.GetFiles(Path.Combine(folder, "work")).ShouldBeEmpty();
+
+        // The data before the restore comes back from the backup made first.
+        (await admin.PostAsJsonAsync($"/api/backups/{before}/restore", new { Passphrase })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await admin.GetFromJsonAsync<JsonElement>("/api/settings/business")).GetProperty("name").GetString().ShouldBe("Después");
+
+        // A register selling right now: refused, nothing replaced.
+        await app.CashierWithShiftAsync();
+        (await (await admin.PostAsJsonAsync($"/api/backups/{file}/restore", new { Passphrase })).ErrorCode()).ShouldBe("Backup.RegistersOpen");
     }
 }

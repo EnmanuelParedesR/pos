@@ -44,6 +44,13 @@ internal sealed class CashRegisterReports(CashRegisterDbContext db) : ICashRegis
                       select new ShiftSummary(s.Id, r.Name, s.CashierName, s.OpenedUtc, s.ClosedUtc, s.ZNumber, s.OpeningFloat,
                           s.ExpectedCash, s.CountedCash, s.Difference)).AsNoTracking().ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<string>> OpenRegistersAsync(CancellationToken ct) =>
+        await (from s in db.Shifts
+               join r in db.Registers on s.RegisterId equals r.Id
+               where s.ClosedUtc == null
+               orderby r.Name
+               select r.Name).AsNoTracking().ToListAsync(ct);
 }
 
 internal sealed class CashRegisterDbContext(DbContextOptions<CashRegisterDbContext> options) : ModuleDbContext(options)

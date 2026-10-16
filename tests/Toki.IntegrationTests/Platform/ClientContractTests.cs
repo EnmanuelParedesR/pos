@@ -200,6 +200,12 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         (await Send<C.RoleList>(api, HttpMethod.Get, "/api/identity/roles")).Roles.ShouldNotContain(r => r.Id == role);
         await Send<C.Empty>(api, HttpMethod.Put, $"/api/cash/registers/{register}", new { Name = "Caja del frente" });
         (await Send<List<C.RegisterInfo>>(api, HttpMethod.Get, "/api/cash/registers")).ShouldHaveSingleItem().Name.ShouldBe("Caja del frente");
+
+        // Audit log (TK-213); restoring a backup is covered by RestoreBackupTests (it replaces the database).
+        (await Send<List<C.AuditUser>>(api, HttpMethod.Get, "/api/audit/users")).ShouldHaveSingleItem().Id.ShouldBe(session.UserId);
+        var audit = await Send<List<C.AuditRow>>(api, HttpMethod.Get, $"/api/audit?{range}&page=1");
+        audit.ShouldContain(r => r.Action == "cash.rename-register" && r.User == "Dueña");
+        (await Send<List<C.AuditRow>>(api, HttpMethod.Get, $"/api/audit?{range}&action=settings.business")).ShouldAllBe(r => r.ResourceId == null);
     }
 
     [Fact]

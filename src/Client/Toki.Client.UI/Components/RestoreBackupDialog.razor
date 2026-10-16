@@ -1,0 +1,94 @@
+@inject TokiApi Api
+@inject Session Session
+@inject NavigationManager Nav
+
+@* TK-213: restoring replaces every piece of the store's data, so it takes the passphrase, the registers closed and two confirmations.
+   The server backs up the current data first ("…-antes-de-restaurar") and refuses while a register is open. *@
+<Dialog Title="Restaurar respaldo" Subtitle="@($"{Format.Date(Backup.DateUtc)} · {Backup.FileName}")" OnClose="CloseAsync">
+    <ChildContent>
+        @switch (_step)
+        {
+            case Step.Passphrase:
+                <Notice Kind="Notice.Kinds.Warning" Title="Todos los datos de la tienda se reemplazan por los de este respaldo.">
+                    Lo que se hizo después (ventas, compras, cambios de precios, usuarios) se pierde de esta PC. Antes de restaurar, Toki guarda un respaldo de los datos de ahora.
+                </Notice>
+                <Field Label="Frase de los respaldos" Error="@_error" Hint="La que se usó cuando se hizo este respaldo.">
+                    <input class="esc-input" type="password" maxlength="200" autocomplete="off" aria-label="Frase de los respaldos" @bind="_passphrase" @bind:event="oninput" />
+                </Field>
+                <label class="esc-row" style="gap:8px;align-items:flex-start">
+                    <input type="checkbox" aria-label="Las cajas están cerradas" @bind="_closed" />
+                    <span>Todas las cajas están cerradas y nadie está vendiendo.</span>
+                </label>
+                break;
+            case Step.Confirm:
+                <Notice Kind="Notice.Kinds.Error" Title="@($"¿Reemplazar los datos de la tienda con el respaldo del {Format.Date(Backup.DateUtc)}?")">
+                    No se puede deshacer desde aquí; solo restaurando el respaldo que Toki guarda antes. Puede tardar unos minutos: no cierre Toki.
+                </Notice>
+                @if (_error is not null) { <Notice Title="@_error" /> }
+                break;
+            case Step.Done:
+                <Notice Kind="Notice.Kinds.Success" Title="Respaldo restaurado.">
+                    @(_before is { } b ? $"Los datos de antes quedaron en el respaldo {b}." : "No se pudo guardar un respaldo de los datos de antes (falta la frase de los respaldos en esta PC).")
+                    Vuelva a entrar en cada caja.
+                </Notice>
+                break;
+        }
+    </ChildContent>
+    <Footer>
+        @switch (_step)
+        {
+            case Step.Passphrase:
+                <Button OnClick="CloseAsync">Cancelar</Button>
+                <Button Variant="Button.Variants.Danger" Disabled="@(string.IsNullOrEmpty(_passphrase) || !_closed)" OnClick="() => _step = Step.Confirm">Continuar</Button>
+                break;
+            case Step.Confirm:
+                <Button Disabled="_sending" OnClick="() => (_step, _error) = (Step.Passphrase, null)">Volver</Button>
+                <Button Variant="Button.Variants.Danger" Disabled="_sending" OnClick="RestoreAsync">@(_sending ? "Restaurando… puede tardar unos minutos" : "Sí, reemplazar los datos")</Button>
+                break;
+            case Step.Done:
+                <Button Variant="Button.Variants.Primary" OnClick="SignInAgain">Volver a entrar</Button>
+                break;
+        }
+    </Footer>
+</Dialog>
+
+@code {
+    private enum Step { Passphrase, Confirm, Done }
+
+    [Parameter, EditorRequired] public BackupFile Backup { get; set; } = null!;
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Step _step;
+    private string? _passphrase, _error, _before;
+    private bool _closed, _sending;
+
+    private async Task RestoreAsync()
+    {
+        _sending = true;
+        // Decrypting and restoring a few GB takes minutes; the server never cuts it halfway.
+        var r = await Api.PostAsync<BackupRestored>($"/api/backups/{Uri.EscapeDataString(Backup.FileName)}/restore", new { Passphrase = _passphrase },
+            timeout: TimeSpan.FromHours(1));
+        _sending = false;
+        if (r.Value is { } done)
+        {
+            (_step, _before, _passphrase) = (Step.Done, done.BackupBefore, null);
+            return;
+        }
+        if (r.Problem!.Code == "Backup.WrongPassphrase") (_step, _error) = (Step.Passphrase, "Esa frase no abre este respaldo.");
+        else _error = r.Problem.Message;
+    }
+
+    private Task CloseAsync()
+    {
+        if (_step != Step.Done) return _sending ? Task.CompletedTask : OnClose.InvokeAsync();
+        SignInAgain();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The restored data has its own users and sessions: everyone signs in again.</summary>
+    private void SignInAgain()
+    {
+        Session.Close();
+        Nav.NavigateTo("sign-in");
+    }
+}
