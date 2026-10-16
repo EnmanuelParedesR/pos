@@ -1,0 +1,305 @@
+<!doctype html>
+<title>Logo Abastalia v2</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600;700&display=swap">
+<style>
+  /* Hoja de pruebas: una columna de direcciones; cada una con los mismos especímenes en el mismo orden para comparar fila contra fila. */
+  :root {
+    --bg: #F6F5F2; --surface: #FFFFFF; --line: #DAD5CC; --text: #191C20; --muted: #57524A; --chip: #ECE9E3;
+    --brand: #0B5CAD; --ink: #14181D; --amber: #FFC233; --night: #6DB3F5;
+    --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; --mono: "IBM Plex Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #101317; --surface: #1A1E23; --line: #2C3137; --text: #EEF0F2; --muted: #A8A39A; --chip: #23282E; color-scheme: dark; } }
+  :root[data-theme="dark"] { --bg: #101317; --surface: #1A1E23; --line: #2C3137; --text: #EEF0F2; --muted: #A8A39A; --chip: #23282E; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-block: 32px 64px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 40px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+  h2 { font-size: 22px; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+  h3 { font-size: 13px; margin: 0; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; }
+  p { margin: 0; max-width: 68ch; }
+  .lede { color: var(--muted); font-size: 16px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  section { display: grid; gap: 18px; }
+  .brief { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  .brief div { display: grid; gap: 6px; align-content: start; }
+  .brief ul { margin: 0; padding-left: 18px; color: var(--muted); }
+  .dir { border-top: 1px solid var(--line); padding-top: 28px; }
+  .dir header { display: grid; gap: 6px; }
+  .tag { justify-self: start; display: inline-block; font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--chip); color: var(--text); }
+  .tag.rec { background: var(--brand); color: #FFFFFF; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+  .box { display: grid; gap: 10px; align-content: start; min-width: 0; }
+  .spec { border-radius: 10px; padding: 16px; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; min-height: 112px; border: 1px solid var(--line); }
+  .on-light { background: #FFFFFF; } .on-dark { background: #14181D; border-color: #14181D; } .on-brand { background: #0B5CAD; border-color: #0B5CAD; } .on-paper { background: #FBFBF8; }
+  .lockup { display: inline-flex; align-items: center; gap: .3em; font-weight: 700; letter-spacing: -0.02em; font-size: 26px; color: #14181D; }
+  .on-dark .lockup, .on-brand .lockup { color: #FFFFFF; }
+  .px { image-rendering: pixelated; image-rendering: crisp-edges; display: block; }
+  .pxrow { display: flex; gap: 18px; align-items: flex-end; flex-wrap: wrap; }
+  .pxrow figure { margin: 0; display: grid; gap: 4px; justify-items: start; font-family: var(--mono); font-size: 11px; color: #57524A; }
+  .on-dark figure { color: #A8A39A; }
+  .cap { font-size: 13px; color: var(--muted); }
+  /* Mockups */
+  .tabs { background: #DEE1E6; border-radius: 10px 10px 0 0; padding: 8px 8px 0; display: flex; gap: 4px; }
+  .tab { background: #FFFFFF; border-radius: 8px 8px 0 0; padding: 7px 10px; display: flex; align-items: center; gap: 8px; font-size: 12px; color: #1F1F1F; min-width: 0; }
+  .tab.off { background: transparent; color: #444; }
+  .tab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabs-dark { background: #202124; } .tabs-dark .tab { background: #35363A; color: #E8EAED; } .tabs-dark .tab.off { background: transparent; color: #9AA0A6; }
+  .gad { background: #FFFFFF; border: 1px solid #DADCE0; border-radius: 10px; padding: 14px 16px; display: grid; gap: 4px; font-family: Arial, sans-serif; color: #202124; }
+  .gad .src { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .gad .fav { width: 26px; height: 26px; border-radius: 50%; background: #F1F3F4; border: 1px solid #ECEDEF; display: grid; place-items: center; }
+  .gad a { color: #1A0DAB; font-size: 19px; text-decoration: none; line-height: 1.3; }
+  .gad small { font-size: 12px; font-weight: 700; }
+  .meta { background: #FFFFFF; border: 1px solid #DADDE1; border-radius: 10px; overflow: hidden; font-family: "Segoe UI", Helvetica, Arial, sans-serif; color: #050505; max-width: 100%; }
+  .meta .hd { display: flex; gap: 8px; align-items: center; padding: 10px 12px; font-size: 13px; }
+  .meta .hd b { display: block; font-size: 14px; }
+  .meta .hd i { font-style: normal; color: #65676B; font-size: 12px; }
+  .meta .txt { padding: 0 12px 10px; font-size: 14px; }
+  .meta .art { aspect-ratio: 1 / 1; width: 100%; max-width: 100%; display: grid; place-items: center; align-content: center; gap: 12px; padding: 18px; text-align: center; color: #FFFFFF; background: #0B5CAD; }
+  .meta .art strong { font-size: 25px; line-height: 1.1; letter-spacing: -0.02em; font-family: var(--sans); }
+  .meta .art em { font-style: normal; color: #14181D; background: #FFC233; padding: 0 .2em; border-radius: 4px; }
+  .meta .ft { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: #F0F2F5; padding: 10px 12px; font-size: 12px; color: #65676B; }
+  .meta .ft b { display: block; color: #050505; font-size: 14px; }
+  .meta .cta { background: #E4E6EB; color: #050505; border-radius: 6px; padding: 7px 12px; font-weight: 600; font-size: 14px; white-space: nowrap; }
+  .meta .likes { display: flex; gap: 6px; align-items: center; padding: 8px 12px; font-size: 13px; color: #65676B; border-top: 1px solid #E4E6EB; }
+  .meta .likes span { width: 18px; height: 18px; border-radius: 50%; background: #0866FF; display: inline-block; }
+  .wa { background: #FFFFFF; border: 1px solid #E9EDEF; border-radius: 10px; font-family: "Segoe UI", Helvetica, Arial, sans-serif; overflow: hidden; }
+  .wa .row { display: flex; gap: 12px; align-items: center; padding: 10px 14px; }
+  .wa .row + .row { border-top: 1px solid #E9EDEF; }
+  .wa .row div { min-width: 0; flex: 1; }
+  .wa b { font-weight: 600; font-size: 15px; color: #111B21; display: flex; justify-content: space-between; }
+  .wa b small { font-weight: 400; color: #1DAA61; font-size: 12px; }
+  .wa p { color: #667781; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gray-av { width: 49px; height: 49px; border-radius: 50%; background: #DFE5E7; flex: none; }
+  .receipt { background: #FFFFFF; color: #000000; width: 220px; max-width: 100%; padding: 14px 12px 18px; font-family: var(--mono); font-size: 11px; line-height: 1.35; box-shadow: 0 1px 0 #DAD5CC, 0 8px 18px rgba(20,24,29,.12); display: grid; gap: 6px; justify-items: center; text-align: center;
+    -webkit-mask: radial-gradient(circle at 6px 100%, transparent 5px, #000 5.5px) 0 0 / 12px 100% repeat-x; mask: radial-gradient(circle at 6px 100%, transparent 5px, #000 5.5px) 0 0 / 12px 100% repeat-x; }
+  .receipt b { font-size: 12px; }
+  .receipt .ln { width: 100%; border-top: 1px dashed #000; }
+  .receipt .it { width: 100%; display: flex; justify-content: space-between; }
+  .avatars { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .panelbar { background: #14181D; border-radius: 10px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; color: #EEF0F2; font-size: 13px; gap: 10px; }
+  .panelbar .lockup { font-size: 20px; color: #FFFFFF; }
+  /* Comparación y crítica */
+  .strip { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  td.score { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .cmp td:first-child { font-weight: 600; white-space: nowrap; }
+  .cmp .cellspec { display: flex; align-items: center; gap: 10px; }
+  .crit { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .crit div { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 8px; align-content: start; }
+  .crit ul { margin: 0; padding-left: 18px; }
+  .rec { background: var(--surface); border: 2px solid var(--brand); border-radius: 12px; padding: 20px; display: grid; gap: 10px; }
+  .swatches { display: flex; flex-wrap: wrap; gap: 10px; }
+  .sw { display: grid; grid-template-columns: 40px auto; gap: 2px 10px; align-items: center; font-size: 13px; }
+  .sw i { grid-row: span 2; width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line); }
+  .sw small { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  @media (max-width: 520px) { h1 { font-size: 24px; } .grid { grid-template-columns: 1fr; } }
+</style>
+
+<div class="wrap">
+  <header style="display:grid; gap:10px">
+    <span class="eyebrow">Abastalia · marca · exploración v2 · 16 oct 2026</span>
+    <h1>¿Qué logo aguanta un anuncio, un favicon y un recibo térmico?</h1>
+    <p class="lede">El logo actual (etiqueta con ojo que guiña y la "a") viene de Toki. Aquí hay cuatro direcciones, cada una probada en los mismos usos reales: 16 px, avatar redondo, anuncio de Meta y Google, WhatsApp, modo oscuro y recibo de impresora térmica a una tinta. Los cuadros pixelados son píxeles reales, no dibujos escalados.</p>
+  </header>
+
+  <section>
+    <h2>Qué debe decir la marca y dónde vive</h2>
+    <div class="brief">
+      <div><h3>Abasto</h3><p class="cap">Abastalia viene de abasto y abastecer: mercancía, góndola, precio. El símbolo debe sonar a tienda de barrio, no a banco ni a app de delivery.</p></div>
+      <div><h3>Confianza con el dinero</h3><p class="cap">Es la caja del negocio. Formas firmes, sin chiste en el símbolo; el azul se queda porque ya carga esa confianza (blanco sobre azul 6.7:1).</p></div>
+      <div><h3>Cercanía de colmado</h3><p class="cap">Minúsculas, esquinas redondeadas, un toque cálido. La personalidad la pone Talia en los mensajes, no el logo.</p></div>
+      <div><h3>Usos que mandan</h3>
+        <ul class="cap">
+          <li>Favicon 16 px y pestaña del panel</li>
+          <li>Avatar redondo: Meta, Instagram, WhatsApp, Google</li>
+          <li>Anuncio 1:1 en el feed, junto al azul de Facebook</li>
+          <li>Recibo de 58 mm, 203 ppp, una tinta, sin grises</li>
+          <li>Marco oscuro del panel y de la caja</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Las cinco, lado a lado</h2>
+    <p class="cap">Columna 16 px: píxeles reales ampliados 4×. Columna recibo: el símbolo a 48 puntos en blanco y negro puro, como lo imprime la térmica.</p>
+    <div class="strip"><table class="cmp" id="cmp"><thead><tr><th>Dirección</th><th>Símbolo</th><th>16 px real</th><th>Avatar</th><th>Oscuro</th><th>Recibo</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Color</h2>
+    <p class="cap">El azul se queda. Se propone sumar un acento ámbar solo para anuncios, avatar y momentos de marca: el azul Abastalia contra el azul de Facebook tiene 1.4:1, se funde con la interfaz de Meta. El ámbar sobre azul da 4.1:1 y la tinta sobre ámbar 9.9:1. Ámbar nunca va solo sobre blanco (1.5:1), ni como texto.</p>
+    <div class="swatches">
+      <div class="sw"><i style="background:#0B5CAD"></i>Azul Abastalia<small>#0B5CAD · se queda</small></div>
+      <div class="sw"><i style="background:#14181D"></i>Tinta<small>#14181D · se queda</small></div>
+      <div class="sw"><i style="background:#6DB3F5"></i>Azul noche<small>#6DB3F5 · modo oscuro</small></div>
+      <div class="sw"><i style="background:#FFC233"></i>Ámbar (nuevo)<small>#FFC233 · solo acento</small></div>
+      <div class="sw"><i style="background:#0866FF"></i>Azul de Facebook<small>#0866FF · referencia</small></div>
+    </div>
+  </section>
+
+  <div id="dirs" style="display:grid; gap:40px"></div>
+
+  <section class="dir">
+    <h2>Crítica de diseño</h2>
+    <p class="cap">Puntaje de 1 a 5 por uso, mirando los especímenes de arriba. "Distinción" es qué tan poco se parece a otras apps de la categoría y a un ícono genérico.</p>
+    <div class="strip"><table>
+      <thead><tr><th>Dirección</th><th>16 px</th><th>Avatar</th><th>Anuncio</th><th>Recibo</th><th>Oscuro</th><th>Dice "abasto"</th><th>Distinción</th><th>Total</th></tr></thead>
+      <tbody>
+        <tr><td>Actual · C5</td><td class="score">2</td><td class="score">2</td><td class="score">3</td><td class="score">3</td><td class="score">3</td><td class="score">3</td><td class="score">3</td><td class="score">19</td></tr>
+        <tr><td><b>A · Etiqueta 2.0</b></td><td class="score">4</td><td class="score">4</td><td class="score">4</td><td class="score">5</td><td class="score">4</td><td class="score">5</td><td class="score">4</td><td class="score"><b>30</b></td></tr>
+        <tr><td>B · Toldo</td><td class="score">2</td><td class="score">3</td><td class="score">4</td><td class="score">3</td><td class="score">3</td><td class="score">5</td><td class="score">3</td><td class="score">23</td></tr>
+        <tr><td>C · Moneda</td><td class="score">4</td><td class="score">5</td><td class="score">4</td><td class="score">5</td><td class="score">4</td><td class="score">1</td><td class="score">2</td><td class="score">25</td></tr>
+        <tr><td>D · Sello</td><td class="score">5</td><td class="score">5</td><td class="score">3</td><td class="score">5</td><td class="score">5</td><td class="score">1</td><td class="score">1</td><td class="score">25</td></tr>
+      </tbody>
+    </table></div>
+    <div class="crit">
+      <div><h3>Actual · C5</h3><ul class="cap">
+        <li>Tres ideas en un símbolo chico: etiqueta, ojo y letra. A 16 px el ojo y la "a" se vuelven una mancha.</li>
+        <li>La punta a la izquierda deja un hueco en el avatar redondo; el símbolo ocupa menos de la mitad del círculo.</li>
+        <li>El ojo que guiña era de la mascota de Toki. Con Talia como asistente ya no cuenta nada.</li>
+      </ul></div>
+      <div><h3>A · Etiqueta 2.0</h3><ul class="cap">
+        <li>Conserva lo que sí funcionaba (la etiqueta de precio = abasto) y quita el ojo. El hueco de colgar es real en una etiqueta y se imprime perfecto a una tinta.</li>
+        <li>Girada 45°, la etiqueta llena el cuadrado y el círculo: la "a" crece de 25% a 40% del ancho.</li>
+        <li>Riesgo: a 16 px el hueco queda en un píxel. Se mantiene igual porque la esquina cortada ya distingue la silueta.</li>
+        <li>Riesgo: un cuadrado con una esquina cortada recuerda al ícono de documento. El corte va arriba a la izquierda (el documento lo tiene a la derecha) y el hueco lo deja claro desde 24 px.</li>
+        <li>El dueño y los clientes que ya vieron la marca la reconocen como la misma familia.</li>
+      </ul></div>
+      <div><h3>B · Toldo</h3><ul class="cap">
+        <li>Es la que más dice "colmado": el toldo a rayas es la fachada de barrio. En el anuncio grande es simpática.</li>
+        <li>No escala: a 16 px y en el recibo el toldo y la "a" se pegan; la letra no se lee por debajo de 32 px.</li>
+        <li>El ícono de "tienda" con toldo es genérico (Google Maps, Lucide, Shopify POS lo usan), y amarra la marca a colmados cuando también venden carnicerías y delis.</li>
+      </ul></div>
+      <div><h3>C · Moneda</h3><ul class="cap">
+        <li>La "a" geométrica cuya panza es una moneda llena: lectura doble de dinero y de letra. Formas llenas, sin trazos finos: la mejor de las cuatro en el recibo y a 16 px.</li>
+        <li>A tamaño chico se lee como un interruptor encendido o como "oI", no como "a". No dice "abasto": es más fintech que tienda.</li>
+      </ul></div>
+      <div><h3>D · Sello</h3><ul class="cap">
+        <li>La "a" grande en un cuadrado redondeado: la más legible en todos los tamaños y la más fácil de producir.</li>
+        <li>No cuenta nada: cualquier app con "a" (Airtable, Asana, Alegra) puede verse así. En un feed lleno de cuadros azules no se recuerda.</li>
+        <li>Útil como respaldo: es el piso de legibilidad contra el que se miden las demás.</li>
+      </ul></div>
+    </div>
+    <div class="rec">
+      <span class="tag rec">Recomendación</span>
+      <h2>A · Etiqueta 2.0, con ámbar como acento en anuncios y avatar</h2>
+      <p>Resuelve los problemas reales del logo actual (16 px, avatar, el ojo de Toki) sin tirar lo que ya comunica abasto y precio. Se imprime bien a una tinta, llena el círculo de las redes y sigue siendo la misma familia que el dueño ya conoce. El ámbar se usa solo en el fondo del avatar alterno y en los anuncios, para despegarse del azul de Facebook; la interfaz del panel y la caja siguen en azul.</p>
+      <p class="cap">Si se elige, se aplica a: Logo.razor (Escuadra), Logo en ui.tsx, favicon.svg, Printables.cs (recibo), og/abastalia.png y og/logo.png, sistema-de-diseno.md y las bases visuales de las pruebas de interfaz.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+const GA = "M60 50 Q63 44 72 44 Q84 44 84 56 V84 M84 64 H71 Q59 64 59 74 Q59 84 71 84 Q80 84 84 76";
+const at = (cx, cy, s) => `translate(${cx} ${cy}) scale(${s}) translate(-71.5 -64)`;
+const SQ = "M60 8 C96 8 112 24 112 60 C112 96 96 112 60 112 C24 112 8 96 8 60 C8 24 24 8 60 8Z";
+let uid = 0;
+// Colores por modo: forma, letra, acento (el acento solo existe en "color", sobre azul).
+const MODES = {
+  color:   { shape: "#0B5CAD", letter: "#FFFFFF", accent: "#FFC233", pupil: "#14181D" },
+  dark:    { shape: "#FFFFFF", letter: "#0B5CAD", accent: "#0B5CAD", pupil: "#FFFFFF" },
+  reverse: { shape: "#FFFFFF", letter: "#0B5CAD", accent: "#0B5CAD", pupil: "#FFFFFF" },
+  mono:    { shape: "#000000", letter: "#FFFFFF", accent: "#FFFFFF", pupil: "#000000" },
+};
+const letter = (t, c, w = 10) => `<path d="${GA}" transform="${t}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+const DIRS = [
+  { id: "actual", name: "Actual · C5", tag: "Referencia",
+    idea: "Etiqueta de precio con la punta a la izquierda, ojo que guiña y la \"a\" de dos pisos.",
+    draw: m => `<path d="M44 24 H96 Q104 24 104 32 V88 Q104 96 96 96 H44 L16 60 Z" fill="${m.shape}" stroke="${m.shape}" stroke-width="6" stroke-linejoin="round"/><circle cx="35" cy="60" r="8" fill="${m.letter}"/><circle cx="32.5" cy="60" r="3.8" fill="${m.pupil}"/>${letter("", m.letter)}`,
+    glyph: p => `<g transform="translate(60 60) scale(.8) translate(-60 -60)"><path d="M44 24 H96 Q104 24 104 32 V88 Q104 96 96 96 H44 L16 60 Z" fill="${p.shape}" stroke="${p.shape}" stroke-width="6" stroke-linejoin="round"/><circle cx="35" cy="60" r="8" fill="${p.cut}"/><circle cx="32.5" cy="60" r="3.8" fill="${p.shape}"/>${letter("", p.cut)}</g>` },
+  { id: "a", name: "A · Etiqueta 2.0", tag: "Evolución · recomendada",
+    idea: "La misma etiqueta de precio, girada 45° para que llene el cuadrado. El ojo se cambia por el hueco de colgar, que es real en cualquier etiqueta de colmado. La \"a\" crece.",
+    talks: "Abasto y precio, sin perder la marca conocida.",
+    draw: m => { const id = "h" + (uid++); return `<mask id="${id}"><rect width="120" height="120" fill="#fff"/><circle cx="37" cy="37" r="7.5" fill="#000"/></mask><path mask="url(#${id})" d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z" fill="${m.shape}" stroke="${m.shape}" stroke-width="6" stroke-linejoin="round"/>${letter(at(68, 68, 1.2), m.letter)}`; },
+    glyph: p => `<g transform="translate(60 60) scale(.74) translate(-60 -60)">${DIRS[1].draw({ shape: p.shape, letter: p.cut })}</g>` },
+  { id: "b", name: "B · Toldo", tag: "Colmado",
+    idea: "La fachada del colmado: toldo a rayas con borde ondulado sobre la tienda, y la \"a\" en la puerta. En color, el toldo alterna azul y ámbar.",
+    talks: "Cercanía de barrio, la más literal.",
+    draw: m => { let s = ""; for (let i = 0; i < 4; i++) { const x0 = 12 + 24 * i + 1.5, x1 = x0 + 21; s += `<path d="M${x0} 14 H${x1} V40 A10.5 10.5 0 0 1 ${x0} 40 Z" fill="${i % 2 && m === MODES.color ? m.accent : m.shape}"/>`; }
+      return s + `<path d="M22 58 H98 V98 Q98 106 90 106 H30 Q22 106 22 98 Z" fill="${m.shape}"/>${letter(at(60, 82, .78), m.letter, 11)}`; },
+    glyph: p => { let s = ""; for (let i = 0; i < 4; i++) { const x0 = 12 + 24 * i + 1.5, x1 = x0 + 21; s += `<path d="M${x0} 14 H${x1} V40 A10.5 10.5 0 0 1 ${x0} 40 Z" fill="${i % 2 ? p.accent : p.shape}"/>`; }
+      return `<g transform="translate(60 60) scale(.72) translate(-60 -60)">${s}<path d="M22 58 H98 V98 Q98 106 90 106 H30 Q22 106 22 98 Z" fill="${p.shape}"/>${letter(at(60, 82, .78), p.cut, 11)}</g>`; } },
+  { id: "c", name: "C · Moneda", tag: "Dinero",
+    idea: "Una \"a\" geométrica cuya panza es una moneda llena, dentro de un cuadrado redondeado. En color, la moneda es ámbar.",
+    talks: "Confianza con el dinero; formas llenas que no se rompen.",
+    draw: m => `<path d="${SQ}" fill="${m.shape}"/><circle cx="53" cy="64" r="21" fill="${m.accent}"/><rect x="77" y="43" width="13" height="42" rx="6.5" fill="${m.letter}"/>`,
+    glyph: p => `<circle cx="51" cy="60" r="24" fill="${p.accent}"/><rect x="78" y="36" width="15" height="48" rx="7.5" fill="${p.fg}"/>` },
+  { id: "d", name: "D · Sello", tag: "Neutral",
+    idea: "La \"a\" de dos pisos grande, sola, en un cuadrado redondeado. Sin dibujo extra.",
+    talks: "Legibilidad máxima; no cuenta una historia.",
+    draw: m => `<path d="${SQ}" fill="${m.shape}"/>${letter(at(61, 61, 1.5), m.letter)}`,
+    glyph: p => letter(at(61, 61, 1.6), p.fg) },
+];
+const svg = (d, size, mode = "color") => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 120 120" role="img" aria-label="Abastalia">${d.draw(MODES[mode])}</svg>`;
+// Avatar redondo: fondo azul (o ámbar) y el símbolo invertido; C y D usan solo la letra porque el círculo ya es su contenedor.
+const AV = {
+  "#0B5CAD": { shape: "#FFFFFF", cut: "#0B5CAD", fg: "#FFFFFF", accent: "#FFC233" },
+  "#FFC233": { shape: "#0B5CAD", cut: "#FFFFFF", fg: "#0B5CAD", accent: "#0B5CAD" },
+};
+const avatar = (d, size, bg = "#0B5CAD") => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 120 120" role="img" aria-label="Abastalia"><circle cx="60" cy="60" r="60" fill="${bg}"/>${d.glyph(AV[bg])}</svg>`;
+const lockup = (d, size, mode = "color") => `<span class="lockup" style="font-size:${size * .78}px">${svg(d, size, mode)}abastalia</span>`;
+
+// Píxeles reales: dibuja el SVG en un lienzo del tamaño pedido y lo amplía sin suavizar. "mono" umbraliza a blanco/negro como la térmica.
+function pixel(markup, px, scale, { mono = false, bg = "#FFFFFF" } = {}) {
+  const c = document.createElement("canvas"); c.width = px; c.height = px; c.className = "px";
+  c.style.width = c.style.height = px * scale + "px";
+  const img = new Image();
+  img.onload = () => { const g = c.getContext("2d"); g.fillStyle = bg; g.fillRect(0, 0, px, px); g.drawImage(img, 0, 0, px, px);
+    if (mono) { try { const d = g.getImageData(0, 0, px, px); for (let i = 0; i < d.data.length; i += 4) { const v = (d.data[i] * .299 + d.data[i + 1] * .587 + d.data[i + 2] * .114) < 140 ? 0 : 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; } g.putImageData(d, 0, 0); } catch (e) { c.style.filter = "grayscale(1) contrast(8)"; } } };
+  img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(markup.replace(/width="\d+" height="\d+"/, `width="${px}" height="${px}"`));
+  return c;
+}
+const fig = (canvas, label) => { const f = document.createElement("figure"); f.append(canvas); const s = document.createElement("span"); s.textContent = label; f.append(s); return f; };
+
+// Tabla comparativa
+const tb = document.querySelector("#cmp tbody");
+for (const d of DIRS) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${d.name}</td><td><div class="cellspec">${svg(d, 48)}${svg(d, 24)}</div></td><td class="t16"></td><td><div class="cellspec">${avatar(d, 40)}${avatar(d, 40, "#FFC233")}</div></td><td><div class="cellspec" style="background:#14181D;padding:8px;border-radius:8px">${svg(d, 32, "dark")}</div></td><td class="trc"></td>`;
+  tr.querySelector(".t16").append(pixel(svg(d, 16), 16, 4));
+  tr.querySelector(".trc").append(pixel(svg(d, 48, "mono"), 48, 1.5, { mono: true }));
+  tb.append(tr);
+}
+
+// Una sección por dirección, mismos especímenes en el mismo orden
+const host = document.getElementById("dirs");
+for (const d of DIRS.slice(1)) {
+  const s = document.createElement("section"); s.className = "dir"; s.id = "dir-" + d.id;
+  s.innerHTML = `
+    <header><span class="tag${d.id === "a" ? " rec" : ""}">${d.tag}</span><h2>${d.name}</h2><p>${d.idea}</p><p class="cap">Comunica: ${d.talks}</p></header>
+    <div class="grid">
+      <div class="box"><h3>Claro, de 120 a 16 px</h3><div class="spec on-light">${[120, 64, 48, 32, 24, 16].map(n => svg(d, n)).join("")}</div></div>
+      <div class="box"><h3>Oscuro y sobre azul</h3><div class="spec on-dark">${[64, 32, 16].map(n => svg(d, n, "dark")).join("")}${lockup(d, 30, "dark")}</div><div class="spec on-brand" style="min-height:0">${lockup(d, 30, "reverse")}</div></div>
+      <div class="box"><h3>Nombre completo</h3><div class="spec on-light" style="align-items:center">${lockup(d, 44)}</div><div class="spec on-light" style="min-height:0;align-items:center">${lockup(d, 22)}</div></div>
+      <div class="box"><h3>Píxeles reales</h3><div class="spec on-light pxrow" data-px></div><p class="cap">16 y 32 px dibujados al tamaño real y ampliados 4× y 2×, en claro y en pestaña oscura.</p></div>
+      <div class="box"><h3>Pestaña y cabecera del panel</h3>
+        <div><div class="tabs"><div class="tab">${svg(d, 16)}<span>Abastalia · Panel</span></div><div class="tab off"><span>WhatsApp</span></div></div>
+        <div class="tabs tabs-dark" style="border-radius:0 0 10px 10px"><div class="tab">${svg(d, 16, "dark")}<span>Abastalia · Panel</span></div><div class="tab off"><span>Gmail</span></div></div></div><div class="panelbar">${lockup(d, 26, "dark")}<span>Colmado La Esquina</span></div><div class="panelbar" style="background:#FFFFFF;color:#14181D;border:1px solid #DAD5CC">${lockup(d, 26)}<span>Colmado La Esquina</span></div></div>
+      <div class="box"><h3>Avatar redondo</h3><div class="spec on-light avatars">${avatar(d, 110)}${avatar(d, 110, "#FFC233")}${avatar(d, 40)}${avatar(d, 40, "#FFC233")}${avatar(d, 24)}</div><p class="cap">Azul para perfiles; ámbar como alterno en anuncios. 40 px es el tamaño del avatar en el feed de Facebook.</p></div>
+      <div class="box"><h3>Anuncio en el feed de Meta</h3>
+        <div class="meta"><div class="hd">${avatar(d, 36)}<div><b>Abastalia</b><i>Publicidad</i></div></div>
+        <div class="txt">Vende, cobra y cuadra la caja de tu colmado sin cuaderno. Factura electrónica incluida.</div>
+        <div class="art">${svg(d, 84, "reverse")}<strong>La caja <em>cuadra</em><br>al cerrar el día</strong><span style="font-size:13px;opacity:.9">Prueba gratis 30 días</span></div>
+        <div class="ft"><div>abastalia.com<b>Punto de venta para colmados</b></div><span class="cta">Más información</span></div>
+        <div class="likes"><span></span>128 · Me gusta</div></div></div>
+      <div class="box"><h3>Google y WhatsApp</h3>
+        <div class="gad"><small>Patrocinado</small><div class="src"><span class="fav">${svg(d, 18)}</span><div>Abastalia<br><span style="color:#4D5156">https://abastalia.com</span></div></div><a href="#dir-${d.id}">Abastalia: punto de venta para colmados y carnicerías</a><span style="font-size:14px;color:#4D5156">Caja, inventario y factura electrónica de la DGII en un solo sistema.</span></div>
+        <div class="wa"><div class="row">${avatar(d, 49)}<div><b>Abastalia <small>9:02 p. m.</small></b><p>Talia: Cierre de hoy: RD$ 18,450 en 112 ventas. La caja cuadró.</p></div></div><div class="row"><span class="gray-av"></span><div><b>Suplidor Lácteos <small style="color:#667781">8:15 p. m.</small></b><p>Mañana paso con el pedido</p></div></div></div></div>
+      <div class="box"><h3>Recibo térmico, una tinta</h3><div class="spec on-paper" style="justify-content:center" data-receipt></div><p class="cap">Símbolo a 48 puntos, 203 ppp, umbral a blanco y negro. Así sale del Printables.cs.</p></div>
+    </div>`;
+  host.append(s);
+  const pr = s.querySelector("[data-px]");
+  pr.append(fig(pixel(svg(d, 16), 16, 4), "16 px"), fig(pixel(svg(d, 32), 32, 2), "32 px"), fig(pixel(svg(d, 16, "dark"), 16, 4, { bg: "#35363A" }), "16 px oscuro"));
+  const rc = document.createElement("div"); rc.className = "receipt";
+  rc.append(pixel(svg(d, 48, "mono"), 48, 1.5, { mono: true }));
+  rc.insertAdjacentHTML("beforeend", `<b>COLMADO LA ESQUINA</b><span>RNC 1-31-00000-0 · Tel. 809-555-0134</span><div class="ln"></div><div class="it"><span>Arroz 5 lb</span><span>RD$ 185.00</span></div><div class="it"><span>Salami 1 lb</span><span>RD$ 210.00</span></div><div class="it"><span>Refresco 2 L</span><span>RD$ 95.00</span></div><div class="ln"></div><div class="it"><b>TOTAL</b><b>RD$ 490.00</b></div><span>Hecho con abastalia.com</span>`);
+  s.querySelector("[data-receipt]").append(rc);
+}
+</script>
