@@ -63,8 +63,10 @@ internal sealed class Business
     public TimeSpan? BackupTime { get; set; }
     public int? BackupKeep { get; set; }
     public bool? BackupAutomatic { get; set; }
+    /// <summary>R11 A16: card and transfer payments at the register need their authorization or transfer number.</summary>
+    public bool RequirePaymentReference { get; set; } = true;
 
-    public BusinessProfile ToProfile() => new(Name, Rnc, Address, Phone, ReceiptFooter, DiscountCapPercent);
+    public BusinessProfile ToProfile() => new(Name, Rnc, Address, Phone, ReceiptFooter, DiscountCapPercent, RequirePaymentReference);
 }
 
 internal sealed class SettingsDbContext(DbContextOptions<SettingsDbContext> options) : ModuleDbContext(options)
@@ -86,7 +88,8 @@ internal sealed class BusinessConfiguration : IEntityTypeConfiguration<Business>
         b.Property(n => n.SupervisorApprovals).HasMaxLength(500);
         b.Property(n => n.BackupCopyTo).HasMaxLength(260);
         // Literal values: changing a property default later must not overwrite the owner's settings through a migration.
-        b.HasData(new Business { Id = 1, Name = "Mi tienda", DiscountCapPercent = 10 });
+        b.Property(n => n.RequirePaymentReference).HasDefaultValue(true);
+        b.HasData(new Business { Id = 1, Name = "Mi tienda", DiscountCapPercent = 10, RequirePaymentReference = true });
     }
 }
 
@@ -108,7 +111,9 @@ internal static class GetBusinessProfile
 
 internal static class UpdateBusinessProfile
 {
-    public sealed record Command(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent) : ICommand<Ok>;
+    /// <param name="RequirePaymentReference">R11 A16; null keeps it as it is (older back offices do not send it).</param>
+    public sealed record Command(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent,
+        bool? RequirePaymentReference = null) : ICommand<Ok>;
 
     internal sealed class Validator : AbstractValidator<Command>
     {
@@ -140,6 +145,7 @@ internal static class UpdateBusinessProfile
             b.Phone = c.Phone?.Trim();
             b.ReceiptFooter = c.ReceiptFooter?.Trim();
             b.DiscountCapPercent = c.DiscountCapPercent;
+            b.RequirePaymentReference = c.RequirePaymentReference ?? b.RequirePaymentReference;
             await audit.RecordAsync("settings.business", "Business", Guid.Empty, c, ct);
             return Ok.Value;
         }

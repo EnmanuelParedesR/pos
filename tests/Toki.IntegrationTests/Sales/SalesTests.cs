@@ -107,7 +107,7 @@ public sealed class SalesTests(TokiApp app) : IClassFixture<TokiApp>
         };
 
         (await (await cashier.SellAsync(Body())).ErrorCode()).ShouldBe("Approval.Required");
-        var ok = await cashier.SellAsync(Body(await cashier.Client.ApproveAsync("sales.large-discount", saleId)));
+        var ok = await cashier.SellSupervisedAsync(saleId, Body);
         ok.StatusCode.ShouldBe(HttpStatusCode.Created);
         (await ok.Json()).GetProperty("total").GetDecimal().ShouldBe(94.40m);
     }
@@ -137,11 +137,15 @@ public sealed class SalesTests(TokiApp app) : IClassFixture<TokiApp>
         });
         withoutRnc.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
-        var withRnc = await cashier.SellAsync(new
+        // R11 A8: to an RNC typed at the register (not a customer on file) only with customers.manage or a supervisor.
+        var saleId = Guid.CreateVersion7();
+        object WithRnc(Guid[] approvals) => new
         {
-            SaleId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Lines = new[] { Line(soda, 1) }, Payments = new[] { new { Method = "Cash", Amount = 59m } },
-            ExpectedTotal = 59m, DocumentType = "FiscalCredit31", CustomerRnc = "131245678", CustomerName = "Colmado El Sol SRL",
-        });
+            SaleId = saleId, ShiftId = cashier.ShiftId, Lines = new[] { Line(soda, 1) }, Payments = new[] { new { Method = "Cash", Amount = 59m } },
+            ExpectedTotal = 59m, DocumentType = "FiscalCredit31", CustomerRnc = "131245678", CustomerName = "Colmado El Sol SRL", SupervisorApprovals = approvals,
+        };
+        (await (await cashier.SellAsync(WithRnc([]))).ErrorCode()).ShouldBe("Approval.Required");
+        var withRnc = await cashier.SellSupervisedAsync(saleId, WithRnc);
         withRnc.StatusCode.ShouldBe(HttpStatusCode.Created);
         (await withRnc.Json()).GetProperty("eNcf").GetString()!.ShouldStartWith("E31");
     }
@@ -184,13 +188,13 @@ public sealed class SalesTests(TokiApp app) : IClassFixture<TokiApp>
         var porkChopLine = detail.GetProperty("lines").EnumerateArray().First(l => l.GetProperty("description").GetString()!.StartsWith("Chuleta")).GetProperty("id").GetGuid();
         var sodaLine = detail.GetProperty("lines").EnumerateArray().First(l => l.GetProperty("description").GetString()!.StartsWith("Refresco")).GetProperty("id").GetGuid();
 
-        object ReturnBody(Guid id, Guid approval, params object[] lines) =>
+        object ReturnBody(Guid id, Guid? approval, params object[] lines) =>
             new { ReturnId = id, ShiftId = cashier.ShiftId, Lines = lines, Method = "Cash", Reason = "Mal estado", SupervisorApprovalId = approval };
 
         // 1 lb of pork chop goes to waste (not restocked) and 1 soda back to the shelf.
         var returnId = Guid.CreateVersion7();
-        var r = await cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", ReturnBody(returnId, await cashier.Client.ApproveAsync("sales.return", saleId),
-            new { SaleLineId = porkChopLine, Quantity = 1m, Restock = false }, new { SaleLineId = sodaLine, Quantity = 1m, Restock = true }));
+        var r = await cashier.Client.SupervisedAsync(saleId, approval => cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", ReturnBody(returnId, approval,
+            new { SaleLineId = porkChopLine, Quantity = 1m, Restock = false }, new { SaleLineId = sodaLine, Quantity = 1m, Restock = true })));
         r.StatusCode.ShouldBe(HttpStatusCode.OK);
         var ret = await r.Json();
         ret.GetProperty("total").GetDecimal().ShouldBe(165m + 59m);

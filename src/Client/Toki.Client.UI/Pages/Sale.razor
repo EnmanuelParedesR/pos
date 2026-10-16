@@ -372,27 +372,31 @@
     private async Task RemoveLineAsync()
     {
         _focusScanner = true;
-        if (Cart.Selected is { } id && await EditableAsync() && await SupervisorAllowsAsync("Quitar una línea")) Cart.Remove(id);
+        if (Cart.SelectedLine is { } line && await EditableAsync()
+            && await RemovalAllowedAsync("Line", line.Name, line.Quantity, line.Total, "Quitar una línea")) Cart.Remove(line.Id);
     }
 
     private async Task VoidSale()
     {
         Close();
-        if (!await SupervisorAllowsAsync("Anular la venta en curso")) return;
+        if (!await RemovalAllowedAsync("Sale", $"{Cart.Lines.Count} líneas", Cart.Lines.Count, Cart.Total, "Anular la venta en curso")) return;
         Cart.Clear();
         _notice = new(Notice.Kinds.Info, "Venta anulada antes de cobrar.");
     }
 
-    /// <summary>Removing a line or voiding the sale in progress: the cashier does it alone unless the store asks a supervisor for it
-    /// (Configuración → Cajas, TK-210) and the role lacks sales.remove-line. Read on each use, so a change applies at once.</summary>
-    // shortcut: with the policy unreadable (server down) the cashier goes on alone; nothing was charged and nothing can be charged offline.
-    private async Task<bool> SupervisorAllowsAsync(string reason)
+    /// <summary>R11 A5: removing a line or voiding the sale in progress is recorded on the server (the cashier's Z and the audit log). The server
+    /// asks for a supervisor when the store's policy says so (TK-210) and the role lacks sales.remove-line.</summary>
+    // shortcut: with the server down the cashier goes on alone; nothing was charged and nothing can be charged offline.
+    private async Task<bool> RemovalAllowedAsync(string kind, string description, decimal quantity, decimal amount, string reason)
     {
-        const string permission = "sales.remove-line";
-        if (Session.Can(permission)) return true;
-        var policy = (await Api.GetAsync<List<ApprovalRule>>("/api/settings/approvals")).Value;
-        if (policy?.Find(r => r.Permission == permission) is not { Required: true }) return true;
-        return await Approver.RequestAsync(permission, Cart.SaleId, reason) is not null;
+        if (Session.Shift is not { } shift) return true;
+        var removal = Guid.CreateVersion7();
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/cash/shifts/{shift.ShiftId}/cart-removals",
+            new { RemovalId = removal, RemovalType = kind, Description = description, Quantity = quantity, Amount = amount, SupervisorApprovalId = id }),
+            shift.ShiftId, reason);
+        if (r.Ok || r.Problem!.Code == Problem.NoServer) return true;
+        if (r.Problem.Code != "Cancelled") _notice = new(r.Problem.Kind, r.Problem.Message);
+        return false;
     }
 
     private async Task OpenAsync(Panel p)

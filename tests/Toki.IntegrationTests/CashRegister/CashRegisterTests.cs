@@ -25,9 +25,7 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
         return (cashier, (await r.Json()).GetProperty("shiftId").GetGuid());
     }
 
-    private static async Task<Guid> ApproveAsync(HttpClient c, string permission, Guid resource) =>
-        (await (await c.PostAsJsonAsync("/api/identity/approvals", new { Code = "admin", Pin = TokiApp.AdminPin, Permission = permission, ResourceId = resource })).Json())
-        .GetProperty("approvalId").GetGuid();
+    private static Task<Guid> ApproveAsync(HttpClient c, string permission, Guid resource, string summary = "") => c.ApproveAsync(permission, resource, summary);
 
     [Fact]
     public async Task A_register_cannot_have_two_shifts_and_a_cashier_cannot_be_on_two_registers()
@@ -57,7 +55,8 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
 
         // No "not enough cash" answer: it would let the cashier probe the expected cash and defeat the blind count.
         (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements",
-            new { MovementId = Guid.NewGuid(), MovementType = "Withdrawal", Amount = 600m, Reason = "CashPickup", SupervisorApprovalId = await ApproveAsync(cashier, "register.withdraw", shift) }))
+            new { MovementId = Guid.NewGuid(), MovementType = "Withdrawal", Amount = 600m, Reason = "CashPickup",
+                SupervisorApprovalId = await ApproveAsync(cashier, "register.withdraw", shift, "Retiro de efectivo de RD$ 600.00 · recogida de efectivo") }))
             .StatusCode.ShouldBe(HttpStatusCode.OK);
         (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementId = Guid.NewGuid(), MovementType = "CashIn", Amount = 100m, Reason = "ExtraChange" }))
             .StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -112,7 +111,8 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
         var drop = Guid.CreateVersion7();
         foreach (var _ in new[] { 1, 2 })
             (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements",
-                new { MovementId = drop, MovementType = "Withdrawal", Amount = 500m, Reason = "CashPickup", SupervisorApprovalId = await ApproveAsync(cashier, "register.withdraw", shift) }))
+                new { MovementId = drop, MovementType = "Withdrawal", Amount = 500m, Reason = "CashPickup",
+                    SupervisorApprovalId = await ApproveAsync(cashier, "register.withdraw", shift, "Retiro de efectivo de RD$ 500.00 · recogida de efectivo") }))
                 .StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var x = await app.Client(await app.AdminAsync()).GetFromJsonAsync<JsonElement>($"/api/cash/shifts/{shift}/z");
@@ -137,7 +137,7 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
         (await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close", new { CashCount = cashCount })).ErrorCode()).ShouldBe("Approval.Required");
 
         var close = await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close",
-            new { CashCount = cashCount, SupervisorApprovalId = await ApproveAsync(cashier, "register.approve-close", shift) });
+            new { CashCount = cashCount, SupervisorApprovalId = await ApproveAsync(cashier, "register.approve-close", shift, "Cerrar el turno con RD$ 2,450.00 contados en efectivo") });
         close.StatusCode.ShouldBe(HttpStatusCode.OK);
         var z = await close.Json();
         z.GetProperty("expectedCash").GetDecimal().ShouldBe(2500m);
@@ -163,7 +163,8 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
 
         (await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close", Count(2))).ErrorCode()).ShouldBe("Approval.Required"); // right, but no longer telling
         var close = await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close",
-            new { CashCount = new[] { new { Denomination = 1000m, Quantity = 2 } }, SupervisorApprovalId = await ApproveAsync(cashier, "register.approve-close", shift) });
+            new { CashCount = new[] { new { Denomination = 1000m, Quantity = 2 } },
+                SupervisorApprovalId = await ApproveAsync(cashier, "register.approve-close", shift, "Cerrar el turno con RD$ 2,000.00 contados en efectivo") });
         (await close.Json()).GetProperty("difference").GetDecimal().ShouldBe(0m);
 
         // Another shift with the right count at once closes alone.

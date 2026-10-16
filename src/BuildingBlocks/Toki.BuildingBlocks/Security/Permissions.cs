@@ -42,8 +42,12 @@ public static class Permissions
     /// <summary>Pay suppliers and record expenses with NCF: money leaves the business.</summary>
     public const string PayablesPay = "payables.pay";
     public const string CustomersManage = "customers.manage";
+    /// <summary>R11 A9: add a customer at the register (name, RNC or cédula, phone), without credit limit, wholesale prices or editing others.</summary>
+    public const string CustomersQuickAdd = "customers.quick-add";
     /// <summary>Collect customer payments (fiado) at the register.</summary>
     public const string CreditCollect = "credit.collect";
+    /// <summary>R11 A6: sell on credit (fiado) or with the customer's credit balance. Without it a supervisor authorizes the sale.</summary>
+    public const string CreditSell = "credit.sell";
     public const string CreditManage = "credit.manage";
     public const string CreditExceedLimit = "credit.exceed-limit";
     /// <summary>Certificate, ranges, voids, taxpayer registry.</summary>
@@ -63,7 +67,7 @@ public static class Permissions
         ProductsManage, PricesChange, InventoryView, InventoryAdjust, InventoryCount, InventoryTransfer,
         RegisterOpen, RegisterClose, RegisterCashIn, RegisterWithdraw, RegisterApproveClose, RegisterOpenDrawer,
         SalesCreate, SalesVoid, SalesReturn, SalesLargeDiscount, SalesPriceOverride, SalesRemoveLine,
-        PurchasingManage, PayablesPay, CustomersManage, CreditCollect, CreditManage, CreditExceedLimit,
+        PurchasingManage, PayablesPay, CustomersManage, CustomersQuickAdd, CreditCollect, CreditSell, CreditManage, CreditExceedLimit,
         FiscalManage, FiscalReports, ReportsView, ShiftsView, CostsView,
     ];
 }

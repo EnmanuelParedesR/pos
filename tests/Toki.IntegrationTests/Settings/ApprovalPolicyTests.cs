@@ -32,7 +32,7 @@ public sealed class ApprovalPolicyTests(TokiApp app) : IClassFixture<TokiApp>
         policy["sales.remove-line"].ShouldBeFalse();
         policy.Where(p => p.Key != "sales.remove-line").ShouldAllBe(p => p.Value);
         policy.Keys.ShouldBe(["sales.remove-line", "sales.void", "sales.return", "sales.large-discount", "sales.price-override",
-            "register.withdraw", "register.approve-close", "inventory.adjust", "credit.manage"]);
+            "register.withdraw", "register.approve-close", "inventory.adjust", "credit.manage", "credit.sell"]);
 
         await SetAsync("sales.remove-line", "sales.return");
         var saved = await GetAsync(await Admin());

@@ -58,19 +58,24 @@ public sealed class IdentityTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
-    public async Task Five_wrong_pins_lock_even_if_the_pin_is_then_correct()
+    public async Task One_register_cannot_lock_anyone_out_but_five_wrong_pins_from_two_do_even_if_the_pin_is_then_correct()
     {
         var admin = await app.AdminAsync();
         var cashier = await app.UserAsync(Roles.Cashier, pin: "5555");
         var code = await CodeOf(admin, cashier.UserId);
+        Task<HttpResponseMessage> SignIn(string device, string pin) => app.Anonymous(device).PostAsJsonAsync("/api/identity/sessions", new { Code = code, Pin = pin });
 
-        for (var i = 0; i < 5; i++)
-        {
-            var wrong = await app.Anonymous(admin.Device).PostAsJsonAsync("/api/identity/sessions", new { Code = code, Pin = "0000" });
-            (await wrong.ErrorCode()).ShouldBe("Identity.InvalidCredentials");
-        }
+        // R11 A14: after four wrong PINs this register gets no more tries for that person (the person's own count stays under the lockout).
+        for (var i = 0; i < 4; i++) (await (await SignIn(admin.Device, "0000")).ErrorCode()).ShouldBe("Identity.InvalidCredentials");
+        (await (await SignIn(admin.Device, "0000")).ErrorCode()).ShouldBe("Identity.TooManyAttempts");
+        (await (await SignIn(admin.Device, "5555")).ErrorCode()).ShouldBe("Identity.TooManyAttempts");
 
-        var right = await app.Anonymous(admin.Device).PostAsJsonAsync("/api/identity/sessions", new { Code = code, Pin = "5555" });
+        var pairing = await (await app.Client(admin).PostAsJsonAsync("/api/identity/devices/pairing-codes", new { DeviceName = "Caja 5" })).Json();
+        var register5 = (await (await app.Anonymous().PostAsJsonAsync("/api/identity/devices/pair", new { Code = pairing.GetProperty("code").GetString() })).Json())
+            .GetProperty("token").GetString()!;
+        (await (await SignIn(register5, "0000")).ErrorCode()).ShouldBe("Identity.InvalidCredentials");
+
+        var right = await SignIn(register5, "5555");
         right.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await right.ErrorCode()).ShouldBe("Identity.UserLocked");
         (await app.VerifyAuditAsync()).ShouldBeNull();
@@ -121,8 +126,9 @@ public sealed class IdentityTests(TokiApp app) : IClassFixture<TokiApp>
         var code = await CodeOf(admin, cashier.UserId);
         var r = await app.Client(cashier).PostAsJsonAsync("/api/identity/approvals",
             new { Code = code, Pin = "7777", Permission = "sales.void", ResourceId = Guid.NewGuid() });
-        r.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-        (await r.ErrorCode()).ShouldBe("Identity.SupervisorLacksPermission");
+        // R11 A14: the same answer as a wrong PIN, so it never confirms that this PIN is right.
+        r.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await r.ErrorCode()).ShouldBe("Identity.InvalidCredentials");
     }
 
     [Fact]

@@ -144,8 +144,14 @@ public sealed class OrdersTests(TokiApp app) : IClassFixture<TokiApp>
             SaleId = Guid.CreateVersion7(), cashier.ShiftId, CustomerId = customerId, OrderId = order, Lines = new[] { Line(steak, total / 200m) },
             Payments = payments, ExpectedTotal = total,
         };
-        (await (await cashier.SellAsync(Sale(customer, null, [new { Method = "CreditBalance", Amount = 100m }], 100m))).ErrorCode())
-            .ShouldBe("Customers.InsufficientCreditBalance");
+        // R11 A6: spending a balance outside its order is credit, so a supervisor approves it first; then the reservation still refuses it.
+        (await (await cashier.SellAsync(Sale(customer, null, [new { Method = "CreditBalance", Amount = 100m }], 100m))).ErrorCode()).ShouldBe("Approval.Required");
+        var other100 = Guid.CreateVersion7();
+        (await (await cashier.SellSupervisedAsync(other100, approvals => new
+            {
+                SaleId = other100, cashier.ShiftId, CustomerId = customer, Lines = new[] { Line(steak, 0.5m) },
+                Payments = new[] { new { Method = "CreditBalance", Amount = 100m } }, ExpectedTotal = 100m, SupervisorApprovals = approvals,
+            })).ErrorCode()).ShouldBe("Customers.InsufficientCreditBalance");
         // R8 #14: nor charged to someone else.
         (await (await cashier.SellAsync(Sale(other, orderId, [new { Method = "Cash", Amount = 400m }], 400m))).ErrorCode()).ShouldBe("Orders.OtherCustomer");
 

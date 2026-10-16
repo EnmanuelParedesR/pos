@@ -47,11 +47,11 @@ public sealed class ReportsTests(TokiApp app) : IClassFixture<TokiApp>, IAsyncLi
         // C: 3 sodas (177), one comes back to the shelf.
         var c = (await (await cashier.SellAsync(Sale(cashier.ShiftId, 177m, 177m, Line(soda, 3m)))).Json()).GetProperty("saleId").GetGuid();
         var line = (await cashier.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{c}")).GetProperty("lines")[0].GetProperty("id").GetGuid();
-        (await cashier.Client.PostAsJsonAsync($"/api/sales/{c}/returns", new
+        (await cashier.Client.SupervisedAsync(c, approval => cashier.Client.PostAsJsonAsync($"/api/sales/{c}/returns", new
         {
             ReturnId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Method = "Cash", Reason = "Sobró",
-            Lines = new[] { new { SaleLineId = line, Quantity = 1m } }, SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.return", c),
-        })).EnsureSuccessStatusCode();
+            Lines = new[] { new { SaleLineId = line, Quantity = 1m } }, SupervisorApprovalId = approval,
+        }))).EnsureSuccessStatusCode();
 
         // Expected cash: 1000 + 448 + 177 − 59 = 1566, counted exactly.
         var cashCount = new[] { 1000m, 500m, 50m, 10m, 5m, 1m }.Select(d => new { Denomination = d, Quantity = 1 });

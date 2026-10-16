@@ -23,22 +23,26 @@ public sealed class ReturnsTests(TokiApp app) : IClassFixture<TokiApp>
         return await admin.ProductAsync(await admin.CategoryAsync(), $"{name} {Guid.NewGuid().ToString()[..4]}", price, stock: stock);
     }
 
-    private static async Task<(Guid SaleId, Guid LineId)> SellAsync(Cashier cashier, object sale)
+    private static Task<(Guid SaleId, Guid LineId)> SellAsync(Cashier cashier, object sale) => SellAsync(cashier, Guid.Empty, _ => sale);
+
+    private static async Task<(Guid SaleId, Guid LineId)> SellAsync(Cashier cashier, Guid id, Func<Guid[], object> sale)
     {
-        var r = await cashier.SellAsync(sale);
+        var r = await cashier.SellSupervisedAsync(id, sale);
         r.StatusCode.ShouldBe(HttpStatusCode.Created);
         var saleId = (await r.Json()).GetProperty("saleId").GetGuid();
         var detail = await cashier.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}");
         return (saleId, detail.GetProperty("lines")[0].GetProperty("id").GetGuid());
     }
 
-    private static async Task<HttpResponseMessage> ReturnAsync(Cashier cashier, Guid saleId, Guid lineId, decimal quantity, string method = "Cash", Guid? returnId = null) =>
-        await cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
+    private static Task<HttpResponseMessage> ReturnAsync(Cashier cashier, Guid saleId, Guid lineId, decimal quantity, string method = "Cash", Guid? returnId = null)
+    {
+        var id = returnId ?? Guid.CreateVersion7();
+        return cashier.Client.SupervisedAsync(saleId, approval => cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
         {
-            ReturnId = returnId ?? Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Method = method, Reason = "Devolución",
-            Lines = new[] { new { SaleLineId = lineId, Quantity = quantity } },
-            SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.return", saleId),
-        });
+            ReturnId = id, ShiftId = cashier.ShiftId, Method = method, Reason = "Devolución",
+            Lines = new[] { new { SaleLineId = lineId, Quantity = quantity } }, SupervisorApprovalId = approval,
+        }));
+    }
 
     private static async Task<HttpResponseMessage> VoidAsync(Cashier cashier, Guid saleId) =>
         await cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/void",
@@ -86,11 +90,11 @@ public sealed class ReturnsTests(TokiApp app) : IClassFixture<TokiApp>
         var cheese = await ProductAsync("Queso", 50m);
         // 3 × 50 = 150 with RD$ 50 off: the line is 100.00, which does not split evenly in three.
         var saleId = Guid.CreateVersion7();
-        var (_, line) = await SellAsync(cashier, new
+        var (_, line) = await SellAsync(cashier, saleId, approvals => new
         {
             SaleId = saleId, ShiftId = cashier.ShiftId, ExpectedTotal = 100m, Payments = new[] { new { Method = "Cash", Amount = 100m } },
             Lines = new[] { new { ProductId = cheese, Quantity = 3m, Discount = new { IsPercentage = false, Value = 50m } } },
-            SupervisorApprovals = new[] { await cashier.Client.ApproveAsync("sales.large-discount", saleId) },
+            SupervisorApprovals = approvals,
         });
 
         var returns = new List<JsonElement>();

@@ -67,7 +67,11 @@ internal sealed class IdentityConfiguration :
         b.HasIndex(s => s.TokenHash).IsUnique();
     }
 
-    public void Configure(EntityTypeBuilder<SupervisorApproval> b) => b.ToTable("SupervisorApprovals");
+    public void Configure(EntityTypeBuilder<SupervisorApproval> b)
+    {
+        b.ToTable("SupervisorApprovals");
+        b.Property(a => a.PayloadHash).HasMaxLength(32);
+    }
 }
 
 /// <summary>For dotnet-ef: SQL Server migrations of this module.</summary>

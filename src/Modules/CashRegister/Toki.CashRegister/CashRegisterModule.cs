@@ -52,6 +52,8 @@ internal sealed class CashRegisterReports(CashRegisterDbContext db) : ICashRegis
                where s.ClosedUtc == null
                orderby r.Name
                select r.Name).AsNoTracking().ToListAsync(ct);
+
+    public Task<bool> IsOpenAsync(Guid shiftId, CancellationToken ct) => db.Shifts.AnyAsync(s => s.Id == shiftId && s.Status == ShiftStatus.Open, ct);
 }
 
 internal sealed class CashRegisterDbContext(DbContextOptions<CashRegisterDbContext> options) : ModuleDbContext(options)
@@ -189,7 +191,7 @@ internal sealed class CashRegisterOperations(CashRegisterDbContext db, IUserCont
     }
 
     public CashMovement Add(Guid shiftId, CashMovementType type, PaymentMethod method, decimal amount, Guid? referenceId, string? reference,
-        MovementReason? reason = null, string? note = null, Guid? id = null)
+        MovementReason? reason = null, string? note = null, Guid? id = null, bool publish = true)
     {
         var m = new CashMovement
         {
@@ -198,7 +200,7 @@ internal sealed class CashRegisterOperations(CashRegisterDbContext db, IUserCont
             SupervisorId = user.SupervisorId, DateUtc = clock.GetUtcNow().UtcDateTime,
         };
         db.Movements.Add(m);
-        outbox.Add(new CashMovementRecordedV1(shiftId, type.ToString(), method, amount, referenceId));
+        if (publish) outbox.Add(new CashMovementRecordedV1(shiftId, type.ToString(), method, amount, referenceId));
         return m;
     }
 }

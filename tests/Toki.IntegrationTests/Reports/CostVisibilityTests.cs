@@ -23,12 +23,13 @@ public sealed class CostVisibilityTests(TokiApp app) : IClassFixture<TokiApp>
         var today = DateOnly.FromDateTime(app.Clock.GetUtcNow().UtcDateTime.AddHours(-4));
         var period = $"from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}";
 
-        // The cashier sees stock (inventory.view), never its cost.
-        var stock = (await cashier.Client.GetFromJsonAsync<JsonElement>("/api/inventory/stock")).EnumerateArray().Single(s => s.GetProperty("productId").GetGuid() == steak);
+        // The stock keeper sees stock (inventory.view), never its cost (the seeded Cajero no longer sees the inventory screens, R11 A9).
+        var keeper = app.Client(await app.UserAsync(Roles.StockKeeper));
+        var stock = (await keeper.GetFromJsonAsync<JsonElement>("/api/inventory/stock")).EnumerateArray().Single(s => s.GetProperty("productId").GetGuid() == steak);
         stock.GetProperty("quantity").GetDecimal().ShouldBe(18m);
         Null(stock, "cost", "value");
-        Null(await cashier.Client.GetFromJsonAsync<JsonElement>($"/api/inventory/products/{steak}"), "cost");
-        foreach (var m in (await cashier.Client.GetFromJsonAsync<JsonElement>($"/api/inventory/products/{steak}/movements")).EnumerateArray())
+        Null(await keeper.GetFromJsonAsync<JsonElement>($"/api/inventory/products/{steak}"), "cost");
+        foreach (var m in (await keeper.GetFromJsonAsync<JsonElement>($"/api/inventory/products/{steak}/movements")).EnumerateArray())
             Null(m, "unitCost");
 
         // The supervisor sees reports (reports.view) without cost, profit or value at cost; amounts sold are still there.

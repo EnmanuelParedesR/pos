@@ -70,6 +70,11 @@ namespace Toki.Settings.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<bool>("RequirePaymentReference")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Rnc")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
@@ -90,7 +95,8 @@ namespace Toki.Settings.Persistence.Migrations
                         {
                             Id = 1,
                             DiscountCapPercent = 10m,
-                            Name = "Mi tienda"
+                            Name = "Mi tienda",
+                            RequirePaymentReference = true
                         });
                 });
 

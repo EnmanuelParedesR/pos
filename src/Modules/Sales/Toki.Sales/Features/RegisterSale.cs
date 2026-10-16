@@ -70,7 +70,7 @@ internal static class RegisterSale
     internal sealed class Handler(
         SalesDbContext db, ICashRegisterOperations cash, ICatalogQueries catalog, IStockMovements inventory, IFiscalDocuments fiscal,
         ISettingsQueries settings, ICustomerAccounts customers, ISupervisorApprovals approvals, IApprovalPolicy policy, IUserContext user, IOutbox outbox,
-        IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
+        IAuditLog audit, ITaxpayerRegistry taxpayers, TimeProvider clock) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -99,12 +99,19 @@ internal static class RegisterSale
             }
             // R8 #14: an order is charged to its own customer (its deposit and prices are theirs).
             if (order?.CustomerId is { } orderCustomer && orderCustomer != c.CustomerId) return OrdersErrors.OtherCustomer;
-            var rnc = Rnc.Normalize(c.CustomerRnc) ?? customer?.TaxId;
+            var typedRnc = Rnc.Normalize(c.CustomerRnc);
+            var rnc = typedRnc ?? customer?.TaxId;
             var customerName = c.CustomerName?.Trim() ?? customer?.Name;
+            // R11 A8: a fiscal credit invoice (E31) goes to the customer on file; to an RNC typed at the register it needs customers.manage or a
+            // supervisor, who sees whether the loaded DGII registry knows it. A registered name replaces the one typed.
+            var otherRnc = c.DocumentType == EcfType.FiscalCredit31 && (customer is null || (typedRnc is not null && typedRnc != customer.TaxId));
+            var registered = otherRnc && rnc is not null ? await taxpayers.NameAsync(rnc, ct) : null;
+            if (registered is not null) customerName = registered;
 
             var products = (await catalog.GetForSaleAsync(c.Lines.Select(l => (l.ProductId, l.PresentationId)).ToList(), ct))
                 .ToDictionary(p => (p.ProductId, p.PresentationId));
             var permissions = new HashSet<string>();
+            if (otherRnc) permissions.Add(Permissions.CustomersManage);
             var inputs = new List<(Line Line, ProductForSale Product, decimal Price, decimal Quantity, decimal? FixedAmount)>();
             foreach (var l in c.Lines)
             {
@@ -151,9 +158,27 @@ internal static class RegisterSale
             var onAccount = payments.Value.Payments.Where(p => p.Method == PaymentMethod.OnAccount).Sum(p => p.Amount);
             var creditBalance = payments.Value.Payments.Where(p => p.Method == PaymentMethod.CreditBalance).Sum(p => p.Amount);
             if (onAccount > 0 && customer!.Debt + onAccount > customer.CreditLimit) permissions.Add(Permissions.CreditExceedLimit);
+            // R11 A6: selling on credit (or spending a customer's balance) is its own permission, not just sales.create.
+            // An order charged with its own deposit (TK-193) is not credit: that balance is the customer's payment for it.
+            if (onAccount > 0 || creditBalance > (order?.Deposit ?? 0)) permissions.Add(Permissions.CreditSell);
+            // R11 A16: card and transfer payments carry their authorization or transfer number, unless the store turned it off.
+            if (business.RequirePaymentReference
+                && payments.Value.Payments.Any(p => p.Method is PaymentMethod.Card or PaymentMethod.Transfer && string.IsNullOrWhiteSpace(p.Reference)))
+                return SalesErrors.ReferenceRequired;
 
-            // shortcut: one sales.price-override approval covers every line of the sale; bind it to the expected total if supervisors ask for it.
-            var approved = await ApproveAsync(permissions, c, ct);
+            // R11 A1: every approval of this sale is bound to its total, the lines with a changed price or a discount, and the credit given.
+            var summary = string.Join(" · ", new[]
+                {
+                    $"Venta de {ApprovalErrors.Money(t.Total)}" + (c.PriceLevel == SalePriceLevel.Wholesale ? " a precio por mayor" : ""),
+                    onAccount > 0 ? $"fiado {ApprovalErrors.Money(onAccount)} a {customer!.Name}" : null,
+                    creditBalance > 0 ? $"saldo a favor {ApprovalErrors.Money(creditBalance)} de {customer!.Name}" : null,
+                    otherRnc ? $"crédito fiscal a {rnc} ({registered ?? "no está en el padrón cargado"})" : null,
+                }
+                .Concat(inputs.Select((e, i) => e.Line.UnitPrice is null && t.Lines[i].Discount == 0 ? null
+                    : $"{ApprovalErrors.Quantity(e.Quantity)} × {e.Product.Name} a {ApprovalErrors.Money(e.Price)}"
+                      + (t.Lines[i].Discount > 0 ? $" con {ApprovalErrors.Money(t.Lines[i].Discount)} de descuento" : "")))
+                .Where(s => s is not null));
+            var approved = await ApproveAsync(permissions, c, summary, ct);
             if (approved.IsFailure) return approved.Error!;
 
             // Lock order, the same in every handler: shift → stock (by ProductId) → fiscal sequence → customer → audit.
@@ -218,7 +243,7 @@ internal static class RegisterSale
         }
 
         /// <summary>Each escalated permission the cashier lacks must be covered by one of the supervisor approvals sent.</summary>
-        private async Task<Result> ApproveAsync(HashSet<string> permissions, Command c, CancellationToken ct)
+        private async Task<Result> ApproveAsync(HashSet<string> permissions, Command c, string summary, CancellationToken ct)
         {
             var available = c.SupervisorApprovals?.Distinct().ToList() ?? [];
             foreach (var permission in permissions.Where(p => !user.Has(p)).Order())
@@ -227,13 +252,13 @@ internal static class RegisterSale
                 Guid? supervisor = null;
                 foreach (var id in available)
                 {
-                    var r = await approvals.ConsumeAsync(id, permission, c.SaleId, ct);
+                    var r = await approvals.ConsumeAsync(id, permission, c.SaleId, summary, ct);
                     if (r.IsFailure) continue;
                     supervisor = r.Value;
                     available.Remove(id);
                     break;
                 }
-                if (supervisor is null) return ApprovalErrors.Required(permission);
+                if (supervisor is null) return ApprovalErrors.Required(permission, summary);
                 user.SupervisorId = supervisor;
             }
             return Result.Success();

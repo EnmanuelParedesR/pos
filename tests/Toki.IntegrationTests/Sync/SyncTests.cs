@@ -323,8 +323,10 @@ public sealed class HeartbeatTests(TokiApp app) : IClassFixture<TokiApp>
             "eventId", "occurredUtc", "aggregateId", "onAccount", "scaleConfigured", "printerConfigured", "fiscalProvider", "businessNameSet", "rncSet",
             "activeProducts", "day", "sales", "salesAmount", "activeCashiers", "voids", "returns", "license", "status", "endsUtc",
             "fiscal", "rejectedWithoutReplacement", "oldestPendingUtc", "certificateExpiresUtc",
+            "auditHead", // R11 A10: "#seq hash8", so the cloud keeps how far the chain went
         };
         Names(heartbeat).ShouldAllBe(n => allowed.Contains(n));
+        heartbeat.GetProperty("auditHead").GetString().ShouldStartWith("#");
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/identity/users");
         var secrets = users.EnumerateArray().SelectMany(u => new[] { u.GetProperty("name").GetString()!, u.GetProperty("code").GetString()! })
             .Concat(["Carnicería de prueba", "131245678", "Refresco Rojo", TokiApp.AdminPin, "4321"]);

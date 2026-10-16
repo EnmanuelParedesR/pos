@@ -36,19 +36,28 @@ internal static class OpenSession
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, IFeatureService license, TimeProvider clock) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, IFeatureService license, PinPepper pepper, PinAttempts attempts, TimeProvider clock)
+        : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             if (c.DeviceId is not { } deviceId) return IdentityErrors.DeviceNotPaired;
+            var now = clock.GetUtcNow().UtcDateTime;
+            // R11 A14: a register that keeps typing wrong PINs stops before any user's own count moves (nobody locks the owner out).
+            var key = $"sign-in:{deviceId}:{User.NormalizeCode(c.Code)}";
+            if (attempts.Exhausted(key, now)) return new Response(null, null, null, null, IdentityErrors.TooManyAttempts);
 
             var user = await db.Users.FirstOrDefaultAsync(u => u.Code == User.NormalizeCode(c.Code), ct);
-            if (user is null) return IdentityErrors.InvalidCredentials;
+            if (user is null)
+            {
+                attempts.Failed(key, now);
+                return IdentityErrors.InvalidCredentials;
+            }
 
-            var now = clock.GetUtcNow().UtcDateTime;
-            var result = user.TryPin(c.Pin, now);
+            var result = user.TryPin(c.Pin, now, pepper.Value);
             if (result != PinResult.Correct)
             {
+                if (result == PinResult.Incorrect) attempts.Failed(key, now);
                 await audit.RecordAsync("identity.pin-failed", "User", user.Id, new { user.Code, Device = deviceId, Result = result }, ct);
                 return new Response(null, null, null, null, result == PinResult.Locked ? IdentityErrors.UserLocked : IdentityErrors.InvalidCredentials);
             }

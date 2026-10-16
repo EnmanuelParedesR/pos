@@ -27,7 +27,7 @@ internal static class RecordExpense
         public Validator(TimeProvider clock)
         {
             RuleFor(c => c.Ncf).Must(Domain.Ncf.IsValid).WithMessage("El NCF no es válido (B01… de 11 caracteres o E31… de 13).");
-            RuleFor(c => c.Date).Must(d => DocumentDate.IsValid(d, clock)).WithMessage(DocumentDate.Message);
+            RuleFor(c => c.Date).Must(d => DocumentDate.IsInOpenPeriod(d, clock)).WithMessage(DocumentDate.ClosedPeriodMessage); // R11 A19
             RuleFor(c => c.Description).NotEmpty().MaximumLength(150);
             RuleFor(c => c.Type).IsInEnum();
             RuleFor(c => c.Subtotal).GreaterThan(0).PrecisionScale(19, 2, true);
@@ -141,6 +141,9 @@ internal static class PaySupplier
     {
         public string Permission => ShiftId is null ? Permissions.PayablesPay : Permissions.RegisterWithdraw;
         public Guid ResourceId => ShiftId ?? SupplierId;
+
+        /// <summary>R11 A1: cash out of a drawer for a supplier is approved for this amount only.</summary>
+        public string ApprovalSummary => ShiftId is null ? "" : $"Pagar {ApprovalErrors.Money(Amount)} en efectivo de la caja a un suplidor";
     }
 
     public sealed record Allocated(Guid PayableId, string Ncf, decimal Amount, decimal RemainingBalance);
@@ -154,7 +157,7 @@ internal static class PaySupplier
             RuleFor(c => c.Amount).Must(m => m == Math.Truncate(m)).When(c => c.ShiftId is not null).WithMessage("El efectivo de la caja sale en pesos enteros.");
             RuleFor(c => c.Method).IsInEnum();
             RuleFor(c => c.Method).Equal(SupplierPaymentMethod.Cash).When(c => c.ShiftId is not null).WithMessage("De la caja solo sale efectivo.");
-            RuleFor(c => c.Date).Must(d => DocumentDate.IsValid(d, clock)).WithMessage(DocumentDate.Message);
+            RuleFor(c => c.Date).Must(d => DocumentDate.IsInOpenPeriod(d, clock)).WithMessage(DocumentDate.ClosedPeriodMessage); // R11 A19
             RuleFor(c => c.Reference).MaximumLength(60);
         }
     }

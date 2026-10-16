@@ -27,6 +27,10 @@ public sealed class SegmentedPermissionsTests(TokiApp app) : IClassFixture<TokiA
 
     private async Task<HttpClient> WithAsync(params string[] permissions) => app.Client(await app.UserAsync(await RoleAsync(permissions)));
 
+    private async Task<string> RegisterNameAsync(Guid register) =>
+        (await (await Admin()).GetFromJsonAsync<JsonElement>("/api/cash/registers")).EnumerateArray().Single(r => r.GetProperty("id").GetGuid() == register)
+        .GetProperty("name").GetString()!;
+
     private async Task<Guid> RegisterAsync() =>
         (await (await (await Admin()).PostAsJsonAsync("/api/cash/registers", new { Name = "Caja " + Guid.NewGuid().ToString()[..4] })).Json()).GetProperty("id").GetGuid();
 
@@ -44,9 +48,8 @@ public sealed class SegmentedPermissionsTests(TokiApp app) : IClassFixture<TokiA
     {
         var cashier = app.Client(await app.UserAsync(role));
         var register = await RegisterAsync();
-        var r = await cashier.PostAsJsonAsync("/api/cash/shifts", new { RegisterId = register, OpeningFloat = openingFloat });
-        if (r.StatusCode != HttpStatusCode.Created)
-            r = await cashier.PostAsJsonAsync("/api/cash/shifts", new { RegisterId = register, OpeningFloat = openingFloat, SupervisorApprovalId = await cashier.ApproveAsync("register.open", register) });
+        var r = await cashier.SupervisedAsync(register,
+            approval => cashier.PostAsJsonAsync("/api/cash/shifts", new { RegisterId = register, OpeningFloat = openingFloat, SupervisorApprovalId = approval }));
         r.StatusCode.ShouldBe(HttpStatusCode.Created);
         return (cashier, (await r.Json()).GetProperty("shiftId").GetGuid());
     }
@@ -58,7 +61,7 @@ public sealed class SegmentedPermissionsTests(TokiApp app) : IClassFixture<TokiA
         { $"/api/cash/shifts?{Period}", "shifts.view", "reports.view" },
         { $"/api/reports/shifts?{Period}", "shifts.view", "reports.view" },
         { $"/api/reports/dgii/607?{Period}", "fiscal.reports", "reports.view" },
-        { $"/api/reports/dgii/606?{Period}", "fiscal.reports", "fiscal.manage" },
+        { $"/api/reports/dgii/606?{Period}", "fiscal.reports+costs.view", "fiscal.manage" }, // R11 A12: the 606 is what purchases cost
         { $"/api/reports/sales/by-day?{Period}", "reports.view", "fiscal.reports" },
         { $"/api/purchasing/expenses?{Period}", "payables.pay", "purchasing.manage" },
     };
@@ -67,7 +70,7 @@ public sealed class SegmentedPermissionsTests(TokiApp app) : IClassFixture<TokiA
     [MemberData(nameof(Doors))]
     public async Task Each_new_permission_opens_its_page_and_the_old_wide_one_no_longer_does(string url, string permission, string other)
     {
-        (await (await WithAsync(permission)).GetAsync(url)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await (await WithAsync(permission.Split('+'))).GetAsync(url)).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await (await WithAsync(other)).GetAsync(url)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
@@ -77,7 +80,7 @@ public sealed class SegmentedPermissionsTests(TokiApp app) : IClassFixture<TokiA
         (await (await WithAsync("registers.manage")).PostAsJsonAsync("/api/cash/registers", new { Name = "Caja nueva" })).StatusCode.ShouldBe(HttpStatusCode.Created);
         (await (await WithAsync("settings.manage")).PostAsJsonAsync("/api/cash/registers", new { Name = "Caja otra" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
-        var payment = new { SupplierId = Guid.NewGuid(), Amount = 100m, Method = "Transfer", Date = "2026-10-15" };
+        var payment = new { SupplierId = Guid.NewGuid(), Amount = 100m, Method = "Transfer", Date = DateOnly.FromDateTime(app.Clock.GetUtcNow().UtcDateTime.AddHours(-4)) };
         (await (await WithAsync("purchasing.manage")).PostAsJsonAsync("/api/purchasing/payments", payment)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await (await WithAsync("payables.pay")).PostAsJsonAsync("/api/purchasing/payments", payment)).StatusCode.ShouldBe(HttpStatusCode.NotFound); // past the door: no such supplier
     }
@@ -99,7 +102,7 @@ public sealed class SegmentedPermissionsTests(TokiApp app) : IClassFixture<TokiA
         await ShouldNeedAsync(await cashier.PostAsJsonAsync("/api/cash/shifts", new { RegisterId = register, OpeningFloat = 500m }), "register.open");
 
         var opened = await cashier.PostAsJsonAsync("/api/cash/shifts",
-            new { RegisterId = register, OpeningFloat = 500m, SupervisorApprovalId = await cashier.ApproveAsync("register.open", register) });
+            new { RegisterId = register, OpeningFloat = 500m, SupervisorApprovalId = await cashier.ApproveAsync("register.open", register, $"Abrir {await RegisterNameAsync(register)} con un fondo de RD$ 500.00") });
         opened.StatusCode.ShouldBe(HttpStatusCode.Created);
         (await cashier.GetFromJsonAsync<JsonElement>("/api/cash/shifts/current")).GetProperty("registerId").GetGuid().ShouldBe(register);
     }
@@ -112,7 +115,8 @@ public sealed class SegmentedPermissionsTests(TokiApp app) : IClassFixture<TokiA
         await ShouldNeedAsync(await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", cashIn), "register.cash-in");
         (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new
         {
-            cashIn.MovementId, cashIn.MovementType, cashIn.Amount, cashIn.Reason, SupervisorApprovalId = await cashier.ApproveAsync("register.cash-in", shift),
+            cashIn.MovementId, cashIn.MovementType, cashIn.Amount, cashIn.Reason,
+            SupervisorApprovalId = await cashier.ApproveAsync("register.cash-in", shift, "Entrada de efectivo de RD$ 100.00 · cambio"),
         })).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
@@ -135,7 +139,7 @@ public sealed class SegmentedPermissionsTests(TokiApp app) : IClassFixture<TokiA
         var short500 = new[] { new { Denomination = 500m, Quantity = 1 } };
         await ShouldNeedAsync(await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close", new { CashCount = short500 }), "register.approve-close");
         var approved = await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close",
-            new { CashCount = short500, SupervisorApprovalId = await cashier.ApproveAsync("register.approve-close", shift) });
+            new { CashCount = short500, SupervisorApprovalId = await cashier.ApproveAsync("register.approve-close", shift, "Cerrar el turno con RD$ 500.00 contados en efectivo") });
         approved.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await approved.Json()).GetProperty("difference").GetDecimal().ShouldBe(-500m);
 
@@ -151,7 +155,8 @@ public sealed class SegmentedPermissionsTests(TokiApp app) : IClassFixture<TokiA
         var (cashier, shift) = await OpenAsync(await RoleAsync("sales.create", "register.open"));
         await ShouldNeedAsync(await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close", new { CashCount = OneThousand }), "register.close");
         (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close",
-            new { CashCount = OneThousand, SupervisorApprovalId = await cashier.ApproveAsync("register.close", shift) })).StatusCode.ShouldBe(HttpStatusCode.OK);
+            new { CashCount = OneThousand, SupervisorApprovalId = await cashier.ApproveAsync("register.close", shift, "Cerrar el turno con RD$ 1,000.00 contados en efectivo") }))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]

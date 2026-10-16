@@ -70,10 +70,12 @@ internal static class DgiiStore
 
     public static async Task<JsonElement> SellAsync(this Cashier cashier, Guid product, decimal price, string type = "Consumer32", string? rnc = null)
     {
-        var r = await cashier.SellAsync(new
+        // An E31 to an RNC typed at the register asks a supervisor (R11 A8), as the register would.
+        var saleId = Guid.CreateVersion7();
+        var r = await cashier.SellSupervisedAsync(saleId, approvals => new
         {
-            SaleId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Lines = new[] { Line(product, 1m) }, Payments = new[] { new { Method = "Cash", Amount = price } },
-            ExpectedTotal = price, DocumentType = type, CustomerRnc = rnc, CustomerName = rnc is null ? null : "Colmado El Sol SRL",
+            SaleId = saleId, ShiftId = cashier.ShiftId, Lines = new[] { Line(product, 1m) }, Payments = new[] { new { Method = "Cash", Amount = price } },
+            ExpectedTotal = price, DocumentType = type, CustomerRnc = rnc, CustomerName = rnc is null ? null : "Colmado El Sol SRL", SupervisorApprovals = approvals,
         });
         if (!r.IsSuccessStatusCode) throw new InvalidOperationException(await r.Content.ReadAsStringAsync());
         return await r.Json();

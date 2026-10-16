@@ -123,6 +123,8 @@ public class TokiApp : WebApplicationFactory<Program>
         builder.UseSetting("Sync:Enabled", "false");
         builder.UseSetting("Cloud:Url", FakeCloud.Url);
         builder.UseSetting("Backup:Automatic", "false");
+        // The tests move the clock by hours and days; the idle lock (R11 A4) has its own test.
+        builder.UseSetting("Identity:IdleMinutes", "10000000");
         builder.UseSetting("Toki:KeysFolder", Path.Combine(Path.GetTempPath(), $"toki_keys_{Guid.NewGuid():N}"));
         builder.UseSetting("License:PublicKey", LicenseKey.ExportSubjectPublicKeyInfoPem());
         builder.UseSetting("License:File", Path.Combine(Path.GetTempPath(), $"toki_license_{Guid.NewGuid():N}.jws"));
@@ -233,7 +235,7 @@ public class TokiApp : WebApplicationFactory<Program>
     });
 
     public Task<long?> VerifyAuditAsync() =>
-        InScopeAsync(sp => AuditChain.VerifyAsync(sp.GetRequiredService<InfraDbContext>(), CancellationToken.None));
+        InScopeAsync(sp => AuditChain.VerifyAsync(sp.GetRequiredService<InfraDbContext>(), sp.GetRequiredService<AuditKey>(), CancellationToken.None));
 
     protected override void Dispose(bool disposing)
     {

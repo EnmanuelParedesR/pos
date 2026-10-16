@@ -69,6 +69,7 @@ public static class Printables
         Row(b, "Gastos pagados de la caja", Format.Amount(z.Expenses));
         Row(b, "Redondeo", Format.Amount(z.Rounding));
         Row(b, "Aperturas de gaveta sin venta", z.DrawerOpenings.ToString(CultureInfo.InvariantCulture));
+        Row(b, "Líneas quitadas antes de cobrar", $"{z.RemovedLines.ToString(CultureInfo.InvariantCulture)} ({Format.Amount(z.RemovedAmount)})");
         Row(b, "Autorizó el cierre", supervisor ?? "—");
         if (z.AuditChainHead is { } head) Row(b, "Auditoría", head);
         b.Append("</tbody></table>");
@@ -99,6 +100,7 @@ public static class Printables
                     L("Fondo inicial", z.OpeningFloat), L("Abonos de fiado", z.CustomerPayments), L("Abonos de pedidos", z.OrderDeposits),
                     L("Entradas de efectivo", z.CashIn), L("Retiros", z.Withdrawals), L("Gastos pagados de la caja", z.Expenses), L("Redondeo", z.Rounding),
                     new("Aperturas de gaveta sin venta", null, z.DrawerOpenings.ToString(CultureInfo.InvariantCulture)),
+                    new("Líneas quitadas antes de cobrar", null, $"{z.RemovedLines.ToString(CultureInfo.InvariantCulture)} ({Format.Amount(z.RemovedAmount)})"),
                 ]),
                 new("Efectivo",
                 [

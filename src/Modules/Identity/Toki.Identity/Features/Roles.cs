@@ -37,7 +37,7 @@ internal static class Escalation
 }
 
 /// <summary>Creates a role (Id null) or replaces a role's name and permissions. The Administrador role always keeps every permission.
-/// Nobody adds a permission they do not have (TK-215); one the role already had may stay, since keeping it gives nothing new.</summary>
+/// Nobody adds or removes a permission they do not have (TK-215, R11 A15); one the role already had may stay, since keeping it gives nothing new.</summary>
 internal static class SaveRole
 {
     public sealed record Command(Guid? Id, string Name, IReadOnlyList<string> Permissions) : ICommand<Response>;
@@ -60,7 +60,9 @@ internal static class SaveRole
             var role = c.Id is { } id ? await db.Roles.FirstOrDefaultAsync(r => r.Id == id, ct) : null;
             if (c.Id is not null && role is null) return IdentityErrors.RoleNotFound;
             var before = role is null ? null : new { role.Name, Permissions = role.Permissions.ToList() };
-            if (Escalation.NotHeld(me, c.Permissions.Except(before?.Permissions ?? [])) is { Count: > 0 } missing) return IdentityErrors.PermissionsNotHeld(missing);
+            // R11 A15: nor takes away one they do not have (that would change what others can do beyond the actor's own reach).
+            var changed = c.Permissions.Except(before?.Permissions ?? []).Concat((before?.Permissions ?? []).Except(c.Permissions));
+            if (Escalation.NotHeld(me, changed) is { Count: > 0 } missing) return IdentityErrors.PermissionsNotHeld(missing);
             if (role is null)
             {
                 role = new Role { Id = Guid.CreateVersion7() };
