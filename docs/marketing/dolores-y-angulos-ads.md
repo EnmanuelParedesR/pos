@@ -40,6 +40,16 @@
 - **Alegra POS** ya anuncia para colmados: e-CF en cada venta, **modo sin conexión** que sincroniza al volver, fiado digital, cuadre por turno, inventario desde la foto de la factura y prueba de 15 días ([blog de Alegra, 14/05/2026](https://blog.alegra.com/republica-dominicana/sistema-inteligente-para-colmados/)). Sus dolores: fiado en cuaderno, no saber qué se agota, efectivo que "no siempre coincide", el internet que detiene la venta y el negocio que depende del dueño presente.
 - **Poszy**: "El fiao deja de vivir en una libreta", "Cuadrar la caja sin discusión" y la urgencia del e-CF (`docs/competencia-poszy.md`).
 - **Consecuencia:** "sigue vendiendo sin internet" **ya no es único** frente a Alegra. Lo que sí es nuestro: **varias cajas** sin internet contra la PC de la tienda, el e-CF **firmado en la tienda** (no en un servicio de afuera), la **balanza** y el **cuadre ciego**. El anuncio tiene que decir lo concreto, no solo "funciona offline".
+- **Reseñas de apps POS en LatAm** (Google Play, unas 30 apps en 6 países, leídas el 16/10/2026; formato `https://play.google.com/store/apps/details?id=<ID>&gl=<PAÍS>`). Es la voz directa más abundante; en RD las apps de colmado (Colmadero, Colmado RD, Kolmao) no tienen reseñas visibles. Temas en ~58 reseñas, de más a menos:
+  1. **Precio y datos de rehén (~15):** "Tuve que pagar un mes solo para recuperar información de gente que me debía plata" (Treinta, AR, 30/08/2026); "Absolutamente TODO ES PAGO" (Treinta, CO, 09/09/2026); "te quieren cobrar por todo" (Alegra, MX, 08/08/2025).
+  2. **Inventario o ventas que no cuadran (~11):** "no descuenta del stock en las ventas" (Treinta, AR); "ahora tengo inventario irreal" (Treinta, vista DO, 09/11/2024); tickets que desaparecen y "no me deja hacer cortes" (aNegocios, MX, 16/12/2025).
+  3. **Se cuelga en el peor momento (~10):** "me toca como en los 70.. en hoja y calculadora" (Vendty, CO, 26/12/2024).
+  4. **Peso y balanza (~9):** piden peso a mano con decimales (Elementary POS, Tunder); en Square las etiquetas de una CAS LP-1000 "no registran" y se cobra como artículo libre ([comunidad de Square](https://community.squareup.com/t5/Archived-Discussions-Read-Only/Selling-by-the-pound/td-p/180615)).
+  5. **Fiado con saldo y abonos (~8):** piden crédito por cliente con abonos (Loyverse, Nicaragua, 16/09/2026); en Yimi los créditos solo muestran el monto final (PE, 28/02/2026).
+  6. **Vigilar la caja (~7):** alertas por "descuentos, cancelaciones y cambios de precio por parte de los cajeros" (eleventa, MX, 05/04/2026).
+  7. **Sin internet (~6):** "si por casualidad se te va el Internet ya no puedes usar la app" (Yimi, MX, 01/2025); "es muy frecuente que se vaya la luz" (eleventa, MX, 01/08/2024). Tres apps llevan "sin internet" en el nombre.
+  8. **Facturación fiscal local (~6):** "si pueden facilitar con lo de SUNAT, lo pago sin dudar" (Kyte, PE, 09/02/2026).
+  - **Lectura:** el dolor 8 (precio) pesa más en LatAm que en la prensa dominicana. Las reglas de `/precios` ("nunca en solo lectura", "todo es suyo", "sin cobro por factura") responden justo a la queja más repetida: sirven como mensaje de apoyo en todos los anuncios.
 - **LatAm** (secundario): Loyverse sin conexión no hace devoluciones, no registra clientes nuevos y no muestra existencias ([ayuda de Loyverse](https://help.loyverse.com/help/offline-work-of-pos)); Square no lee etiquetas de peso variable de algunas balanzas Mettler Toledo según sus propios usuarios ([comunidad de Square](https://community.squareup.com/t5/Questions-How-To/Will-Square-recognize-a-variable-weight-barcode-label-printed-by/m-p/42600)); Eleventa (México) recibe quejas de cajas secundarias que pierden la conexión con la principal ([Capterra](https://www.capterra.es/software/197855/eleventa)). Sirve para la página de comparar, no para anuncios en RD.
 
 ## 2. Ranking de dolores
@@ -180,17 +190,23 @@ Límites usados: Google Search (anuncio adaptable) **30 caracteres** por título
 
 ## 4. Palabras clave candidatas (Google Ads, solo RD)
 
-**Sin datos de volumen.** El Planificador de palabras clave de Google es gratis pero pide una cuenta de Google Ads (decisión del dueño); Google Trends sirve para comparar términos entre sí. Las listas salen de cómo escriben los propios proveedores y la prensa, y de TK-263.
+**Sin datos de volumen.** El Planificador de palabras clave de Google es gratis pero pide una cuenta de Google Ads (decisión del dueño); Google Trends sirve para comparar términos entre sí. Las listas salen de cómo escriben los propios proveedores y la prensa, de TK-263 y del **autocompletado de Google para RD** (16/10/2026), que indica que hay búsquedas pero no cuántas:
+
+- "sistema para colmado" → "sistema de inventario para colmado", "sistema de facturacion para colmado". "Programa para colmado" y "facturacion electronica colmado" no sugieren nada: **"sistema" le gana a "programa"**.
+- "facturacion electronica" → "dgii", "gratuita dgii", "fecha limite", "plazo", "obligatoria": la urgencia del plazo es real.
+- "sistema de facturacion" → "gratis", "electronica dgii", "alegra", "claro", "monica". **Monica y Claro** son competidores locales que todavía no se analizaron.
+- "punto de venta con bascula" → "abarrotes con bascula", "bascula compatible con punto de venta". En RD se dice **báscula** tanto como balanza: usar las dos.
+- "sistema para carniceria" → "pos", "de facturacion", "de caja"; "app para fiado" → "app para anotar fiados", "app para controlar fiado"; "cuadre de caja" → "diario", "en excel" (mucha gente cuadra en Excel).
 
 | Grupo | Palabras (concordancia de frase o exacta) | Destino |
 |---|---|---|
 | e-CF | "facturación electrónica", "factura electrónica dgii", "e-cf dgii", "comprobante fiscal electrónico", "facturación electrónica 15 de noviembre", "programa de facturación electrónica", "certificado digital facturación electrónica", "proveedor de facturación electrónica" | `/e-cf`, `/guia-e-cf` |
 | Facturador Gratuito | "facturador gratuito dgii", "facturador gratuito límite", "alternativa facturador gratuito" | `/comparar` |
 | Punto de venta por negocio | "punto de venta para colmado", "sistema para colmado", "programa para colmado", "punto de venta para carnicería", "sistema para carnicería", "punto de venta para deli", "sistema de facturación para minimarket" | `/colmado`, `/carniceria`, `/deli` |
-| Función | "punto de venta con balanza", "sistema de fiado", "control de fiado", "cuadre de caja", "punto de venta sin internet", "sistema de inventario para colmado" | Inicio o página del segmento |
+| Función | "punto de venta con balanza", "punto de venta con báscula", "sistema de fiado", "app para controlar fiado", "cuadre de caja diario", "punto de venta sin internet", "sistema de inventario para colmado", "sistema pos república dominicana" | Inicio o página del segmento |
 | Competidores (fase 2, con cuidado) | "alternativa a alegra pos", "poszy" | `/comparar`; nunca usar la marca ajena en el texto del anuncio |
 
-**Negativas de entrada:** empleo, trabajo, vacante, curso, tutorial, pdf, tesis, gratis crack, descargar gratis, iniciar sesión, login, oficina virtual, consulta rnc, consulta ncf, teléfono dgii, multa de tránsito, factura de luz, edesur, edenorte, edeeste.
+**Negativas de entrada:** leidsa (la lotería ocupa "punto de venta" en RD), cerca de mi, excel, empleo, trabajo, vacante, curso, tutorial, pdf, tesis, gratis crack, descargar gratis, iniciar sesión, login, oficina virtual, consulta rnc, consulta ncf, teléfono dgii, multa de tránsito, factura de luz, edesur, edenorte, edeeste.
 
 ## 5. Validar antes de gastar
 
@@ -230,4 +246,5 @@ No mostrar Abastalia hasta el final; no preguntar "¿lo compraría?". Anotar las
 - **Página `/cuadre`** o sección de cuadre en el inicio, si las entrevistas confirman el dolor 2 como el primero después del e-CF.
 - **Video corto "sin internet"** de 15 s para Meta con la caja real.
 - **Rendimiento de cortes** (módulo Carnicería): sube R del dolor 5 de 3 a 5 y da un ángulo propio ("sepa cuánto le rinde la res").
+- **Análisis de competencia de Monica y Claro** (aparecen en el autocompletado de "sistema de facturacion" en RD), con el mismo formato de `competencia-poszy.md`.
 - **Cerrar TK-117** con una balanza real: permite decir "conecta su balanza" en los anuncios de carnicería.
