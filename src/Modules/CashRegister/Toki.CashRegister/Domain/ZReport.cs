@@ -9,11 +9,12 @@ internal sealed record MethodTotal(PaymentMethod Method, decimal SalePayments, d
 /// <param name="CustomerPayments">Payments on credit ("abonos de fiado"), without order deposits.</param>
 /// <param name="OrderDeposits">R8 #15: deposits taken for orders (TK-193), their own line.</param>
 /// <param name="DrawerOpenings">TK-239: times the drawer opened without a sale.</param>
+/// <param name="RemovedLines">R11 A5: lines taken off sales in progress and carts voided before charging, and what they were worth.</param>
 internal sealed record ZReport(
     Guid ShiftId, int? ZNumber, string Register, string Cashier, DateTime OpenedUtc, DateTime? ClosedUtc, decimal OpeningFloat,
     IReadOnlyList<MethodTotal> ByMethod, int SaleCount, int VoidedCount, decimal CustomerPayments, decimal Rounding, decimal CashIn, decimal Withdrawals, decimal Expenses,
     decimal ExpectedCash, decimal? CountedCash, decimal? Difference, IReadOnlyList<DenominationCount>? CashCount, Guid? ClosingSupervisorId,
-    string? AuditChainHead, decimal OrderDeposits, int DrawerOpenings)
+    string? AuditChainHead, decimal OrderDeposits, int DrawerOpenings, int RemovedLines, decimal RemovedAmount)
 {
     /// <summary>Marks the reversal of a sale's rounding (so it is not counted as a voided payment).</summary>
     public const string RoundingReference = "rounding";
@@ -50,6 +51,7 @@ internal sealed record ZReport(
             sales - voided.Count, voided.Count, Sum(CashMovementType.CustomerPayment) - Sum(CashMovementType.CustomerPaymentVoid) - orderDeposits, rounding,
             Sum(CashMovementType.CashIn), Sum(CashMovementType.Withdrawal), Sum(CashMovementType.Expense),
             s.ExpectedCash ?? ShiftBalance.ExpectedCash(s.OpeningFloat, movements), s.CountedCash, s.Difference, cashCount, s.ClosingSupervisorId, s.AuditChainHead ?? auditChainHead,
-            orderDeposits, movements.Count(m => m.Type == CashMovementType.DrawerOpened));
+            orderDeposits, movements.Count(m => m.Type == CashMovementType.DrawerOpened),
+            movements.Count(m => m.Type == CashMovementType.LineRemoved), Sum(CashMovementType.LineRemoved));
     }
 }

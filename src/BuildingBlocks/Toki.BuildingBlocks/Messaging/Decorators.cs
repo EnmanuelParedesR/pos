@@ -28,9 +28,14 @@ internal sealed class ValidationDecorator<TCommand, TResponse>(
 }
 
 internal sealed class TransactionDecorator<TCommand, TResponse>(
-    ICommandHandler<TCommand, TResponse> inner, UnitOfWork uow, IEnumerable<ModuleDbContext> contexts)
+    ICommandHandler<TCommand, TResponse> inner, UnitOfWork uow, IEnumerable<ModuleDbContext> contexts, InfraDbContext infra, TimeProvider clock)
     : ICommandHandler<TCommand, TResponse> where TCommand : ICommand<TResponse>
 {
+    /// <summary>R11 A18: with the server clock behind the newest audit record, nothing is written: receipts, shifts, e-CF and the audit chain
+    /// would go back in time (and a turned-back clock would reopen expired approvals or sequences).</summary>
+    public static readonly Error ClockBehind = Error.Conflict("Clock.Behind",
+        "La hora de la PC principal está atrasada. Corríjala en Windows (Fecha y hora) antes de seguir: con la hora atrasada no se guarda nada.");
+
     public async Task<Result<TResponse>> Handle(TCommand command, CancellationToken ct)
     {
         if (uow.Transaction is not null)
@@ -42,6 +47,8 @@ internal sealed class TransactionDecorator<TCommand, TResponse>(
         try
         {
             foreach (var db in dbs) await db.Database.UseTransactionAsync(tx, ct);
+            var newest = await infra.AuditRecords.OrderByDescending(r => r.Sequence).Select(r => (DateTime?)r.DateUtc).FirstOrDefaultAsync(ct);
+            if (newest > clock.GetUtcNow().UtcDateTime + ClockHealthCheck.Tolerance) return ClockBehind;
             var result = await inner.Handle(command, ct);
             if (result.IsFailure) return result;
 
@@ -93,13 +100,14 @@ internal sealed class ApprovalDecorator<TCommand, TResponse>(
         // With the store's policy off for this action the user does it alone; the handler's own audit record still names them.
         if (command is IRequiresApproval req && !user.Has(req.Permission) && await policy.RequiresSupervisorAsync(req.Permission, ct))
         {
-            if (req.SupervisorApprovalId is not { } id) return ApprovalErrors.Required(req.Permission);
-            var supervisor = await approvals.ConsumeAsync(id, req.Permission, req.ResourceId, ct);
+            if (req.SupervisorApprovalId is not { } id) return ApprovalErrors.Required(req.Permission, req.ApprovalSummary);
+            var supervisor = await approvals.ConsumeAsync(id, req.Permission, req.ResourceId, req.ApprovalSummary, ct);
             if (supervisor.IsFailure) return supervisor.Error!;
             user.SupervisorId = supervisor.Value;
             var result = await inner.Handle(command, ct);
             // Written after the handler: the audit head must be the last lock a command takes (no deadlock with stock rows).
-            if (result.IsSuccess) await audit.RecordAsync("approval.used", typeof(TCommand).Name, req.ResourceId, new { req.Permission, Approval = id }, ct);
+            if (result.IsSuccess)
+                await audit.RecordAsync("approval.used", typeof(TCommand).Name, req.ResourceId, new { req.Permission, Approval = id, Summary = req.ApprovalSummary }, ct);
             return result;
         }
         return await inner.Handle(command, ct);

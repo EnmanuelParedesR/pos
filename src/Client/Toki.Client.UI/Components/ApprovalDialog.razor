@@ -7,7 +7,7 @@
 {
     <Dialog Title="Autoriza un supervisor" Subtitle="@Approver.Explain(s.Permission)" OnClose="Cancel" OnKey="KeyDown">
         <ChildContent>
-            <div class="esc-notice esc-notice--info"><div class="esc-notice__body">@s.Reason</div></div>
+            <div class="esc-notice esc-notice--info"><div class="esc-notice__body">@(string.IsNullOrEmpty(s.Summary) ? s.Reason : s.Summary)</div></div>
             @if (_supervisors is null)
             {
                 <div class="esc-muted">Cargando…</div>
@@ -80,7 +80,7 @@
         // Guarded: a second Enter or click while the first is in flight would count as another PIN attempt.
         if (Approver.Current is not { } s || _code is null || _sending) return;
         _sending = true;
-        var r = await Api.PostAsync<ApprovalGranted>("/api/identity/approvals", new { Code = _code, Pin = _pin, s.Permission, s.ResourceId });
+        var r = await Api.PostAsync<ApprovalGranted>("/api/identity/approvals", new { Code = _code, Pin = _pin, s.Permission, s.ResourceId, s.Summary });
         _sending = false;
         if (r.Value is { } a)
         {
@@ -89,8 +89,7 @@
         }
         (_pin, _errorKind, _error) = ("", r.Problem!.Kind, r.Problem.Code switch
         {
-            "Identity.SupervisorLacksPermission" => "Esa persona no puede autorizar esto. Llame a otro supervisor.",
-            "Identity.InvalidCredentials" => "PIN incorrecto.",
+            "Identity.InvalidCredentials" => "PIN incorrecto, o esa persona no puede autorizar esto.",
             _ => r.Problem.Message,
         });
     }

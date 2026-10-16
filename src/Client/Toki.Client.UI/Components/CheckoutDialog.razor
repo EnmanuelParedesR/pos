@@ -244,7 +244,7 @@
             }
             if (p.PermissionRequired is { } permission)
             {
-                var id = await Approver.RequestAsync(permission, Cart.SaleId, $"Venta de {Format.WithCurrency(_total)}");
+                var id = await Approver.RequestAsync(permission, Cart.SaleId, $"Venta de {Format.WithCurrency(_total)}", p.ApprovalSummary);
                 if (id is null) { Fail(Notice.Kinds.Warning, "Sin la autorización no se puede cobrar así. Quite el cambio o pida a otro supervisor."); return; }
                 _approvals.Add(id.Value);
                 continue;
@@ -274,6 +274,7 @@
                 "Fiscal.NoSequence" => "Se acabaron los comprobantes de este tipo. El dueño debe cargar una nueva secuencia.",
                 "Fiscal.MissingIssuerRnc" => "Falta el RNC del negocio en Configuración.",
                 "Sales.RncRequired" => "Esta factura necesita el RNC o la cédula del cliente (F6).",
+                "Sales.ReferenceRequired" => "Escriba el número de autorización de la tarjeta o de la transferencia.",
                 "Sales.DuplicateScaleLabel" => "Esa etiqueta está dos veces en la venta; quite una.",
                 _ => p.Message,
             });

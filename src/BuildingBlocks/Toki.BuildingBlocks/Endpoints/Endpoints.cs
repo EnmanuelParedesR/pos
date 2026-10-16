@@ -26,6 +26,10 @@ public static class EndpointExtensions
     public static TBuilder RequirePermission<TBuilder>(this TBuilder builder, string permission) where TBuilder : IEndpointConventionBuilder =>
         builder.RequireAuthorization(p => p.RequireClaim(TokiClaims.Permission, permission));
 
+    /// <summary>Any one of the permissions is enough (R11 A9: customers.quick-add or customers.manage).</summary>
+    public static TBuilder RequireAnyPermission<TBuilder>(this TBuilder builder, params string[] permissions) where TBuilder : IEndpointConventionBuilder =>
+        builder.RequireAuthorization(p => p.RequireAssertion(ctx => permissions.Any(x => ctx.User.HasClaim(TokiClaims.Permission, x))));
+
     public static IResult ToHttp<T>(this Result<T> result, Func<T, IResult> ok) =>
         result.IsSuccess ? ok(result.Value) : Problem(result.Error!);
 

@@ -62,7 +62,7 @@ public sealed class SessionsTests(TokiApp app) : IClassFixture<TokiApp>
     public async Task Changing_the_role_takes_effect_on_the_next_request()
     {
         var admin = app.Client(await app.AdminAsync());
-        var cashier = await app.UserAsync(Roles.Cashier);
+        var cashier = await app.UserAsync(Roles.StockKeeper); // has inventory.view (the seeded Cajero no longer does, R11 A9)
         var c = app.Client(cashier);
         (await c.GetAsync("/api/inventory/stock")).StatusCode.ShouldBe(HttpStatusCode.OK);
 

@@ -18,7 +18,7 @@ internal static class Registers
 {
     public sealed record Create(string Name) : ICommand<Response>;
     public sealed record Response(Guid Id);
-    public sealed record Item(Guid Id, string Name, bool IsActive, Guid? OpenShiftId, string? Cashier);
+    public sealed record Item(Guid Id, string Name, bool IsActive, Guid? OpenShiftId, string? Cashier, decimal? StandardFloat = null);
 
     internal sealed class Validator : AbstractValidator<Create>
     {
@@ -49,7 +49,7 @@ internal static class Registers
                                       join s in db.Shifts.Where(s => s.Status == ShiftStatus.Open) on r.Id equals s.RegisterId into open
                                       from s in open.DefaultIfEmpty()
                                       orderby r.Name
-                                      select new Item(r.Id, r.Name, r.IsActive, s == null ? null : s.Id, s == null ? null : s.CashierName))
+                                      select new Item(r.Id, r.Name, r.IsActive, s == null ? null : s.Id, s == null ? null : s.CashierName, r.StandardFloat))
                         .AsNoTracking().ToListAsync(ct)))
                 .RequireAuthorization().WithTags("CashRegister");
             app.MapPut("/api/cash/registers/{id:guid}", async (Guid id, RenameBody b, ICommandHandler<Rename, Response> h, CancellationToken ct) =>
@@ -101,14 +101,12 @@ internal static class Registers
 }
 
 /// <summary>A cashier opens a shift on a physical register with the opening float. Without register.open a supervisor who has it
-/// authorizes the opening (TK-212: the manager opens the register in the morning); the shift is still the cashier's.</summary>
+/// authorizes the opening (TK-212: the manager opens the register in the morning); the shift is still the cashier's.
+/// R11 A7: a float other than the register's standard one needs register.approve-close (or a supervisor's approval) when the store's policy
+/// asks for closings with a difference; without a standard, a float other than the last shift's is only recorded (cash.float-changed).</summary>
 internal static class OpenShift
 {
-    public sealed record Command(Guid RegisterId, decimal OpeningFloat, Guid? SupervisorApprovalId = null) : ICommand<Response>, IRequiresApproval
-    {
-        public string Permission => Permissions.RegisterOpen;
-        public Guid ResourceId => RegisterId;
-    }
+    public sealed record Command(Guid RegisterId, decimal OpeningFloat, Guid? SupervisorApprovalId = null) : ICommand<Response>;
     public sealed record Response(Guid ShiftId);
 
     internal sealed class Validator : AbstractValidator<Command>
@@ -116,18 +114,39 @@ internal static class OpenShift
         public Validator() => RuleFor(c => c.OpeningFloat).GreaterThanOrEqualTo(0).Must(m => m == Math.Truncate(m)).WithMessage("El efectivo de la caja va en pesos enteros.");
     }
 
-    internal sealed class Handler(CashRegisterDbContext db, IUserContext user, IOutbox outbox, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
+    internal sealed class Handler(CashRegisterDbContext db, IUserContext user, IOutbox outbox, IAuditLog audit, ISupervisorApprovals approvals,
+        IApprovalPolicy policy, TimeProvider clock) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             var register = await db.Registers.FirstOrDefaultAsync(x => x.Id == c.RegisterId && x.IsActive, ct);
             if (register is null) return CashRegisterErrors.RegisterNotFound;
+
+            // Checked here, not in the pipeline: only the register says whether the float is its usual one. One approval at most:
+            // register.approve-close (a supervisor's) also covers opening without register.open.
+            var differs = register.StandardFloat is { } standard && standard != c.OpeningFloat;
+            var needed = differs && !user.Has(Permissions.RegisterApproveClose) && await policy.RequiresSupervisorAsync(Permissions.RegisterApproveClose, ct)
+                ? Permissions.RegisterApproveClose
+                : !user.Has(Permissions.RegisterOpen) && await policy.RequiresSupervisorAsync(Permissions.RegisterOpen, ct) ? Permissions.RegisterOpen
+                : null;
+            var summary = $"Abrir {register.Name} con un fondo de {ApprovalErrors.Money(c.OpeningFloat)}"
+                + (differs ? $" (el fondo de esta caja es {ApprovalErrors.Money(register.StandardFloat!.Value)})" : "");
+            if (needed is not null)
+            {
+                if (c.SupervisorApprovalId is not { } id) return ApprovalErrors.Required(needed, summary);
+                var supervisor = await approvals.ConsumeAsync(id, needed, c.RegisterId, summary, ct);
+                if (supervisor.IsFailure) return supervisor.Error!;
+                user.SupervisorId = supervisor.Value;
+            }
+
             // The first shift binds the register to this device; afterwards only a supervisor may open it elsewhere.
             if (register.DeviceId is { } device && device != user.DeviceId && !user.Has(Permissions.RegisterApproveClose))
                 return CashRegisterErrors.OtherDevice;
             register.DeviceId ??= user.DeviceId;
             if (await db.Shifts.AnyAsync(s => s.RegisterId == c.RegisterId && s.Status == ShiftStatus.Open, ct)) return CashRegisterErrors.RegisterInUse;
             if (await db.Shifts.AnyAsync(s => s.CashierId == user.UserId && s.Status == ShiftStatus.Open, ct)) return CashRegisterErrors.CashierHasShift;
+            var previous = await db.Shifts.Where(s => s.RegisterId == c.RegisterId).OrderByDescending(s => s.OpenedUtc)
+                .Select(s => (decimal?)s.OpeningFloat).FirstOrDefaultAsync(ct);
 
             var shift = new Shift
             {
@@ -136,7 +155,11 @@ internal static class OpenShift
             };
             db.Shifts.Add(shift);
             outbox.Add(new ShiftOpenedV1(shift.Id, shift.RegisterId, shift.CashierId, shift.OpeningFloat));
-            await audit.RecordAsync("cash.open-shift", "Shift", shift.Id, c, ct);
+            if (register.StandardFloat is null && previous is { } last && last != c.OpeningFloat)
+                await audit.RecordAsync("cash.float-changed", "Shift", shift.Id, new { Previous = last, c.OpeningFloat }, ct);
+            await audit.RecordAsync("cash.open-shift", "Shift", shift.Id, new { c.RegisterId, c.OpeningFloat, register.StandardFloat }, ct);
+            if (needed is not null)
+                await audit.RecordAsync("approval.used", nameof(OpenShift), c.RegisterId, new { Permission = needed, Approval = c.SupervisorApprovalId, Summary = summary }, ct);
             return new Response(shift.Id);
         }
     }
@@ -181,6 +204,18 @@ internal static class RecordMovement
     {
         public string Permission => MovementType == Kind.CashIn ? Permissions.RegisterCashIn : Permissions.RegisterWithdraw;
         public Guid ResourceId => ShiftId;
+
+        /// <summary>R11 A1: the supervisor approves this kind, amount and reason, not "a withdrawal".</summary>
+        public string ApprovalSummary => $"{MovementType switch { Kind.CashIn => "Entrada de efectivo", Kind.Withdrawal => "Retiro de efectivo", _ => "Gasto de caja" }} " +
+            $"de {ApprovalErrors.Money(Amount)} · {Reason switch
+            {
+                MovementReason.ExtraChange => "cambio",
+                MovementReason.CashPickup => "recogida de efectivo",
+                MovementReason.BankDeposit => "depósito al banco",
+                MovementReason.SupplierPayment => "pago a suplidor",
+                MovementReason.PettyExpense => "gasto menor",
+                _ => "otro",
+            }}" + (string.IsNullOrWhiteSpace(Note) ? "" : $" · {Note.Trim()}");
     }
 
     public sealed record Response(Guid MovementId);
@@ -273,6 +308,101 @@ internal static class OpenDrawer
     }
 }
 
+/// <summary>R11 A5: a line taken off the sale in progress, or the whole sale voided before charging, recorded on the server: on the cashier's Z
+/// (count and amount) and in the audit log. Needs sales.remove-line or a supervisor's approval when the store's policy asks for it (TK-210).</summary>
+internal static class RecordCartRemoval
+{
+    public enum Kind { Line, Sale }
+
+    /// <param name="RemovalId">Generated by the register: a retry returns the same removal.</param>
+    /// <param name="Amount">What the line (or the whole cart) was worth.</param>
+    public sealed record Command(Guid ShiftId, Guid RemovalId, Kind RemovalType, string Description, decimal Quantity, decimal Amount, Guid? SupervisorApprovalId)
+        : ICommand<Response>, IRequiresApproval
+    {
+        public string Permission => Permissions.SalesRemoveLine;
+        public Guid ResourceId => ShiftId;
+
+        public string ApprovalSummary => RemovalType == Kind.Sale
+            ? $"Anular la venta en curso ({Description.Trim()}) por {ApprovalErrors.Money(Amount)}"
+            : $"Quitar {ApprovalErrors.Quantity(Quantity)} × {Description.Trim()} ({ApprovalErrors.Money(Amount)})";
+    }
+
+    public sealed record Response(Guid RemovalId);
+
+    internal sealed class Validator : AbstractValidator<Command>
+    {
+        public Validator()
+        {
+            RuleFor(c => c.RemovalId).NotEmpty();
+            RuleFor(c => c.RemovalType).IsInEnum();
+            RuleFor(c => c.Description).NotEmpty().MaximumLength(150);
+            RuleFor(c => c.Quantity).GreaterThanOrEqualTo(0);
+            RuleFor(c => c.Amount).GreaterThanOrEqualTo(0);
+        }
+    }
+
+    internal sealed class Handler(CashRegisterDbContext db, CashRegisterOperations ops, IAuditLog audit) : ICommandHandler<Command, Response>
+    {
+        public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
+        {
+            var shift = await ops.GetOpenShiftAsync(c.ShiftId, ct);
+            if (shift.IsFailure) return shift.Error!;
+            if (await db.Movements.AnyAsync(m => m.Id == c.RemovalId && m.ShiftId == c.ShiftId, ct)) return new Response(c.RemovalId);
+            // Not cash: it never changes the expected cash (ShiftBalance) and is not sent to the cloud as a cash movement.
+            ops.Add(c.ShiftId, CashMovementType.LineRemoved, PaymentMethod.Cash, c.Amount, null, c.RemovalType.ToString(), note: c.Description.Trim(),
+                id: c.RemovalId, publish: false);
+            await audit.RecordAsync(c.RemovalType == Kind.Sale ? "sales.void-cart" : "sales.remove-line", "Shift", c.ShiftId,
+                new { Removal = c.RemovalId, c.Description, c.Quantity, c.Amount }, ct);
+            return new Response(c.RemovalId);
+        }
+    }
+
+    internal sealed record Body(Guid RemovalId, Kind RemovalType, string Description, decimal Quantity, decimal Amount, Guid? SupervisorApprovalId);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapPost("/api/cash/shifts/{id:guid}/cart-removals", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
+                    (await h.Handle(new Command(id, b.RemovalId, b.RemovalType, b.Description, b.Quantity, b.Amount, b.SupervisorApprovalId), ct)).ToHttp())
+                .RequirePermission(Permissions.SalesCreate).WithTags("CashRegister"); // sales.remove-line or a supervisor: the approval pipeline checks it
+    }
+}
+
+/// <summary>R11 A7: the float a register usually opens with (null: none). Opening with another one needs a supervisor (see <see cref="OpenShift"/>).</summary>
+internal static class SetStandardFloat
+{
+    public sealed record Command(Guid RegisterId, decimal? Amount) : ICommand<Ok>;
+
+    internal sealed class Validator : AbstractValidator<Command>
+    {
+        public Validator() => RuleFor(c => c.Amount).GreaterThanOrEqualTo(0).Must(m => m == Math.Truncate(m!.Value)).When(c => c.Amount is not null)
+            .WithMessage("El efectivo de la caja va en pesos enteros.");
+    }
+
+    internal sealed class Handler(CashRegisterDbContext db, IAuditLog audit) : ICommandHandler<Command, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
+        {
+            var register = await db.Registers.FirstOrDefaultAsync(x => x.Id == c.RegisterId, ct);
+            if (register is null) return CashRegisterErrors.RegisterNotFound;
+            var before = register.StandardFloat;
+            register.StandardFloat = c.Amount;
+            await audit.RecordAsync("cash.standard-float", "Register", register.Id, new { before, after = c.Amount }, ct);
+            return Ok.Value;
+        }
+    }
+
+    internal sealed record Body(decimal? Amount);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapPut("/api/cash/registers/{id:guid}/standard-float", async (Guid id, Body b, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
+                    (await h.Handle(new Command(id, b.Amount), ct)).ToHttp(_ => Results.NoContent()))
+                .RequirePermission(Permissions.RegistersManage).WithTags("CashRegister");
+    }
+}
+
 /// <summary>Blind closing: the cashier counts bills and coins without seeing the expected cash. Needs register.close (one's own shift;
 /// another's needs register.approve-close) or a supervisor's approval. A count with a difference needs register.approve-close or a supervisor's
 /// approval for the shift, when the store's policy asks for it (TK-212). Returns the Z report with the difference.</summary>
@@ -315,14 +445,18 @@ internal static class CloseShift
             var approver = user.Has(Permissions.RegisterApproveClose);
             var off = (counted != expected || shift.BlindMisses >= BlindCloseAttempts.MaxMisses) && !approver
                 && await policy.RequiresSupervisorAsync(Permissions.RegisterApproveClose, ct);
-            if (off && c.SupervisorApprovalId is null && counted != expected) attempts.Missed = true;
+            // R11 A2: every count with a difference that does not close counts as a miss, whatever approval id it carries (an invented one
+            // used to skip the count); the endpoint adds it only when the closing failed.
+            if (off && counted != expected) attempts.Missed = true;
             var needed = off ? Permissions.RegisterApproveClose
                 : !approver && !user.Has(Permissions.RegisterClose) ? Permissions.RegisterClose
                 : null;
             if (needed is not null)
             {
-                if (c.SupervisorApprovalId is not { } id) return ApprovalErrors.Required(needed);
-                var supervisor = await approvals.ConsumeAsync(id, needed, c.ShiftId, ct);
+                // R11 A1: bound to this count: the supervisor's approval for one count does not close the shift with another.
+                var summary = $"Cerrar el turno con {ApprovalErrors.Money(counted)} contados en efectivo";
+                if (c.SupervisorApprovalId is not { } id) return ApprovalErrors.Required(needed, summary);
+                var supervisor = await approvals.ConsumeAsync(id, needed, c.ShiftId, summary, ct);
                 if (supervisor.IsFailure) return supervisor.Error!;
                 user.SupervisorId = supervisor.Value;
             }
@@ -365,7 +499,7 @@ internal static class CloseShift
                     CashRegisterDbContext db, CancellationToken ct) =>
                 {
                     var r = await h.Handle(new Command(id, b.CashCount, b.SupervisorApprovalId), ct);
-                    if (attempts.Missed)
+                    if (attempts.Missed && r.IsFailure)
                         await db.Shifts.Where(s => s.Id == id).ExecuteUpdateAsync(s => s.SetProperty(x => x.BlindMisses, x => x.BlindMisses + 1), CancellationToken.None);
                     return r.ToHttp();
                 })

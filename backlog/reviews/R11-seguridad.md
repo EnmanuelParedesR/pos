@@ -38,6 +38,30 @@ Bajos: 10) PII en logs 60 días; 11) http aceptado (TK-251 corrigió las URL); 1
 
 TK-253.
 
+### Parte A (tienda: cajero y supervisor)
+
+| # | Estado | Qué se hizo |
+|---|---|---|
+| A1 | ✅ | `Approval.Required` lleva `errors.summary`, escrito por el servidor (monto, tipo y motivo; líneas y cantidades de una devolución; total, líneas con precio cambiado o descuento y fiado de una venta; fondo; conteo del cierre). El diálogo lo muestra y lo manda; la autorización guarda su SHA-256 (`PayloadHash`) y al usarla se compara con el del comando y con el cajero que la pidió (`RequesterId`). Devolución, apertura y cierre la revisan en el handler, con el contenido ya leído. |
+| A2 | ✅ | Cada conteo con diferencia que no cierra suma un fallo, traiga o no un id (uno inventado ya no lo evita). Mientras el turno está abierto, el cajero no ve pagos ni devuelta en el detalle de sus ventas (el recibo reimpreso sí: ver pendientes). Se quedó con "pedir supervisor" en vez de "cerrar siempre y marcar pendiente": cambia el flujo del cierre y no hacía falta para cerrar el sondeo. |
+| A3 | ✅ | Cambiar la frase pide la actual o un Administrador (con todos los permisos). Copia: `BackupSettings.CopyAllowed` de la parte C (disco local; red solo listada en appsettings). Auditoría con antes y después del horario. PIN con *pepper* del servidor (`ServiceKeys`, archivo en la carpeta de llaves cifrado con su DPAPI, nunca en la base ni en respaldos): `p1:{id}:{hash}`; los hashes viejos se rehacen en el siguiente PIN correcto. Un respaldo restaurado en otra PC conserva a quien instaló esa PC para que reasigne PIN (`IdentityRestoreGuard`). |
+| A4 | ✅ | No existe `me/pin` (el PIN ajeno se prueba en inicio de sesión y autorización, ambos con `TryPin`, bloqueo y auditoría). El conteo de fallos ya no vuelve a cero con un PIN correcto: se olvida una hora después del último fallo. Sesiones de quien autoriza (anular, devolver, retirar, cerrar con diferencia, usuarios) se cierran a los 5 min sin actividad (`Identity:IdleMinutes`); el sondeo de la barra (`X-Toki-Background`) no cuenta. Salud `pin-failures` avisa con 3+ PIN malos en una hora o un bloqueo. |
+| A5 | ✅ | Quitar una línea o anular la venta en curso pasa por `POST /api/cash/shifts/{id}/cart-removals` (permiso `sales.remove-line` o supervisor según la política): movimiento `LineRemoved` (no es efectivo), auditoría `sales.remove-line`/`sales.void-cart` y en el Z ("Líneas quitadas antes de cobrar"). Sin servidor la caja sigue sola, como antes. |
+| A6 | ✅ | Permiso nuevo `credit.sell` (fiado y saldo a favor), en la política de autorizaciones (activo por defecto). Un pedido cobrado con su propio abono no cuenta. Reporte por cajero con `SoldOnCredit`. |
+| A7 | ✅ | Fondo estándar por caja (`PUT /api/cash/registers/{id}/standard-float`); abrir con otro pide `register.approve-close` o supervisor. Sin estándar, un fondo distinto del turno anterior queda en auditoría (`cash.float-changed`). Falta la casilla en Configuración → Cajas. |
+| A8 | ✅ | E31 a un RNC que no es el del cliente elegido pide `customers.manage` o supervisor; el resumen dice si el padrón cargado lo conoce, y su nombre reemplaza el escrito. |
+| A9, A11 | ✅ | Cajero y Cajero con apertura: sin `customers.manage` ni `inventory.view`, con `customers.quick-add` (crear clientes y buscarlos en la caja). Supervisor sin `payables.pay`, con `credit.sell`. `SecurityReviewIdentity` cambia solo roles sembrados sin tocar (mismos permisos, en cualquier orden) y da `credit.sell` a quien tiene `credit.manage`. |
+| A10 | ✅ | Cadena de auditoría con HMAC-SHA256 (`AuditKey`, secreto de `ServiceKeys`); los registros anteriores a la llave se verifican con SHA-256 y el primer número con llave se guarda junto a ella. El latido lleva `AuditHead`. |
+| A12 | ✅ | 606 pide además `costs.view`; una compra registrada llega sin costos por línea a quien no lo tiene (un borrador sí, lo escribe su autor); en Auditoría los campos con "cost" van vacíos. |
+| A13 | ✅ | Detalle y recibo de una venta: solo las propias, salvo reportes, turnos, anular o devolver. Ventas en espera: solo las propias. Los pedidos siguen visibles para toda caja (se cobran en cualquiera). |
+| A14 | ✅ | 4 PIN malos para una persona desde una caja (o de un cajero pidiendo autorización) cortan esa caja 15 min antes del bloqueo de la persona; con el límite de 10 por caja de C12 (`AttemptLimiter`). Un mismo error para código desconocido, PIN malo o quien no puede autorizar. |
+| A15 | ✅ | Restablecer el PIN de otro solo un Administrador. Al guardar un rol tampoco se quita un permiso que uno no tiene. |
+| A16 | ✅ | Tarjeta y transferencia en la venta piden referencia (`Business.RequirePaymentReference`, casilla en Datos del negocio). Los abonos de fiado no la piden aún. |
+| A17 | — | Parte C (C5). |
+| A18 | ✅ | Con la hora atrás del último registro de auditoría ningún comando guarda (`Clock.Behind`). |
+| A19 | ✅ | Gastos y pagos a suplidores no pueden ser de un mes cuyo 606 ya venció (el 15 del mes siguiente). |
+
+Pendientes: la reimpresión del recibo muestra pagos y devuelta durante el turno; la casilla del fondo estándar; la referencia en abonos; un respaldo restaurado en otra PC deja la cadena de auditoría anterior sin verificar allí (los Z impresos y los latidos la respaldan).
 ### Parte C (equipos, red y datos en reposo)
 
 | # | Estado | Qué se hizo |

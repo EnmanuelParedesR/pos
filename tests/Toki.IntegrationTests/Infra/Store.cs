@@ -66,11 +66,54 @@ public static class Store
 
     public static object Line(Guid productId, decimal quantity) => new { ProductId = productId, Quantity = quantity };
 
-    public static async Task<Guid> ApproveAsync(this HttpClient c, string permission, Guid resource)
+    /// <param name="summary">R11 A1: what the server said is approved (<c>errors.summary</c> of Approval.Required); empty for actions bound to
+    /// their resource alone (a void).</param>
+    public static async Task<Guid> ApproveAsync(this HttpClient c, string permission, Guid resource, string summary = "")
     {
-        var r = await c.PostAsJsonAsync("/api/identity/approvals", new { Code = "admin", Pin = TokiApp.AdminPin, Permission = permission, ResourceId = resource });
+        var r = await c.PostAsJsonAsync("/api/identity/approvals",
+            new { Code = "admin", Pin = TokiApp.AdminPin, Permission = permission, ResourceId = resource, Summary = summary });
         r.EnsureSuccessStatusCode();
         return (await r.Json()).GetProperty("approvalId").GetGuid();
+    }
+
+    /// <summary>Like the register (Approver.WithSupervisorAsync): sends it alone; when the server asks for a supervisor, the owner approves
+    /// exactly what the server summarized and it goes again with the approval.</summary>
+    public static async Task<HttpResponseMessage> SupervisedAsync(this HttpClient c, Guid resource, Func<Guid?, Task<HttpResponseMessage>> send)
+    {
+        var r = await send(null);
+        if (await Required(r) is not { } required) return r;
+        return await send(await c.ApproveAsync(required.Permission, resource, required.Summary));
+    }
+
+    /// <summary>A sale the way the register charges it: one approval per permission the server asks for, all sent together.</summary>
+    public static async Task<HttpResponseMessage> SellSupervisedAsync(this Cashier cashier, Guid saleId, Func<Guid[], object> sale)
+    {
+        List<Guid> approvals = [];
+        while (true)
+        {
+            var r = await cashier.SellAsync(sale([.. approvals]));
+            if (approvals.Count > 4 || await Required(r) is not { } required) return r;
+            approvals.Add(await cashier.Client.ApproveAsync(required.Permission, saleId, required.Summary));
+        }
+    }
+
+    private static async Task<(string Permission, string Summary)?> Required(HttpResponseMessage r)
+    {
+        if (r.StatusCode != System.Net.HttpStatusCode.Forbidden) return null;
+        var problem = await r.Content.ReadFromJsonAsync<JsonElement>();
+        if (problem.GetProperty("code").GetString() != "Approval.Required") return null;
+        var errors = problem.GetProperty("errors");
+        return (errors.GetProperty("permission")[0].GetString()!, errors.GetProperty("summary")[0].GetString()!);
+    }
+
+    /// <summary>The store stops asking a supervisor for this action (TK-210), as a one-person shop would.</summary>
+    public static async Task DoNotAskSupervisorAsync(this TokiApp app, string permission)
+    {
+        var admin = app.Client(await app.AdminAsync());
+        var rules = await admin.GetFromJsonAsync<JsonElement>("/api/settings/approvals");
+        var required = rules.EnumerateArray().Where(r => r.GetProperty("required").GetBoolean()).Select(r => r.GetProperty("permission").GetString())
+            .Where(p => p != permission).ToList();
+        (await admin.PutAsJsonAsync("/api/settings/approvals", new { Required = required })).EnsureSuccessStatusCode();
     }
 
     public static async Task<JsonElement> XReportAsync(this TokiApp app, Guid shiftId) =>

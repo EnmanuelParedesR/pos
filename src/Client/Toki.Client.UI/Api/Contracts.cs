@@ -31,7 +31,8 @@ public sealed record Role(Guid Id, string Name, string[] Permissions);
 public sealed record RoleList(Role[] Roles, string[] AvailablePermissions);
 
 // Settings
-public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent);
+public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent,
+    bool RequirePaymentReference = true);
 /// <param name="TrialEndsUtc">TK-196: null until the first sale starts the 14 days (and once a license is installed).</param>
 /// <param name="Warning">TK-220: null, "Soon" (trial day 10 on), "Last" (day 13 on) or "Ended" (Restricted).</param>
 public sealed record LicenseFeatures(string Status, string? Plan, DateTime? ExpiresUtc, string[] Enabled, int Registers,
@@ -76,7 +77,7 @@ public sealed record MethodTotal(PaymentMethod Method, decimal SalePayments, dec
 public sealed record ZReport(Guid ShiftId, long? ZNumber, string Register, string Cashier, DateTime OpenedUtc, DateTime? ClosedUtc, decimal OpeningFloat,
     MethodTotal[] ByMethod, int SaleCount, int VoidedCount, decimal CustomerPayments, decimal Rounding, decimal CashIn, decimal Withdrawals, decimal Expenses,
     decimal ExpectedCash, decimal? CountedCash, decimal? Difference, Guid? ClosingSupervisorId = null, string? AuditChainHead = null, decimal OrderDeposits = 0,
-    int DrawerOpenings = 0);
+    int DrawerOpenings = 0, int RemovedLines = 0, decimal RemovedAmount = 0);
 
 // Sales
 public sealed record Discount(bool IsPercentage, decimal Value);

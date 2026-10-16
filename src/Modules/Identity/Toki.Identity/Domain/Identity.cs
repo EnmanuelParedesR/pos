@@ -25,7 +25,8 @@ internal sealed class Role
     /// <remarks>The roles other than Administrador are written out on purpose, not derived from <see cref="P.All"/>: the owner edits them, and a new
     /// permission must not become a migration that rewrites their roles in every store (R6 #9). Administrador always gets every permission anyway.
     /// costs.view (TK-201) is the owner's: Supervisor does not get it by default (the owner grants it in Roles if the manager should see margins).
-    /// TK-216: Cajero no longer opens the register (Cajero con apertura does); Inventario and Contador are starting points the owner copies or edits.</remarks>
+    /// TK-216: Cajero no longer opens the register (Cajero con apertura does); Inventario and Contador are starting points the owner copies or edits.
+    /// R11 A11: Supervisor buys but does not pay suppliers (payables.pay is the owner's); SecurityReviewIdentity changes only untouched seeded roles.</remarks>
     public static IEnumerable<Role> Defaults()
     {
         yield return new Role { Id = AdministratorId, Name = "Administrador", Permissions = [.. P.All] };
@@ -35,18 +36,19 @@ internal sealed class Role
             Permissions = [P.ProductsManage, P.PricesChange, P.InventoryView, P.InventoryAdjust, P.InventoryCount, P.InventoryTransfer,
                 P.RegisterOpen, P.RegisterClose, P.RegisterCashIn, P.RegisterWithdraw, P.RegisterApproveClose, P.RegisterOpenDrawer,
                 P.SalesCreate, P.SalesVoid, P.SalesReturn, P.SalesLargeDiscount, P.SalesPriceOverride, P.SalesRemoveLine,
-                P.PurchasingManage, P.PayablesPay, P.CustomersManage, P.CreditCollect, P.CreditManage, P.CreditExceedLimit,
+                P.PurchasingManage, P.CustomersManage, P.CustomersQuickAdd, P.CreditCollect, P.CreditSell, P.CreditManage, P.CreditExceedLimit,
                 P.ReportsView, P.ShiftsView, P.FiscalReports],
         };
+        // R11 A9: the cashier adds a customer at the register (quick-add) but does not edit customers' credit or see the inventory screens.
         yield return new Role
         {
             Id = CashierId, Name = "Cajero",
-            Permissions = [P.SalesCreate, P.RegisterClose, P.RegisterCashIn, P.CreditCollect, P.InventoryView, P.CustomersManage],
+            Permissions = [P.SalesCreate, P.RegisterClose, P.RegisterCashIn, P.CreditCollect, P.CustomersQuickAdd],
         };
         yield return new Role
         {
             Id = CashierWithOpeningId, Name = "Cajero con apertura",
-            Permissions = [P.SalesCreate, P.RegisterOpen, P.RegisterClose, P.RegisterCashIn, P.CreditCollect, P.InventoryView, P.CustomersManage],
+            Permissions = [P.SalesCreate, P.RegisterOpen, P.RegisterClose, P.RegisterCashIn, P.CreditCollect, P.CustomersQuickAdd],
         };
         yield return new Role
         {
@@ -62,6 +64,8 @@ internal enum PinResult { Correct, Incorrect, Locked, Inactive }
 internal sealed class User
 {
     public const int AttemptsBeforeLockout = 5;
+    /// <summary>R11 A4: wrong PINs are forgotten only after this long without another one; a right PIN does not wipe them.</summary>
+    public static readonly TimeSpan FailureMemory = TimeSpan.FromHours(1);
 
     public Guid Id { get; set; }
     public string Name { get; set; } = "";
@@ -74,26 +78,33 @@ internal sealed class User
     public bool IsActive { get; set; } = true;
     public int FailedAttempts { get; set; }
     public DateTime? LockedUntilUtc { get; set; }
+    /// <summary>The last wrong PIN (R11 A4): <see cref="FailedAttempts"/> decays from here, not on the next right PIN.</summary>
+    public DateTime? LastFailedUtc { get; set; }
 
-    public void ChangePin(string pin)
+    public void ChangePin(string pin, byte[] pepper)
     {
-        PinHash = Pin.Hash(pin);
+        PinHash = Pin.Hash(pin, pepper);
         FailedAttempts = 0;
         LockedUntilUtc = null;
+        LastFailedUtc = null;
     }
 
-    /// <summary>Checks the PIN with progressive lockout: 5 failures lock 5 minutes, each further failure doubles it (max 1 hour).</summary>
-    public PinResult TryPin(string pin, DateTime nowUtc)
+    /// <summary>Checks the PIN with progressive lockout: 5 failures lock 5 minutes, each further failure doubles it (max 1 hour).
+    /// R11 A4: the count only goes back to zero an hour after the last failure, so guessing between two right PINs still locks.
+    /// A hash from before the pepper (R11 A3) is replaced by a peppered one on the first right PIN.</summary>
+    public PinResult TryPin(string pin, DateTime nowUtc, byte[] pepper)
     {
         if (!IsActive) return PinResult.Inactive;
         if (LockedUntilUtc > nowUtc) return PinResult.Locked;
-        if (Pin.Verify(PinHash, pin))
+        if (LastFailedUtc + FailureMemory <= nowUtc) (FailedAttempts, LastFailedUtc) = (0, null);
+        if (Pin.Verify(PinHash, pin, pepper) is var (ok, rehash) && ok)
         {
-            FailedAttempts = 0;
             LockedUntilUtc = null;
+            if (rehash) PinHash = Pin.Hash(pin, pepper);
             return PinResult.Correct;
         }
         FailedAttempts++;
+        LastFailedUtc = nowUtc;
         if (FailedAttempts >= AttemptsBeforeLockout)
         {
             var minutes = Math.Min(5 * Math.Pow(2, FailedAttempts - AttemptsBeforeLockout), 60);
@@ -144,6 +155,8 @@ internal sealed class Session
     public DateTime CreatedUtc { get; set; }
     public DateTime ExpiresUtc { get; set; }
     public DateTime? ClosedUtc { get; set; }
+    /// <summary>R11 A4: the last request on this session (written at most once a minute). Null: none since it opened.</summary>
+    public DateTime? LastSeenUtc { get; set; }
 }
 
 internal sealed class SupervisorApproval
@@ -156,18 +169,43 @@ internal sealed class SupervisorApproval
     public Guid DeviceId { get; set; }
     public string Permission { get; set; } = "";
     public Guid ResourceId { get; set; }
+    /// <summary>R11 A1: SHA-256 of the summary the supervisor saw (amount, kind, lines). The command that uses it must have the same.</summary>
+    public byte[] PayloadHash { get; set; } = [];
     public DateTime ExpiresUtc { get; set; }
     public DateTime? UsedUtc { get; set; }
+
+    public static byte[] HashOf(string summary) => SHA256.HashData(Encoding.UTF8.GetBytes(summary));
 }
 
+/// <summary>PIN hashes. R11 A3: the PIN is first keyed with the store server's pepper (<see cref="PinPepper"/>, kept in the key folder, never in the
+/// database or its backups), so a PinHash taken from a backup cannot be tried offline. "p1:{pepper id}:{hash}"; a hash without the prefix is from
+/// before the pepper and is replaced at the next right PIN.</summary>
 internal static class Pin
 {
+    private const string Prefix = "p1:";
     private static readonly PasswordHasher<object> Hasher = new();
 
     public static bool IsValid(string? pin) => pin is { Length: >= 4 and <= 8 } && pin.All(char.IsAsciiDigit);
-    public static string Hash(string pin) => Hasher.HashPassword(null!, pin);
-    public static bool Verify(string hash, string pin) =>
-        Hasher.VerifyHashedPassword(null!, hash, pin) != PasswordVerificationResult.Failed;
+
+    public static string Hash(string pin, byte[] pepper) => $"{Prefix}{PepperId(pepper)}:{Hasher.HashPassword(null!, Keyed(pin, pepper))}";
+
+    /// <returns>Whether the PIN is right, and whether its hash should be written again (old format or old algorithm).</returns>
+    public static (bool Ok, bool Rehash) Verify(string hash, string pin, byte[] pepper)
+    {
+        if (!hash.StartsWith(Prefix, StringComparison.Ordinal))
+            return (Hasher.VerifyHashedPassword(null!, hash, pin) != PasswordVerificationResult.Failed, true);
+        var parts = hash.Split(':', 3);
+        if (parts.Length != 3 || parts[1] != PepperId(pepper)) return (false, false); // peppered on another server: see IdentityRestoreGuard
+        var r = Hasher.VerifyHashedPassword(null!, parts[2], Keyed(pin, pepper));
+        return (r != PasswordVerificationResult.Failed, r == PasswordVerificationResult.SuccessRehashNeeded);
+    }
+
+    /// <summary>Whether this hash was made with another server's pepper (a backup restored on a new PC).</summary>
+    public static bool IsForeign(string hash, byte[] pepper) =>
+        hash.StartsWith(Prefix, StringComparison.Ordinal) && hash.Split(':', 3) is [_, var id, _] && id != PepperId(pepper);
+
+    private static string Keyed(string pin, byte[] pepper) => Convert.ToBase64String(HMACSHA256.HashData(pepper, Encoding.UTF8.GetBytes(pin)));
+    private static string PepperId(byte[] pepper) => Convert.ToHexString(SHA256.HashData(pepper), 0, 4);
 }
 
 /// <summary>Random bearer secrets. Only their SHA-256 is stored.</summary>
@@ -197,6 +235,13 @@ internal static class IdentityErrors
         "Demasiados PIN equivocados en esta caja. Espere 15 minutos o entre desde otra caja.");
     public static readonly Error SupervisorLacksPermission = Error.Forbidden("Identity.SupervisorLacksPermission", "Ese usuario no puede autorizar esta acción.");
     public static readonly Error InvalidApproval = Error.Forbidden("Identity.InvalidApproval", "La autorización del supervisor no es válida, ya se usó o venció.");
+    /// <summary>R11 A14: one answer for an unknown code, a wrong PIN and someone who may not approve this, so the answer never confirms a PIN.</summary>
+    public static readonly Error CannotApprove = Error.Unauthorized("Identity.InvalidCredentials", "Código o PIN incorrecto, o esa persona no puede autorizar esto.");
+    /// <summary>R11 A14: too many wrong PINs for one user from this register in a few minutes.</summary>
+    public static readonly Error TooManyAttempts = Error.Unauthorized("Identity.TooManyAttempts", "Demasiados PIN incorrectos para esa persona desde esta caja. Espere unos minutos.");
+    /// <summary>R11 A15: a PIN reset lets whoever types it sign in as that person.</summary>
+    public static readonly Error PinResetAdministratorOnly = Error.Forbidden("Identity.PinResetAdministratorOnly",
+        "Solo un administrador puede cambiar el PIN de otra persona.");
     public static readonly Error UnknownPermission = Error.Validation("Identity.UnknownPermission", "Uno de los permisos no existe.");
     public static readonly Error AdministratorOnly = Error.Forbidden("Identity.AdministratorOnly", "Solo un administrador puede dar o quitar el rol Administrador.");
     /// <summary>TK-220: a register beyond what the license allows (Restricted keeps the main PC and one register).</summary>

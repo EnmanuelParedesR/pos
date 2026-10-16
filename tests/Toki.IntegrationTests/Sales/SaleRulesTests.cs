@@ -45,7 +45,7 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
         var saleId = Guid.CreateVersion7();
         (await RequestedPermission(await cashier.SellAsync(Body(saleId, cashier.ShiftId, 1744.40m, 1745m, lines)))).ShouldBe("sales.large-discount");
 
-        var ok = await cashier.SellAsync(Body(saleId, cashier.ShiftId, 1744.40m, 1745m, lines, approvals: [await cashier.Client.ApproveAsync("sales.large-discount", saleId)]));
+        var ok = await cashier.SellSupervisedAsync(saleId, approvals => Body(saleId, cashier.ShiftId, 1744.40m, 1745m, lines, approvals: approvals));
         ok.StatusCode.ShouldBe(HttpStatusCode.Created);
     }
 
@@ -63,7 +63,7 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
         };
         (await RequestedPermission(await cashier.SellAsync(Sale([])))).ShouldBe("sales.large-discount");
 
-        var ok = await cashier.SellAsync(Sale([await cashier.Client.ApproveAsync("sales.large-discount", saleId)]));
+        var ok = await cashier.SellSupervisedAsync(saleId, Sale);
         ok.StatusCode.ShouldBe(HttpStatusCode.Created);
         var sale = await ok.Json();
         (sale.GetProperty("total").GetDecimal(), sale.GetProperty("change").GetDecimal()).ShouldBe((0m, 0m));
@@ -80,12 +80,11 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
         var cashier = await app.CashierWithShiftAsync();
         var soda = await ProductAsync("Refresco", 59m);
         var saleId = Guid.CreateVersion7();
-        var sale = new
+        (await cashier.SellSupervisedAsync(saleId, approvals => new
         {
             SaleId = saleId, ShiftId = cashier.ShiftId, Lines = new[] { new { ProductId = soda, Quantity = 1m, Discount = new { IsPercentage = true, Value = 100m } } },
-            Payments = Array.Empty<object>(), ExpectedTotal = 0m, SupervisorApprovals = new[] { await cashier.Client.ApproveAsync("sales.large-discount", saleId) },
-        };
-        (await cashier.SellAsync(sale)).StatusCode.ShouldBe(HttpStatusCode.Created);
+            Payments = Array.Empty<object>(), ExpectedTotal = 0m, SupervisorApprovals = approvals,
+        })).StatusCode.ShouldBe(HttpStatusCode.Created);
 
         var z = await (await Admin()).GetFromJsonAsync<JsonElement>($"/api/cash/shifts/{cashier.ShiftId}/z");
         z.GetProperty("saleCount").GetInt32().ShouldBe(1);
@@ -103,7 +102,7 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
         var saleId = Guid.CreateVersion7();
         (await RequestedPermission(await cashier.SellAsync(Body(saleId, cashier.ShiftId, 106.20m, 107m, lines)))).ShouldBe("sales.price-override");
 
-        var ok = await cashier.SellAsync(Body(saleId, cashier.ShiftId, 106.20m, 107m, lines, approvals: [await cashier.Client.ApproveAsync("sales.price-override", saleId)]));
+        var ok = await cashier.SellSupervisedAsync(saleId, approvals => Body(saleId, cashier.ShiftId, 106.20m, 107m, lines, approvals: approvals));
         ok.StatusCode.ShouldBe(HttpStatusCode.Created);
     }
 
@@ -116,8 +115,7 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
         var lines = new object[] { Line(rice, 10m) };
 
         (await RequestedPermission(await cashier.SellAsync(Body(saleId, cashier.ShiftId, 450m, 450m, lines, "Wholesale")))).ShouldBe("sales.price-override");
-        var ok = await cashier.SellAsync(Body(saleId, cashier.ShiftId, 450m, 450m, lines, "Wholesale",
-            [await cashier.Client.ApproveAsync("sales.price-override", saleId)]));
+        var ok = await cashier.SellSupervisedAsync(saleId, approvals => Body(saleId, cashier.ShiftId, 450m, 450m, lines, "Wholesale", approvals));
         ok.StatusCode.ShouldBe(HttpStatusCode.Created);
         (await ok.Json()).GetProperty("total").GetDecimal().ShouldBe(450m);
     }
@@ -137,12 +135,11 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
         var line = (await cashier.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}")).GetProperty("lines")[0];
         line.GetProperty("description").GetString()!.ShouldEndWith("(Caja 12)");
 
-        var ret = await cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
+        var ret = await cashier.Client.SupervisedAsync(saleId, approval => cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
         {
             ReturnId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Method = "Cash", Reason = "Sobró",
-            Lines = new[] { new { SaleLineId = line.GetProperty("id").GetGuid(), Quantity = 1m } },
-            SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.return", saleId),
-        });
+            Lines = new[] { new { SaleLineId = line.GetProperty("id").GetGuid(), Quantity = 1m } }, SupervisorApprovalId = approval,
+        }));
         (await ret.Json()).GetProperty("total").GetDecimal().ShouldBe(1300m);
         (await admin.StockAsync(beer)).ShouldBe(36m);
         (await app.KardexMismatchesAsync()).ShouldBeEmpty();
@@ -157,11 +154,11 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
 
         var saleId = (await (await cashier.SellAsync(Sale(cashier.ShiftId, 118m, 118m, Line(soda, 2m)))).Json()).GetProperty("saleId").GetGuid();
         var line = (await cashier.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}")).GetProperty("lines")[0].GetProperty("id").GetGuid();
-        var ret = await cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
+        var ret = await cashier.Client.SupervisedAsync(saleId, approval => cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
         {
             ReturnId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Method = "Cash", Reason = "x",
-            Lines = new[] { new { SaleLineId = line, Quantity = 0.5m } }, SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.return", saleId),
-        });
+            Lines = new[] { new { SaleLineId = line, Quantity = 0.5m } }, SupervisorApprovalId = approval,
+        }));
         (await ret.ErrorCode()).ShouldBe("Sales.InvalidQuantity");
     }
 
@@ -175,7 +172,7 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
         var withRnc = await cashier.SellAsync(new
         {
             SaleId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Lines = new[] { Line(fridge, 2m) }, ExpectedTotal = 250_000m,
-            Payments = new[] { new { Method = "Transfer", Amount = 250_000m } }, CustomerRnc = "001-1234567-8", CustomerName = "Juan Pérez",
+            Payments = new[] { new { Method = "Transfer", Amount = 250_000m, Reference = "TRF-250" } }, CustomerRnc = "001-1234567-8", CustomerName = "Juan Pérez",
         });
         withRnc.StatusCode.ShouldBe(HttpStatusCode.Created);
     }

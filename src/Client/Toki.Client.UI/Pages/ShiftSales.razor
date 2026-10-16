@@ -86,7 +86,7 @@
                         }
                     </tbody>
                 </table>
-                <div class="esc-subtitle">Pagado: @string.Join(" · ", d.Payments.Select(p => $"{Names.PaymentMethod(p.Method)} {Format.Amount(p.Amount)}"))</div>
+                <div class="esc-subtitle">Pagado: @(d.Payments.Length == 0 ? "se ve al cerrar el turno" : string.Join(" · ", d.Payments.Select(p => $"{Names.PaymentMethod(p.Method)} {Format.Amount(p.Amount)}")))</div>
                 @foreach (var ret in d.Returns)
                 {
                     <div class="esc-subtitle">Devolución @Format.Time(ret.DateUtc): @Format.WithCurrency(ret.Total) por @Names.PaymentMethod(ret.Method) · @ret.ENcf</div>

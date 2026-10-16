@@ -93,10 +93,11 @@ public sealed class EcfAdminTests(DgiiTokiApp app) : IClassFixture<DgiiTokiApp>
         var rice = await admin.ProductAsync(await admin.CategoryAsync(), "Arroz", 100m, rate: "Exempt", stock: 50);
         var customer = (await (await admin.PostAsJsonAsync("/api/customers", new { Name = "Colmado El Sol", TaxId = "101672919", FiscalCredit = true, CreditLimit = 5000m }))
             .Json()).GetProperty("id").GetGuid();
-        var r = await cashier.SellAsync(new
+        var saleId = Guid.CreateVersion7();
+        var r = await cashier.SellSupervisedAsync(saleId, approvals => new // credit.sell (R11 A6)
         {
-            SaleId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, CustomerId = customer, DocumentType = "FiscalCredit31", Lines = new[] { Line(rice, 1) },
-            Payments = new[] { new { Method = "OnAccount", Amount = 100m } }, ExpectedTotal = 100m,
+            SaleId = saleId, ShiftId = cashier.ShiftId, CustomerId = customer, DocumentType = "FiscalCredit31", Lines = new[] { Line(rice, 1) },
+            Payments = new[] { new { Method = "OnAccount", Amount = 100m } }, ExpectedTotal = 100m, SupervisorApprovals = approvals,
         });
         r.StatusCode.ShouldBe(HttpStatusCode.Created);
         var rejected = Encf(await r.Json());

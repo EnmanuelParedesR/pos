@@ -30,7 +30,7 @@ internal static class CreateUser
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me, PinPepper pepper) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -41,7 +41,7 @@ internal static class CreateUser
             if (await db.Users.AnyAsync(u => u.Code == User.NormalizeCode(c.Code), ct)) return IdentityErrors.DuplicateCode;
 
             var user = new User { Id = Guid.CreateVersion7(), Name = c.Name.Trim(), Code = User.NormalizeCode(c.Code), RoleId = c.RoleId };
-            user.ChangePin(c.Pin);
+            user.ChangePin(c.Pin, pepper.Value);
             db.Users.Add(user);
             outbox.Add(new UserProfileChangedV1(user.Id, user.Name, user.IsActive));
             await audit.RecordAsync("identity.create-user", "User", user.Id, new { before = (object?)null, after = new { user.Name, user.Code, user.RoleId, user.IsActive } }, ct);
@@ -72,7 +72,7 @@ internal static class UpdateUser
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me, TimeProvider clock) : ICommandHandler<Command, Ok>
+    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me, PinPepper pepper, TimeProvider clock) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
@@ -87,12 +87,14 @@ internal static class UpdateUser
             // TK-215: the new role and the current one (a PIN reset would let the actor sign in as someone with more permissions).
             if (Escalation.NotHeld(me, roles.SelectMany(r => r.Effective)) is { Count: > 0 } missing) return IdentityErrors.PermissionsNotHeld(missing);
             // At least one active Administrador always remains: only an active Administrador changes one, and never themselves (above).
+            // R11 A15: a new PIN for someone else lets whoever types it sign in as them: only an Administrador resets it.
+            if (c.Pin is not null && user.Id != me.UserId && !await db.IsAdministratorAsync(me.UserId, ct)) return IdentityErrors.PinResetAdministratorOnly;
 
             var before = new { user.Name, user.RoleId, user.IsActive };
             user.Name = c.Name.Trim();
             user.RoleId = c.RoleId;
             user.IsActive = c.IsActive;
-            if (c.Pin is not null) user.ChangePin(c.Pin);
+            if (c.Pin is not null) user.ChangePin(c.Pin, pepper.Value);
             if (!c.IsActive || c.Pin is not null)
             {
                 var now = clock.GetUtcNow().UtcDateTime;

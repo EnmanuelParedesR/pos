@@ -80,9 +80,15 @@ public sealed class PermissionSplitMigrationTests
         await using var db = NewDatabase();
         try
         {
+            // R11 A9/A11 (SecurityReviewIdentity): seeded roles the owner never touched follow docs/permisos.md; an edited one keeps what it has.
+            await db.GetService<IMigrator>().MigrateAsync("20261016161515_RenewDeviceCertificatesIdentity");
+            await db.Database.ExecuteSqlRawAsync("UPDATE [identity].[Roles] SET Permissions = 'sales.create,customers.manage' WHERE Id = '0199e000-0000-7000-8000-000000000004'");
             await db.Database.MigrateAsync();
             var roles = await db.Roles.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.Permissions);
-            roles[new Guid(Cashier)].ShouldBe(["sales.create", "register.close", "register.cash-in", "credit.collect", "inventory.view", "customers.manage"]);
+            roles[new Guid(Cashier)].ShouldBe(["sales.create", "register.close", "register.cash-in", "credit.collect", "customers.quick-add"]);
+            roles[new Guid("0199e000-0000-7000-8000-000000000004")].ShouldBe(["sales.create", "customers.manage"]);
+            roles[new Guid("0199e000-0000-7000-8000-000000000002")].ShouldNotContain("payables.pay");
+            roles[new Guid("0199e000-0000-7000-8000-000000000002")].ShouldContain("credit.sell");
             roles.Count.ShouldBe(6);
         }
         finally

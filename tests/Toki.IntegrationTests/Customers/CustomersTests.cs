@@ -16,6 +16,8 @@ public sealed class CustomersTests(TokiApp app) : IClassFixture<TokiApp>
 
     private async Task<Guid> CustomerAsync(decimal limit = 0, string priceLevel = "Retail", string? taxId = null)
     {
+        // These tests are about credit rules; whether selling on credit asks a supervisor (R11 A6) is tested in SaleRulesTests.
+        await app.DoNotAskSupervisorAsync("credit.sell");
         var r = await (await Admin()).PostAsJsonAsync("/api/customers", new { Name = "Doña " + Guid.NewGuid().ToString()[..4], TaxId = taxId, PriceLevel = priceLevel, CreditLimit = limit });
         r.StatusCode.ShouldBe(HttpStatusCode.Created);
         return (await r.Json()).GetProperty("id").GetGuid();
@@ -60,7 +62,7 @@ public sealed class CustomersTests(TokiApp app) : IClassFixture<TokiApp>
             Payments = new[] { new { Method = "OnAccount", Amount = 500m } }, ExpectedTotal = 500m, SupervisorApprovals = approvals,
         };
         (await (await cashier.SellAsync(Second())).ErrorCode()).ShouldBe("Approval.Required");
-        var r = await cashier.SellAsync(Second(await cashier.Client.ApproveAsync("credit.exceed-limit", saleId)));
+        var r = await cashier.SellSupervisedAsync(saleId, Second);
         r.StatusCode.ShouldBe(HttpStatusCode.Created);
         (await DebtAsync(customer)).ShouldBe(1100m);
     }
@@ -119,11 +121,12 @@ public sealed class CustomersTests(TokiApp app) : IClassFixture<TokiApp>
         var saleId = sale.GetProperty("saleId").GetGuid();
         var line = (await cashier.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}")).GetProperty("lines")[0].GetProperty("id").GetGuid();
 
-        var ret = await cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
+        var returnId = Guid.CreateVersion7();
+        var ret = await cashier.Client.SupervisedAsync(saleId, approval => cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
         {
-            ReturnId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Method = "CreditBalance", Reason = "sobró",
-            Lines = new[] { new { SaleLineId = line, Quantity = 3m } }, SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.return", saleId),
-        });
+            ReturnId = returnId, ShiftId = cashier.ShiftId, Method = "CreditBalance", Reason = "sobró",
+            Lines = new[] { new { SaleLineId = line, Quantity = 3m } }, SupervisorApprovalId = approval,
+        }));
         ret.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await DebtAsync(customer)).ShouldBe(0m);            // 300 returned: 200 pays the debt of that sale
         (await CreditBalanceAsync(customer)).ShouldBe(100m); // the other 100 stays in favor
@@ -186,13 +189,14 @@ public sealed class CustomersTests(TokiApp app) : IClassFixture<TokiApp>
         (await cashier.PostAsJsonAsync("/api/customers", new { Name = "Cliente rápido" })).StatusCode.ShouldBe(HttpStatusCode.Created);
         (await (await cashier.PostAsJsonAsync("/api/customers", new { Name = "Con crédito", CreditLimit = 5000m })).ErrorCode()).ShouldBe("Customers.CreditPermissionRequired");
 
-        // The owner blocks a customer who does not pay; a cashier cannot unblock them, nor raise the limit or set wholesale.
+        // The owner blocks a customer who does not pay; a cashier (R11 A9: customers.quick-add, not customers.manage) edits no customer at all,
+        // so cannot unblock them, nor raise the limit or set wholesale.
         var defaulter = await CustomerAsync(limit: 1000m);
         (await (await Admin()).PutAsJsonAsync($"/api/customers/{defaulter}", new { Name = "Moroso", CreditLimit = 1000m, IsActive = false })).EnsureSuccessStatusCode();
-        (await (await cashier.PutAsJsonAsync($"/api/customers/{defaulter}", new { Name = "Moroso", CreditLimit = 1000m, IsActive = true })).ErrorCode())
-            .ShouldBe("Customers.CreditPermissionRequired");
-        (await (await cashier.PutAsJsonAsync($"/api/customers/{defaulter}", new { Name = "Moroso", CreditLimit = 1000m, PriceLevel = "Wholesale", IsActive = false })).ErrorCode())
-            .ShouldBe("Customers.CreditPermissionRequired");
+        (await cashier.PutAsJsonAsync($"/api/customers/{defaulter}", new { Name = "Moroso", CreditLimit = 1000m, IsActive = true })).StatusCode
+            .ShouldBe(HttpStatusCode.Forbidden);
+        (await cashier.PutAsJsonAsync($"/api/customers/{defaulter}", new { Name = "Moroso", CreditLimit = 1000m, PriceLevel = "Wholesale", IsActive = false })).StatusCode
+            .ShouldBe(HttpStatusCode.Forbidden);
 
         // Blocked customers only show up for whoever can reactivate them.
         (await cashier.GetFromJsonAsync<JsonElement>("/api/customers?search=Moroso&includeInactive=true")).EnumerateArray().ShouldNotContain(c => c.GetProperty("id").GetGuid() == defaulter);
@@ -288,11 +292,12 @@ public sealed class CustomersTests(TokiApp app) : IClassFixture<TokiApp>
         })).Json()).GetProperty("saleId").GetGuid();
         var line = (await cashier.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{cashSale}")).GetProperty("lines")[0].GetProperty("id").GetGuid();
 
-        (await cashier.Client.PostAsJsonAsync($"/api/sales/{cashSale}/returns", new
+        var returnId = Guid.CreateVersion7();
+        (await cashier.Client.SupervisedAsync(cashSale, approval => cashier.Client.PostAsJsonAsync($"/api/sales/{cashSale}/returns", new
         {
-            ReturnId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Method = "CreditBalance", Reason = "sobró",
-            Lines = new[] { new { SaleLineId = line, Quantity = 5m } }, SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.return", cashSale),
-        })).EnsureSuccessStatusCode();
+            ReturnId = returnId, ShiftId = cashier.ShiftId, Method = "CreditBalance", Reason = "sobró",
+            Lines = new[] { new { SaleLineId = line, Quantity = 5m } }, SupervisorApprovalId = approval,
+        }))).EnsureSuccessStatusCode();
         (await DebtAsync(customer)).ShouldBe(1500m);
         (await CreditBalanceAsync(customer)).ShouldBe(0m);
     }

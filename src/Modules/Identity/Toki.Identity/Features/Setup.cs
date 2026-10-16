@@ -35,7 +35,7 @@ internal static class Setup
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, StoreCertificateAuthority ca, TimeProvider clock)
+    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, StoreCertificateAuthority ca, PinPepper pepper, TimeProvider clock)
         : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
@@ -45,7 +45,7 @@ internal static class Setup
             if (await db.Users.AnyAsync(ct)) return IdentityErrors.AlreadySetUp;
 
             var admin = new User { Id = Guid.CreateVersion7(), Name = c.AdministratorName.Trim(), Code = User.NormalizeCode(c.AdministratorCode), RoleId = Role.AdministratorId };
-            admin.ChangePin(c.Pin);
+            admin.ChangePin(c.Pin, pepper.Value);
             var device = new Device
             {
                 Id = Guid.CreateVersion7(), Name = c.DeviceName.Trim(), CreatedUtc = clock.GetUtcNow().UtcDateTime,

@@ -12,6 +12,11 @@ internal sealed class AttemptLimiter(TimeProvider clock)
     /// their own lockout; this stops one register from trying every user's PIN in turn.</summary>
     public const int PinsPerDevice = 10;
     public static string PinKey(Guid deviceId) => $"pin:{deviceId}";
+
+    /// <summary>R11 A14: wrong PINs for one user from one register (or from one cashier asking for approvals). Under the user's own lockout (5),
+    /// so a cashier cannot lock the owner out from their register; several registers still lock a guessed user.</summary>
+    public const int PinsPerUser = 4;
+    public static string UserPinKey(Guid deviceId, string code, Guid? requester = null) => $"pin:{deviceId}:{requester}:{code}";
     private readonly ConcurrentDictionary<string, List<DateTimeOffset>> _failures = new();
 
     public bool IsBlocked(string key, int limit)

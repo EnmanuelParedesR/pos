@@ -27,11 +27,15 @@ public sealed class SequencesTests(TokiApp app) : IClassFixture<TokiApp>
 
         var cashier = await app.CashierWithShiftAsync(loadSequences: false);
         var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco", 59m, stock: 10);
-        async Task<JsonElement> Sell(string type) => await (await cashier.SellAsync(new
+        async Task<JsonElement> Sell(string type)
         {
-            SaleId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Lines = new[] { Line(soda, 1m) }, Payments = new[] { new { Method = "Cash", Amount = 59m } },
-            ExpectedTotal = 59m, DocumentType = type, CustomerRnc = "131245678", CustomerName = "Colmado El Sol SRL",
-        })).Json();
+            var id = Guid.CreateVersion7();
+            return await (await cashier.SellSupervisedAsync(id, approvals => new
+            {
+                SaleId = id, ShiftId = cashier.ShiftId, Lines = new[] { Line(soda, 1m) }, Payments = new[] { new { Method = "Cash", Amount = 59m } },
+                ExpectedTotal = 59m, DocumentType = type, CustomerRnc = "131245678", CustomerName = "Colmado El Sol SRL", SupervisorApprovals = approvals,
+            })).Json();
+        }
 
         // The first range runs out and the next one takes over; the expired consumer range is skipped.
         (await Sell("FiscalCredit31")).GetProperty("eNcf").GetString().ShouldBe("E310000000001");

@@ -10,6 +10,8 @@ internal sealed class Register
     public bool IsActive { get; set; } = true;
     /// <summary>The paired device this register belongs to (set on its first shift). Its shifts are only operated from there.</summary>
     public Guid? DeviceId { get; set; }
+    /// <summary>R11 A7: the float it usually opens with; another one needs a supervisor. Null: not set.</summary>
+    public decimal? StandardFloat { get; set; }
 }
 
 internal enum ShiftStatus { Open, Closed }
@@ -40,8 +42,10 @@ internal sealed class Shift
 }
 
 /// <summary>Rounding: centavos the store keeps because change is given in whole pesos (there are no coins below RD$ 1).</summary>
-/// <remarks>DrawerOpened (TK-239): the drawer opened without a sale; amount 0, the reason in the note.</remarks>
-internal enum CashMovementType { SalePayment, SalePaymentVoid, Refund, CashIn, Withdrawal, Expense, CustomerPayment, Rounding, CustomerPaymentVoid, DrawerOpened }
+/// <remarks>DrawerOpened (TK-239): the drawer opened without a sale; amount 0, the reason in the note.
+/// LineRemoved (R11 A5): a line taken off the sale in progress (Reference "Line") or the cart voided before charging ("Sale"); the amount is what it was
+/// worth, not cash: it never counts in the expected cash.</remarks>
+internal enum CashMovementType { SalePayment, SalePaymentVoid, Refund, CashIn, Withdrawal, Expense, CustomerPayment, Rounding, CustomerPaymentVoid, DrawerOpened, LineRemoved }
 
 internal enum MovementReason { ExtraChange, CashPickup, BankDeposit, SupplierPayment, PettyExpense, Other }
 
@@ -79,7 +83,7 @@ internal static class ShiftBalance
 {
     /// <summary>Expected cash = float + cash sales − cash refunds − voided cash + cash in − withdrawals − petty expenses.</summary>
     public static decimal ExpectedCash(decimal openingFloat, IEnumerable<CashMovement> movements) =>
-        openingFloat + movements.Where(m => m.Method == PaymentMethod.Cash).Sum(m => m.IsInflow ? m.Amount : -m.Amount);
+        openingFloat + movements.Where(m => m.Method == PaymentMethod.Cash && m.Type != CashMovementType.LineRemoved).Sum(m => m.IsInflow ? m.Amount : -m.Amount);
 
     public static decimal Counted(IEnumerable<DenominationCount> count) => count.Sum(c => c.Denomination * c.Quantity);
 }

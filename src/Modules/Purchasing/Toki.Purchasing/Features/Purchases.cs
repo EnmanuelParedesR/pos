@@ -240,14 +240,23 @@ internal static class QueryPurchases
 {
     public sealed record Item(Guid Id, long Number, string Supplier, string Ncf, DateOnly InvoiceDate, string Status, string Terms, decimal Total);
 
+    private static readonly string[] CostFields = ["unitCost", "subtotal", "itbis"];
+
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/api/purchasing/purchases/{id:guid}", async (Guid id, PurchasingDbContext db, CancellationToken ct) =>
-                    await db.Purchases.Include(p => p.Lines.OrderBy(l => l.LineNumber)).AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct) is { } purchase
-                        ? Results.Ok(purchase)
-                        : EndpointExtensions.Problem(PurchasingErrors.PurchaseNotFound))
+            // R11 A12: without costs.view, a posted purchase comes without what each product cost (a draft keeps them: its author is still typing it).
+            app.MapGet("/api/purchasing/purchases/{id:guid}", async (Guid id, PurchasingDbContext db, IUserContext user, CancellationToken ct) =>
+                {
+                    if (await db.Purchases.Include(p => p.Lines.OrderBy(l => l.LineNumber)).AsNoTracking().FirstOrDefaultAsync(p => p.Id == id, ct) is not { } purchase)
+                        return EndpointExtensions.Problem(PurchasingErrors.PurchaseNotFound);
+                    if (user.Has(Permissions.CostsView) || purchase.Status == PurchaseStatus.Draft) return Results.Ok(purchase);
+                    var json = System.Text.Json.JsonSerializer.SerializeToNode(purchase, Json.Options)!;
+                    foreach (var line in json["lines"]!.AsArray())
+                        foreach (var field in CostFields) line![field] = null;
+                    return Results.Ok(json);
+                })
                 .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
             app.MapGet("/api/purchasing/purchases", async (DateOnly? from, DateOnly? to, Guid? supplierId, PurchasingDbContext db, CancellationToken ct) =>
                 {

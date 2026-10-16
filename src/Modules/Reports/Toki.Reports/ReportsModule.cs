@@ -92,8 +92,10 @@ internal sealed class ReportsEndpoints : IEndpoint
                     "Resuélvalos en Comprobantes electrónicos antes de sacar el 607."))
                 : Export.As(await sales.Report607Async(p.From, p.To, ct), p.Format, p.Name("607"));
         });
-        dgii.MapGet("/dgii/606", async ([AsParameters] Period p, IPurchasingReports purchasing, CancellationToken ct) =>
-            p.Invalid() ?? Export.As(await purchasing.Report606Async(p.From, p.To, ct), p.Format, p.Name("606")));
+        // R11 A12: the 606 is what every purchase cost, so it also needs costs.view (the accountant has it; a supervisor does not by default).
+        dgii.MapGet("/dgii/606", async ([AsParameters] Period p, IPurchasingReports purchasing, IUserContext user, CancellationToken ct) =>
+            !Costs(user) ? EndpointExtensions.Problem(Error.Forbidden("Reports.CostsRequired", "El 606 muestra lo que costaron las compras: necesita el permiso de ver costos."))
+            : p.Invalid() ?? Export.As(await purchasing.Report606Async(p.From, p.To, ct), p.Format, p.Name("606")));
         dgii.MapGet("/dgii/608", async ([AsParameters] Period p, IFiscalReports fiscal, CancellationToken ct) =>
             p.Invalid() ?? Export.As(await fiscal.Report608Async(p.From, p.To, ct), p.Format, p.Name("608")));
 

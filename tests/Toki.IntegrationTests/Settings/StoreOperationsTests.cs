@@ -108,7 +108,7 @@ public sealed class StoreOperationsTests(TokiApp app) : IClassFixture<TokiApp>
     {
         var admin = app.Client(await app.AdminAsync());
         var checks = (await admin.GetFromJsonAsync<JsonElement>("/api/settings/health")).EnumerateArray().ToList();
-        checks.Select(c => c.GetProperty("name").GetString()).ShouldBe(["backup", "store-ca", "outbox", "clock", "ecf-queue", "ecf-operations", "audit", "sync", "disk-encryption"],
+        checks.Select(c => c.GetProperty("name").GetString()).ShouldBe(["backup", "store-ca", "pin-failures", "outbox", "clock", "ecf-queue", "ecf-operations", "audit", "sync", "disk-encryption"],
             ignoreOrder: true);
         var backup = checks.Single(c => c.GetProperty("name").GetString() == "backup");
         backup.GetProperty("title").GetString().ShouldBe("Respaldos");

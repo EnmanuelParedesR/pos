@@ -21,8 +21,8 @@ internal static class VerifyAudit
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/audit/verify", async (InfraDbContext db, CancellationToken ct) =>
-                    await AuditChain.VerifyAsync(db, ct) is { } broken ? Results.Ok(new Response(false, broken)) : Results.Ok(new Response(true, null)))
+            app.MapGet("/api/audit/verify", async (InfraDbContext db, AuditKey key, CancellationToken ct) =>
+                    await AuditChain.VerifyAsync(db, key, ct) is { } broken ? Results.Ok(new Response(false, broken)) : Results.Ok(new Response(true, null)))
                 .RequirePermission(Permissions.AuditView).WithTags("Audit");
     }
 }
@@ -61,7 +61,7 @@ internal sealed class NightlyAuditCheck(IServiceScopeFactory scopes, LastAuditCh
         try
         {
             await using var scope = scopes.CreateAsyncScope();
-            last.FirstBrokenRecord = await AuditChain.VerifyAsync(scope.ServiceProvider.GetRequiredService<InfraDbContext>(), ct);
+            last.FirstBrokenRecord = await AuditChain.VerifyAsync(scope.ServiceProvider.GetRequiredService<InfraDbContext>(), scope.ServiceProvider.GetRequiredService<AuditKey>(), ct);
             if (last.FirstBrokenRecord is { } broken) log.LogCritical("The audit chain is broken from record {Sequence}", broken);
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)

@@ -42,6 +42,7 @@
                         <Field Label="Descuento máximo sin supervisor (%)" Error="@Err("discount")" Hint="Más que esto pide el PIN de un supervisor.">
                             <input class="esc-input esc-num" inputmode="decimal" @bind="_business.DiscountCap" @bind:after='() => Clear("discount")' aria-invalid="@Invalid("discount")" />
                         </Field>
+                        <label class="esc-check"><input type="checkbox" @bind="_business.RequireReference" /> Pedir el número de autorización en pagos con tarjeta o transferencia</label>
                     </div>
                     <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary">Guardar cambios</Button></div>
                 </div>
@@ -465,7 +466,7 @@
 @code {
     private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, ScaleLabels, Users, Roles, Backups, Cloud, License, Health }
     private sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
-    private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; }
+    private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; public bool RequireReference = true; }
 
     /// <summary>Opens a section from a link (the Resumen's "Cargar secuencia" → ?section=fiscal).</summary>
     [SupplyParameterFromQuery(Name = "section")] public string? Requested { get; set; }
@@ -551,7 +552,7 @@
         {
             case Section.Business:
                 var b = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value;
-                _business = b is null ? new() : new() { Name = b.Name, Rnc = b.Rnc, Address = b.Address, Phone = b.Phone, ReceiptFooter = b.ReceiptFooter, DiscountCap = b.DiscountCapPercent.ToString("0.##") };
+                _business = b is null ? new() : new() { Name = b.Name, Rnc = b.Rnc, Address = b.Address, Phone = b.Phone, ReceiptFooter = b.ReceiptFooter, DiscountCap = b.DiscountCapPercent.ToString("0.##"), RequireReference = b.RequirePaymentReference };
                 _approvals = (await Api.GetAsync<List<ApprovalRule>>("/api/settings/approvals")).Value ?? [];
                 break;
             case Section.Registers:
@@ -717,7 +718,7 @@
         if (Clean(f.Rnc) is { } rnc && (rnc.Length is not (9 or 11) || !rnc.All(char.IsAsciiDigit))) _errors["rnc"] = "El RNC tiene 9 números (o 11 si es una cédula).";
         if (Format.ParseNumber(f.DiscountCap ?? "0") is not (>= 0 and <= 100)) _errors["discount"] = "Escriba un porcentaje de 0 a 100.";
         if (_errors.Count > 0) return;
-        var r = await Api.PutAsync<Empty>("/api/settings/business", new BusinessProfile(f.Name.Trim(), Clean(f.Rnc), Clean(f.Address), Clean(f.Phone), Clean(f.ReceiptFooter), Format.ParseNumber(f.DiscountCap) ?? 0));
+        var r = await Api.PutAsync<Empty>("/api/settings/business", new BusinessProfile(f.Name.Trim(), Clean(f.Rnc), Clean(f.Address), Clean(f.Phone), Clean(f.ReceiptFooter), Format.ParseNumber(f.DiscountCap) ?? 0, f.RequireReference));
         ShowResult(r.Problem, "Datos del negocio guardados.");
     }
 

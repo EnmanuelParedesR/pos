@@ -262,21 +262,37 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
 /// the owner keeps the phrase (restoring on another PC needs it).</summary>
 internal static class SetBackupPassphrase
 {
-    public sealed record Command(string Passphrase) : ICommand<Ok>;
+    /// <param name="CurrentPassphrase">R11 A3: the phrase in use. Without it only an Administrador replaces a working phrase (otherwise whoever
+    /// has backups.manage could set their own, copy a backup and read it at home).</param>
+    public sealed record Command(string Passphrase, string? CurrentPassphrase = null) : ICommand<Ok>;
+
+    public static readonly Error CurrentRequired = Error.Forbidden("Backup.CurrentPassphraseRequired",
+        "Escriba la frase actual de los respaldos para cambiarla, o pídale el cambio a un administrador.");
 
     internal sealed class Validator : AbstractValidator<Command>
     {
-        public Validator() => RuleFor(c => c.Passphrase).NotEmpty().MinimumLength(12).MaximumLength(200).WithMessage("La frase debe tener al menos 12 caracteres.");
+        public Validator()
+        {
+            RuleFor(c => c.Passphrase).NotEmpty().MinimumLength(12).MaximumLength(200).WithMessage("La frase debe tener al menos 12 caracteres.");
+            RuleFor(c => c.CurrentPassphrase).MaximumLength(200);
+        }
     }
 
-    internal sealed class Handler(SettingsDbContext db, Backups backups, IAuditLog audit) : ICommandHandler<Command, Ok>
+    internal sealed class Handler(SettingsDbContext db, Backups backups, IUserContext user, IAuditLog audit) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
+            // A phrase this PC cannot read any more (restored on a new PC) is typed again by whoever restores: nothing to protect there.
+            var current = await backups.KeyAsync(ct);
+            var replacing = current.IsSuccess;
+            if (replacing && !user.IsAdministrator() && (c.CurrentPassphrase is not { Length: > 0 } typed
+                    || !CryptographicOperations.FixedTimeEquals(BackupEncryption.DeriveKey(typed, current.Value.Salt), current.Value.Key)))
+                return CurrentRequired;
             var business = await db.Business.SingleAsync(ct);
             business.BackupSalt = BackupEncryption.NewSalt();
             business.BackupKey = Convert.ToBase64String(backups.Protector.Protect(BackupEncryption.DeriveKey(c.Passphrase, business.BackupSalt)));
-            await audit.RecordAsync("settings.backup-passphrase", "Business", Guid.Empty, new { }, ct);
+            await audit.RecordAsync("settings.backup-passphrase", "Business", Guid.Empty,
+                new { Replaced = replacing, WithCurrentPassphrase = c.CurrentPassphrase is { Length: > 0 } }, ct);
             return Ok.Value;
         }
     }
@@ -495,11 +511,14 @@ internal static class BackupSettings
             if (c.CopyTo is { } copy && !string.IsNullOrWhiteSpace(copy) && InsideData(copy.Trim(), backups.Folder)) return CopyInsideData;
             if (c.CopyTo is { } target && !string.IsNullOrWhiteSpace(target) && !CopyAllowed(target.Trim(), config)) return CopyNotAllowed;
             var b = await db.Business.SingleAsync(ct);
-            b.BackupCopyTo = c.CopyTo?.Trim() ?? "";
+            var newCopy = c.CopyTo?.Trim() ?? "";
+            var before = new { CopyTo = b.BackupCopyTo, Time = b.BackupTime, Keep = b.BackupKeep, Automatic = b.BackupAutomatic };
+            b.BackupCopyTo = newCopy;
             b.BackupTime = TimeOnly.ParseExact(c.Time, "HH:mm").ToTimeSpan();
             b.BackupKeep = c.Keep;
             b.BackupAutomatic = c.Automatic;
-            await audit.RecordAsync("settings.backup-schedule", "Business", Guid.Empty, c, ct);
+            await audit.RecordAsync("settings.backup-schedule", "Business", Guid.Empty,
+                new { before, after = new { CopyTo = b.BackupCopyTo, Time = b.BackupTime, Keep = b.BackupKeep, Automatic = b.BackupAutomatic } }, ct);
             status.ScheduleChanged();
             return Ok.Value;
         }
