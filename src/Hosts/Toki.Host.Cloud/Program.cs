@@ -141,6 +141,7 @@ app.MapColdArchive();
 app.MapPlatform();
 app.MapPublicCatalog();
 app.MapFe();
+Toki.Host.Cloud.Certification.AccompanimentEndpoints.MapAccompaniment(app);
 Toki.Host.Cloud.Alerts.AlertEndpoints.MapAlerts(app);
 
 await app.RunAsync();

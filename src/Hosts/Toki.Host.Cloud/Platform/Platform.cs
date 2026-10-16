@@ -88,6 +88,8 @@ internal static class PlatformEndpoints
             return Results.NoContent();
         });
 
+        Certification.AccompanimentEndpoints.MapPlatformAccompaniment(platform); // TK-234
+
         var metrics = platform.MapGroup("/metrics");
         metrics.MapGet("/overview", async (PlatformQueries q, CancellationToken ct) => Results.Ok((await q.MetricsAsync(ct)).Overview()));
         metrics.MapGet("/daily", async (int? days, PlatformQueries q, CancellationToken ct) => Results.Ok((await q.MetricsAsync(ct)).Daily(Math.Clamp(days ?? 30, 1, 120))));

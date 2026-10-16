@@ -335,6 +335,24 @@ export interface CertificationProgress {
   daysInStep: number;
   stuck: boolean;
 }
+/** TK-234: an accompaniment request in the e-CF certification (TK-233). Dates are UTC; `notes` are staff only. */
+export type AccompanimentStatus = "New" | "Scheduled" | "Session1Done" | "Session2Done" | "Certified" | "Cancelled";
+export interface PlatformAccompaniment {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  storeId: string;
+  storeName: string;
+  contactName: string;
+  phone: string;
+  preferredTimes: string;
+  status: AccompanimentStatus;
+  session1Utc: string | null;
+  session2Utc: string | null;
+  notes: string | null;
+  createdUtc: string;
+  changedUtc: string;
+}
 export interface PlatformTenant {
   id: string;
   name: string;

@@ -517,6 +517,7 @@
     {
         "fiscal" when Sections.Contains(Section.FiscalSequences) => Section.FiscalSequences,
         "license" => Section.License, // the Resumen's "Comprar licencia" and "Quitar ejemplos" (TK-196/220)
+        "cloud" when Sections.Contains(Section.Cloud) => Section.Cloud, // TK-233: "Solicitar acompañamiento" needs the cloud
         _ => Sections[0],
     });
 

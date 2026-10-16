@@ -308,6 +308,17 @@ const Step = ({ title, children }: { title: string; children: ReactNode }) => (
   </li>
 );
 
+/** TK-235: what the owner prepares (docs/servicio-certificacion.md §5); the session-1 e-mail sends the same list (AccompanimentChecklist). */
+export const preparation = [
+  "RNC activo y al día con la DGII (sin declaraciones pendientes).",
+  "Acceso a la Oficina Virtual (OFV) de la empresa y, si aplica, del representante: usuario y clave que solo tú conoces. Prueba que entras antes de la cita. Toki nunca te pide esa clave.",
+  "Alta de NCF (autorización para emitir comprobantes fiscales).",
+  "Un representante vinculado al RNC, que será el Usuario Administrador e-CF.",
+  "El certificado digital de persona física para procedimientos tributarios, a nombre de ese representante, comprado a Avansi (Viafirma) o a la Cámara de Comercio y Producción de Santo Domingo (Digifirma). Pídelo como archivo .p12 o .pfx con su contraseña (no en token USB ni en la nube del emisor).",
+  "La PC principal de la tienda con Toki instalado, encendida y con internet durante las citas.",
+  "Una hora libre para cada cita, sin atender el mostrador.",
+];
+
 function Certification() {
   return (
     <>
@@ -316,14 +327,13 @@ function Certification() {
           Para emitir e-CF, la DGII certifica tu RNC con el programa que vas a usar. Toki hace la parte técnica: arma, firma y envía las pruebas. Tú haces los pasos que piden tu clave de la Oficina Virtual. <strong>Toki nunca te pide esa clave.</strong>
         </p>
       </Hero>
-      <Section>
+      <Section id="preparacion">
         <h2>Antes de empezar</h2>
+        <p>Ten esto listo antes de la primera cita (con acompañamiento, te lo enviamos también en el correo que la confirma):</p>
         <ul className="checks">
-          <li>RNC activo y al día con la DGII.</li>
-          <li>Acceso a la Oficina Virtual (OFV) de la DGII del negocio.</li>
-          <li>Alta de comprobantes fiscales (NCF) en la DGII.</li>
-          <li>Un representante vinculado al RNC que actúe como administrador de e-CF.</li>
-          <li>El certificado digital de esa persona, en archivo .p12, comprado a Avansi o a la Cámara de Comercio y Producción de Santo Domingo (Digifirma).</li>
+          {preparation.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
         </ul>
       </Section>
       <Section>

@@ -54,7 +54,7 @@ Los tiempos de Toki son estimados de trabajo. Los marcados **(DGII)** dependen d
 
 | # | Etapa | Quién | Tiempo estimado |
 |---|---|---|---|
-| 1 | **Solicitud del servicio:** el dueño pide el acompañamiento (WhatsApp o, más adelante, el botón de la app) | Dueño | — |
+| 1 | **Solicitud del servicio:** el dueño pide el acompañamiento (WhatsApp o el botón "Solicitar acompañamiento" de la app, TK-233) | Dueño | — |
 | 2 | **Revisión previa:** el técnico repasa la lista de §5 con el dueño y confirma que la app ya está instalada y con ventas | Toki + dueño | 15–20 min por llamada o WhatsApp |
 | 3 | **Certificado digital:** el dueño lo compra a Avansi (Viafirma) o a Digifirma y valida su identidad | Dueño | **(DGII / entidad certificadora)** |
 | 4 | **Cita 1 (remota):** importar el `.p12` (TK-176); enviar la FI-GDF-016 desde la OFV del dueño; delegar el rol de Firmante si hace falta; pruebas libres en TesteCF | Toki + dueño | 30–60 min |
@@ -96,7 +96,7 @@ Antes de la cita 1:
 
 - **WhatsApp de Toki** (el mismo número del sitio, `config.ts` → `whatsapp`, todavía por confirmar) para agendar, avisos de avance y dudas.
 - **Correo** con los avisos automáticos (TK-222).
-- Las citas, por la herramienta de sesión remota que defina el procedimiento interno (TK-232).
+- Las citas, por la herramienta de sesión remota que define el procedimiento interno: `docs/guia-tecnico-certificacion.md` (TK-232).
 
 Horario y tiempo de respuesta: por definir con el dueño de Toki; no se publican hasta tener personal asignado.
 

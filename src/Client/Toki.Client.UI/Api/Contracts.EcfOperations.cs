@@ -30,3 +30,10 @@ public sealed record CertificationState(string Environment, List<CertificationSt
 
 public sealed record TestSetImported(int Imported, List<string> Errors);
 public sealed record DgiiFileSigned(string Root, string SignedXml);
+
+/// <summary>TK-233: the accompaniment request as the cloud keeps it. <c>Status</c>: New, Scheduled, Session1Done, Session2Done, Certified or Cancelled.</summary>
+public sealed record AccompanimentRequest(Guid Id, string Status, string ContactName, string Phone, string PreferredTimes, DateTime? Session1Utc,
+    DateTime? Session2Utc, DateTime CreatedUtc);
+
+/// <summary><c>GET /api/fiscal/accompaniment</c>. <c>Connected</c> false: the store is not connected to the cloud, so nothing can be sent.</summary>
+public sealed record AccompanimentState(bool Connected, AccompanimentRequest? Request, string? SuggestedName, string? SuggestedPhone);

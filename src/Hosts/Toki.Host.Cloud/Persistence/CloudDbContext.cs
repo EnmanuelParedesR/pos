@@ -56,6 +56,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Alerts.AlertPreference> AlertPreferences => Set<Alerts.AlertPreference>();
     public DbSet<Alerts.SentAlert> SentAlerts => Set<Alerts.SentAlert>();
     public DbSet<Assistant.AiUsage> AiUsage => Set<Assistant.AiUsage>();
+    public DbSet<Certification.AccompanimentRequest> AccompanimentRequests => Set<Certification.AccompanimentRequest>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -300,6 +301,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.HasKey(c => new { c.TenantId, c.StoreId });
         });
         Alerts.AlertModel.Configure(builder);
+        Certification.AccompanimentModel.Configure(builder);
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

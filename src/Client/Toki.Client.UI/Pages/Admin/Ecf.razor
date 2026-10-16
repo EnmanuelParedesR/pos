@@ -161,6 +161,10 @@
         @* TK-156, TK-157, TK-155, TK-221: health and contingency guide, paper series B, certification assistant, switching from another program. *@
         <EcfHealthPanel @ref="_health" />
         <EcfContingencyPanel Changed="ContingencyChangedAsync" />
+        @if (_queue is { Environment: not "eCF" })
+        {
+            <EcfAccompanimentPanel /> @* TK-233: only while the store is not issuing e-CF yet *@
+        }
         <EcfCertificationPanel />
         <EcfSwitchPanel Environment="@_queue?.Environment" />
     </ChildContent>

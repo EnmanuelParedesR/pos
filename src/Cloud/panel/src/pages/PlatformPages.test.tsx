@@ -1,9 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { App } from "../App";
-import type { Me, MetricsOverview } from "../api";
+import type { Me, MetricsOverview, PlatformAccompaniment } from "../api";
 import { json } from "../testing";
+import { fromStoreInput, toStoreInput } from "./PlatformPages";
 
 afterEach(() => {
   cleanup();
@@ -94,4 +95,50 @@ it("TK-189 / TK-190: Toki staff get the Plataforma area with the metrics dashboa
   expect(within(screen.getByText("Súper Listo").closest("tr")!).getByText("Certificada")).toBeTruthy();
   expect(within(funnel).getByText("Certificado DGII")).toBeTruthy();
   expect(screen.queryByPlaceholderText(/Pregúntale a Toki/)).toBeNull(); // the owner's assistant is not for staff pages
+});
+
+it("TK-234: staff list the accompaniment requests and schedule session 1 in store time", async () => {
+  localStorage.setItem("toki.refreshToken", "saved");
+  const request: PlatformAccompaniment = {
+    id: "a1", tenantId: "t2", tenantName: "colmado@example.com", storeId: "s2", storeName: "Colmado Acompañado", contactName: "Ana Pérez", phone: "809-555-1234",
+    preferredTimes: "Mañanas", status: "New", session1Utc: null, session2Utc: null, notes: null, createdUtc: "2026-10-15T15:00:00Z", changedUtc: "2026-10-15T15:00:00Z",
+  };
+  const fetch = vi.fn(async (url: string, init?: RequestInit) =>
+    url.endsWith("/api/me")
+      ? json(200, { ...owner, email: "staff@toki.example", isPlatformAdmin: true })
+      : url.endsWith("/api/platform/accompaniment") && (init?.method ?? "GET") === "GET"
+        ? json(200, [request])
+        : url.includes("/api/platform/accompaniment/a1")
+          ? json(200, { ...request, status: "Scheduled", session1Utc: "2026-10-20T14:00:00.000Z" })
+          : json(200, []),
+  );
+  vi.stubGlobal("fetch", fetch);
+  render(
+    <MemoryRouter initialEntries={["/app/platform/accompaniment"]}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const row = (await screen.findByText("Colmado Acompañado")).closest("tr")!;
+  expect(within(row).getByText("Nueva")).toBeTruthy();
+  expect(within(row).getByText("809-555-1234")).toBeTruthy();
+  expect(within(row).getByText("Sin agendar")).toBeTruthy();
+  expect(screen.getByRole("tab", { name: "Acompañamiento" }).getAttribute("aria-selected")).toBe("true");
+
+  fireEvent.click(within(row).getByRole("button", { name: "Editar" }));
+  const form = screen.getByRole("form", { name: "Editar la solicitud de Colmado Acompañado" });
+  fireEvent.change(within(form).getByLabelText("Estado"), { target: { value: "Scheduled" } });
+  fireEvent.change(within(form).getByLabelText("Cita 1 (hora de la tienda)"), { target: { value: "2026-10-20T10:00" } });
+  fireEvent.click(within(form).getByRole("button", { name: "Guardar" }));
+
+  await waitFor(() => expect(fetch.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(true));
+  const [url, init] = fetch.mock.calls.find(([, init]) => init?.method === "PUT")!;
+  expect(String(url)).toContain("/api/platform/accompaniment/a1");
+  expect(JSON.parse(String(init!.body))).toEqual({ status: "Scheduled", session1Utc: "2026-10-20T14:00:00.000Z", session2Utc: null, notes: "" });
+});
+
+it("TK-234: store time in the date box round-trips to UTC", () => {
+  expect(fromStoreInput("2026-10-20T10:00")).toBe("2026-10-20T14:00:00.000Z");
+  expect(toStoreInput("2026-10-20T14:00:00Z")).toBe("2026-10-20T10:00");
+  expect(fromStoreInput("")).toBeNull();
 });

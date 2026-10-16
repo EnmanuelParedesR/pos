@@ -25,7 +25,8 @@ internal static class ReceiverCloud
         "Conecte la tienda a la nube de Toki: los servicios de receptor de comprobantes viven allí.");
     public static readonly Error Unreachable = Error.Conflict("Fiscal.CloudUnreachable", "No se pudo hablar con la nube de Toki. Revise el internet e intente de nuevo.");
 
-    public static async Task<Result<T>> PostAsync<T>(ICloudClient cloud, string path, object body, CancellationToken ct)
+    /// <param name="notConnected">What to tell the owner when the store is not connected (default: the receiver's text).</param>
+    public static async Task<Result<T>> PostAsync<T>(ICloudClient cloud, string path, object body, CancellationToken ct, Error? notConnected = null)
     {
         try
         {
@@ -33,7 +34,7 @@ internal static class ReceiverCloud
             if (response.IsSuccessStatusCode) return (await response.Content.ReadFromJsonAsync<T>(ct))!;
             return await RefusalAsync(response, ct);
         }
-        catch (InvalidOperationException) { return NotConnected; }
+        catch (InvalidOperationException) { return notConnected ?? NotConnected; }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException && !ct.IsCancellationRequested) { return Unreachable; }
     }
 

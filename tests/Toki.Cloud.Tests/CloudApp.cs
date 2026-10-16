@@ -47,6 +47,7 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("Auth:ResendConfirmationPerMinute", "10000");
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
         builder.UseSetting("Platform:Admins:0", LegacyAdminEmail); // R8 #1: ignored now
+        builder.UseSetting("Certification:StaffEmails:0", SupportEmail); // TK-233
         builder.ConfigureTestServices(s =>
         {
             s.AddSingleton<TimeProvider>(Clock);            if (_chatModel is not null) s.AddSingleton(_chatModel);
@@ -84,6 +85,9 @@ public class CloudApp : WebApplicationFactory<Program>
 
     /// <summary>Toki staff once the account exists and <c>grant-platform-admin</c> ran (TK-189).</summary>
     public const string StaffEmail = "staff@toki.example";
+
+    /// <summary>Toki staff who get the accompaniment requests (TK-233).</summary>
+    public const string SupportEmail = "soporte@toki.example";
 
     /// <summary>In the old <c>Platform:Admins</c> setting, which no longer grants anything (R8 #1).</summary>
     public const string LegacyAdminEmail = "legacy-admin@toki.example";

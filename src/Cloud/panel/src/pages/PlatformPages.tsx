@@ -1,13 +1,16 @@
-import { useState, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
   api,
+  ApiError,
   roleNames,
   useApi,
+  type AccompanimentStatus,
   type CertificationProgress,
   type DailyActivity,
   type FunnelStage,
   type MetricsOverview,
+  type PlatformAccompaniment,
   type PlatformNode,
   type PlatformStoreDetail,
   type PlatformTenant,
@@ -63,8 +66,9 @@ function PlatformTabs() {
   const tabs: [string, string][] = [
     ["/app/platform", "Métricas"],
     ["/app/platform/tenants", "Clientes"],
+    ["/app/platform/accompaniment", "Acompañamiento"],
   ];
-  const current = pathname === "/app/platform" ? "/app/platform" : "/app/platform/tenants";
+  const current = pathname === "/app/platform" ? "/app/platform" : pathname.startsWith("/app/platform/accompaniment") ? "/app/platform/accompaniment" : "/app/platform/tenants";
   return (
     <div className="esc-tabs" role="tablist" aria-label="Plataforma">
       {tabs.map(([to, label]) => (
@@ -670,3 +674,157 @@ function Check({ ok, label, note }: { ok: boolean | null; label: string; note?: 
 
 const yesNo = (v: boolean | null) => (v === null ? "Sin datos" : v ? "Configurada" : "No");
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** TK-234: the accompaniment requests (TK-233), open ones first. */
+export const accompanimentNames: Record<AccompanimentStatus, string> = {
+  New: "Nueva",
+  Scheduled: "Agendada",
+  Session1Done: "Sesión 1 hecha",
+  Session2Done: "Sesión 2 hecha",
+  Certified: "Certificada",
+  Cancelled: "Cancelada",
+};
+
+const accompanimentPill: Record<AccompanimentStatus, string> = {
+  New: "warning",
+  Scheduled: "brand",
+  Session1Done: "brand",
+  Session2Done: "brand",
+  Certified: "success",
+  Cancelled: "neutral",
+};
+
+/** Staff type the store's time (UTC−4, no daylight saving) in a datetime-local box; the API keeps UTC. */
+const storeOffsetMs = 4 * 60 * 60 * 1000;
+export const toStoreInput = (utc: string | null) => (utc ? new Date(Date.parse(utc) - storeOffsetMs).toISOString().slice(0, 16) : "");
+export const fromStoreInput = (local: string) => (local ? new Date(Date.parse(local + ":00Z") + storeOffsetMs).toISOString() : null);
+
+export function PlatformAccompanimentPage() {
+  const { data, error, loading, reload } = useApi<PlatformAccompaniment[]>("/api/platform/accompaniment");
+  const [editing, setEditing] = useState<string | null>(null);
+
+  return (
+    <>
+      <PageHead title="Plataforma" subtitle={staffNote} />
+      <PlatformTabs />
+      <LoadError error={error} />
+      <section className="esc-card esc-table-wrap" aria-label="Solicitudes de acompañamiento">
+        <table className="esc-table esc-table--wide platform-wrap">
+          <thead>
+            <tr>
+              <th>Tienda</th>
+              <th>Contacto</th>
+              <th>Estado</th>
+              <th className="esc-hide-sm">Citas</th>
+              <th className="esc-table__chev" aria-hidden="true" />
+            </tr>
+          </thead>
+          <tbody>
+            {loading && !data && <SkeletonRows columns={4} />}
+            {data?.map((r) => (
+              <AccompanimentRow key={r.id} request={r} editing={editing === r.id} onEdit={() => setEditing(editing === r.id ? null : r.id)} onSaved={() => (setEditing(null), reload())} />
+            ))}
+          </tbody>
+        </table>
+        {data?.length === 0 && (
+          <EmptyState icon="shield" title="Ninguna solicitud todavía">
+            Aparecen cuando el dueño toca "Solicitar acompañamiento" en Comprobantes electrónicos.
+          </EmptyState>
+        )}
+      </section>
+    </>
+  );
+}
+
+function AccompanimentRow({ request: r, editing, onEdit, onSaved }: { request: PlatformAccompaniment; editing: boolean; onEdit: () => void; onSaved: () => void }) {
+  return (
+    <>
+      <tr>
+        <td>
+          <Link to={`/app/platform/stores/${r.storeId}`}>{r.storeName || "Tienda"}</Link>
+          <span className="esc-table__sub">{r.tenantName}</span>
+          <span className="esc-table__sub">Pedida {dateTime(r.createdUtc)}</span>
+        </td>
+        <td>
+          {r.contactName}
+          <span className="esc-table__sub">{r.phone}</span>
+          {r.preferredTimes && <span className="esc-table__sub">{r.preferredTimes}</span>}
+        </td>
+        <td>
+          <span className={`esc-pill esc-pill--${accompanimentPill[r.status]}`}>{accompanimentNames[r.status]}</span>
+          {r.notes && <span className="esc-table__sub">{r.notes}</span>}
+        </td>
+        <td className="esc-hide-sm">
+          {[r.session1Utc && `Cita 1: ${dateTime(r.session1Utc)}`, r.session2Utc && `Cita 2: ${dateTime(r.session2Utc)}`].filter(Boolean).join(" · ") || "Sin agendar"}
+        </td>
+        <td className="esc-num">
+          <button type="button" className="esc-button esc-button--small" aria-expanded={editing} onClick={onEdit}>
+            {editing ? "Cerrar" : "Editar"}
+          </button>
+        </td>
+      </tr>
+      {editing && (
+        <tr>
+          <td colSpan={5}>
+            <AccompanimentForm request={r} onSaved={onSaved} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+/** Saving a new date for a session e-mails the owner its confirmation (the first one with the preparation list). */
+function AccompanimentForm({ request: r, onSaved }: { request: PlatformAccompaniment; onSaved: () => void }) {
+  const [status, setStatus] = useState<AccompanimentStatus>(r.status);
+  const [session1, setSession1] = useState(toStoreInput(r.session1Utc));
+  const [session2, setSession2] = useState(toStoreInput(r.session2Utc));
+  const [notes, setNotes] = useState(r.notes ?? "");
+  const [failure, setFailure] = useState<ApiError | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    api(`/api/platform/accompaniment/${r.id}`, "PUT", { status, session1Utc: fromStoreInput(session1), session2Utc: fromStoreInput(session2), notes }).then(
+      onSaved,
+      (err) => (setSaving(false), setFailure(err as ApiError)),
+    );
+  };
+
+  return (
+    <form onSubmit={save} aria-label={`Editar la solicitud de ${r.storeName}`}>
+      {failure && <Notice kind="error" title={failure.detail} />}
+      <div className="esc-form-grid">
+        <label className="esc-field">
+          <span>Estado</span>
+          <select className="esc-select" value={status} onChange={(e) => setStatus(e.target.value as AccompanimentStatus)}>
+            {(Object.keys(accompanimentNames) as AccompanimentStatus[]).map((s) => (
+              <option key={s} value={s}>
+                {accompanimentNames[s]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="esc-field">
+          <span>Cita 1 (hora de la tienda)</span>
+          <input className="esc-input" type="datetime-local" value={session1} onChange={(e) => setSession1(e.target.value)} />
+        </label>
+        <label className="esc-field">
+          <span>Cita 2 (hora de la tienda)</span>
+          <input className="esc-input" type="datetime-local" value={session2} onChange={(e) => setSession2(e.target.value)} />
+        </label>
+        <label className="esc-field esc-wide">
+          <span>Notas del equipo (el dueño no las ve)</span>
+          <textarea className="esc-input" maxLength={2000} rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </label>
+      </div>
+      <p className="esc-muted">Al guardar una fecha nueva, el dueño recibe la confirmación por correo (la de la cita 1 con la lista de preparación).</p>
+      <div className="esc-form-actions">
+        <button type="submit" className="esc-button esc-button--primary" disabled={saving}>
+          {saving ? "Guardando…" : "Guardar"}
+        </button>
+      </div>
+    </form>
+  );
+}

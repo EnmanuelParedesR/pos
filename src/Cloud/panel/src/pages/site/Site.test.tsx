@@ -4,7 +4,7 @@ import { MemoryRouter, useLocation } from "react-router";
 import { App } from "../../App";
 import type { Me } from "../../api";
 import { json } from "../../testing";
-import { sitePages } from "./SitePages";
+import { preparation, sitePages } from "./SitePages";
 
 afterEach(() => {
   cleanup();
@@ -67,4 +67,12 @@ it("TK-228: old panel links forward to /app, keeping the rest of the address", (
   renderAt("/shifts/42?x=1");
   expect(screen.getByTestId("where").textContent).toBe("/app/shifts/42");
   expect(screen.getByRole("heading", { name: "Bienvenido de nuevo" })).toBeTruthy();
+});
+
+it("TK-235: /certificacion lists everything the owner prepares before the first session", () => {
+  renderAt("/certificacion");
+  const list = document.getElementById("preparacion")!;
+  for (const item of preparation) expect(list.textContent).toContain(item);
+  expect(list.textContent).toContain(".p12 o .pfx");
+  expect(list.textContent).toContain("Toki nunca te pide esa clave");
 });

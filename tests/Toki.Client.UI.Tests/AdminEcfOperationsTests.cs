@@ -93,6 +93,45 @@ public sealed class AdminEcfOperationsTests
     }
 
     [Fact]
+    public void Accompaniment_is_asked_with_the_contact_and_then_shows_as_sent_with_its_status()
+    {
+        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        using var _ = ctx;
+        var request = new { id = Guid.NewGuid(), status = "New", contactName = "Ana Pérez", phone = "809-555-1234", preferredTimes = "Mañanas",
+            session1Utc = (DateTime?)null, session2Utc = (DateTime?)null, createdUtc = DateTime.UtcNow };
+        api.Json("GET", "/api/fiscal/accompaniment", new { connected = true, request = (object?)null, suggestedName = "Yudelka M.", suggestedPhone = "809-555-1234" })
+            .Json("POST", "/api/fiscal/accompaniment", request);
+        var panel = ctx.Render<EcfAccompanimentPanel>();
+
+        panel.WaitForAssertion(() => panel.FindAll("input")[1].GetAttribute("value").ShouldBe("809-555-1234"));
+        panel.FindAll("input")[0].Change("");
+        panel.Find("form").Submit();
+        panel.Find(".esc-field__error").TextContent.ShouldContain("Escriba con quién hablamos");
+        api.Requests.ShouldNotContain(r => r.Method == "POST");
+
+        panel.FindAll("input")[0].Change("Ana Pérez");
+        panel.FindAll("input")[2].Change("Mañanas");
+        panel.Find("form").Submit();
+        panel.WaitForAssertion(() => panel.Find(".esc-pill").TextContent.ShouldBe("Nueva"));
+        panel.Find("dl").TextContent.ShouldContain("Ana Pérez · 809-555-1234");
+        panel.FindAll("p[role=status]").ShouldContain(p => p.TextContent.Contains("Solicitud enviada"));
+        api.Requests.Single(r => r.Method == "POST").Body.ShouldContain("\"preferredTimes\":\"Ma"); // ñ goes escaped
+    }
+
+    [Fact]
+    public void Accompaniment_without_the_cloud_says_to_connect_and_offers_no_form()
+    {
+        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        using var _ = ctx;
+        api.Json("GET", "/api/fiscal/accompaniment", new { connected = false, request = (object?)null, suggestedName = (string?)null, suggestedPhone = (string?)null });
+        var panel = ctx.Render<EcfAccompanimentPanel>();
+
+        panel.WaitForAssertion(() => panel.Find(".esc-notice").TextContent.ShouldContain("Conecte la tienda a la nube"));
+        panel.Find(".esc-notice a").GetAttribute("href").ShouldBe("admin/settings?section=cloud");
+        panel.FindAll("form").ShouldBeEmpty();
+    }
+
+    [Fact]
     public void The_summary_lists_the_contingency_from_the_health_check()
     {
         var (ctx, api) = ScreenContext.Create("reports.view", "fiscal.manage");
