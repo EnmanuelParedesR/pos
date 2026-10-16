@@ -10,9 +10,14 @@ namespace Toki.Sync.Contracts;
 /// <param name="OutboxBacklog">Events not yet confirmed by the cloud.</param>
 /// <param name="LastErrorCode">Kind of the last upload failure ("http_503", "unreachable", "other"), never its text; null after a good upload.</param>
 /// <param name="Days">Yesterday and today (store days), so yesterday's last hour is not lost.</param>
+/// <param name="License">TK-196: added later, so heartbeats of older versions arrive without it (null).</param>
 public sealed record NodeHeartbeatV1(
     Guid NodeId, string AppVersion, string Os, int UptimeMinutes, int ActiveRegisters, int OpenShifts, int OutboxBacklog, string? LastErrorCode,
-    NodeFeaturesV1 Features, NodeSetupV1 Setup, IReadOnlyList<DailyUsageV1> Days) : IntegrationEvent(NodeId);
+    NodeFeaturesV1 Features, NodeSetupV1 Setup, IReadOnlyList<DailyUsageV1> Days, NodeLicenseV1? License = null) : IntegrationEvent(NodeId);
+
+/// <param name="Status">Trial, Active, Grace or Restricted.</param>
+/// <param name="EndsUtc">When the trial ends or the license expires; null for a trial that has not sold yet.</param>
+public sealed record NodeLicenseV1(string Status, DateTime? EndsUtc);
 
 /// <param name="OnAccount">Some customer owes on credit (fiado in use).</param>
 /// <param name="ScaleConfigured">Null: the register (client) knows it, the store server does not; not reported yet.</param>

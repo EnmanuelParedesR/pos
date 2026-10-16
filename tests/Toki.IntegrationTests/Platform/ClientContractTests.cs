@@ -34,6 +34,9 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         (await Send<List<C.SequenceAlert>>(api, HttpMethod.Get, "/api/fiscal/alerts")).ShouldNotBeEmpty();
         (await Send<C.FiscalQueue>(api, HttpMethod.Get, "/api/fiscal/queue")).Pending.ShouldBe(0);
         await Send<C.LicenseFeatures>(api, HttpMethod.Get, "/api/settings/features");
+        (await Send<C.SampleDataStatus>(api, HttpMethod.Post, "/api/inventory/sample-data")).Products.ShouldBeGreaterThan(0);
+        (await Send<C.SampleDataStatus>(api, HttpMethod.Delete, "/api/inventory/sample-data")).ShouldBe(new C.SampleDataStatus(0, 0));
+        (await Send<C.SampleDataStatus>(api, HttpMethod.Get, "/api/inventory/sample-data")).Products.ShouldBe(0);
         await Send<C.Empty>(api, HttpMethod.Put, "/api/settings/approvals", new C.ApprovalPolicy(["sales.remove-line", "sales.void"]));
         (await Send<List<C.ApprovalRule>>(api, HttpMethod.Get, "/api/settings/approvals")).Where(r => r.Required).Select(r => r.Permission).ShouldBe(["sales.remove-line", "sales.void"]);
         (await Send<List<C.User>>(api, HttpMethod.Get, "/api/identity/users")).ShouldHaveSingleItem().Role.ShouldNotBeNullOrEmpty();

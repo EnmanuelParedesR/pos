@@ -70,6 +70,19 @@ public static class Names
         _ => status,
     };
 
+    /// <summary>TK-196/220: one calm line for the register's status bar and the license screen; null when there is nothing to say.</summary>
+    public static string? LicenseNote(Api.LicenseFeatures f) => (f.Status, f.Warning, f.TrialDaysLeft) switch
+    {
+        ("Trial", null, null) => "Prueba gratis: los 14 días empiezan con la primera venta",
+        ("Trial", null, { } d) => $"Prueba gratis · quedan {Days(d)}",
+        ("Trial", _, { } d) => $"La prueba termina en {Days(d)} · compre la licencia en Configuración → Licencia",
+        ("Restricted", _, _) => "Modo restringido: la venta sigue · compre la licencia en Configuración → Licencia",
+        ("Grace", _, _) => "La licencia venció · renuévela en Configuración → Licencia",
+        _ => null,
+    };
+
+    private static string Days(int d) => d == 1 ? "1 día" : $"{d} días";
+
     public static string Feature(string feature) => feature switch
     {
         "ButcherModule" => "Módulo de carnicería",

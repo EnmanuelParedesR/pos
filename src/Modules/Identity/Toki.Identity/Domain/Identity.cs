@@ -187,7 +187,10 @@ internal static class IdentityErrors
     public static readonly Error InvalidApproval = Error.Forbidden("Identity.InvalidApproval", "La autorización del supervisor no es válida, ya se usó o venció.");
     public static readonly Error UnknownPermission = Error.Validation("Identity.UnknownPermission", "Uno de los permisos no existe.");
     public static readonly Error AdministratorOnly = Error.Forbidden("Identity.AdministratorOnly", "Solo un administrador puede dar o quitar el rol Administrador.");
-    public static readonly Error RoleInUse = Error.Conflict("Identity.RoleInUse", "Ese rol tiene usuarios. Cámbieles el rol antes de borrarlo.");
+    /// <summary>TK-220: a register beyond what the license allows (Restricted keeps the main PC and one register).</summary>
+    public static readonly Error RegisterNotLicensed = Error.Forbidden("Identity.RegisterNotLicensed",
+        "Toki está en modo Restringido: venden la PC principal y una caja. Para usar esta caja, compre la licencia en Configuración → Licencia. Sus datos están completos.");
+    public static readonly Error RoleInUse =Error.Conflict("Identity.RoleInUse", "Ese rol tiene usuarios. Cámbieles el rol antes de borrarlo.");
 
     /// <summary>TK-215: nobody gives a permission they do not have (a role with it, or a user with that role).</summary>
     public static Error PermissionsNotHeld(IEnumerable<string> missing) =>

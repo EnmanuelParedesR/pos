@@ -9,7 +9,7 @@ namespace Toki.Host.Cloud.Platform;
 /// <param name="OwnerEmail">An Owner of the tenant (the first by e-mail).</param>
 /// <param name="LastActivityUtc">Newest batch received from any of its PCs.</param>
 public sealed record PlatformTenant(Guid Id, string Name, string? OwnerEmail, DateTime CreatedUtc, DateTime? DisabledUtc, int Stores, int Nodes,
-    DateTime? LastActivityUtc, string Stage, string? AppVersion);
+    DateTime? LastActivityUtc, string Stage, string? AppVersion, string? LicenseStatus = null, DateTime? LicenseEndsUtc = null);
 /// <param name="HeartbeatUtc">When its newest heartbeat was sent; null until it sends one (stores on versions before TK-190).</param>
 public sealed record PlatformNode(Guid Id, Guid StoreId, string Name, DateTime CreatedUtc, DateTime? RevokedUtc, DateTime? LastSyncUtc, DateTime? LastEventUtc,
     int PendingEvents, int FailedEvents, DateTime? HeartbeatUtc, string? AppVersion, string? Os, int? UptimeMinutes, int? OutboxBacklog, string? LastErrorCode);
@@ -25,7 +25,9 @@ public sealed record PlatformTenantDetail(Guid Id, string Name, DateTime Created
 /// <param name="BusinessNameSet">Null until a heartbeat arrives (the cloud gets no business profile event).</param>
 public sealed record SetupChecklist(bool Connected, bool HeartbeatReceived, bool? BusinessNameSet, bool? RncSet, bool SequencesLoaded, int? ActiveProducts,
     DateOnly? FirstSaleDay, string? FiscalProvider);
-public sealed record StoreFeatures(bool OnAccount, bool? ScaleConfigured, bool? PrinterConfigured, string FiscalProvider, int ActiveRegisters, int OpenShifts);
+/// <param name="LicenseStatus">TK-196: Trial, Active, Grace or Restricted from the newest heartbeat; null from older versions.</param>
+public sealed record StoreFeatures(bool OnAccount, bool? ScaleConfigured, bool? PrinterConfigured, string FiscalProvider, int ActiveRegisters, int OpenShifts,
+    string? LicenseStatus = null, DateTime? LicenseEndsUtc = null);
 /// <param name="Sales">Completed sales in the replica.</param>
 /// <param name="ReportedSales">What the store's heartbeat counted for that day (null without heartbeat).</param>
 public sealed record PlatformStoreDay(DateOnly Day, int Sales, decimal Amount, int? ReportedSales, int? ActiveCashiers, int? Voids);
@@ -42,7 +44,7 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
         var stores = await db.Stores.AsNoTracking().ToListAsync(ct);
         var nodes = await db.Nodes.AsNoTracking().ToListAsync(ct);
         var owners = await MembersAsync(null, ct);
-        var versions = await db.NodeHeartbeats.AsNoTracking().Select(h => new { h.TenantId, h.SentUtc, h.AppVersion }).ToListAsync(ct);
+        var versions = await db.NodeHeartbeats.AsNoTracking().Select(h => new { h.TenantId, h.SentUtc, h.AppVersion, h.LicenseStatus, h.LicenseEndsUtc }).ToListAsync(ct);
 
         var term = search?.Trim() ?? "";
         bool Matches(Tenant t) => term.Length == 0
@@ -55,7 +57,9 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
         return [.. tenants.Where(Matches).Select(t => new PlatformTenant(t.Id, t.Name, owners.GetValueOrDefault(t.Id)?.FirstOrDefault(m => m.Role == MemberRole.Owner)?.Email, t.CreatedUtc, t.DisabledUtc,
             stores.Count(s => s.TenantId == t.Id), nodes.Count(n => n.TenantId == t.Id && n.RevokedUtc is null),
             nodes.Where(n => n.TenantId == t.Id).Max(n => n.LastSyncUtc), metrics.Stage(t.Id),
-            versions.Where(v => v.TenantId == t.Id).MaxBy(v => v.SentUtc)?.AppVersion))];
+            versions.Where(v => v.TenantId == t.Id).MaxBy(v => v.SentUtc)?.AppVersion,
+            versions.Where(v => v.TenantId == t.Id && v.LicenseStatus != null).MaxBy(v => v.SentUtc)?.LicenseStatus,
+            versions.Where(v => v.TenantId == t.Id && v.LicenseStatus != null).MaxBy(v => v.SentUtc)?.LicenseEndsUtc))];
     }
 
     public async Task<PlatformTenantDetail?> TenantAsync(Guid tenantId, CancellationToken ct)
@@ -106,7 +110,7 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
             new SetupChecklist(nodes.Any(n => n.RevokedUtc is null), heartbeat is not null, heartbeat?.BusinessNameSet, heartbeat?.RncSet, issued, heartbeat?.ActiveProducts,
                 firstSale is null ? null : BusinessDay.Of(firstSale.Value), heartbeat?.FiscalProvider),
             heartbeat is null ? null : new StoreFeatures(heartbeat.OnAccount, heartbeat.ScaleConfigured, heartbeat.PrinterConfigured, heartbeat.FiscalProvider,
-                heartbeat.ActiveRegisters, heartbeat.OpenShifts),
+                heartbeat.ActiveRegisters, heartbeat.OpenShifts, heartbeat.LicenseStatus, heartbeat.LicenseEndsUtc),
             nodes, days);
     }
 

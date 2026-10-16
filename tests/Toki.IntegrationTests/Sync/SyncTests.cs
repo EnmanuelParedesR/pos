@@ -288,13 +288,15 @@ public sealed class HeartbeatTests(TokiApp app) : IClassFixture<TokiApp>
         var today = heartbeat.GetProperty("days")[1];
         today.GetProperty("day").GetString().ShouldBe(Toki.SharedKernel.BusinessDay.Of(app.Clock.GetUtcNow().UtcDateTime).ToString("yyyy-MM-dd"));
         (today.GetProperty("sales").GetInt32(), today.GetProperty("salesAmount").GetDecimal(), today.GetProperty("activeCashiers").GetInt32()).ShouldBe((1, 118m, 1));
+        // TK-196: the license status, so the console sees each customer's trial.
+        heartbeat.GetProperty("license").GetProperty("status").GetString().ShouldBe("Trial");
 
         // Only counts and flags: no names, codes, PINs, RNC, products or customers.
         var allowed = new[]
         {
             "nodeId", "appVersion", "os", "uptimeMinutes", "activeRegisters", "openShifts", "outboxBacklog", "lastErrorCode", "features", "setup", "days",
             "eventId", "occurredUtc", "aggregateId", "onAccount", "scaleConfigured", "printerConfigured", "fiscalProvider", "businessNameSet", "rncSet",
-            "activeProducts", "day", "sales", "salesAmount", "activeCashiers", "voids", "returns",
+            "activeProducts", "day", "sales", "salesAmount", "activeCashiers", "voids", "returns", "license", "status", "endsUtc",
         };
         Names(heartbeat).ShouldAllBe(n => allowed.Contains(n));
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/identity/users");

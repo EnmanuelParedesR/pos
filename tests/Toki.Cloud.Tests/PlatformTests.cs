@@ -14,10 +14,13 @@ public sealed class PlatformTests(CloudApp app) : IClassFixture<CloudApp>
 {
     private DateTime Now => app.Clock.GetUtcNow().UtcDateTime;
 
-    public static NodeHeartbeatV1 Heartbeat(string version = "1.4.0", int sales = 3, string? error = null) => new(
+    public static readonly DateTime TrialEnds = new(2030, 1, 15, 14, 0, 0, DateTimeKind.Utc);
+
+    /// <param name="license">Null: a store on a version before TK-196, which does not send it.</param>
+    public static NodeHeartbeatV1 Heartbeat(string version = "1.4.0", int sales = 3, string? error = null, NodeLicenseV1? license = null) => new(
         Guid.NewGuid(), version, "Microsoft Windows 10.0.19045", 90, 2, 1, 12, error,
         new NodeFeaturesV1(OnAccount: true, null, null, "Simulated"), new NodeSetupV1(true, false, 140),
-        [new DailyUsageV1(CloudApp.Today.AddDays(-1), 40, 12_500m, 2, 1, 0m), new DailyUsageV1(CloudApp.Today, sales, 900m, 1, 0, 50m)]);
+        [new DailyUsageV1(CloudApp.Today.AddDays(-1), 40, 12_500m, 2, 1, 0m), new DailyUsageV1(CloudApp.Today, sales, 900m, 1, 0, 50m)], license);
 
     [Fact]
     public async Task An_owner_cannot_reach_the_platform_and_staff_can_with_every_call_audited()
@@ -103,7 +106,8 @@ public sealed class PlatformTests(CloudApp app) : IClassFixture<CloudApp>
         var sale = new SaleRecordedV1(Guid.CreateVersion7(), 1, Guid.NewGuid(), Guid.NewGuid(), null, "E320000000001", 900m, 0m, 0m,
             [new SaleLineV1(Guid.NewGuid(), null, "Pollo", 1, 900m, 0m, 500m)], [new SalePaymentV1("Cash", 900m)]);
 
-        (await store.SendAsync(Events.Envelope(Heartbeat("1.4.0", sales: 3), Now), Events.Envelope(sale, Now.AddHours(-1)))).EnsureSuccessStatusCode();
+        (await store.SendAsync(Events.Envelope(Heartbeat("1.4.0", sales: 3, license: new NodeLicenseV1("Trial", TrialEnds)), Now), Events.Envelope(sale, Now.AddHours(-1))))
+            .EnsureSuccessStatusCode();
         // An older heartbeat that waited offline arrives later: it never undoes the newer one.
         (await store.SendAsync(Events.Envelope(Heartbeat("1.3.0", sales: 1, error: "http_503"), Now.AddHours(-2)))).EnsureSuccessStatusCode();
         await app.ApplyAsync();
@@ -121,6 +125,12 @@ public sealed class PlatformTests(CloudApp app) : IClassFixture<CloudApp>
         (checklist.GetProperty("activeProducts").GetInt32(), checklist.GetProperty("fiscalProvider").GetString()).ShouldBe((140, "Simulated"));
         checklist.GetProperty("firstSaleDay").GetString().ShouldBe(CloudApp.Today.ToString("yyyy-MM-dd"));
         detail.GetProperty("features").GetProperty("onAccount").GetBoolean().ShouldBeTrue();
+        // TK-196: the trial status per customer, as the newest heartbeat said.
+        (detail.GetProperty("features").GetProperty("licenseStatus").GetString(), detail.GetProperty("features").GetProperty("licenseEndsUtc").GetDateTime())
+            .ShouldBe(("Trial", TrialEnds));
+        var listed = (await (await app.StaffAsync()).Client.GetFromJsonAsync<JsonElement>("/api/platform/tenants")).EnumerateArray()
+            .Single(t => t.GetProperty("id").GetGuid() == owner.TenantId);
+        listed.GetProperty("licenseStatus").GetString().ShouldBe("Trial");
         var today = detail.GetProperty("days")[0];
         (today.GetProperty("sales").GetInt32(), today.GetProperty("amount").GetDecimal(), today.GetProperty("reportedSales").GetInt32()).ShouldBe((1, 900m, 3));
         detail.GetProperty("nodes")[0].GetProperty("appVersion").GetString().ShouldBe("1.4.0");

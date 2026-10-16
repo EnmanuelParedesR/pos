@@ -200,6 +200,7 @@ internal static class Projectors
                 (node.ActiveRegisters, node.OpenShifts, node.OutboxBacklog, node.LastErrorCode) = (h.ActiveRegisters, h.OpenShifts, h.OutboxBacklog, h.LastErrorCode is null ? null : Cut(h.LastErrorCode, 30));
                 (node.OnAccount, node.ScaleConfigured, node.PrinterConfigured, node.FiscalProvider) = (h.Features.OnAccount, h.Features.ScaleConfigured, h.Features.PrinterConfigured, Cut(h.Features.FiscalProvider, 30));
                 (node.BusinessNameSet, node.RncSet, node.ActiveProducts) = (h.Setup.BusinessNameSet, h.Setup.RncSet, h.Setup.ActiveProducts);
+                (node.LicenseStatus, node.LicenseEndsUtc) = (h.License is null ? null : Cut(h.License.Status, 20), h.License?.EndsUtc);
             }
             foreach (var d in h.Days)
             {

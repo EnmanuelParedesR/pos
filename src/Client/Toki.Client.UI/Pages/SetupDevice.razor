@@ -53,6 +53,9 @@
                 <label class="esc-field"><span>PIN (4 a 8 dígitos)</span><input class="esc-input" type="password" inputmode="numeric" @bind="_pin" maxlength="8" autocomplete="new-password" /></label>
                 <label class="esc-field"><span>Nombre de este equipo</span><input class="esc-input" @bind="_deviceName" maxlength="100" /></label>
             </div>
+            @* TK-196: a single PC is enough to start; sample products let the owner try the register right away (removable with one click). *@
+            <label class="esc-row" style="gap:8px;align-items:center"><input type="checkbox" @bind="_sampleData" /> Cargar productos de ejemplo para probar la caja (se quitan con un clic)</label>
+            <p class="esc-subtitle" style="margin:0">Prueba gratis de 14 días con todo incluido. Los días empiezan a contar con su primera venta, no hoy.</p>
             @if (MustConfirm)
             {
                 @* R8 #11: the owner's code and PIN only go to a server whose fingerprint was compared (or that runs on this PC). *@
@@ -73,7 +76,7 @@
     private Mode _mode = Mode.Join;
     private string? _code, _error, _name, _userCode, _pin, _fingerprint, _shown;
     private string _deviceName = "PC principal";
-    private bool _sending, _confirmed;
+    private bool _sending, _confirmed, _sampleData;
     private const string ServerChanged = "El servidor cambió desde que se mostró la huella, así que este equipo no se unió. Vuelva a abrir esta pantalla y compare la huella otra vez.";
 
     private bool MustConfirm => _fingerprint is not null && !Api.ServerIsThisPc;
@@ -85,6 +88,8 @@
         await Api.GetAsync<Empty>("/health"); // connects, so the server's certificate is known before the code is typed
         _shown = Pin.Seen;
         _fingerprint = NodeCertificatePin.Fingerprint(_shown);
+        // TK-196: on the PC that runs the server this is almost always the first installation (a single-PC store).
+        if (Api.ServerIsThisPc) _mode = Mode.Install;
     }
 
     private void Switch(Mode m) => (_mode, _error) = (m, null);
@@ -124,6 +129,7 @@
         if (r.Value is { } s)
         {
             if (!await Session.PairAsync(_shown, s.DeviceToken, s.Certificate, s.StoreCa)) { _error = ServerChanged; return; }
+            if (_sampleData) await Session.AskForSampleDataAsync();
             Nav.NavigateTo("sign-in");
             return;
         }

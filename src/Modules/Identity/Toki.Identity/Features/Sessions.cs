@@ -36,7 +36,7 @@ internal static class OpenSession
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, IFeatureService license, TimeProvider clock) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -52,6 +52,9 @@ internal static class OpenSession
                 await audit.RecordAsync("identity.pin-failed", "User", user.Id, new { user.Code, Device = deviceId, Result = result }, ct);
                 return new Response(null, null, null, null, result == PinResult.Locked ? IdentityErrors.UserLocked : IdentityErrors.InvalidCredentials);
             }
+            // TK-220: the main PC and the oldest registers the license allows sign in; the rest wait for a license (nothing on them is lost).
+            var licensed = db.Devices.Where(d => !d.IsRevoked).OrderBy(d => d.CreatedUtc).ThenBy(d => d.Id).Take(license.LimitOf(Limit.Registers) + 1);
+            if (!await licensed.AnyAsync(d => d.Id == deviceId, ct)) return IdentityErrors.RegisterNotLicensed;
 
             var token = Token.New();
             var session = new Session

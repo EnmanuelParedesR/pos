@@ -64,7 +64,7 @@ public sealed class LicenseTests(TokiApp app) : IClassFixture<TokiApp>
         app.Clock.Advance(LicenseService.GracePeriod);
         admin = app.Client(await app.SignInAsync("admin", TokiApp.AdminPin, (await app.AdminAsync()).Device));
         features = await Features();
-        (features.GetProperty("status").GetString(), features.GetProperty("registers").GetInt32()).ShouldBe(("Restricted", LicenseService.TrialRegisters));
+        (features.GetProperty("status").GetString(), features.GetProperty("registers").GetInt32()).ShouldBe(("Restricted", LicenseService.RestrictedRegisters));
         features.GetProperty("enabled").GetArrayLength().ShouldBe(0);
     }
 }

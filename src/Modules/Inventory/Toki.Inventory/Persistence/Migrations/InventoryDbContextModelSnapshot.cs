@@ -56,6 +56,9 @@ namespace Toki.Inventory.Persistence.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsSample")
+                        .HasColumnType("bit");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -164,6 +167,9 @@ namespace Toki.Inventory.Persistence.Migrations
                         .HasColumnType("decimal(19,4)");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSample")
                         .HasColumnType("bit");
 
                     b.Property<string>("ItbisRate")

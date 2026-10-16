@@ -270,6 +270,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(h => h.Os).HasMaxLength(200);
             e.Property(h => h.LastErrorCode).HasMaxLength(30);
             e.Property(h => h.FiscalProvider).HasMaxLength(30);
+            e.Property(h => h.LicenseStatus).HasMaxLength(20);
         });
         builder.Entity<ReplicaCustomer>(e =>
         {
@@ -727,6 +728,10 @@ public sealed class ReplicaNodeHeartbeat : IReplicaRow
     public bool BusinessNameSet { get; set; }
     public bool RncSet { get; set; }
     public int ActiveProducts { get; set; }
+    /// <summary>TK-196: Trial, Active, Grace or Restricted; null from versions that do not send it.</summary>
+    public string? LicenseStatus { get; set; }
+    /// <summary>When the trial ends or the license expires; null before the first sale of a trial.</summary>
+    public DateTime? LicenseEndsUtc { get; set; }
 }
 
 /// <summary>A store day as its heartbeats reported it (the newest one wins). Sales also reach the replica one by one; this is the store's own count.</summary>
