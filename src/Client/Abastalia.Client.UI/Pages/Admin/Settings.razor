@@ -80,7 +80,7 @@
                                         <tr><td colspan="4" style="padding-top:8px;padding-bottom:8px;height:auto">
                                             <form class="esc-row" style="align-items:flex-start" @onsubmit="() => SaveStandardFloatAsync(register)" novalidate>
                                                 <Field Label="@($"Fondo estándar de {register.Name}")" Error="@Err("float")" Hint="Abrir el turno con otro monto pide un supervisor. Déjelo vacío para no fijar uno.">
-                                                    <input class="esc-input esc-num" style="width:min(160px,100%)" inputmode="numeric" @bind="_floatTo" @bind:after='() => Clear("float")' aria-invalid="@Invalid("float")" />
+                                                    <input @ref="_inlineInput" class="esc-input esc-num" style="width:min(160px,100%)" inputmode="numeric" @bind="_floatTo" @bind:after='() => Clear("float")' aria-invalid="@Invalid("float")" />
                                                 </Field>
                                                 <Button Type="submit" Variant="Button.Variants.Primary" style="margin-top:25px">Guardar</Button>
                                                 <Button OnClick="() => _floatFor = null" style="margin-top:25px">Cancelar</Button>
@@ -92,7 +92,7 @@
                                         <tr><td colspan="4" style="padding-top:8px;padding-bottom:8px;height:auto">
                                             <form class="esc-row" style="align-items:flex-start" @onsubmit="() => RenameRegisterAsync(register)" novalidate>
                                                 <Field Label="@($"Nuevo nombre de {register.Name}")" Error="@Err("rename")" Hint="Sale en la factura, en los cierres y en el panel.">
-                                                    <input @ref="_renameInput" class="esc-input" style="width:min(240px,100%)" maxlength="60" @bind="_renameTo" @bind:after='() => Clear("rename")' aria-invalid="@Invalid("rename")" autofocus />
+                                                    <input @ref="_inlineInput" class="esc-input" style="width:min(240px,100%)" maxlength="60" @bind="_renameTo" @bind:after='() => Clear("rename")' aria-invalid="@Invalid("rename")" autofocus />
                                                 </Field>
                                                 <Button Type="submit" Variant="Button.Variants.Primary" style="margin-top:25px">Guardar</Button>
                                                 <Button OnClick="() => _renaming = null" style="margin-top:25px">Cancelar</Button>
@@ -101,11 +101,11 @@
                                     }
                                     else
                                     {
-                                        <tr><td><span style="font-weight:600">@register.Name</span><span class="esc-table__sub esc-only-sm esc-muted">@(register.Cashier is { } who ? $"Abierta · {who}" : "Cerrada")</span></td>
+                                        <tr><td><span style="font-weight:600">@register.Name</span><span class="esc-table__sub esc-only-sm esc-muted">@(register.Cashier is { } who ? $"Abierta · {who}" : "Cerrada") · Fondo @(register.StandardFloat is { } f ? Format.WithCurrency(f) : "sin fijar")</span></td>
                                             <td class="esc-hide-sm">@if (register.Cashier is { } q) { <span class="esc-pill esc-pill--success">Abierta · @q</span> } else { <span class="esc-pill esc-pill--neutral">Cerrada</span> }</td>
-                                            <td class="esc-hide-sm esc-num">@(register.StandardFloat is { } standard ? Format.WithCurrency(standard) : "Sin fijar")</td>
-                                            <td class="esc-num"><Button class="esc-button esc-button--small" aria-label="@($"Fondo estándar de {register.Name}")" OnClick="() => StartStandardFloat(register)">Fondo</Button>
-                                                <Button class="esc-button esc-button--small" aria-label="@($"Cambiar el nombre de {register.Name}")" OnClick="() => StartRename(register)">Cambiar nombre</Button></td></tr>
+                                            <td class="esc-hide-sm esc-num" style="white-space:nowrap">@(register.StandardFloat is { } standard ? Format.WithCurrency(standard) : "Sin fijar")</td>
+                                            <td><div class="esc-row" style="justify-content:flex-end;flex-wrap:nowrap;white-space:nowrap"><Button class="esc-button esc-button--small" aria-label="@($"Fondo estándar de {register.Name}")" OnClick="() => StartStandardFloat(register)">Fondo</Button>
+                                                <Button class="esc-button esc-button--small" aria-label="@($"Cambiar el nombre de {register.Name}")" OnClick="() => StartRename(register)">Renombrar</Button></div></td></tr>
                                     }
                                 }
                             </tbody>
@@ -761,22 +761,22 @@
     }
 
     private Guid? _renaming;
-    private ElementReference _renameInput;
-    private bool _focusRename;
+    private ElementReference _inlineInput;
+    private bool _focusInline;
     private string? _renameTo;
 
-    /// <summary>The inline rename opens with the cursor in its field (HTML autofocus only works on page load).</summary>
+    /// <summary>The inline rename and float forms open with the cursor in their field (HTML autofocus only works on page load).</summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!_focusRename || _renaming is null) return;
-        _focusRename = false;
-        await _renameInput.FocusAsync();
+        if (!_focusInline || _renaming is null && _floatFor is null) return;
+        _focusInline = false;
+        await _inlineInput.FocusAsync();
     }
 
     private void StartRename(RegisterInfo r)
     {
         Clear("rename");
-        (_renaming, _renameTo, _message, _focusRename, _floatFor) = (r.Id, r.Name, null, true, null);
+        (_renaming, _renameTo, _message, _focusInline, _floatFor) = (r.Id, r.Name, null, true, null);
     }
 
     private Guid? _floatFor;
@@ -786,7 +786,7 @@
     private void StartStandardFloat(RegisterInfo r)
     {
         Clear("float");
-        (_floatFor, _floatTo, _message, _renaming) = (r.Id, r.StandardFloat?.ToString("0", System.Globalization.CultureInfo.InvariantCulture), null, null);
+        (_floatFor, _floatTo, _message, _renaming, _focusInline) = (r.Id, r.StandardFloat?.ToString("0", System.Globalization.CultureInfo.InvariantCulture), null, null, true);
     }
 
     private async Task SaveStandardFloatAsync(RegisterInfo register)

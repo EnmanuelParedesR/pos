@@ -77,18 +77,15 @@
                     </label>
                     @if (_method is PaymentMethod.Card or PaymentMethod.Transfer)
                     {
-                        <label class="esc-field">
-                            <span>@(_referenceRequired ? "Referencia" : "Referencia (opcional)")</span>
-                            <input class="esc-input" maxlength="60" @bind="_reference" @bind:event="oninput" aria-required="@(_referenceRequired ? "true" : "false")" placeholder="@(_method == PaymentMethod.Card ? "Aprobación del verifone" : "Número de la transferencia")" />
-                        </label>
+                        var card = _method == PaymentMethod.Card;
+                        <Field Label="@((card ? "Número de aprobación" : "Número de la transferencia") + (_referenceRequired ? "" : " (opcional)"))"
+                               Hint="@(MissingReference ? (card ? "Escriba el número de aprobación del verifone para cobrar." : "Escriba el número de la transferencia para cobrar.") : null)">
+                            <input @ref="_referenceInput" class="esc-input" maxlength="60" @bind="_reference" @bind:event="oninput" aria-required="@(_referenceRequired ? "true" : "false")" />
+                        </Field>
                     }
                     @if (_method == PaymentMethod.OnAccount && Cart.Customer is { } c)
                     {
                         <div class="esc-subtitle">Debe @Format.WithCurrency(c.Debt) de un límite de @Format.WithCurrency(c.CreditLimit).</div>
-                    }
-                    @if (MissingReference)
-                    {
-                        <div class="esc-subtitle">Escriba el número de autorización para cobrar.</div>
                     }
                     @if (CurrentAmount < Pending)
                     {
@@ -130,7 +127,7 @@
     private bool _referenceRequired = true;
     private readonly List<Payment> _payments = [];
     private readonly List<Guid> _approvals = [];
-    private ElementReference _input;
+    private ElementReference _input, _referenceInput;
 
     private IEnumerable<(PaymentMethod, string)> Methods
     {
@@ -186,6 +183,7 @@
 
     private void Choose(PaymentMethod m)
     {
+        if (m != _method) _reference = null; // a card's approval number never travels to a transfer
         _method = m;
         _amount = (m == PaymentMethod.CreditBalance && Cart.Customer is { } c ? Math.Min(c.CreditBalance, Pending) : Pending)
             .ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
@@ -225,6 +223,7 @@
     {
         var m = Methods.FirstOrDefault(x => x.Item2 == e.Key);
         if (m.Item2 is not null) Choose(m.Item1);
+        else if (e.Key is "F12" or "Enter" && MissingReference) await _referenceInput.FocusAsync(); // Enter on the amount goes on to the number still missing
         else if (e.Key is "F12" or "Enter" && CanConfirm) await ConfirmAsync();
     }
 

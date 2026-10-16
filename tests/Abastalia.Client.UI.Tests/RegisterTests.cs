@@ -78,9 +78,16 @@ public sealed class RegisterTests
         var checkout = ctx.Render<CheckoutDialog>(p => p.Add(x => x.ShiftId, ScreenContext.Shift.ShiftId).Add(x => x.OnSold, v => sold = v));
 
         checkout.Find("[role=dialog]").KeyDown(new KeyboardEventArgs { Key = "F6" });
-        checkout.WaitForAssertion(() => checkout.Markup.ShouldContain("Escriba el número de autorización"));
+        checkout.WaitForAssertion(() => checkout.Markup.ShouldContain("Escriba el número de aprobación"));
         checkout.Markup.ShouldNotContain("(opcional)");
         checkout.Find(".esc-button--money").HasAttribute("disabled").ShouldBeTrue();
+
+        // Another method starts without the number typed for the previous one.
+        checkout.Find("input[aria-required=true]").Input("111");
+        checkout.Find("[role=dialog]").KeyDown(new KeyboardEventArgs { Key = "F7" });
+        checkout.WaitForAssertion(() => checkout.Markup.ShouldContain("Escriba el número de la transferencia"));
+        checkout.Find("input[aria-required=true]").GetAttribute("value").ShouldBeNullOrEmpty();
+        checkout.Find("[role=dialog]").KeyDown(new KeyboardEventArgs { Key = "F6" });
 
         checkout.Find("input[aria-required=true]").Input("483920");
         checkout.Find(".esc-button--money").Click();
@@ -101,7 +108,7 @@ public sealed class RegisterTests
         var checkout = ctx.Render<CheckoutDialog>(p => p.Add(x => x.ShiftId, ScreenContext.Shift.ShiftId).Add(x => x.OnSold, v => sold = v));
 
         checkout.Find("[role=dialog]").KeyDown(new KeyboardEventArgs { Key = "F6" });
-        checkout.WaitForAssertion(() => checkout.Markup.ShouldContain("Referencia (opcional)"));
+        checkout.WaitForAssertion(() => checkout.Markup.ShouldContain("Número de aprobación (opcional)"));
         checkout.Find(".esc-button--money").Click();
         checkout.WaitForAssertion(() => sold.ShouldNotBeNull());
     }
