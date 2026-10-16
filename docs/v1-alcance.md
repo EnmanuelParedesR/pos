@@ -3,7 +3,7 @@
 V1 = lo que una tienda piloto necesita para vender, facturar e-CF con la DGII y que el dueño la vea desde la nube, cobrado con Paddle. Cada ticket del tablero queda en una de cuatro listas.
 
 ## 1. V1 hecho en código (cerrado o cerrable)
-Venta, caja y cuadre ciego; inventario, compras y 606/607/608; clientes y fiado; permisos finos y autorización de supervisor atada al contenido (R11); e-CF directo a la DGII desde la tienda (TK-144 a TK-150, TK-152 a TK-155); receptor en la nube firmado en la tienda (TK-246); nube: réplica, panel, consola con 2FA, receptor, correo, alertas, cuotas (TK-248), cobro con Paddle (TK-249/258), referidos (TK-255/276), actualizaciones por canal (TK-254), asistente Talia; sitio público con SEO (TK-259 a TK-263); instalador y actualizaciones firmadas (TK-242, falta compilarlo); seguridad R11 completa (TK-253, TK-268).
+Venta, caja y cuadre ciego; inventario, compras y 606/607/608; clientes y fiado; permisos finos y autorización de supervisor atada al contenido (R11); e-CF directo a la DGII desde la tienda (TK-144 a TK-150, TK-152 a TK-155); receptor en la nube firmado en la tienda (TK-246); consultas públicas a la DGII con caché en tabla (TK-252); nube: réplica, panel, consola con 2FA, receptor, correo, alertas, cuotas (TK-248), cobro con Paddle (TK-249/258), referidos (TK-255/276), actualizaciones por canal (TK-254), asistente Talia; sitio público con SEO (TK-259 a TK-263); instalador y actualizaciones firmadas (TK-242, falta compilarlo); seguridad R11 completa (TK-253, TK-268).
 
 ## 2. V1 con código pendiente (los hace el equipo ahora)
 | Ticket | Qué falta |
@@ -14,7 +14,6 @@ Venta, caja y cuadre ciego; inventario, compras y 606/607/608; clientes y fiado;
 | TK-238 | Copia del respaldo a la nube (hoy solo diseñada) y el latido con el modo DGII real |
 | TK-156 | Umbral del reloj para firmar (2 min, D17) y estatus real de los servicios de la DGII |
 | TK-248 | Medidor de firmas del receptor (TK-246) y la subida de facturas respetando el 429 |
-| TK-252 | Caché de consultas a la DGII en tabla (hoy en memoria) |
 
 ## 3. V1 bloqueado por terceros o por el dueño (el código está; falta validar)
 | Ticket | Bloqueo |
