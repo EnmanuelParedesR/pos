@@ -11,7 +11,7 @@ import { ShiftReportPage } from "./pages/ShiftReportPage";
 import { StoresPage } from "./pages/StoresPage";
 import { AssistantPage } from "./pages/AssistantPage";
 import { BillingPage } from "./pages/BillingPage";
-import { PlatformAccompanimentPage, PlatformMetricsPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
+import { PlatformAccompanimentPage, PlatformMetricsPage, PlatformReleasesPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
 import { CatalogPage } from "./pages/CatalogPage";
 import { MembersPage } from "./pages/MembersPage";
 import { InvitePage } from "./pages/InvitePage";
@@ -109,6 +109,7 @@ function Panel() {
             <Route path="platform/tenants/:tenantId" element={<PlatformTenantPage />} />
             <Route path="platform/stores/:storeId" element={<PlatformStorePage />} />
             <Route path="platform/accompaniment" element={<PlatformAccompanimentPage />} />
+            <Route path="platform/releases" element={<PlatformReleasesPage />} />
           </>
         )}
         <Route path="*" element={<SummaryPage />} />

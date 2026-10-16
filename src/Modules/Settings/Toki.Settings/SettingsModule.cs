@@ -25,9 +25,11 @@ public static class SettingsModule
         services.AddModuleDbContext<SettingsDbContext>();
         services.AddScoped<ISettingsQueries, SettingsQueries>();
         services.AddScoped<IApprovalPolicy, ApprovalPolicy>();
+        services.AddScoped<IUpdatePolicy, UpdatePolicyStore>();
         services.AddSingleton<LastAuditCheck>();
         services.AddHostedService<NightlyAuditCheck>();
-        services.AddHealthChecks().AddCheck<LastAuditCheck>("audit").AddCheck<BackupHealthCheck>("backup");
+        services.AddHealthChecks().AddCheck<LastAuditCheck>("audit").AddCheck<BackupHealthCheck>("backup")
+            .AddCheck<DiskEncryptionHealthCheck>("disk-encryption");
         // The key ring that protects the backup key lives with the store's data, not in the service account's profile.
         var keys = services.AddDataProtection().SetApplicationName("Toki").PersistKeysToFileSystem(new DirectoryInfo(
             config["Toki:KeysFolder"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki", "keys")));
@@ -64,6 +66,17 @@ internal sealed class Business
     public TimeSpan? BackupTime { get; set; }
     public int? BackupKeep { get; set; }
     public bool? BackupAutomatic { get; set; }
+    /// <summary>TK-254: "pilot" or "stable"; null follows appsettings (Updates:Channel).</summary>
+    public string? UpdateChannel { get; set; }
+    /// <summary>TK-254: updates install on their own outside business hours; null = yes. Off, only "Actualizar ahora" installs them.</summary>
+    public bool? UpdateOutsideHours { get; set; }
+    /// <summary>TK-254: "Actualizar ahora": install as soon as no shift is open; cleared once the server runs the new version.</summary>
+    public DateTime? UpdateRequestedUtc { get; set; }
+    /// <summary>TK-254: the newest server version the feed offers this store (written by the server's update check).</summary>
+    public string? UpdateAvailableVersion { get; set; }
+    /// <summary>TK-254: the highest version the cloud lets this store install (staged rollout): null = the cloud does not manage it, "" = wait.</summary>
+    public string? UpdateAllowedVersion { get; set; }
+    public string? UpdateNotesUrl { get; set; }
 
     public BusinessProfile ToProfile() => new(Name, Rnc, Address, Phone, ReceiptFooter, DiscountCapPercent);
 }
@@ -73,6 +86,7 @@ internal sealed class SettingsDbContext(DbContextOptions<SettingsDbContext> opti
     protected override string Schema => "settings";
     public DbSet<Business> Business => Set<Business>();
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
+    public DbSet<RegisterVersion> RegisterVersions => Set<RegisterVersion>();
 }
 
 internal sealed class BusinessConfiguration : IEntityTypeConfiguration<Business>
@@ -86,6 +100,10 @@ internal sealed class BusinessConfiguration : IEntityTypeConfiguration<Business>
         b.Property(n => n.BackupKey).HasMaxLength(1000);
         b.Property(n => n.SupervisorApprovals).HasMaxLength(500);
         b.Property(n => n.BackupCopyTo).HasMaxLength(260);
+        b.Property(n => n.UpdateChannel).HasMaxLength(10);
+        b.Property(n => n.UpdateAvailableVersion).HasMaxLength(20);
+        b.Property(n => n.UpdateAllowedVersion).HasMaxLength(20);
+        b.Property(n => n.UpdateNotesUrl).HasMaxLength(500);
         // Literal values: changing a property default later must not overwrite the owner's settings through a migration.
         b.HasData(new Business { Id = 1, Name = "Mi tienda", DiscountCapPercent = 10 });
     }

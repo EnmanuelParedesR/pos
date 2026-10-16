@@ -4,6 +4,8 @@ import { api, ApiError, priceLabel, useApi, type Billing, type BillingInterval, 
 import { dateTime, dayName } from "../format";
 import { Card, LoadError, Notice, PageHead, Segmented, Skeleton } from "../ui";
 import { addOnNames, planNames } from "./UsageCard";
+import { ReferralCard } from "./ReferralCards";
+import { forgetReferral, keptReferral } from "../referral";
 
 /** Paddle.js v2, from Paddle's CDN only (Paddle asks to load it from cdn.paddle.com; the /v2/ path is the version it pins). Only this page loads it. */
 export const paddleScript = "https://cdn.paddle.com/paddle/v2/paddle.js";
@@ -78,7 +80,8 @@ export function BillingPage() {
     setActionError(null);
     setDone(null);
     try {
-      const r = await api<Checkout | { changed: boolean }>("/api/billing/checkout", "POST", { plan, addOns, interval });
+      const referralCode = subscribed ? null : keptReferral(); // TK-255: the code from /precios?ref=, until the first checkout
+      const r = await api<Checkout | { changed: boolean }>("/api/billing/checkout", "POST", { plan, addOns, interval, ...(referralCode ? { referralCode } : {}) });
       if ("changed" in r) {
         setDone("Listo. Paddle cobra o acredita la diferencia y su plan cambia en unos segundos.");
         window.setTimeout(reload, 4000);
@@ -87,6 +90,7 @@ export function BillingPage() {
       const paddle = await loadPaddle();
       onPaddleEvent = (e) => {
         if (e.name === "checkout.completed") {
+          forgetReferral(); // the cloud keeps it now
           setDone("¡Gracias! Recibimos su pago. Su plan se activa en unos segundos, también en la tienda.");
           window.setTimeout(reload, 4000);
         }
@@ -230,6 +234,8 @@ export function BillingPage() {
           )}
         </Card>
       )}
+
+      <ReferralCard />
     </>
   );
 }

@@ -61,7 +61,9 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Billing.TenantSubscription> TenantSubscriptions => Set<Billing.TenantSubscription>();
     public DbSet<Billing.BillingEvent> BillingEvents => Set<Billing.BillingEvent>();
     public DbSet<Billing.PaddleProduct> PaddleProducts => Set<Billing.PaddleProduct>();
+    public DbSet<Billing.Referral> Referrals => Set<Billing.Referral>();
     public DbSet<Certification.AccompanimentRequest> AccompanimentRequests => Set<Certification.AccompanimentRequest>();
+    public DbSet<Platform.AppRelease> AppReleases => Set<Platform.AppRelease>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -316,6 +318,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         });
         Alerts.AlertModel.Configure(builder);
         Certification.AccompanimentModel.Configure(builder);
+        Platform.Releases.Configure(builder);
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

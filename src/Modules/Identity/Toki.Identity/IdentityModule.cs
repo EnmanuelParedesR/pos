@@ -34,6 +34,7 @@ public static class IdentityModule
     {
         services.AddModuleDbContext<IdentityDbContext>();
         services.AddSingleton<StoreCertificateAuthority>();
+        services.AddSingleton<AttemptLimiter>();
         services.AddHealthChecks().AddCheck<StoreCaHealthCheck>("store-ca");
         services.AddScoped<IRestoreGuard, IdentityRestoreGuard>();
         services.AddScoped<ISupervisorApprovals, SupervisorApprovals>();
@@ -87,7 +88,7 @@ internal static class PairedDevices
         {
             // A certificate decides alone: an unknown or revoked one never falls back to a secret sent next to it.
             var thumbprint = StoreCertificateAuthority.Thumbprint(certificate);
-            devices = devices.Where(d => d.CertificateThumbprint == thumbprint);
+            devices = devices.Where(d => d.CertificateThumbprint == thumbprint || d.PreviousCertificateThumbprint == thumbprint);
         }
         else
         {

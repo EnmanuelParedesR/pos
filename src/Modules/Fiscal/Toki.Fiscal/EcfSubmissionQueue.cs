@@ -38,29 +38,7 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
             .OrderBy(v => v.CreatedUtc).Take(BatchSize).ToListAsync(ct);
         var rnc = documents.Count + voids.Count > 0 ? (await settings.GetBusinessProfileAsync(ct)).Rnc ?? "" : "";
 
-        foreach (var d in documents)
-        {
-            // R8 #2: claims a pending document before calling the DGII. A void needs SentUtc null, so it can no longer win; one that already won
-            // (it changed the status after the load above) leaves 0 rows and the document is skipped.
-            // R9 #7: a pending document that still has its claim was being sent when the process died: that send may have arrived.
-            var mayHaveArrived = d.Attempts > 0 || d.SentUtc is not null;
-            if (d.Status == SubmissionStatus.Pending && !await ClaimAsync(d, now, ct)) continue;
-            try
-            {
-                // R10 #2: the client of the document's own environment (a change of environment never redirects it); Simulated never leaves.
-                var dgii = provider.For(d.Environment);
-                var answer = d.Status == SubmissionStatus.Sent ? await dgii.GetResultAsync(d.TrackId!, ct) : await SendAsync(dgii, d, rnc, mayHaveArrived, ct);
-                Apply(d, answer, now);
-            }
-            // An HTTP timeout is a TaskCanceledException too: only our own shutdown token ends the pass.
-            catch (Exception ex) when (!ct.IsCancellationRequested)
-            {
-                Failed(d.ENcf, ex, ++d.Attempts, now, (next, error) => (d.NextAttemptUtc, d.LastError) = (next, error));
-                if (d.Status == SubmissionStatus.Pending) d.SentUtc = null; // releases the claim: it can be voided again (the void asks the DGII first)
-            }
-            // One save per document: a crash after the DGII answered loses at most one answer, and the next pass asks before resending.
-            await db.SaveChangesAsync(ct);
-        }
+        foreach (var d in documents) await TryOneAsync(d, rnc, now, ct);
 
         foreach (var v in voids)
         {
@@ -78,6 +56,44 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
 
         if (!provider.IsSimulated) await ArchiveAsync(ct);
         return documents.Count + voids.Count;
+    }
+
+    /// <returns>False when another pass had already claimed the pending document.</returns>
+    private async Task<bool> TryOneAsync(FiscalDocument d, string rnc, DateTime now, CancellationToken ct)
+    {
+        // R8 #2: claims a pending document before calling the DGII. A void needs SentUtc null, so it can no longer win; one that already won
+        // (it changed the status after the load above) leaves 0 rows and the document is skipped.
+        // R9 #7: a pending document that still has its claim was being sent when the process died: that send may have arrived.
+        var mayHaveArrived = d.Attempts > 0 || d.SentUtc is not null;
+        if (d.Status == SubmissionStatus.Pending && !await ClaimAsync(d, now, ct)) return false;
+        try
+        {
+            // R10 #2: the client of the document's own environment (a change of environment never redirects it); Simulated never leaves.
+            var dgii = provider.For(d.Environment);
+            var answer = d.Status == SubmissionStatus.Sent ? await dgii.GetResultAsync(d.TrackId!, ct) : await SendAsync(dgii, d, rnc, mayHaveArrived, ct);
+            Apply(d, answer, now);
+        }
+        // An HTTP timeout is a TaskCanceledException too: only our own shutdown token ends the pass.
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            Failed(d.ENcf, ex, ++d.Attempts, now, (next, error) => (d.NextAttemptUtc, d.LastError) = (next, error));
+            if (d.Status == SubmissionStatus.Pending) d.SentUtc = null; // releases the claim: it can be voided again (the void asks the DGII first)
+        }
+        // One save per document: a crash after the DGII answered loses at most one answer, and the next pass asks before resending.
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    /// <summary>TK-208: sends one new e-CF right away (the register waits a few seconds for a 31) and asks for its result every second while
+    /// the DGII has it "en proceso", for up to <paramref name="pollFor"/>. A failed send is left to the queue and its backoff.</summary>
+    public async Task SendNowAsync(Guid documentId, TimeSpan pollFor, CancellationToken ct)
+    {
+        var d = await db.Documents.SingleOrDefaultAsync(x => x.Id == documentId, ct);
+        if (d is not { Status: SubmissionStatus.Pending, Attempts: 0 }) return;
+        var rnc = (await settings.GetBusinessProfileAsync(ct)).Rnc ?? "";
+        var until = clock.GetUtcNow() + pollFor;
+        while (await TryOneAsync(d, rnc, clock.GetUtcNow().UtcDateTime, ct) && d.Status == SubmissionStatus.Sent && clock.GetUtcNow() < until)
+            await Task.Delay(TimeSpan.FromSeconds(1), clock, ct);
     }
 
     private async Task<bool> ClaimAsync(FiscalDocument d, DateTime now, CancellationToken ct)

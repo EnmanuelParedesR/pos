@@ -81,6 +81,28 @@ namespace Toki.Settings.Persistence.Migrations
                     b.Property<DateTime?>("TrialStartedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("UpdateAllowedVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("UpdateAvailableVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("UpdateChannel")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("UpdateNotesUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<bool?>("UpdateOutsideHours")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UpdateRequestedUtc")
+                        .HasColumnType("datetime2");
+
                     b.HasKey("Id");
 
                     b.ToTable("Business", "settings");
@@ -92,6 +114,31 @@ namespace Toki.Settings.Persistence.Migrations
                             DiscountCapPercent = 10m,
                             Name = "Mi tienda"
                         });
+                });
+
+            modelBuilder.Entity("Toki.Settings.RegisterVersion", b =>
+                {
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PendingVersion")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("ReportedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RestartRequestedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("DeviceId");
+
+                    b.ToTable("RegisterVersions", "settings");
                 });
 
             modelBuilder.Entity("Toki.Settings.UserPreference", b =>

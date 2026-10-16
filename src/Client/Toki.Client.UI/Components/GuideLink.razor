@@ -1,0 +1,16 @@
+@* TK-256: a certification step's link: a screen of Toki opens here, a public page (the DGII) in the browser. *@
+@if (Step.LinkUrl is { } url && Step.LinkLabel is { } label)
+{
+    @if (url.StartsWith('/'))
+    {
+        <a href="@url">@label</a>
+    }
+    else if (url.StartsWith("https://", StringComparison.Ordinal))
+    {
+        <a href="@url" target="_blank" rel="noopener noreferrer">@label</a>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public CertificationGuideStep Step { get; set; } = default!;
+}

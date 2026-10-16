@@ -66,7 +66,7 @@ internal static class SendHeartbeat
         }
 
         /// <summary>"1.4.0", without the commit suffix, so versions in the field group together.</summary>
-        private static string AppVersion =>
+        internal static string AppVersion =>
             ((Assembly.GetEntryAssembly() ?? typeof(SendHeartbeat).Assembly).GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "?")
             .Split('+')[0];
 
@@ -95,6 +95,26 @@ internal static class PullLicense
     private sealed record Answer(string? License);
 }
 
+/// <summary>TK-254: asks the cloud which version this store may install on its channel (staged rollout from the platform console) and keeps the
+/// answer for the server's update check and the registers. Offline, or with an older cloud (404), the last answer stays.</summary>
+internal static class PullUpdatePolicy
+{
+    public const string Path = "/api/nodes/updates";
+
+    public static async Task<bool> RunAsync(CloudClient cloud, IUpdatePolicy updates, IConfiguration config, CancellationToken ct)
+    {
+        if (await cloud.ConnectionAsync(ct) is not { } connection) return false;
+        var policy = await updates.GetAsync(ct);
+        var channel = policy.Channel ?? config["Updates:Channel"] ?? "stable";
+        using var response = await cloud.SendAsync(connection, Path, JsonContent.Create(new { channel, version = SendHeartbeat.Handler.AppVersion }), ct);
+        if (!response.IsSuccessStatusCode || await response.Content.ReadFromJsonAsync<Answer>(ct) is not { } a) return false;
+        await updates.SetAllowedAsync(a.Managed ? a.AllowedVersion ?? "" : null, a.NotesUrl, ct);
+        return true;
+    }
+
+    private sealed record Answer(bool Managed, string? AllowedVersion, string? NotesUrl);
+}
+
 /// <summary>Sends a heartbeat on start and every <c>Sync:HeartbeatMinutes</c> (240), unless <c>Sync:Enabled</c> is false (the test host),
 /// and then pulls the license (<see cref="PullLicense"/>).</summary>
 /// <remarks>R8 #21: every upload wakes the cloud's serverless SQL for at least an hour (~0.30 USD); an hourly heartbeat kept it awake all day for
@@ -116,6 +136,8 @@ internal sealed class HeartbeatWorker(IServiceScopeFactory scopes, IConfiguratio
                 if (result.IsFailure) log.LogWarning("The heartbeat was not saved: {Code}", result.Error!.Code);
                 if (await PullLicense.RunAsync(scope.ServiceProvider.GetRequiredService<CloudClient>(), scope.ServiceProvider.GetRequiredService<IStoreLicense>(), stoppingToken))
                     log.LogInformation("Installed the license the cloud issued");
+                await PullUpdatePolicy.RunAsync(scope.ServiceProvider.GetRequiredService<CloudClient>(), scope.ServiceProvider.GetRequiredService<IUpdatePolicy>(),
+                    config, stoppingToken);
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {

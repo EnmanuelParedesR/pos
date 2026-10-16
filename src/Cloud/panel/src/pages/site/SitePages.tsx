@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { site } from "./config";
 import { usePlanPrices } from "./livePrices";
+import { useReferralLink } from "../../referral";
 import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, Icon, IconTiles, ProductArt, Section, Steps, Tbd, Trial } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
@@ -405,6 +406,7 @@ function Plan({ name, note, price, children, brand }: { name: string; note: stri
 
 function Pricing() {
   const prices = usePlanPrices(); // TK-249: from Paddle; "Precio por confirmar" while billing is off
+  const referred = useReferralLink(); // TK-255: /precios?ref=CODE
   return (
     <>
       <Hero eyebrow="Precios" title="Pague por el tamaño de su tienda, no por factura." sub="Tres planes según cajas y sucursales. Lo esencial, en todos.">
@@ -428,6 +430,7 @@ function Pricing() {
         </div>
         <p className="muted">Entre planes cambian las cajas, las sucursales y el acceso desde el celular del dueño.</p>
         {/* TK-249: the account first, then "Plan y facturación" in the panel (pago con tarjeta por Paddle). */}
+        {referred && <p className="note">Viene recomendado por un cliente de Toki. Cree su cuenta y elija su plan.</p>}
         <p className="actions">
           <Link className="btn" to="/app/billing">
             Crear su cuenta y elegir plan

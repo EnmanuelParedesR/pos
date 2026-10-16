@@ -439,7 +439,7 @@ Sin esto no se puede probar nada contra la DGII real (todo está probado con una
 - **Respuesta:**
 
 ### H7 · Instalación silenciosa de SQL Server Express 2025
-- **Pregunta:** ¿Son correctos el enlace, los parámetros y el tamaño? ¿Compila el instalador con Inno Setup 6 y `vpk`?
+- **Pregunta:** ¿Son correctos el enlace, los parámetros y el tamaño? ¿Compila el instalador con Inno Setup 6?
 - **Hoy:** sin verificar.
 - **Fuente:** TK-242; `docs/instalador-web.md` §Pendiente.
 - **Respuesta:**

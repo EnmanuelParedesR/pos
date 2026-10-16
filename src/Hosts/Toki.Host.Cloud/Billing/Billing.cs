@@ -50,6 +50,12 @@ public sealed class TenantSubscription
     public string? ManualNote { get; set; }
     /// <summary>When the subscription last changed; the cloud license is "issued" at this instant, so the store only installs a real change.</summary>
     public DateTime UpdatedUtc { get; set; }
+    /// <summary>TK-255: this business's own referral code ("Recomiende Toki"), made on first use.</summary>
+    public string? ReferralCode { get; set; }
+    /// <summary>TK-255: the code it came with (<c>/precios?ref=</c>), kept at its first checkout.</summary>
+    public string? ReferredByCode { get; set; }
+    /// <summary>TK-255: its first paid transaction; only that one can earn its referrer a reward.</summary>
+    public DateTime? FirstPaidUtc { get; set; }
 
     /// <summary>Until when the business has paid: the later of Paddle and the staff override.</summary>
     public DateTime? PaidUntilUtc => new[] { PaidThroughUtc, ManualUntilUtc }.Max();
@@ -87,8 +93,12 @@ internal static class BillingModel
             e.Property(s => s.Interval).HasConversion<string>().HasMaxLength(20);
             e.Property(s => s.ManualNote).HasMaxLength(500);
             e.HasIndex(s => s.PaddleSubscriptionId);
+            e.Property(s => s.ReferralCode).HasMaxLength(20);
+            e.Property(s => s.ReferredByCode).HasMaxLength(20);
+            e.HasIndex(s => s.ReferralCode).IsUnique().HasFilter("[ReferralCode] IS NOT NULL");
             e.Ignore(s => s.PaidUntilUtc);
         });
+        ReferralModel.Configure(builder); // TK-255
         builder.Entity<BillingEvent>(e =>
         {
             e.ToTable("BillingEvents");

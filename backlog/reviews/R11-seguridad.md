@@ -37,3 +37,23 @@ Bajos: 10) PII en logs 60 días; 11) http aceptado (TK-251 corrigió las URL); 1
 ## Estado de las correcciones
 
 TK-253.
+
+### Parte C (equipos, red y datos en reposo)
+
+| # | Estado | Qué se hizo |
+|---|---|---|
+| C1 | ✅ | Instancia propia `.\TOKI` (`appsettings.json`, `toki.iss`): `/SQLSYSADMINACCOUNTS` = grupo Administradores por SID (nombre traducido), sin TCP ni canalizaciones; nunca `/ADDCURRENTUSERASSQLADMIN`; un `SQLEXPRESS` ajeno no se reutiliza. Desarrollo sigue con `.\SQLEXPRESS` (perfil `SqlExpress`). |
+| C2 | ✅ | Instalador avisa sin BitLocker/Cifrado de dispositivo; salud `disk-encryption` (Degraded) con el `ProtectionStatus` que escribe cada hora la tarea de SYSTEM (`Win32_EncryptableVolume` necesita administrador; el servicio no lo es). Llave e-CF en el TPM cuando se puede. `docs/guia-pc-robada.md`. |
+| C3 | ✅ | Authenticode: `build.ps1` firma `Toki.exe`, `Toki.Host.Local.exe`, el setup y el desinstalador (`TOKI_SIGNTOOL`, `-RequireSigned`) y escribe `Updates:SignerThumbprints` (`TOKI_SIGN_THUMBPRINT`). La tarea no instala nada sin huella salvo `Updates:AllowUnsignedUpdates` (piloto), exige feed https. Velopack quitado (ver C6). Manejo del certificado para el dueño: `docs/instalador-web.md`, "Firma de código". |
+| C5 | ✅ | Llave de la caja CNG no exportable del usuario (TPM si hay, `CngDeviceKeys`); `client.dat` guarda solo la referencia. Certificado de 1 año, renovado por mTLS en los últimos 30 días (`/api/identity/devices/current/certificate`); el anterior vale hasta vencer (`PreviousCertificateThumbprint`). |
+| C6 | ✅ | App de caja en `Program Files\Toki\app` para toda la PC (WebView2 guarda en el perfil); la tarea `Toki\Actualizar` (SYSTEM) actualiza las dos partes, la caja solo con la app cerrada. |
+| C7 | ✅ | `sc.exe privs Toki SeChangeNotifyPrivilege` en `install.ps1`. |
+| C8 | ✅ | La llave e-CF se importa como llave CNG no exportable de `NT SERVICE\Toki` (TPM o software), ACL solo esa cuenta y SYSTEM. No es `LocalMachine`: crear llaves CNG de máquina exige administrador. Falta probarlo en VM limpia con el servicio (TK-160). |
+| C9 | ✅ | `remove-data.ps1` borra el login de SQL del servicio, el perfil de `NT SERVICE\Toki` (llave e-CF y su `CurrentUser\My`), el certificado e-CF de `LocalMachine\My` por la huella de `ecf-certificate.json` y el viejo `CN=Toki Nodo`. |
+| C10 | ✅ | El registro de peticiones enmascara segmentos de 9 u 11 dígitos (`RequestLogs`). |
+| C12 | ✅ | Un código de emparejamiento a la vez; 5 códigos malos lo cierran; 10 por dirección esperan 15 min; 10 PIN malos por caja (inicio y autorización) esperan 15 min (`AttemptLimiter`, en memoria). |
+| C13 | ✅ | `remove-tree.ps1`: no borra si hay un enlace (*reparse point*); la tarea rechaza una versión igual o anterior a la instalada. |
+| C14 | ✅ | Desde la pantalla la copia va a un disco local; una carpeta de red solo si el técnico la lista en `Backup:CopyTo` o `Backup:AllowedCopyFolders`. (Si A3 agrega su propia lista, usar `BackupSettings.CopyAllowed`.) |
+| C15 | ✅ | `decrypt-backup` pide la frase escrita; la variable solo con entrada redirigida, y avisa cómo borrarla. |
+
+C4 y C11 ya estaban corregidos (TK-251). Sin probar en una PC real: ISCC (no instalado), la instancia `TOKI` con el SSEI de Express 2025, el TPM con el servicio real y la firma.

@@ -149,6 +149,7 @@ app.MapBilling();
 app.MapStores();
 app.MapMembers();
 app.MapNodes();
+app.MapNodeUpdates();
 app.MapIngest();
 app.MapPanel();
 app.MapAssistant();

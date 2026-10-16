@@ -112,6 +112,8 @@ internal sealed class Device
     /// <summary>SHA-256 of the client certificate the store CA issued when it paired (TK-091); null for registers paired with a secret.
     /// Revoking the device denies the certificate too: it is only accepted while its device is not revoked.</summary>
     public string? CertificateThumbprint { get; set; }
+    /// <summary>R11 C5: the certificate before the last renewal, still accepted until it expires (the register may not have received the new one).</summary>
+    public string? PreviousCertificateThumbprint { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime CreatedUtc { get; set; }
     /// <summary>TK-190: when the register last reported its scale and printer (kept on the PC itself); null if it never did.</summary>
@@ -189,6 +191,10 @@ internal static class IdentityErrors
     public static readonly Error RoleNotFound = Error.NotFound("Identity.RoleNotFound", "El rol no existe.");
     public static readonly Error DeviceNotFound = Error.NotFound("Identity.DeviceNotFound", "El dispositivo no existe.");
     public static readonly Error InvalidPairingCode = Error.Unauthorized("Identity.InvalidPairingCode", "El código de emparejamiento no es válido o ya venció.");
+    public static readonly Error TooManyPairingAttempts = Error.Unauthorized("Identity.TooManyPairingAttempts",
+        "Demasiados códigos equivocados. Genere un código nuevo en la PC principal o espere 15 minutos.");
+    public static readonly Error DeviceLocked = Error.Unauthorized("Identity.DeviceLocked",
+        "Demasiados PIN equivocados en esta caja. Espere 15 minutos o entre desde otra caja.");
     public static readonly Error SupervisorLacksPermission = Error.Forbidden("Identity.SupervisorLacksPermission", "Ese usuario no puede autorizar esta acción.");
     public static readonly Error InvalidApproval = Error.Forbidden("Identity.InvalidApproval", "La autorización del supervisor no es válida, ya se usó o venció.");
     public static readonly Error UnknownPermission = Error.Validation("Identity.UnknownPermission", "Uno de los permisos no existe.");

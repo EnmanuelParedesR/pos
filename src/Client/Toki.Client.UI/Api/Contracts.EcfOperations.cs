@@ -26,7 +26,10 @@ public sealed record CertificationCaseRow(Guid Id, int Row, string ENcf, string 
 public sealed record CertificationSimulation(int Accepted, int Rejected, int Waiting);
 
 /// <summary><c>GET /api/fiscal/certification</c>.</summary>
-public sealed record CertificationState(string Environment, List<CertificationStepState> Steps, List<CertificationCaseRow> Cases, CertificationSimulation Simulation);
+public sealed record CertificationState(string Environment, List<CertificationStepState> Steps, List<CertificationCaseRow> Cases, CertificationSimulation Simulation,
+    List<CertificationGuideStep>? Guide = null);
+/// <summary>TK-256: a step with its help, the next action and a link (an app route starting with "/" or a public page).</summary>
+public sealed record CertificationGuideStep(string Title, string Who, string Hint, string Help, string Next, string? LinkLabel, string? LinkUrl);
 
 public sealed record TestSetImported(int Imported, List<string> Errors);
 public sealed record DgiiFileSigned(string Root, string SignedXml);

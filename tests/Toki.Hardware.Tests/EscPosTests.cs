@@ -70,7 +70,9 @@ public sealed class EscPosTests
             SignedAt = new DateTime(2026, 10, 15, 14, 5, 9),
             SequenceExpiresOn = new DateOnly(2027, 12, 31),
             ContingencyLegend = "Emitido en contingencia",
+            DgiiStatus = "Aceptada por la DGII", // TK-208
         }, 48);
+        text.ShouldContain("Aceptada por la DGII");
         text.ShouldContain("Firmada: 15/10/2026 2:05:09 PM");
         text.ShouldContain("31/12/2027");
         text.ShouldContain("Emitido en contingencia");

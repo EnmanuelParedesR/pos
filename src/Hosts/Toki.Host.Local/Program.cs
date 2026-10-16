@@ -17,10 +17,13 @@ using Toki.Reports;
 using Toki.Sync;
 using Toki.Host.Local;
 
-// Restoring on any PC: Toki.Host.Local decrypt-backup <file.toki-backup> <output>, with the passphrase in TOKI_BACKUP_PASSPHRASE or typed.
+// Restoring on any PC: Toki.Host.Local decrypt-backup <file.toki-backup> <output>. The passphrase is typed (R11 C15); TOKI_BACKUP_PASSPHRASE is
+// read only when nobody can type (input redirected, a script), and whoever set it is told to clear it: it stays in that console's environment.
 if (args is ["decrypt-backup", var file, var output])
 {
-    var passphrase = Environment.GetEnvironmentVariable("TOKI_BACKUP_PASSPHRASE");
+    var passphrase = Console.IsInputRedirected ? Environment.GetEnvironmentVariable("TOKI_BACKUP_PASSPHRASE") : null;
+    if (Environment.GetEnvironmentVariable("TOKI_BACKUP_PASSPHRASE") is not null)
+        Console.Error.WriteLine("Borre la frase de esta consola al terminar: Remove-Item Env:TOKI_BACKUP_PASSPHRASE (PowerShell) o set TOKI_BACKUP_PASSPHRASE= (cmd).");
     if (passphrase is null)
     {
         // Typed without echo: the passphrase opens every backup of the store.
@@ -116,7 +119,7 @@ var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
-app.UseSerilogRequestLogging();
+app.UseSerilogRequestLogging(RequestLogs.Configure);
 if (https)
 {
     // Over the LAN every API call comes from a paired register's certificate; only what comes before pairing goes without one.

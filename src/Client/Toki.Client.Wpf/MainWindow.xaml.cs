@@ -22,6 +22,8 @@ public partial class MainWindow
         // Over https the store server's self-signed certificate is pinned when this PC pairs (TK-122, ADR-0009).
         services.AddTokiClient(api);
         services.AddSingleton<ILocalStore, ProtectedStore>();
+        services.AddSingleton<IDeviceKeys, CngDeviceKeys>();
+        services.AddSingleton<IAppUpdater>(new RegisterUpdates(App.Log)); // TK-254
         // Simulated scale and printer in Debug builds, the real drivers in Release; appsettings "Hardware": { "Simulated": true|false } overrides it.
 #if DEBUG
         var simulate = true;
@@ -38,6 +40,9 @@ public partial class MainWindow
         services.AddBlazorWebViewDeveloperTools();
 #endif
         WebView.Services = services.BuildServiceProvider();
+        // R11 C6: the app lives in Program Files (read-only for the cashier): WebView2's data goes to the user's profile, not next to Toki.exe.
+        WebView.BlazorWebViewInitializing += (_, e) =>
+            e.UserDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Toki", "WebView2");
         WebView.BlazorWebViewInitialized += (_, e) =>
         {
             LockDown(e.WebView.CoreWebView2.Settings);

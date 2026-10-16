@@ -16,3 +16,21 @@ public interface IStoreLicense
     /// False when it was refused or brings nothing new.</summary>
     Task<bool> InstallFromCloudAsync(string jws, CancellationToken ct);
 }
+
+/// <summary>TK-254: how this store takes updates, as the owner set it in Configuración → Actualizaciones and the cloud allows it.</summary>
+/// <param name="Channel">"pilot" or "stable"; null follows appsettings.</param>
+/// <param name="OutsideHours">Updates install on their own outside business hours.</param>
+/// <param name="RequestedUtc">"Actualizar ahora": install as soon as no shift is open (or after closing time).</param>
+/// <param name="AllowedVersion">The highest version the cloud allows (staged rollout): null = not managed by the cloud, "" = wait.</param>
+public sealed record UpdatePolicy(string? Channel, bool OutsideHours, DateTime? RequestedUtc, string? AllowedVersion);
+
+public interface IUpdatePolicy
+{
+    Task<UpdatePolicy> GetAsync(CancellationToken ct);
+    /// <summary>The newest server version the feed offers (null: up to date).</summary>
+    Task SetAvailableAsync(string? version, CancellationToken ct);
+    /// <summary>What the cloud answered on the node channel.</summary>
+    Task SetAllowedAsync(string? version, string? notesUrl, CancellationToken ct);
+    /// <summary>The server runs the requested version: "Actualizar ahora" is done.</summary>
+    Task AppliedAsync(CancellationToken ct);
+}

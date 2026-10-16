@@ -8,6 +8,9 @@ namespace Toki.Host.Cloud.Panel;
 
 /// <summary>What a panel or assistant query covers. The tenant comes from the caller's identity; days are store days (UTC−4).</summary>
 public sealed record PanelFilter(Guid TenantId, Guid? StoreId, DateOnly From, DateOnly To);
+/// <summary>TK-256: a store's DGII certification for the assistant. CurrentStep is 1-based; null once certified.</summary>
+public sealed record StoreCertificationStatus(string StoreName, bool Certified, int StepsDone, int TotalSteps, int? CurrentStep, string? StepTitle,
+    string? Who, string? NextAction, string? Help, int? DaysOnStep);
 
 public sealed record HourSales(int Hour, int Count, decimal Total);
 public sealed record PaymentMix(string Method, int Count, decimal Amount);
@@ -195,6 +198,23 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
             return new StoreSyncStatus(s.Id, s.Name, own.Max(n => n.LastEventUtc), own.Max(n => n.LastSyncUtc),
                 waiting.Where(w => w.StoreId == s.Id && !w.Failed).Sum(w => w.Count), waiting.Where(w => w.StoreId == s.Id && w.Failed).Sum(w => w.Count),
                 [.. own.Select(n => new NodeStatus(n.Id, n.Name, n.LastEventUtc, n.LastSyncUtc))]);
+        })];
+    }
+
+    /// <summary>TK-256: where each of the tenant's stores is in the DGII certification (TK-225 progress) and what to do now (the app's guide).
+    /// Only this tenant's rows; a store that never ticked a step is "not started".</summary>
+    public async Task<List<StoreCertificationStatus>> CertificationAsync(Guid tenantId, CancellationToken ct)
+    {
+        var stores = await StoreNamesAsync(tenantId, ct);
+        var rows = await db.Certifications.AsNoTracking().Where(c => c.TenantId == tenantId).ToDictionaryAsync(c => c.StoreId, ct);
+        var guide = Toki.Fiscal.Contracts.CertificationGuide.Steps;
+        return [.. stores.Select(s =>
+        {
+            var row = rows.GetValueOrDefault(s.Key);
+            var current = row?.CurrentStep ?? 0;
+            var step = row?.Certified == true || current >= guide.Count ? null : guide[current];
+            return new StoreCertificationStatus(s.Value, row?.Certified == true, row?.StepsDone ?? 0, guide.Count, step is null ? null : current + 1, step?.Title,
+                step?.Who, step?.Next, step?.Help, row is null ? null : (int)(clock.GetUtcNow().UtcDateTime - row.StepSinceUtc).TotalDays);
         })];
     }
 

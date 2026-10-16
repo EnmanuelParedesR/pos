@@ -12,8 +12,12 @@ public interface ILocalStore
 }
 
 /// <summary>Who is at this PC: the paired device, the logged-in user and their open shift.</summary>
-public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAddress? server = null)
+public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAddress? server = null, IDeviceKeys? deviceKeys = null)
 {
+    private readonly IDeviceKeys _keys = deviceKeys ?? new ExportableDeviceKeys();
+    /// <summary>R11 C5: the client certificate is renewed when less than this is left (it lasts a year).</summary>
+    public static readonly TimeSpan RenewBefore = TimeSpan.FromDays(30);
+    private string? _pendingReference;
     private const string ServerKey = "server";
     private const string DeviceKey = "device";
     private const string NodeCertificateKey = "node-certificate";
@@ -55,9 +59,8 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAdd
         pin.Pin(ca, await store.ReadAsync(NodeCertificateKey));
         if (await store.ReadAsync(ClientCertificateKey) is { } certificate && await store.ReadAsync(ClientKeyKey) is { } key)
         {
-            using var ecdsa = ECDsa.Create();
-            ecdsa.ImportPkcs8PrivateKey(Convert.FromBase64String(key), out _);
-            pin.UseClientCertificate(WithKey(certificate, ecdsa));
+            try { pin.UseClientCertificate(_keys.Load(certificate, key)); }
+            catch (CryptographicException) { } // the key is gone (another Windows user, a reinstalled PC): this PC pairs again
         }
         DeviceToken = await store.ReadAsync(DeviceKey);
         _loaded = true;
@@ -76,9 +79,39 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAdd
     public string? CertificateRequest()
     {
         if (pin.Seen is null) return null;
-        _pendingKey?.Dispose();
-        _pendingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        DropPendingKey();
+        (_pendingKey, _pendingReference) = _keys.Create();
         return new CertificateRequest("CN=Toki Caja", _pendingKey, HashAlgorithmName.SHA256).CreateSigningRequestPem();
+    }
+
+    private void DropPendingKey()
+    {
+        _pendingKey?.Dispose();
+        if (_pendingReference is not null) _keys.Delete(_pendingReference);
+        (_pendingKey, _pendingReference) = (null, null);
+    }
+
+    /// <summary>R11 C5: in its last <see cref="RenewBefore"/> the client certificate is renewed over mTLS with a new key; the old key is
+    /// deleted once the new certificate is saved. Nothing changes when the server does not answer: it is tried again next start.</summary>
+    /// <param name="renew">Sends the CSR with the current certificate and returns the new certificate (PEM), or null.</param>
+    public async Task RenewCertificateIfDueAsync(Func<string, Task<string?>> renew, DateTime nowUtc)
+    {
+        if (pin.ClientCertificate is not { } current || current.NotAfter.ToUniversalTime() - nowUtc > RenewBefore) return;
+        var (key, reference) = _keys.Create();
+        using (key)
+        {
+            if (await renew(new CertificateRequest("CN=Toki Caja", key, HashAlgorithmName.SHA256).CreateSigningRequestPem()) is not { } certificate)
+            {
+                _keys.Delete(reference);
+                return;
+            }
+            var old = await store.ReadAsync(ClientKeyKey);
+            var client = _keys.Load(certificate, reference);
+            await store.SaveAsync(ClientCertificateKey, certificate);
+            await store.SaveAsync(ClientKeyKey, reference);
+            pin.UseClientCertificate(client);
+            if (old is not null) _keys.Delete(old);
+        }
     }
 
     /// <summary>Saves what the server answered when pairing, if the server is still the one whose fingerprint was shown (R8 #11).</summary>
@@ -87,19 +120,20 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAdd
     public async Task<bool> PairAsync(string? shown, string? token, string? certificate = null, string? storeCa = null)
     {
         if (!string.Equals(pin.Seen, shown, StringComparison.OrdinalIgnoreCase)) return false;
-        if (certificate is not null && storeCa is not null && _pendingKey is not null && shown is not null)
+        if (certificate is not null && storeCa is not null && _pendingReference is not null && shown is not null)
         {
             var ca = X509Certificate2.CreateFromPem(storeCa);
             // Normally the server's certificate comes from the CA: pin the CA, and the server can renew its own. A server still in dual mode
             // (ADR-0009) shows its old self-signed one: pin that too, until it moves to the CA's.
             var leaf = pin.SawIssuedBy(shown, ca) ? null : shown;
-            var client = WithKey(certificate, _pendingKey);
+            var client = _keys.Load(certificate, _pendingReference);
             await store.SaveAsync(StoreCaKey, storeCa);
             await store.SaveAsync(NodeCertificateKey, leaf);
             await store.SaveAsync(ClientCertificateKey, certificate);
-            await store.SaveAsync(ClientKeyKey, Convert.ToBase64String(_pendingKey.ExportPkcs8PrivateKey()));
+            await store.SaveAsync(ClientKeyKey, _pendingReference);
             pin.Pin(ca, leaf);
             pin.UseClientCertificate(client);
+            _pendingReference = null; // kept: it is this PC's key now
         }
         else if (token is not null)
         {
@@ -109,8 +143,7 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAdd
             await store.SaveAsync(DeviceKey, token);
         }
         else return false;
-        _pendingKey?.Dispose();
-        _pendingKey = null;
+        DropPendingKey();
         Changed?.Invoke();
         return true;
     }
@@ -121,17 +154,10 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAdd
         DeviceToken = null;
         UnknownServer = false;
         Close();
+        if (await store.ReadAsync(ClientKeyKey) is { } reference) _keys.Delete(reference);
         foreach (var key in new[] { DeviceKey, NodeCertificateKey, StoreCaKey, ClientCertificateKey, ClientKeyKey }) await store.SaveAsync(key, null);
         pin.Pin(null, null);
         pin.UseClientCertificate(null);
-    }
-
-    /// <summary>The certificate with its private key, loadable by Windows' TLS (an in-memory key is not).</summary>
-    private static X509Certificate2 WithKey(string certificatePem, ECDsa key)
-    {
-        using var certificate = X509Certificate2.CreateFromPem(certificatePem);
-        using var withKey = certificate.CopyWithPrivateKey(key);
-        return X509CertificateLoader.LoadPkcs12(withKey.Export(X509ContentType.Pfx), null);
     }
 
     private const string SampleDataKey = "sample-data";

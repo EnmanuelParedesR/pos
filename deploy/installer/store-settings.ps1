@@ -6,7 +6,8 @@
     on another PC is pointed at the main PC when it joins the store ("Unir a una tienda"); that address is kept on the register PC,
     outside the app folder that updates replace.
   - The server uploads to the production cloud.
-  - Both read the update feed and channel.
+  - Both read the update feed, channel and the thumbprints of Toki's code-signing certificate (read by update-service.ps1).
+  - The server's database is the dedicated .\TOKI instance (appsettings.json; R11 C1).
   The repo's appsettings keep the development values (http://localhost:5000, no cloud).
 #>
 $ProductionCloudUrl = 'https://app-toki-prod-jhzq7n.azurewebsites.net'
@@ -27,8 +28,10 @@ function Set-JsonValues([string] $Path, [hashtable] $Values) {
     $json | ConvertTo-Json -Depth 20 | Set-Content $Path -Encoding utf8
 }
 
-function Set-StoreSettings([string] $AppSettings, [string] $ServerSettings, [string] $FeedUrl = '', [string] $Channel = 'stable', [string] $CloudUrl = $ProductionCloudUrl) {
-    $updates = @{ 'Updates:FeedUrl' = $FeedUrl; 'Updates:Channel' = $Channel }
+function Set-StoreSettings([string] $AppSettings, [string] $ServerSettings, [string] $FeedUrl = '', [string] $Channel = 'stable', [string] $CloudUrl = $ProductionCloudUrl,
+    [string[]] $SignerThumbprints = @()) {
+    # R11 C3: the SYSTEM update task installs only setups signed by one of these certificates.
+    $updates = @{ 'Updates:FeedUrl' = $FeedUrl; 'Updates:Channel' = $Channel; 'Updates:SignerThumbprints' = @($SignerThumbprints | Where-Object { $_ }) }
     Set-JsonValues $AppSettings ($updates + @{ 'Api:Url' = $InstalledApiUrl })
     Set-JsonValues $ServerSettings ($updates + @{ 'Cloud:Url' = $CloudUrl })
 }

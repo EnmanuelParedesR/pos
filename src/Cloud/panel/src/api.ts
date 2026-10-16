@@ -320,6 +320,29 @@ export interface StoreSyncStatus {
 
 // Plataforma (Toki staff, TK-189 / TK-190): /api/platform/*.
 
+/** TK-254: a version released on a channel to a share of the stores (Plataforma → Versiones). */
+export type ReleaseChannel = "pilot" | "stable";
+export interface AppRelease {
+  id: string;
+  channel: ReleaseChannel;
+  version: string;
+  rolloutPercent: number;
+  notesUrl: string | null;
+  publishedUtc: string;
+  changedUtc: string;
+  changedBy: string;
+}
+/** Store PCs (and stores) whose last heartbeat reported each version. */
+export interface FieldVersion {
+  version: string;
+  nodes: number;
+  stores: number;
+}
+export interface ReleasesResponse {
+  releases: AppRelease[];
+  field: FieldVersion[];
+}
+
 export type FunnelStage = "account" | "store" | "connected" | "firstSale" | "sevenDays" | "certified";
 /** TK-225: a store in the DGII certification. `currentStep` is 0-based (`totalSteps` when every step is ticked); `stuck`: 14 days or more on one step. */
 export interface CertificationProgress {
@@ -461,6 +484,36 @@ export interface PlatformBilling {
   };
   events: { id: string; type: string; occurredUtc: string; receivedUtc: string }[];
 }
+/** TK-255: "Recomiende Toki". `amount` as Paddle takes it: percent, or the currency's smallest unit for "flat". */
+export interface ReferralReward { type: "percentage" | "flat"; amount: string; currency: string }
+/** `nextDiscount.fromUtc` = the payment it lowers; null = queued (next cycle or once the payment is up to date). */
+export interface Referrals {
+  enabled: boolean;
+  code: string | null;
+  pending: number;
+  applied: number;
+  reward: ReferralReward | null;
+  nextDiscount: (ReferralReward & { fromUtc: string | null }) | null;
+}
+export type ReferralStatus = "Pending" | "Applied" | "Reverted" | "Rejected";
+export interface ReferralRow {
+  id: string;
+  referrerTenantId: string;
+  referrerName: string;
+  referredTenantId: string;
+  referredName: string;
+  status: ReferralStatus;
+  reason: string | null;
+  discountType: string;
+  discountAmount: string;
+  currency: string;
+  createdUtc: string;
+  appliedUtc: string | null;
+  discountFromUtc: string | null;
+  revertedUtc: string | null;
+  note: string | null;
+}
+export interface PlatformReferrals { code: string | null; referredByCode: string | null; referrals: ReferralRow[] }
 export interface PlatformTenantDetail {
   id: string;
   name: string;

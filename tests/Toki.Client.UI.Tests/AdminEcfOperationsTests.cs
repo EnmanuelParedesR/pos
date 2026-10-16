@@ -78,6 +78,8 @@ public sealed class AdminEcfOperationsTests
             environment = "CerteCF", steps = new[] { new { number = 0, done = true, doneUtc = DateTime.UtcNow } },
             cases = new[] { new { id = Guid.NewGuid(), row = 2, eNcf = "E310000000001", type = "FiscalCredit31", channel = "Ecf", status = "Pending", trackId = (string?)null, messages = (string?)null } },
             simulation = new { accepted = 3, rejected = 0, waiting = 1 },
+            guide = Enumerable.Range(0, 14).Select(i => new { title = $"Paso {i}", who = "Dueño", hint = "Pista", help = "Ayuda", next = $"Haga el paso {i}.",
+                linkLabel = i == 1 ? "Configuración → Comprobantes" : null, linkUrl = i == 1 ? "/admin/settings?section=fiscal" : null }).ToArray(),
         };
         api.Json("GET", "/api/fiscal/certification", state)
             .Respond("PUT", "/api/fiscal/certification/steps/3", _ => new HttpResponseMessage(HttpStatusCode.NoContent))
@@ -86,6 +88,11 @@ public sealed class AdminEcfOperationsTests
 
         panel.WaitForAssertion(() => panel.Find(".esc-card__aside").TextContent.ShouldBe("1 de 14 pasos"));
         panel.Find("[aria-labelledby=cert-title]").TextContent.ShouldContain("Aceptados: 3");
+        // TK-256: the first step not ticked is the next thing to do, with its link into the app.
+        var next = panel.FindAll(".esc-notice").Single(n => n.TextContent.Contains("¿Qué hago ahora?", StringComparison.Ordinal));
+        next.TextContent.ShouldContain("Paso 2: Paso 1.");
+        next.TextContent.ShouldContain("Haga el paso 1.");
+        next.QuerySelector("a")!.GetAttribute("href").ShouldBe("/admin/settings?section=fiscal");
         panel.FindAll("input[type=checkbox]")[3].Change(true);
         panel.WaitForAssertion(() => api.Requests.Single(r => r.Method == "PUT").Body.ShouldContain("\"done\":true"));
         panel.FindAll("button").Single(b => b.TextContent == "Enviar y consultar").Click();

@@ -32,18 +32,25 @@ internal static class GrantSupervisorApproval
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IUserContext me, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IUserContext me, IAuditLog audit, AttemptLimiter limiter, TimeProvider clock)
+        : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             if (me.DeviceId is not { } deviceId) return IdentityErrors.DeviceNotPaired;
+            if (limiter.IsBlocked(AttemptLimiter.PinKey(deviceId), AttemptLimiter.PinsPerDevice)) return IdentityErrors.DeviceLocked;
             var supervisor = await db.Users.FirstOrDefaultAsync(u => u.Code == User.NormalizeCode(c.Code), ct);
-            if (supervisor is null) return IdentityErrors.InvalidCredentials;
+            if (supervisor is null)
+            {
+                limiter.Fail(AttemptLimiter.PinKey(deviceId));
+                return IdentityErrors.InvalidCredentials;
+            }
 
             var now = clock.GetUtcNow().UtcDateTime;
             var pin = supervisor.TryPin(c.Pin, now);
             if (pin != PinResult.Correct)
             {
+                limiter.Fail(AttemptLimiter.PinKey(deviceId));
                 await audit.RecordAsync("identity.pin-failed", "User", supervisor.Id, new { supervisor.Code, c.Permission, Result = pin }, ct);
                 return new Response(null, null, null, pin == PinResult.Locked ? IdentityErrors.UserLocked : IdentityErrors.InvalidCredentials);
             }

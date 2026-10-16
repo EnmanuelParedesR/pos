@@ -8,7 +8,7 @@ public sealed record ReceiptPayment(string Method, decimal Amount, decimal? Rece
 public sealed record Receipt(string BusinessName, string? Rnc, string? Address, string? Phone, string DocumentType, string ENcf, long Number,
     DateTime LocalDateTime, string Register, string Cashier, string? Customer, string? CustomerRnc, ReceiptLine[] Lines, decimal Subtotal, decimal Discount,
     ReceiptItbis[] Itbis, decimal Total, ReceiptPayment[] Payments, decimal Change, string SecurityCode, string QrUrl, string? Footer, bool IsVoided,
-    DateTime? SignedAt = null, DateOnly? SequenceExpiresOn = null, string? ContingencyLegend = null);
+    DateTime? SignedAt = null, DateOnly? SequenceExpiresOn = null, string? ContingencyLegend = null, string? DgiiStatus = null);
 
 /// <summary>TK-239: one line of a shift report: an amount, or a text such as "12 (1 anulada)".</summary>
 public sealed record ShiftReportLine(string Label, decimal? Amount, string? Text = null, bool Bold = false);

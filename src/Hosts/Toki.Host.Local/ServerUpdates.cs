@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Toki.CashRegister.Contracts;
+using Toki.Settings.Contracts;
 
 namespace Toki.Host.Local;
 
@@ -16,9 +17,12 @@ internal sealed class UpdateSettings
     public TimeOnly OpensAt { get; set; } = new(7, 0);
     public TimeOnly ClosesAt { get; set; } = new(22, 0);
     public int CheckEveryMinutes { get; set; } = 30;
-    /// <summary>Read by update-service.ps1, not by the service: thumbprints of Toki's Authenticode certificate. Empty until it exists;
-    /// meanwhile the setup must match the SHA-256 published in the feed (TokiSetup-{version}.exe.sha256, R10 #1).</summary>
+    /// <summary>Read by update-service.ps1, not by the service: thumbprints of Toki's Authenticode certificate (R11 C3). Without one, no
+    /// update is installed (docs/instalador-web.md, "Firma de código").</summary>
     public string[] SignerThumbprints { get; set; } = [];
+    /// <summary>Read by update-service.ps1: pilot only, before the certificate exists. Then the feed's SHA-256 is enough, which does not
+    /// protect against someone who controls the feed.</summary>
+    public bool AllowUnsignedUpdates { get; set; }
 }
 
 internal static class UpdateWindow
@@ -28,7 +32,19 @@ internal static class UpdateWindow
     public static bool CanApply(int openShifts, TimeOnly now, TimeOnly opensAt, TimeOnly closesAt) =>
         openShifts == 0 || !now.IsBetween(opensAt, closesAt);
 
-    /// <summary>The newest full release in a Velopack feed (releases.{channel}.json), or null if the feed has none.</summary>
+    /// <summary>TK-254: after "Actualizar ahora", as <see cref="CanApply"/> (no shift open, or after closing time). On its own, only outside
+    /// business hours and only if the owner leaves "Actualizar fuera de horario" on.</summary>
+    public static bool CanApply(bool requested, bool outsideHours, int openShifts, TimeOnly now, TimeOnly opensAt, TimeOnly closesAt) =>
+        requested ? CanApply(openShifts, now, opensAt, closesAt) : outsideHours && !now.IsBetween(opensAt, closesAt);
+
+    /// <summary>TK-254: the version to install: the feed's newest, capped by what the cloud allows this store (staged rollout).
+    /// <paramref name="allowed"/> null = the cloud does not manage it; "" (or not a version) = wait.</summary>
+    public static Version? Target(Version? newest, string? allowed) =>
+        allowed is null ? newest
+        : newest is null || !Version.TryParse(allowed, out var cap) ? null
+        : cap.Build < 0 ? null : cap < newest ? cap : newest;
+
+    /// <summary>The newest full release in the feed's releases.{channel}.json (build.ps1 writes it), or null if the feed has none.</summary>
     public static Version? Newest(JsonElement feed) =>
         feed.TryGetProperty("Assets", out var assets)
             ? assets.EnumerateArray()
@@ -52,7 +68,7 @@ internal sealed record UpdateMarker(string Version, string SetupUrl, string Sha2
     public string ToJson() => JsonSerializer.Serialize(this);
 }
 
-/// <summary>TK-242: the store server cannot update itself in place (it is a Windows service, Velopack only updates per-user apps).
+/// <summary>TK-242: the store server cannot update itself in place (it is a Windows service, with no rights over its own files).
 /// It checks the feed, logs "Hay una actualización" and writes C:\ProgramData\Toki\update.json; a scheduled task applies it when allowed.</summary>
 internal sealed class ServerUpdateCheck(IHttpClientFactory http, IServiceScopeFactory scopes, IOptions<UpdateSettings> options, TimeProvider clock,
     ILogger<ServerUpdateCheck> log) : BackgroundService
@@ -62,12 +78,21 @@ internal sealed class ServerUpdateCheck(IHttpClientFactory http, IServiceScopeFa
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var s = options.Value;
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(Math.Max(5, s.CheckEveryMinutes)), clock);
+        var every = TimeSpan.FromMinutes(Math.Max(5, s.CheckEveryMinutes));
+        DateTimeOffset? last = null;
+        DateTime? lastRequest = null;
+        // TK-254: a light look at the owner's choices every minute; the feed only every CheckEveryMinutes or right after "Actualizar ahora".
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), clock);
         do
         {
             try
             {
-                await CheckAsync(s, stoppingToken);
+                UpdatePolicy policy;
+                using (var scope = scopes.CreateScope())
+                    policy = await scope.ServiceProvider.GetRequiredService<IUpdatePolicy>().GetAsync(stoppingToken);
+                if (last is { } l && clock.GetUtcNow() - l < every && policy.RequestedUtc == lastRequest) continue;
+                (last, lastRequest) = (clock.GetUtcNow(), policy.RequestedUtc);
+                await CheckAsync(s, policy, stoppingToken);
             }
             catch (Exception e) when (e is HttpRequestException or JsonException or IOException or KeyNotFoundException or InvalidOperationException
                                       || (e is TaskCanceledException && !stoppingToken.IsCancellationRequested))
@@ -77,29 +102,34 @@ internal sealed class ServerUpdateCheck(IHttpClientFactory http, IServiceScopeFa
         } while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    private async Task CheckAsync(UpdateSettings s, CancellationToken ct)
+    private async Task CheckAsync(UpdateSettings s, UpdatePolicy policy, CancellationToken ct)
     {
         var feed = s.FeedUrl.TrimEnd('/');
         if (!feed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Updates:FeedUrl tiene que ser https.");
-        using var response = await http.CreateClient().GetAsync($"{feed}/releases.{s.Channel}.json", ct);
+        var channel = policy.Channel ?? s.Channel; // TK-254: the channel the owner chose in Configuración → Actualizaciones
+        using var response = await http.CreateClient().GetAsync($"{feed}/releases.{channel}.json", ct);
         response.EnsureSuccessStatusCode();
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
         var current = Assembly.GetEntryAssembly()?.GetName().Version ?? new Version(0, 0);
-        if (UpdateWindow.Newest(json.RootElement) is not { } newest || newest <= current)
+        await using var scope = scopes.CreateAsyncScope();
+        var updates = scope.ServiceProvider.GetRequiredService<IUpdatePolicy>();
+        if (UpdateWindow.Target(UpdateWindow.Newest(json.RootElement), policy.AllowedVersion) is not { } target || target <= current)
         {
-            File.Delete(MarkerPath); // up to date: nothing left for the scheduled task
+            File.Delete(MarkerPath); // up to date (or the cloud says wait): nothing left for the scheduled task
+            await updates.SetAvailableAsync(null, ct);
+            await updates.AppliedAsync(ct);
             return;
         }
 
-        int open;
-        using (var scope = scopes.CreateScope())
-            open = (await scope.ServiceProvider.GetRequiredService<ICashRegisterReports>().OpenRegistersAsync(ct)).Count;
+        var version = target.ToString(3);
+        await updates.SetAvailableAsync(version, ct);
+        var open = (await scope.ServiceProvider.GetRequiredService<ICashRegisterReports>().OpenRegistersAsync(ct)).Count;
         var now = TimeOnly.FromDateTime(clock.GetLocalNow().DateTime);
-        var canApply = UpdateWindow.CanApply(open, now, s.OpensAt, s.ClosesAt);
-        var version = newest.ToString(3);
+        var canApply = UpdateWindow.CanApply(policy.RequestedUtc is not null, policy.OutsideHours, open, now, s.OpensAt, s.ClosesAt);
         log.LogWarning("Hay una actualización de Toki: {Version} (esta PC tiene {Current}). {When}", version, current.ToString(3),
-            canApply ? "Se instala en la próxima revisión." : "Se instala cuando no haya turnos abiertos o fuera del horario.");
+            canApply ? "Se instala en la próxima revisión." : policy.RequestedUtc is not null || policy.OutsideHours
+                ? "Se instala cuando no haya turnos abiertos o fuera del horario." : "Se instala cuando el dueño toque \"Actualizar ahora\".");
         var sha256 = await http.CreateClient().GetStringAsync($"{feed}/TokiSetup-{version}.exe.sha256", ct);
         await File.WriteAllTextAsync(MarkerPath, UpdateMarker.Create(feed, version, sha256, canApply, clock.GetUtcNow().UtcDateTime).ToJson(), ct);
     }

@@ -15,12 +15,15 @@ import {
   type PlatformStoreDetail,
   type PlatformTenant,
   type PlatformTenantDetail,
+  type ReleaseChannel,
+  type ReleasesResponse,
   type RetentionCohort,
 } from "../api";
 import { ago, dateTime, dayName, isStale, money } from "../format";
 import { BarChart, BarList, Card, ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton, SkeletonRows, Stat } from "../ui";
 import { PlatformUsageCard } from "./UsageCard";
 import { PlatformBillingCard } from "./BillingPage";
+import { PlatformReferralsCard } from "./ReferralCards";
 
 /** Plataforma (TK-189 / TK-190): Toki staff only. Same Escuadra Admin pieces as the owner's panel. */
 
@@ -69,8 +72,16 @@ function PlatformTabs() {
     ["/app/platform", "Métricas"],
     ["/app/platform/tenants", "Clientes"],
     ["/app/platform/accompaniment", "Acompañamiento"],
+    ["/app/platform/releases", "Versiones"],
   ];
-  const current = pathname === "/app/platform" ? "/app/platform" : pathname.startsWith("/app/platform/accompaniment") ? "/app/platform/accompaniment" : "/app/platform/tenants";
+  const current =
+    pathname === "/app/platform"
+      ? "/app/platform"
+      : pathname.startsWith("/app/platform/accompaniment")
+        ? "/app/platform/accompaniment"
+        : pathname.startsWith("/app/platform/releases")
+          ? "/app/platform/releases"
+          : "/app/platform/tenants";
   return (
     <div className="esc-tabs" role="tablist" aria-label="Plataforma">
       {tabs.map(([to, label]) => (
@@ -429,6 +440,7 @@ export function PlatformTenantPage() {
 
           <PlatformUsageCard tenantId={t.id} />
           <PlatformBillingCard tenantId={t.id} />
+          <PlatformReferralsCard tenantId={t.id} />
 
           {/* TK-217 */}
           <Card title="Miembros del panel">
@@ -738,6 +750,136 @@ export function PlatformAccompanimentPage() {
         )}
       </section>
     </>
+  );
+}
+
+export const channelNames: Record<ReleaseChannel, string> = { pilot: "Piloto", stable: "Estable" };
+
+/** TK-254: publish a version per channel with a staged rollout, and see which versions run in the field (from the heartbeats).
+ * The files and their signature stay in the release feed; this only decides which stores may install them. */
+export function PlatformReleasesPage() {
+  const { data, error, loading, reload } = useApi<ReleasesResponse>("/api/platform/releases");
+  return (
+    <>
+      <PageHead title="Plataforma" subtitle={staffNote} />
+      <PlatformTabs />
+      <LoadError error={error} />
+      <div className="esc-grid">
+        <Card title="Publicar o cambiar el porcentaje" className="esc-span-8">
+          <ReleaseForm onSaved={reload} />
+        </Card>
+        <Card title="Versiones en las tiendas" aside="Último latido" className="esc-span-4">
+          {loading && !data && <Skeleton height={120} />}
+          {data && data.field.length === 0 && <p className="esc-muted">Ninguna caja ha enviado un latido todavía.</p>}
+          {data && data.field.length > 0 && (
+            <BarList
+              format={count}
+              items={data.field.map((v) => ({
+                key: v.version,
+                name: v.version === "?" ? "Sin versión" : `Versión ${v.version}`,
+                detail: `${count(v.stores)} ${v.stores === 1 ? "tienda" : "tiendas"}`,
+                value: v.nodes,
+                share: v.nodes / Math.max(...data.field.map((f) => f.nodes)),
+              }))}
+            />
+          )}
+        </Card>
+      </div>
+      <section className="esc-card esc-table-wrap" aria-label="Versiones publicadas">
+        <table className="esc-table esc-table--wide">
+          <thead>
+            <tr>
+              <th>Versión</th>
+              <th>Canal</th>
+              <th className="esc-num">Tiendas</th>
+              <th className="esc-hide-sm">Último cambio</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && !data && <SkeletonRows columns={4} />}
+            {data?.releases.map((r) => (
+              <tr key={r.id}>
+                <td>
+                  {r.version}
+                  {r.notesUrl && (
+                    <span className="esc-table__sub">
+                      <a href={r.notesUrl} target="_blank" rel="noopener noreferrer">
+                        Novedades
+                      </a>
+                    </span>
+                  )}
+                </td>
+                <td>{channelNames[r.channel]}</td>
+                <td className="esc-num">{r.rolloutPercent === 0 ? "En pausa" : `${r.rolloutPercent} %`}</td>
+                <td className="esc-hide-sm">
+                  {dateTime(r.changedUtc)}
+                  <span className="esc-table__sub">{r.changedBy}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data?.releases.length === 0 && (
+          <EmptyState icon="cloud" title="Ninguna versión publicada">
+            Sin versiones aquí, cada tienda instala la más nueva de su canal en el feed, como antes.
+          </EmptyState>
+        )}
+      </section>
+    </>
+  );
+}
+
+function ReleaseForm({ onSaved }: { onSaved: () => void }) {
+  const [channel, setChannel] = useState<ReleaseChannel>("pilot");
+  const [version, setVersion] = useState("");
+  const [percent, setPercent] = useState("10");
+  const [notesUrl, setNotesUrl] = useState("");
+  const [failure, setFailure] = useState<ApiError | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const save = (e: FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setFailure(null);
+    api("/api/platform/releases", "PUT", { channel, version: version.trim(), rolloutPercent: Number(percent), notesUrl: notesUrl.trim() || null }).then(
+      () => (setSaving(false), setSaved(`Versión ${version.trim()} en ${channelNames[channel].toLowerCase()} al ${percent} %.`), onSaved()),
+      (err) => (setSaving(false), setFailure(err as ApiError)),
+    );
+  };
+
+  return (
+    <form onSubmit={save} aria-label="Publicar una versión">
+      {failure && <Notice kind="error" title={failure.detail} />}
+      {saved && <Notice kind="success" title={saved} />}
+      <div className="esc-form-grid">
+        <label className="esc-field">
+          <span>Canal</span>
+          <select className="esc-select" value={channel} onChange={(e) => setChannel(e.target.value as ReleaseChannel)}>
+            <option value="pilot">Piloto</option>
+            <option value="stable">Estable</option>
+          </select>
+        </label>
+        <label className="esc-field">
+          <span>Versión</span>
+          <input className="esc-input" placeholder="1.4.0" value={version} onChange={(e) => setVersion(e.target.value)} required />
+        </label>
+        <label className="esc-field">
+          <span>Tiendas que la reciben (%)</span>
+          <input className="esc-input" type="number" min={0} max={100} value={percent} onChange={(e) => setPercent(e.target.value)} required />
+        </label>
+        <label className="esc-field esc-wide">
+          <span>Enlace a las novedades (https, opcional)</span>
+          <input className="esc-input" type="url" value={notesUrl} onChange={(e) => setNotesUrl(e.target.value)} />
+        </label>
+      </div>
+      <p className="esc-muted">La versión tiene que estar en el feed, firmada. 0 % la pone en pausa; las mismas tiendas reciben primero cada versión.</p>
+      <div className="esc-form-actions">
+        <button type="submit" className="esc-button esc-button--primary" disabled={saving}>
+          {saving ? "Guardando…" : "Guardar"}
+        </button>
+      </div>
+    </form>
   );
 }
 

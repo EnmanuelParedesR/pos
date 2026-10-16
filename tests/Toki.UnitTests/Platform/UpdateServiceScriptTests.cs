@@ -5,12 +5,14 @@ using Toki.Host.Local;
 
 namespace Toki.UnitTests.Platform;
 
-/// <summary>R10 #1, #4: update.json is only a hint to the SYSTEM task. The service writes the feed's SHA-256 into it, and
-/// deploy/installer/update-service.ps1 refuses a bad version, a setup outside the installed feed, or no way to verify it.</summary>
+/// <summary>R10 #1, #4, R11 C3, C13: update.json is only a hint to the SYSTEM task. The service writes the feed's SHA-256 into it, and
+/// deploy/installer/update-service.ps1 refuses a bad version, a setup outside the installed https feed, an older version, no Toki signer
+/// configured (unless the pilot flag allows the SHA-256) and a planted link where it downloads.</summary>
 public sealed class UpdateServiceScriptTests : IDisposable
 {
     private const string Feed = "https://releases.toki.example/stable";
     private const string Hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    private const string Thumbprint = "ABCDEF0123456789ABCDEF0123456789ABCDEF01";
     private readonly string _root = Directory.CreateTempSubdirectory("toki-update-").FullName;
 
     [Fact]
@@ -31,11 +33,52 @@ public sealed class UpdateServiceScriptTests : IDisposable
     [InlineData("1.2.3", Feed + "/TokiSetup-1.2.3.exe", "", "no trae SHA-256")]
     public void The_script_refuses_a_marker_it_cannot_trust(string version, string setupUrl, string sha256, string error)
     {
-        var (exit, stderr) = Run(version, setupUrl, sha256, DateTime.UtcNow);
+        var (exit, stderr) = Run(version, setupUrl, sha256, DateTime.UtcNow, allowUnsigned: true);
 
         exit.ShouldBe(1);
         stderr.ShouldContain(error);
         Directory.Exists(Path.Combine(_root, "updates")).ShouldBeFalse(); // refused before downloading anything
+    }
+
+    [Fact]
+    public void C3_without_a_Toki_signer_nothing_is_installed_unless_the_pilot_flag_allows_it()
+    {
+        var (exit, stderr) = Run("1.2.3", Feed + "/TokiSetup-1.2.3.exe", Hash, DateTime.UtcNow);
+        exit.ShouldBe(1);
+        stderr.ShouldContain("No hay certificado de Toki");
+
+        (exit, stderr) = Run("1.2.3", "http://releases.toki.example/stable/TokiSetup-1.2.3.exe", Hash, DateTime.UtcNow, feed: "http://releases.toki.example/stable",
+            thumbprints: [Thumbprint]);
+        exit.ShouldBe(1);
+        stderr.ShouldContain("https");
+    }
+
+    [Fact]
+    public void C13_an_older_or_the_same_version_is_never_installed()
+    {
+        var (exit, stderr) = Run("1.2.3", Feed + "/TokiSetup-1.2.3.exe", Hash, DateTime.UtcNow, thumbprints: [Thumbprint], installed: "1.2.3");
+        exit.ShouldBe(1);
+        stderr.ShouldContain("que la instalada");
+    }
+
+    [Fact]
+    public void C13_a_link_planted_where_the_setup_is_downloaded_is_refused_and_what_it_points_to_is_kept()
+    {
+        var target = Directory.CreateTempSubdirectory("toki-target-").FullName;
+        File.WriteAllText(Path.Combine(target, "keep.txt"), "x");
+        Junction(Path.Combine(_root, "updates"), target);
+        try
+        {
+            var (exit, stderr) = Run("1.2.3", Feed + "/TokiSetup-1.2.3.exe", Hash, DateTime.UtcNow, thumbprints: [Thumbprint]);
+            exit.ShouldBe(1);
+            stderr.ShouldContain("reparse point");
+            File.Exists(Path.Combine(target, "keep.txt")).ShouldBeTrue();
+        }
+        finally
+        {
+            Directory.Delete(Path.Combine(_root, "updates")); // the link only
+            Directory.Delete(target, recursive: true);
+        }
     }
 
     [Fact]
@@ -45,13 +88,58 @@ public sealed class UpdateServiceScriptTests : IDisposable
         Run("bad", Feed, Hash, DateTime.UtcNow).Exit.ShouldBe(1); // fresh: reaches validation in any time zone
     }
 
-    private (int Exit, string Stderr) Run(string version, string setupUrl, string sha256, DateTime checkedUtc)
+    [Fact]
+    public void TK254_a_register_waits_when_the_cloud_says_so_and_otherwise_goes_to_the_feed()
+    {
+        File.WriteAllText(Path.Combine(_root, "appsettings.json"), JsonSerializer.Serialize(new { Updates = new { FeedUrl = Feed, SignerThumbprints = new[] { Thumbprint } } }));
+        var policy = Path.Combine(_root, "update-policy.json");
+        (int, string) Register()
+        {
+            var info = new ProcessStartInfo("powershell.exe")
+            {
+                ArgumentList =
+                {
+                    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Script(), "-Role", "register", "-DataRoot", _root,
+                    "-SettingsPath", Path.Combine(_root, "appsettings.json"), "-InstalledVersion", "1.0.0", "-PolicyPath", policy,
+                },
+                RedirectStandardError = true, RedirectStandardOutput = true,
+            };
+            using var p = Process.Start(info)!;
+            var stderr = p.StandardError.ReadToEnd();
+            p.StandardOutput.ReadToEnd();
+            p.WaitForExit();
+            return (p.ExitCode, stderr);
+        }
+
+        File.WriteAllText(policy, """{"Channel":"pilot","MaxVersion":""}""");
+        Register().Item1.ShouldBe(0); // held back: nothing downloaded
+        File.WriteAllText(policy, """{"Channel":"pilot","MaxVersion":"1.2.0"}""");
+        Register().Item1.ShouldBe(1); // allowed: it reads the (unreachable, in tests) feed
+    }
+
+    private static void Junction(string link, string target)
+    {
+        using var p = Process.Start(new ProcessStartInfo("cmd.exe") { ArgumentList = { "/c", "mklink", "/J", link, target }, RedirectStandardOutput = true })!;
+        p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+        p.ExitCode.ShouldBe(0);
+    }
+
+    private (int Exit, string Stderr) Run(string version, string setupUrl, string sha256, DateTime checkedUtc, string feed = Feed,
+        string[]? thumbprints = null, bool allowUnsigned = false, string installed = "1.0.0")
     {
         File.WriteAllText(Path.Combine(_root, "update.json"), JsonSerializer.Serialize(new UpdateMarker(version, setupUrl, sha256, true, checkedUtc)));
-        File.WriteAllText(Path.Combine(_root, "appsettings.json"), JsonSerializer.Serialize(new { Updates = new { FeedUrl = Feed + "/", SignerThumbprints = Array.Empty<string>() } }));
+        File.WriteAllText(Path.Combine(_root, "appsettings.json"), JsonSerializer.Serialize(new
+        {
+            Updates = new { FeedUrl = feed + "/", SignerThumbprints = thumbprints ?? [], AllowUnsignedUpdates = allowUnsigned },
+        }));
         var info = new ProcessStartInfo("powershell.exe")
         {
-            ArgumentList = { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Script(), "-DataRoot", _root, "-SettingsPath", Path.Combine(_root, "appsettings.json") },
+            ArgumentList =
+            {
+                "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Script(), "-DataRoot", _root, "-SettingsPath", Path.Combine(_root, "appsettings.json"),
+                "-InstalledVersion", installed,
+            },
             RedirectStandardError = true, RedirectStandardOutput = true,
         };
         using var p = Process.Start(info)!;
