@@ -36,6 +36,7 @@ public static class SettingsModule
         services.AddScoped<Backups>();
         services.AddSingleton<LicenseService>();
         services.AddSingleton<IFeatureService>(sp => sp.GetRequiredService<LicenseService>());
+        services.AddScoped<IStoreLicense, StoreLicense>();
         services.AddHostedService<NightlyBackup>();
         return services;
     }

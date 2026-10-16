@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { contactHref, site } from "./config";
+import { usePlanPrices } from "./livePrices";
 
 /** TK-245: shared blocks of the public site ("less text, more visuals", docs/diseno/sitio-inicio-maqueta.html). Colors only through site.css tokens. */
 
@@ -115,14 +116,14 @@ export function Steps({ items, round = false, accentLast = false }: { items: [st
   );
 }
 
-/** Closing band: price from config ("Precio por confirmar" until the owner sets it) and the two calls to action. */
+/** Closing band: the entry price from Paddle (TK-249; "Precio por confirmar" while billing is off) and the two calls to action. */
 export function CtaBand({ title, text = "Sin cupo de e-CF. Nunca queda en solo lectura.", pricesLink = true }: { title?: ReactNode; text?: ReactNode; pricesLink?: boolean }) {
-  const price = site.prices.oneRegister;
+  const price = usePlanPrices().Default;
   return (
     <section className="band">
       <div className="wrap band__grid">
         <div>
-          <h2>{title ?? <>Desde {price ?? <Tbd>Precio por confirmar</Tbd>} al mes</>}</h2>
+          <h2>{title ?? (price ? <>Desde {price}</> : <>Desde <Tbd>Precio por confirmar</Tbd> al mes</>)}</h2>
           <p>{text}</p>
         </div>
         <div className="actions">

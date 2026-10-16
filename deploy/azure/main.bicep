@@ -53,6 +53,16 @@ param emailResourceName string = ''
 @description('TK-241: where the Azure Monitor alerts go (5xx, inbox failures, health check). Empty = the alerts exist but notify nobody.')
 param alertEmail string = ''
 
+@description('TK-249: Paddle Billing, sandbox or live. Empty = billing off (the default). Set it only after the secrets Billing--Paddle--ApiKey and Billing--Paddle--WebhookSecret exist in the vault (docs/cobro-paddle.md).')
+@allowed(['', 'sandbox', 'live'])
+param paddleEnvironment string = ''
+
+@description('TK-249: Paddle client-side token (test_… / live_…) for Paddle.js. Not secret.')
+param paddleClientToken string = ''
+
+@description('TK-249: name of the cloud license key in the vault (EC P-256, created with az, docs/cobro-paddle.md). Empty = the cloud issues no licenses.')
+param licenseKeyName string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var name = 'toki-${env}'
 var tags = { app: 'toki', env: env }
@@ -339,6 +349,16 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Email__Provider: 'AzureCommunicationServices'
     Email__Endpoint: emailEndpoint
     Email__Sender: emailSender
+  }, empty(paddleEnvironment) ? {} : {
+    // TK-249: the secrets are created by hand in the vault (never in this repo or its parameters) and read as Key Vault references.
+    // Products, prices and limits come from Paddle itself (catalog sync), not from here.
+    Billing__Paddle__Environment: paddleEnvironment
+    Billing__Paddle__ClientToken: paddleClientToken
+    Billing__Paddle__ApiKey: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Billing--Paddle--ApiKey)'
+    Billing__Paddle__WebhookSecret: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Billing--Paddle--WebhookSecret)'
+  }, empty(licenseKeyName) ? {} : {
+    // TK-249: the API signs store licenses with this key (Key Vault Crypto User above); the private half never leaves the vault.
+    Billing__License__KeyId: '${vault.properties.vaultUri}keys/${licenseKeyName}'
   })
 }
 

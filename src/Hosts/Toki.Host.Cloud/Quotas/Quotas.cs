@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Threading.RateLimiting;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Toki.Host.Cloud.Accounts;
@@ -54,12 +55,12 @@ public interface IQuota
     Task<UsageResponse> UsageAsync(Guid tenantId, CancellationToken ct = default);
 }
 
-/// <summary>Limits come from configuration: <c>Quotas:&lt;Plan&gt;:&lt;Meter&gt;</c>, else <c>Quotas:Default:&lt;Meter&gt;</c>, else 0 (not offered).
-/// An add-on the business bought (<c>Quotas:AddOns:&lt;AddOn&gt;:&lt;Meter&gt;</c>) raises the limit to its own when higher. The plan and add-ons are
-/// the ones Toki staff set in the platform console (<see cref="Tenant.Plan"/>, <see cref="Tenant.AddOns"/>).</summary>
+/// <summary>Limits come from <see cref="PlanLimits"/> (TK-249): the plan's Paddle product (<c>custom_data.toki.quotas</c>), else
+/// <c>Quotas:&lt;Plan&gt;:&lt;Meter&gt;</c>, else Default's, else 0 (not offered). An add-on the business bought raises the limit to its own when
+/// higher. The plan and add-ons come from its Paddle subscription or from Toki staff in the console (<see cref="Tenant.Plan"/>, <see cref="Tenant.AddOns"/>).</summary>
 /// <remarks>shortcut: the plan is not read from the store's signed license: the heartbeat only says it, the store could send anything. Staff set it in
 /// the console when they issue the license; send the license (JWS) in the heartbeat and verify it here if keeping both in step becomes a chore.</remarks>
-internal sealed class Quota(CloudDbContext db, IConfiguration config, TimeProvider clock) : IQuota
+internal sealed class Quota(CloudDbContext db, PlanLimits limits, TimeProvider clock) : IQuota
 {
     public const string ExceededCode = "Quota.Exceeded";
     public const string DefaultPlan = "Default";
@@ -103,21 +104,8 @@ internal sealed class Quota(CloudDbContext db, IConfiguration config, TimeProvid
         var (plan, addOns) = await PlanAsync(tenantId, ct);
         var used = await db.TenantUsage.AsNoTracking().Where(u => u.TenantId == tenantId && u.Month == month).ToDictionaryAsync(u => u.Meter, u => u.Count, ct);
         return new UsageResponse(plan, addOns, month.AddMonths(1),
-            [.. Enum.GetValues<Meter>().Select(m => new MeterUsage(m, used.GetValueOrDefault(m), LimitOf(config, plan, addOns, m)))]);
+            [.. Enum.GetValues<Meter>().Select(m => new MeterUsage(m, used.GetValueOrDefault(m), limits.MonthlyLimit(plan, addOns, m)))]);
     }
-
-    public static int LimitOf(IConfiguration config, string plan, IEnumerable<string> addOns, Meter meter)
-    {
-        var limit = config.GetValue<int?>($"Quotas:{plan}:{meter}") ?? config.GetValue<int?>($"Quotas:{DefaultPlan}:{meter}") ?? 0;
-        foreach (var addOn in addOns)
-            if (config.GetValue<int?>($"Quotas:{AddOnsSection}:{addOn}:{meter}") is { } raised) limit = Math.Max(limit, raised);
-        return limit;
-    }
-
-    /// <summary>The plan codes configured under <c>Quotas</c> (Default first) and the add-ons under <c>Quotas:AddOns</c>.</summary>
-    public static (IReadOnlyList<string> Plans, IReadOnlyList<string> AddOns) Catalog(IConfiguration config) =>
-        ([.. config.GetSection("Quotas").GetChildren().Select(c => c.Key).Where(k => k != AddOnsSection).OrderBy(k => k != DefaultPlan).ThenBy(k => k, StringComparer.Ordinal)],
-         [.. config.GetSection($"Quotas:{AddOnsSection}").GetChildren().Select(c => c.Key).Order(StringComparer.Ordinal)]);
 
     public static string[] SplitAddOns(string addOns) => addOns.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
@@ -151,7 +139,7 @@ internal sealed class Quota(CloudDbContext db, IConfiguration config, TimeProvid
     private async Task<int> LimitAsync(Guid tenantId, Meter meter, CancellationToken ct)
     {
         var (plan, addOns) = await PlanAsync(tenantId, ct);
-        return LimitOf(config, plan, addOns, meter);
+        return limits.MonthlyLimit(plan, addOns, meter);
     }
 
     private async Task<(string Plan, string[] AddOns)> PlanAsync(Guid tenantId, CancellationToken ct)
@@ -210,6 +198,21 @@ internal static class QuotaRateLimits
     public const string AssistantUser = "assistant-user";
 
     public static readonly string[] AuthRoutes = ["/register", "/login", "/forgotPassword", "/resetPassword"];
+
+    /// <summary>A fixed one-minute window per <paramref name="partition"/> whose size is the business's plan limit <paramref name="key"/>
+    /// (<see cref="PlanLimits.RateLimit"/>); <paramref name="fallback"/> without a business (signed out). The limit is part of the key, so a new
+    /// plan gets its new window at once.</summary>
+    public static RateLimitPartition<string> PerPlan(HttpContext http, string partition, string key, int fallback)
+    {
+        var limit = fallback;
+        if (Guid.TryParse(http.User.FindFirstValue(Accounts.TenantClaims.TenantId), out var tenantId))
+        {
+            var (plan, addOns) = http.RequestServices.GetRequiredService<TenantPlans>().Of(tenantId);
+            limit = http.RequestServices.GetRequiredService<PlanLimits>().RateLimit(plan, addOns, key, fallback);
+        }
+        return RateLimitPartition.GetFixedWindowLimiter($"{partition}|{limit}",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = Math.Max(limit, 1), Window = TimeSpan.FromMinutes(1) });
+    }
 
     public static string UserOrIp(HttpContext http) =>
         http.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } id ? "user:" + id : "ip:" + http.Connection.RemoteIpAddress;

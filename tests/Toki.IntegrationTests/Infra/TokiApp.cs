@@ -125,6 +125,7 @@ public class TokiApp : WebApplicationFactory<Program>
         builder.UseSetting("Backup:Automatic", "false");
         builder.UseSetting("Toki:KeysFolder", Path.Combine(Path.GetTempPath(), $"toki_keys_{Guid.NewGuid():N}"));
         builder.UseSetting("License:PublicKey", LicenseKey.ExportSubjectPublicKeyInfoPem());
+        builder.UseSetting("License:CloudPublicKey", CloudLicenseKey.ExportSubjectPublicKeyInfoPem());
         builder.UseSetting("License:File", Path.Combine(Path.GetTempPath(), $"toki_license_{Guid.NewGuid():N}.jws"));
         builder.UseSetting("Backup:Folder", TestSqlServer.BackupFolder());
         foreach (var (key, value) in Settings) builder.UseSetting(key, value);
@@ -149,6 +150,9 @@ public class TokiApp : WebApplicationFactory<Program>
 
     /// <summary>Signs this app's test licenses; the app trusts its public key instead of Toki's (allowed outside Production only).</summary>
     public System.Security.Cryptography.ECDsa LicenseKey { get; } = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+
+    /// <summary>TK-249: the cloud's license key (Key Vault in production); the app trusts it as its second key.</summary>
+    public System.Security.Cryptography.ECDsa CloudLicenseKey { get; } = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
 
     /// <summary>The application clock. Starts at the real time and only moves when a test advances it.</summary>
     public FakeTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);

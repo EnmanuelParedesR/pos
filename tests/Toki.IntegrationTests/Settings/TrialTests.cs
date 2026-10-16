@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Toki.BuildingBlocks.Messaging;
 using Toki.IntegrationTests.Infra;
+using Toki.BuildingBlocks.Security;
 using Toki.Settings;
 using static Toki.IntegrationTests.Infra.Store;
 

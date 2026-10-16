@@ -84,23 +84,23 @@ internal static class PlatformEndpoints
         platform.MapPost("/tenants/{tenantId:guid}/enable", (Guid tenantId, CloudDbContext db, CancellationToken ct) => SetDisabledAsync(db, tenantId, null, ct));
 
         // TK-248: this month's usage against the plan, and the plan and add-ons the business paid for (the quotas follow them at once).
-        platform.MapGet("/tenants/{tenantId:guid}/usage", async (Guid tenantId, CloudDbContext db, IQuota quota, IConfiguration config, CancellationToken ct) =>
+        platform.MapGet("/tenants/{tenantId:guid}/usage", async (Guid tenantId, CloudDbContext db, IQuota quota, PlanLimits limits, CancellationToken ct) =>
         {
             if (!await db.Tenants.AnyAsync(t => t.Id == tenantId, ct)) return NotFound("Platform.TenantNotFound", "No encontramos ese cliente.");
-            var (plans, addOns) = Quota.Catalog(config);
+            var (plans, addOns) = limits.Catalog();
             return Results.Ok(new PlatformUsageResponse(await quota.UsageAsync(tenantId, ct), plans, addOns));
         });
 
-        platform.MapPut("/tenants/{tenantId:guid}/plan", async (Guid tenantId, TenantPlanRequest r, CloudDbContext db, IConfiguration config, CancellationToken ct) =>
+        platform.MapPut("/tenants/{tenantId:guid}/plan", async (Guid tenantId, TenantPlanRequest r, CloudDbContext db, PlanLimits limits, TenantPlans cache, CancellationToken ct) =>
         {
-            var (plans, addOns) = Quota.Catalog(config);
+            var (plans, addOns) = limits.Catalog();
             var chosen = (r.AddOns ?? []).Distinct().ToList();
             if (r.Plan is not { } plan || !plans.Contains(plan) || chosen.Any(a => !addOns.Contains(a)))
                 return EndpointExtensions.Problem(Error.Validation("Platform.InvalidPlan", "Elija un plan y servicios adicionales de la lista."));
-            return await db.Tenants.Where(t => t.Id == tenantId).ExecuteUpdateAsync(s => s
-                    .SetProperty(t => t.Plan, plan == Quota.DefaultPlan ? null : plan).SetProperty(t => t.AddOns, string.Join(',', chosen)), ct) == 0
-                ? NotFound("Platform.TenantNotFound", "No encontramos ese cliente.")
-                : Results.NoContent();
+            var updated = await db.Tenants.Where(t => t.Id == tenantId).ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.Plan, plan == Quota.DefaultPlan ? null : plan).SetProperty(t => t.AddOns, string.Join(',', chosen)), ct);
+            cache.Forget(tenantId); // the per-minute limits follow at once
+            return updated == 0 ? NotFound("Platform.TenantNotFound", "No encontramos ese cliente.") : Results.NoContent();
         });
 
         platform.MapGet("/stores/{storeId:guid}", async (Guid storeId, PlatformQueries q, CancellationToken ct) =>
@@ -115,6 +115,7 @@ internal static class PlatformEndpoints
         });
 
         Certification.AccompanimentEndpoints.MapPlatformAccompaniment(platform); // TK-234
+        Billing.BillingEndpoints.MapPlatformBilling(platform); // TK-249
 
         var metrics = platform.MapGroup("/metrics");
         metrics.MapGet("/overview", async (PlatformQueries q, CancellationToken ct) => Results.Ok((await q.MetricsAsync(ct)).Overview()));

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Http.Json;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Microsoft.EntityFrameworkCore;
@@ -77,7 +78,25 @@ internal static class SendHeartbeat
     }
 }
 
-/// <summary>Sends a heartbeat on start and every <c>Sync:HeartbeatMinutes</c> (240), unless <c>Sync:Enabled</c> is false (the test host).</summary>
+/// <summary>TK-249: asks the cloud for the store's current license (issued from its paid subscription, docs/cobro-paddle.md) and installs it when
+/// it is newer. Nothing happens offline, without a connection, with an older cloud (404) or while the cloud has no license for the store.</summary>
+internal static class PullLicense
+{
+    public const string Path = "/api/nodes/license";
+
+    public static async Task<bool> RunAsync(CloudClient cloud, IStoreLicense license, CancellationToken ct)
+    {
+        if (await cloud.ConnectionAsync(ct) is not { } connection) return false;
+        using var response = await cloud.SendAsync(connection, Path, new StringContent(""), ct);
+        if (!response.IsSuccessStatusCode) return false;
+        return (await response.Content.ReadFromJsonAsync<Answer>(ct))?.License is { Length: > 0 } jws && await license.InstallFromCloudAsync(jws, ct);
+    }
+
+    private sealed record Answer(string? License);
+}
+
+/// <summary>Sends a heartbeat on start and every <c>Sync:HeartbeatMinutes</c> (240), unless <c>Sync:Enabled</c> is false (the test host),
+/// and then pulls the license (<see cref="PullLicense"/>).</summary>
 /// <remarks>R8 #21: every upload wakes the cloud's serverless SQL for at least an hour (~0.30 USD); an hourly heartbeat kept it awake all day for
 /// every connected store. Every 4 hours it still shows a store as alive well inside the 24-hour "no data" alert.</remarks>
 internal sealed class HeartbeatWorker(IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<HeartbeatWorker> log) : BackgroundService
@@ -95,6 +114,8 @@ internal sealed class HeartbeatWorker(IServiceScopeFactory scopes, IConfiguratio
                 await using var scope = scopes.CreateAsyncScope();
                 var result = await scope.ServiceProvider.GetRequiredService<ICommandHandler<SendHeartbeat.Command, Ok>>().Handle(new SendHeartbeat.Command(), stoppingToken);
                 if (result.IsFailure) log.LogWarning("The heartbeat was not saved: {Code}", result.Error!.Code);
+                if (await PullLicense.RunAsync(scope.ServiceProvider.GetRequiredService<CloudClient>(), scope.ServiceProvider.GetRequiredService<IStoreLicense>(), stoppingToken))
+                    log.LogInformation("Installed the license the cloud issued");
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {

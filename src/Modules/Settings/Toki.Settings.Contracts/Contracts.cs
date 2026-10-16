@@ -8,3 +8,11 @@ public interface ISettingsQueries
 {
     Task<BusinessProfile> GetBusinessProfileAsync(CancellationToken ct);
 }
+
+/// <summary>TK-249: the store's license, for the cloud channel (Sync): a store with a paid subscription gets its signed license from the cloud.</summary>
+public interface IStoreLicense
+{
+    /// <summary>Installs <paramref name="jws"/> when it is valid (signed by Toki, offline or cloud key) and issued after the installed one.
+    /// False when it was refused or brings nothing new.</summary>
+    Task<bool> InstallFromCloudAsync(string jws, CancellationToken ct);
+}

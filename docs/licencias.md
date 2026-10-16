@@ -20,7 +20,7 @@ Ejemplo de cuerpo:
 {"store":"Carnicería La Esquina","plan":"Varias cajas","features":["ButcherModule","CloudBackup"],"limits":{"Registers":3},"issuedUtc":"2026-10-16T00:00:00Z","expiresUtc":"2027-10-16T00:00:00Z"}
 ```
 
-La tienda solo tiene la **llave pública** (dentro de `LicenseService`); en producción no acepta otra. La llave privada **nunca** entra al repositorio ni al producto.
+La tienda solo tiene **llaves públicas** (dentro de `LicenseService`): la del dueño (licencias fuera de línea) y, desde TK-249, la de la nube (`TokiCloudPublicKey`, licencias de una suscripción pagada con Paddle; vacía hasta crear la llave en Key Vault, ver `docs/cobro-paddle.md`). Acepta una licencia firmada por cualquiera de las dos y en producción no acepta otra. Las llaves privadas **nunca** entran al repositorio ni al producto.
 
 ## Estados
 
@@ -44,3 +44,7 @@ Si la llave privada se pierde o se filtra: generar un par nuevo, cambiar la llav
 ## Instalar una licencia (en la tienda)
 
 En la app: **Configuración → Licencia**, elegir el archivo `.jws` o pegar el código y pulsar **Activar licencia** (`PUT /api/settings/license`). Queda guardada en `C:\ProgramData\Toki\license.jws` y aplica al instante, sin reinstalar ni perder ventas. Una licencia inválida o de otra llave se rechaza con "La licencia no es válida o no la firmó Toki."
+
+## Licencias de la nube (TK-249)
+
+Con el cobro en línea (`docs/cobro-paddle.md`), la nube firma la licencia de cada tienda con su propia llave de Key Vault según la suscripción (plan, adicionales y "pagado hasta" + 3 días). La tienda conectada la pide por el canal del nodo en cada latido y la instala sola si es más nueva que la instalada. La emisión fuera de línea de arriba sigue igual: gana la licencia emitida más tarde.
