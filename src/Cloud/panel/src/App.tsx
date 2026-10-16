@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate, useOutletContext } from "react-router";
 import { api, hasSession, renewSession, setOnSignedOut, signOut, useApi, roleNames, type Me, type Store } from "./api";
-import { Icon, Logo, ThemeToggle, type IconName } from "./ui";
+import { Icon, Logo, Talia, ThemeToggle, type IconName } from "./ui";
 import { SignIn } from "./pages/SignIn";
 import { ConfirmEmailBanner } from "./pages/ConfirmEmailBanner";
 import { SummaryPage } from "./pages/SummaryPage";
@@ -270,7 +270,7 @@ function AskBar() {
   };
   return (
     <form className="esc-ask" onSubmit={submit} role="search">
-      <Icon name="sparkles" />
+      <Talia size={26} />
       <label className="esc-visually-hidden" htmlFor="ask">
         Pregúntale a Talia
       </label>

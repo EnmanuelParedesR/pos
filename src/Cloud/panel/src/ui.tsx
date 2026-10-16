@@ -3,19 +3,56 @@ import type { ApiError, Store } from "./api";
 import { addDays, money, shortMoney, storeDay } from "./format";
 import { getTheme, nextTheme, setTheme, themeName, type ThemeChoice } from "./theme";
 
-/** Logo C5, the tag with the winking eye (same SVG as Escuadra's Logo.razor). `on-dark` (TK-230, Escuadra README): white tag, the "a" in brand blue. */
+/** The Abastalia tag (TK-273), same SVG as Escuadra's Logo.razor. Colors come from escuadra.css (.esc-logo): blue tag and white "a";
+ *  `on-dark` and the dark theme turn the tag white and the "a" blue. */
 export function Logo({ size = 28, withName = true, variant = "default" }: { size?: number; withName?: boolean; variant?: "default" | "on-dark" }) {
-  const [tag, eye, pupil, check] = variant === "on-dark" ? ["#FFFFFF", "#14181D", "#FFFFFF", "#0B5CAD"] : ["#0B5CAD", "#FFFFFF", "#14181D", "#FFFFFF"];
   return (
-    <span className="esc-logo" style={{ fontSize: (size * 7) / 10, color: variant === "on-dark" ? "var(--frame-text)" : "var(--text)" }}>
+    <span className={`esc-logo${variant === "on-dark" ? " esc-logo--on-dark" : ""}`} style={{ fontSize: (size * 7) / 10, color: variant === "on-dark" ? "var(--frame-text)" : "var(--text)" }}>
       <svg role="img" aria-label="Abastalia" width={size} height={size} viewBox="0 0 120 120">
-        <path d="M44 24 H96 Q104 24 104 32 V88 Q104 96 96 96 H44 L16 60 Z" fill={tag} stroke={tag} strokeWidth="6" strokeLinejoin="round" />
-        <circle cx="35" cy="60" r="8" fill={eye} />
-        <circle cx="32.5" cy="60" r="3.8" fill={pupil} />
-        <path d="M60 50 Q63 44 72 44 Q84 44 84 56 V84 M84 64 H71 Q59 64 59 74 Q59 84 71 84 Q80 84 84 76" fill="none" stroke={check} strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+        <path className="esc-logo__tag" d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#0B5CAD" fillRule="evenodd" stroke="#0B5CAD" strokeWidth="6" strokeLinejoin="round" />
+        <path className="esc-logo__mark" d="M54.2 51.2 Q57.8 44 68.6 44 Q83 44 83 58.4 V92 M83 68 H67.4 Q53 68 53 80 Q53 92 67.4 92 Q78.2 92 83 82.4" fill="none" stroke="#FFFFFF" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       {withName && <span aria-hidden="true">abastalia</span>}
     </span>
+  );
+}
+
+const taliaFaces = {
+  attentive: (
+    <>
+      <circle cx="54" cy="62" r="6.5" />
+      <circle cx="80" cy="62" r="6.5" />
+      <path d="M52 78 Q67 92 82 78" fill="none" strokeWidth="7" strokeLinecap="round" />
+    </>
+  ),
+  happy: (
+    <>
+      <path d="M47.5 65 Q54 55 60.5 65 M73.5 65 Q80 55 86.5 65" fill="none" strokeWidth="6.5" strokeLinecap="round" />
+      <path d="M50 77 Q67 95 84 77" fill="none" strokeWidth="7" strokeLinecap="round" />
+    </>
+  ),
+  thinking: (
+    <>
+      <circle cx="58" cy="57" r="6.5" />
+      <circle cx="84" cy="57" r="6.5" />
+      <path d="M58 81 Q67 86 76 81" fill="none" strokeWidth="7" strokeLinecap="round" />
+    </>
+  ),
+};
+
+/** Talia, the owner's assistant (TK-273), same SVG as Escuadra's Talia.razor: the tag in amber with a face, in a blue circle. A mood changes only the face.
+ *  Decorative: her name or the chat bubble next to her carries the meaning. */
+export function Talia({ size = 28, mood = "attentive" }: { size?: number; mood?: keyof typeof taliaFaces }) {
+  return (
+    <svg className="esc-talia" aria-hidden="true" width={size} height={size} viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="60" fill="#0B5CAD" />
+      <g transform="translate(60 60) scale(.74) translate(-60 -60)">
+        <path d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#FFC233" fillRule="evenodd" stroke="#FFC233" strokeWidth="6" strokeLinejoin="round" />
+        <g fill="#14181D" stroke="#14181D">
+          {taliaFaces[mood]}
+        </g>
+      </g>
+    </svg>
   );
 }
 

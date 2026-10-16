@@ -1,5 +1,7 @@
 # Mascota — evaluación
 
+> **Decisión (16 oct 2026, TK-273): el logo pasa a la etiqueta de precio girada 45° con hueco de colgar (sin el ojo de Toki), y Talia tiene ícono propio**: la misma etiqueta en ámbar #FFC233 con ojos y sonrisa en Tinta, dentro de un círculo azul. Mira de frente; los estados atenta, contenta y pensando cambian solo los ojos y la boca. Va en el chat del panel, en la barra "Pregúntale a Talia" y en el perfil de WhatsApp (`og/talia.png`); nunca en la venta, el cobro ni el cuadre. Detalle en `docs/sistema-de-diseno.md` ("Logo v2").
+
 > **Decisión (16 oct 2026, TK-267): el producto se renombró de Toki a Abastalia (abastalia.com) y la asistente se llama Talia** (ADR-0012). El logo y la mascota se revisan en la siguiente sesión de diseño.
 
 > **Decisión (15 oct 2026): el producto se llamaba Toki y su logo y mascota es un ticket de caja con cara** (borde dentado, ojos cuadrados, sonrisa en forma de ✓ en Azul Abastalia). Se eligió entre ticket, burbuja y tucán. Está en el lienzo ("Abastalia · marca") y en el sistema Escuadra (grupo Logos). La evaluación de abajo era para el nombre anterior (Cuadrino) y queda como historia; sus reglas de uso siguen valiendo: la mascota va en el celular, WhatsApp, bienvenida y estados vacíos, nunca en la venta, el cobro ni el cuadre.

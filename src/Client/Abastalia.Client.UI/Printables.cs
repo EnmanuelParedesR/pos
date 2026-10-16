@@ -12,9 +12,9 @@ namespace Abastalia.Client.UI;
 /// PDFsharp needs a font resolver off Windows. Every host already prints HTML to PDF, so a print-ready page needs no new dependency.</remarks>
 public static class Printables
 {
-    /// <summary>Logo C5 (the tag with the winking eye), as in Escuadra's Logo component.</summary>
+    /// <summary>The Abastalia tag (TK-273), as in Escuadra's Logo component. The hole and the "a" are cut out, so on the thermal printer's one ink they stay paper-white.</summary>
     private const string Logo =
-        """<svg width="44" height="44" viewBox="0 0 120 120" role="img" aria-label="Abastalia"><path d="M44 24 H96 Q104 24 104 32 V88 Q104 96 96 96 H44 L16 60 Z" fill="#0B5CAD" stroke="#0B5CAD" stroke-width="6" stroke-linejoin="round"/><circle cx="35" cy="60" r="8" fill="#FFFFFF"/><circle cx="32.5" cy="60" r="3.8" fill="#14181D"/><path d="M60 50 Q63 44 72 44 Q84 44 84 56 V84 M84 64 H71 Q59 64 59 74 Q59 84 71 84 Q80 84 84 76" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></svg>""";
+        """<svg width="44" height="44" viewBox="0 0 120 120" role="img" aria-label="Abastalia"><path d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#0B5CAD" fill-rule="evenodd" stroke="#0B5CAD" stroke-width="6" stroke-linejoin="round"/><path d="M54.2 51.2 Q57.8 44 68.6 44 Q83 44 83 58.4 V92 M83 68 H67.4 Q53 68 53 80 Q53 92 67.4 92 Q78.2 92 83 82.4" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>""";
 
     private const string Style = """
         @page { size: A4; margin: 14mm; }

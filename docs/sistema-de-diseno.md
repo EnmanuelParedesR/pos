@@ -44,8 +44,9 @@ Que todas las pantallas (caja, administración, celular del dueño, reportes y t
 
 Decisión del 15 de octubre de 2026: **no es marca blanca a nivel visual**. Los colores y el logo son siempre los de Abastalia. Un revendedor solo aparece como "Vendido por …" en la factura y en la pantalla de ayuda.
 
-- Colores de marca: Azul Abastalia `#0B5CAD`, Tinta `#14181D`, Papel `#FFFFFF`, Mostrador `#EEF0F2`, Azul claro `#E4EFFA`, Azul noche `#6DB3F5` (tema oscuro).
-- Logo: **C5, la etiqueta con el ojo que guiña** (símbolo azul #0B5CAD con la "a" blanca de dos pisos (la misma de IBM Plex del nombre; TK-267, antes la "t" de Toki) y el ojo a la izquierda, junto a "abastalia" en IBM Plex Sans 700). Variantes: ícono de app (fondo azul, símbolo blanco), 16 px y una tinta para la impresora térmica. Fuente: artboard `CaraGuino` del canvas del logo. Los estados de la mascota (contento, pensando, atento) cambian solo el ojo.
+- Colores de marca: Azul Abastalia `#0B5CAD`, Tinta `#14181D`, Papel `#FFFFFF`, Mostrador `#EEF0F2`, Azul claro `#E4EFFA`, Azul noche `#6DB3F5` (tema oscuro) y **Ámbar `#FFC233`** (TK-273: solo acento en anuncios, avatar alterno y Talia; siempre sobre azul o con texto Tinta, nunca solo sobre blanco ni como texto).
+- Logo: **la etiqueta de precio girada 45°** (TK-273): etiqueta azul #0B5CAD con la esquina cortada, el hueco de colgar y la "a" blanca de dos pisos, junto a "abastalia" en IBM Plex Sans 700. Sobre oscuro (marco de la caja, administración en tema oscuro) la etiqueta es blanca y la "a" azul. Una tinta para la impresora térmica: el hueco y la "a" quedan del color del papel. Componentes: `Logo.razor` y `Logo` en `ui.tsx` (colores en `.esc-logo` de `escuadra.css`). Antes: C5, la etiqueta con el ojo que guiña (Toki, TK-267).
+- Talia (la asistente): la misma etiqueta en ámbar con cara, dentro de un círculo azul. Estados atenta, contenta y pensando: cambian solo los ojos y la boca. Componentes: `Talia.razor` y `Talia` en `ui.tsx`. Reglas de uso en `docs/mascota.md`.
 - La marca nunca se usa para estados.
 
 ### 3. Componentes
@@ -134,3 +135,19 @@ La caja se opera; la administración se **revisa**. Por eso la administración d
 - Variantes probadas en `docs/diseno/marca-abastalia.html` (a simple, a doble y a con cola, de 16 a 120 px, en claro, oscuro y sobre azul). Crítica de diseño: la "a" simple se confunde con "d" u "o" a 16–32 px y la cola se pierde a 16 px. La "a" doble se lee en todos los tamaños.
 - El color no cambia: "abasto" no pide otro color, y el azul conserva la confianza y la continuidad (blanco sobre azul 6.6:1, AA). El nombre de 9 letras entra en la cabecera del sitio y del panel a 320 px sin desborde.
 - Imágenes para buscadores y redes: `src/Cloud/panel/public/og/abastalia.png` (1200×630) y `og/logo.png` (512×512), generadas con Edge headless a partir del mismo SVG.
+
+### Logo v2: Etiqueta 2.0 (TK-273, 16 oct 2026)
+
+- Por qué cambió: el símbolo C5 juntaba tres ideas (etiqueta, ojo de Toki y letra). A 16 px el ojo y la "a" se volvían una mancha, y la punta a la izquierda dejaba medio vacío el avatar redondo de las redes.
+- Exploración en `docs/diseno/logo-abastalia-v2.html`: cuatro direcciones (A Etiqueta 2.0, B Toldo, C Moneda, D Sello) probadas a 16 px reales, avatar, anuncio de Meta, Google, WhatsApp, pestaña oscura y recibo térmico a una tinta. El dueño eligió **A**.
+- La etiqueta se gira 45° para que llene el cuadrado y el círculo; la "a" pasa de 25% a 40% del ancho. El ojo se cambia por el hueco de colgar, que se imprime limpio en la térmica. A 16 px el hueco cae en un píxel y la esquina cortada sostiene la silueta.
+- **Ámbar #FFC233** nuevo, solo como acento: el azul Abastalia contra el azul de Facebook (#0866FF) tiene 1.4:1 y se funde con la interfaz de Meta. Ámbar sobre azul 4.1:1, Tinta sobre ámbar 9.9:1.
+- Azul sobre Tinta es 2.7:1, así que sobre oscuro la etiqueta pasa a blanco (`.esc-logo--on-dark` y `:root[data-theme="dark"] .esc-admin .esc-logo`).
+- **Talia**: etiqueta ámbar con ojos y sonrisa en Tinta, en un círculo azul (no pierde la silueta sobre blanco, que con ámbar solo sería 1.5:1). En el panel va en el chat (atenta; pensando mientras busca; contenta en el estado vacío) y en la barra "Pregúntale a Talia".
+- Archivos de marca en `src/Cloud/panel/public/og/`: `abastalia.png` (1200×630, barra azul con tramo ámbar), `logo.png` (512, sobre blanco, para JSON-LD), `avatar.png` y `avatar-ambar.png` (1024, a sangre: las redes lo recortan en círculo) y `talia.png` (1024, perfil del WhatsApp de Talia). Todos con Edge headless desde el mismo SVG.
+- Crítica de diseño final (sobre la galería de Escuadra, el sitio y el acceso en oscuro, y las imágenes generadas):
+  - Funciona: la silueta con la esquina cortada se distingue a 16 px; en el marco de la caja y en oscuro la etiqueta blanca se lee de inmediato; el recibo sale limpio a una tinta; el avatar llena el círculo; Talia se reconoce como de la familia sin confundirse con el logo (color y cara en lugar de letra).
+  - Se corrigió en la ronda: la boca de Talia "pensando" se veía triste (curva hacia abajo); ahora es una sonrisa corta.
+  - Se acepta: a 16 px el hueco cae en un píxel; a 28 px la diferencia entre estados de Talia es sutil, y el texto ("Buscando en sus datos…") es el que dice el estado.
+  - Se mantiene a propósito: en el menú del panel "Asistente" sigue con el ícono de línea (sparkles); Talia a color rompería el ritmo de los íconos de línea. Talia va donde ella habla: el chat y la barra "Pregúntale a Talia".
+  - Pendiente fuera de este ticket: no hay ícono .ico del instalador ni de la ventana de la caja; cuando se haga, sale de `og/avatar.png`.

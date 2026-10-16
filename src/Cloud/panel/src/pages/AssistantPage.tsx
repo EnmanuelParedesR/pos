@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useLocation } from "react-router";
 import { api, ApiError } from "../api";
-import { Icon, Logo, Notice, PageHead } from "../ui";
+import { Icon, Notice, PageHead, Talia } from "../ui";
 
 interface Turn { role: "user" | "assistant"; content: string }
 
@@ -53,7 +53,7 @@ export function AssistantPage() {
       <section className="esc-card esc-chat" aria-live="polite">
         {history.length === 0 && !busy && (
           <div className="esc-empty" style={{ padding: "24px 0" }}>
-            <Logo size={44} withName={false} />
+            <Talia size={48} mood="happy" />
             <div className="esc-empty__title">¿Qué quiere saber hoy?</div>
             <div className="esc-row" style={{ justifyContent: "center", marginTop: 8 }}>
               {suggestions.map((s) => (
@@ -66,14 +66,14 @@ export function AssistantPage() {
         )}
         {history.map((t, i) => (
           <div key={i} className={`esc-bubble-row esc-bubble-row--${t.role}`}>
-            {t.role === "assistant" && <Logo size={28} withName={false} />}
+            {t.role === "assistant" && <Talia size={28} />}
             {/* Plain text: React escapes it, so an answer can never inject HTML. */}
             <p className={`esc-bubble esc-bubble--${t.role}`}>{t.content}</p>
           </div>
         ))}
         {busy && (
           <div className="esc-bubble-row">
-            <Logo size={28} withName={false} />
+            <Talia size={28} mood="thinking" />
             <p className="esc-bubble esc-bubble--assistant esc-muted">Buscando en sus datos…</p>
           </div>
         )}

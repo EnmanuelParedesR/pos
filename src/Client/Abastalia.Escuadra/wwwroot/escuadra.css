@@ -210,8 +210,13 @@ h1, h2, h3, p { margin: 0; }
 .esc-scale__value span { font-size: var(--t-17); font-weight: 600; color: var(--text-2); }
 .esc-scale .esc-pill { min-width: 120px; justify-content: center; }
 
-/* Logo */
-.esc-logo { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: -0.02em; }
+/* Logo (TK-273). Blue tag, white "a"; on the dark frame and in the dark back office the tag turns white and the "a" blue (blue on #14181D is only 2.7:1). */
+.esc-logo { --logo-tag: #0B5CAD; --logo-mark: #FFFFFF; display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: -0.02em; }
+.esc-logo--on-dark, :root[data-theme="dark"] .esc-admin .esc-logo, .esc-admin[data-theme="dark"] .esc-logo { --logo-tag: #FFFFFF; --logo-mark: #0B5CAD; }
+.esc-logo__tag { fill: var(--logo-tag); stroke: var(--logo-tag); }
+.esc-logo__mark { stroke: var(--logo-mark); }
+/* Talia, the assistant: same colors everywhere, she carries her own blue circle */
+.esc-talia { flex: none; display: inline-block; vertical-align: middle; }
 
 /* Money */
 .esc-money { display: inline-flex; align-items: baseline; gap: 6px; font-weight: 700; }
