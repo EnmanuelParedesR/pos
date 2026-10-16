@@ -889,6 +889,10 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<byte[]>("PublicKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("varbinary(200)");
+
                     b.Property<DateTime?>("RevokedUtc")
                         .HasColumnType("datetime2");
 

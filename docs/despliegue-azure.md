@@ -207,31 +207,74 @@ Borra la base con todos los datos de las tiendas: no tiene vuelta atrás.
 | `AzureOpenAI:Endpoint`, `Deployment`, `ApiKey`, `ApiVersion` | El asistente. Si falta alguno, `/api/assistant/ask` responde 503 `Assistant.NotConfigured`. |
 | `Ingest:ApplyInBackground` | `false` solo en pruebas. |
 | `Nodes:RegisterPerMinute` | Intentos de conectar una tienda por minuto y por IP (10). |
+| `Nodes:AcceptSharedSecret` | TK-241, ADR-0008: `true` (por defecto) mientras haya tiendas conectadas antes de TK-241 con secreto compartido; `false` cuando todas se reconectaron (firman con su llave). |
 | `Email:Provider` | `AzureCommunicationServices` envía correos de verdad (avisos de TK-222 e invitaciones). Sin él, los correos solo quedan en el log y el panel muestra el enlace de la invitación. |
 | `Email:Endpoint`, `Email:Sender` | El recurso de Azure Communication Services (`https://<nombre>.communication.azure.com`, con la identidad administrada) y el remitente verificado (`DoNotReply@<dominio>`). |
 | `Email:ConnectionString` | Alternativa a `Email:Endpoint` (fuera de Azure): es un secreto, va en user-secrets o en una referencia a Key Vault, nunca en el repositorio. |
 
-### Correo de avisos (TK-222), apagado por defecto
+### Correo (TK-222), encendido en producción desde TK-241 (2026-10-16)
 
 Los avisos por correo (rechazos de la DGII, certificado por vencer, comprobantes sin enviar por más de 24 horas, avance de la certificación) salen
 del latido y de los eventos que las tiendas ya suben: se revisan justo después de aplicar un lote, nunca con un temporizador, para no despertar la
 base serverless. Uno por condición, tienda y día. Cada miembro los elige en **Avisos** del panel; el enlace del correo da de baja sin entrar.
+También van por correo las invitaciones del Equipo (solo por correo, R8 #1) y los de confirmar la cuenta y cambiar la contraseña (TK-230).
 
-Para encenderlos (una vez):
+Lo que hay en `rg-toki-prod` (creado con az el 2026-10-16, TK-241):
+
+| Recurso | Qué es |
+|---|---|
+| `ecs-toki-prod` (Email Communication Service, datos en Estados Unidos) | Con el dominio administrado de Azure `AzureManagedDomain` = `b5097b41-7b79-41ea-92e5-b99f21c07125.azurecomm.net` (gratis, sin DNS propio; seguimiento de lectura apagado). Remitente `DoNotReply`, nombre visible "Toki". |
+| `acs-toki-prod` (Communication Services, datos en Estados Unidos) | Enlazado a ese dominio. Endpoint `https://acs-toki-prod.unitedstates.communication.azure.com`. La identidad administrada de `app-toki-prod-jhzq7n` tiene "Communication and Email Service Owner" sobre él. |
+
+Configuración de la Web App: `Email__Provider=AzureCommunicationServices`, `Email__Endpoint=https://acs-toki-prod.unitedstates.communication.azure.com`,
+`Email__Sender=DoNotReply@b5097b41-7b79-41ea-92e5-b99f21c07125.azurecomm.net`. Los mismos valores están en `main.parameters.json`
+(`emailEndpoint`, `emailSender`, `emailResourceName`); con `emailResourceName` el Bicep también da el rol a la API.
+
+Cómo se creó (por si hay que repetirlo en otro grupo; en PowerShell, porque Git Bash cambia las rutas `/subscriptions/...`):
 
 ```powershell
-az communication create -n acs-toki-prod -g rg-toki-prod --location global --data-location UnitedStates
-az communication email create -n email-toki-prod -g rg-toki-prod --location global --data-location UnitedStates
-az communication email domain create --domain-name AzureManagedDomain --email-service-name email-toki-prod -g rg-toki-prod --location global --domain-management AzureManaged
-# Enlazar el dominio al recurso de Communication Services (portal: Communication Services > Email > Domains > Connect domain).
-# La API envía con su identidad administrada:
-az role assignment create --assignee <apiPrincipalId> --role "Communication and Email Service Owner" --scope $(az communication show -n acs-toki-prod -g rg-toki-prod --query id -o tsv)
-az deployment group create -g rg-toki-prod -f deploy/azure/main.bicep -p sqlAdminLogin=... sqlAdminObjectId=... `
-  emailEndpoint=https://acs-toki-prod.unitedstates.communication.azure.com emailSender=DoNotReply@<dominio-administrado>.azurecomm.net
+az extension add --name communication
+az communication email create -n ecs-toki-prod -g rg-toki-prod --location global --data-location "United States"
+az communication email domain create --email-service-name ecs-toki-prod -g rg-toki-prod -n AzureManagedDomain --location global `
+  --domain-management AzureManaged --user-engmnt-tracking Disabled
+az communication create -n acs-toki-prod -g rg-toki-prod --location global --data-location "United States" `
+  --linked-domains $(az communication email domain show --email-service-name ecs-toki-prod -g rg-toki-prod -n AzureManagedDomain --query id -o tsv)
+az communication email domain sender-username update --email-service-name ecs-toki-prod -g rg-toki-prod --domain-name AzureManagedDomain -n donotreply --display-name Toki
+az role assignment create --assignee-object-id <apiPrincipalId> --assignee-principal-type ServicePrincipal `
+  --role "Communication and Email Service Owner" --scope $(az communication show -n acs-toki-prod -g rg-toki-prod --query id -o tsv)
+az webapp config appsettings set -n app-toki-prod-jhzq7n -g rg-toki-prod --settings Email__Provider=AzureCommunicationServices `
+  Email__Endpoint=https://acs-toki-prod.unitedstates.communication.azure.com Email__Sender=DoNotReply@<dominio>.azurecomm.net
 ```
 
-Costo: unos 0.00025 USD por correo; sin tráfico, nada. Desde ese momento las invitaciones del Equipo también van solo por correo (R8 #1).
+Prueba: un correo a la cuenta del dueño con `az communication email send --sender DoNotReply@<dominio> --to <correo> ...` (lee la cadena de
+conexión de `AZURE_COMMUNICATION_CONNECTION_STRING`, que se toma con `az communication list-key` solo en esa sesión y se borra después): estado
+`Succeeded`. El dominio administrado de Azure tiene un límite bajo de envíos por hora; para volumen real se conecta un dominio propio.
+
+Costo: unos 0.00025 USD por correo; sin tráfico, nada.
 WhatsApp queda como complemento pagado futuro (solo la interfaz `IWhatsAppSender`).
+
+### Alertas (TK-241)
+
+El Bicep crea tres alertas de Azure Monitor; con `alertEmail` también un grupo de acción `ag-toki-prod` que avisa por correo (vacío = las alertas
+existen, se ven en el portal y no avisan a nadie):
+
+| Alerta | Señal |
+|---|---|
+| `alert-toki-prod-5xx` | Métrica `Http5xx` de la Web App: más de 5 en 15 minutos. |
+| `alert-toki-prod-health` | Métrica `HealthCheckStatus` (el chequeo de `/health` de App Service) por debajo de 100 en 5 minutos. |
+| `alert-toki-prod-inbox` | Registro: un evento de una tienda que el inbox no pudo aplicar (`could not be applied`) o una corrida fallida del aplicador. |
+
+A Application Insights solo llegan las solicitudes (Serilog escribe en la consola), así que el Bicep manda los registros de consola de la Web App
+(`AppServiceConsoleLogs`) al área de trabajo `log-toki-prod` y la alerta del inbox los consulta. Validado con `az bicep build`; se aplica con el
+próximo `az deployment group create`.
+
+### Certificados e-CF en Key Vault: prueba real (TK-151, 2026-10-16)
+
+Con el código de la nube (`KeyVaultFeVault`, el mismo archivo enlazado en un programa de prueba) y la sesión de az del dueño, contra
+`kv-toki-prod-jhzq7n`, con un .p12 autofirmado de usar y tirar: importar como no exportable (política `exportable=False`, RSA) ✅, firmar RS256 un
+SHA-256 con la llave del vault y verificarla con el certificado ✅, borrar ✅ (después da 404 y la llave ya no firma). El certificado
+`tk151-test-20261016042431` quedó en borrado suave hasta el 2026-11-15 (la protección contra purga no deja borrarlo antes). Para la prueba se le
+dieron al usuario "Key Vault Certificates Officer" y "Key Vault Crypto User" en el vault y se quitaron al terminar.
 
 ## Desarrollo local
 
@@ -241,4 +284,4 @@ WhatsApp queda como complemento pagado futuro (solo la interfaz `IWhatsAppSender
 
 - Leer Azure OpenAI con la identidad administrada en vez de la clave.
 - Un dominio propio para la API y para el sitio con el panel.
-- Alertas de Application Insights (errores 5xx y eventos del inbox que no se pudieron aplicar).
+- Un dominio propio para el correo (el administrado de Azure limita los envíos por hora).

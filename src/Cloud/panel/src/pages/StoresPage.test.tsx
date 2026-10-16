@@ -76,3 +76,36 @@ it("TK-217: a read-only member sees the stores but cannot add one or connect a r
   expect(screen.queryByRole("button", { name: /Nueva tienda/ })).toBeNull();
   expect(screen.queryByRole("button", { name: /Conectar una caja/ })).toBeNull();
 });
+
+it("TK-241: an Owner removes a register after confirming, and the list reloads without it", async () => {
+  let nodes = 1;
+  const calls: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        calls.push(url);
+        nodes = 0;
+        return json(204);
+      }
+      return json(200, store(nodes));
+    }),
+  );
+  const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {}, canEdit: true };
+  render(
+    <MemoryRouter>
+      <Routes>
+        <Route element={<Outlet context={context} />}>
+          <Route index element={<StoresPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: "Quitar" }));
+  expect(calls).toEqual([]);
+  fireEvent.click(screen.getByRole("button", { name: "Sí, quitar" }));
+  expect(await screen.findByText("Ninguna caja conectada")).toBeTruthy();
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toMatch("/api/panel/nodes/n0/revoke");
+});

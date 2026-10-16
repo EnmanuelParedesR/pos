@@ -50,7 +50,7 @@ public sealed class AccompanimentTests(TokiApp app) : IClassFixture<TokiApp>
         sent.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await sent.Json()).GetProperty("status").GetString().ShouldBe("New");
         var call = app.Cloud.To("/fiscal/v1/accompaniment").Single();
-        call.Authorization.ShouldBe($"Node {app.Cloud.NodeId}.{FakeCloud.NodeSecret}");
+        app.Cloud.SignedByNode(call).ShouldBeTrue();
         call.Body.GetProperty("contactName").GetString().ShouldBe("Ana Pérez");
         (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/accompaniment")).GetProperty("request").GetProperty("id").GetGuid().ShouldBe(request.id);
 

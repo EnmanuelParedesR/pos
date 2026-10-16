@@ -21,11 +21,14 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 
 **Conectar una tienda (shortcut del mTLS de §8.1)**
 1. El dueño crea su cuenta en el panel y su tienda, y el panel le muestra un **código de conexión** (8 dígitos, 30 minutos, de un solo uso).
-2. En la caja, en Configuración → Nube, escribe el código. La PC principal llama a `POST /api/nodes/register { code, nodeName }` y recibe `{ tenantId, storeId, nodeId, nodeSecret }`.
-3. El secreto se guarda cifrado con Data Protection en la base local. La nube solo guarda su hash SHA-256.
-4. Cada lote va con `Authorization: Node <nodeId>.<nodeSecret>`. El `TenantId` y la tienda salen siempre de esa identidad, nunca del cuerpo.
+2. En la caja, en Configuración → Nube, escribe el código. La PC principal crea su propia llave ECDSA P-256, llama a `POST /api/nodes/register { code, nodeName, publicKey }` (la pública, SubjectPublicKeyInfo en Base64) y recibe `{ tenantId, storeId, nodeId, nodeSecret: null }`.
+3. La llave privada se guarda cifrada con Data Protection en la base local y nunca sale de la PC. La nube guarda solo la pública (`Nodes.PublicKey`).
+4. Cada llamada va con `Authorization: Node <nodeId>.<segundosUnix>.<nonce>.<firma>`: firma ECDSA (SHA-256, P1363, Base64Url) sobre `<nodeId>.<segundosUnix>.<nonce>.<MÉTODO> <ruta?consulta>`. La nube acepta ±15 minutos (la PC corrige su hora con el encabezado `Date` de la nube) y cada nonce una sola vez. El `TenantId` y la tienda salen siempre de esa identidad, nunca del cuerpo.
+5. Desconectar en la tienda avisa a la nube (`POST /api/nodes/revoke`) y el nodo queda revocado; sin internet desconecta igual y un Dueño quita la caja en "Tiendas" del panel (`POST /api/panel/nodes/{id}/revoke`).
 
-`shortcut:` secreto compartido por nodo en vez de certificado de cliente o `private_key_jwt`. Se cambia antes de tener más de un cliente pagando.
+**Cambio de TK-241 (antes del segundo cliente que pague):** hasta TK-241 cada nodo tenía un secreto compartido (`Authorization: Node <nodeId>.<nodeSecret>`, la nube guardaba su SHA-256). Un secreto filtrado de la base o de un registro servía para siempre; ahora lo que viaja vale una vez y 15 minutos, y la nube no guarda nada que permita hacerse pasar por la tienda. Ventana de migración: mientras `Nodes:AcceptSharedSecret` sea `true` (por defecto) la nube sigue aceptando el secreto de los nodos viejos y le da uno a una PC sin actualizar; una PC nueva contra una nube vieja guarda el secreto que le den. Cuando todas las tiendas se hayan reconectado (Desconectar y un código nuevo), se pone en `false`.
+
+`shortcut:` los nonces usados viven en memoria (una sola instancia de App Service): pasar a la base o a un caché compartido antes de escalar a dos instancias. El cuerpo no va firmado (lo protege TLS y el nonce impide repetir la llamada).
 
 **Ingesta**
 - `POST /ingest/v1/events` con `{ events: [{ id, type, aggregateId, occurredUtc, payload }] }`, hasta 200 por lote. Responde `{ accepted: [ids] }`, incluidos los duplicados ya recibidos. Recibir es barato; aplicar va aparte.

@@ -496,3 +496,21 @@ export interface ReceivedEcf {
   approvalDgiiUtc: string | null;
   approvalMessage: string | null;
 }
+
+/** TK-241: the cloud receiver (TK-151) as the panel shows it: GET /api/panel/fe. */
+export interface ReceiverUrls { environment: string; reception: string; approval: string; authentication: string }
+export interface ReceiverStatus {
+  active: boolean;
+  rnc: string | null;
+  subject: string | null;
+  notAfterUtc: string | null;
+  consentedUtc: string | null;
+  ownerName: string | null;
+  holderName: string | null;
+  urls: ReceiverUrls[] | null;
+}
+export interface ReceiverPanel {
+  status: ReceiverStatus;
+  signatures: { atUtc: string; root: string; eNcf: string | null; sha256: string }[];
+  approvals: { eNcf: string; buyerRnc: string; approved: boolean; reason: string | null; environment: string; receivedUtc: string }[];
+}

@@ -3,6 +3,7 @@ import { api, ApiError, useApi, type ReceivedEcf } from "../api";
 import { usePanel } from "../App";
 import { dateTime, dayName, money } from "../format";
 import { EmptyState, Icon, LoadError, Notice, PageHead, SkeletonRows } from "../ui";
+import { ReceiverPanel } from "./ReceiverPanel";
 
 const environmentNames: Record<string, string> = { ecf: "Producción", certecf: "Certificación", testecf: "Pruebas" };
 
@@ -16,6 +17,7 @@ export function ReceivedPage() {
   return (
     <>
       <PageHead title="Comprobantes recibidos" subtitle="Las facturas electrónicas que le enviaron sus suplidores." />
+      <ReceiverPanel canEdit={canEdit} />
       <LoadError error={error} />
       <section className="esc-card esc-table-wrap">
         <table className="esc-table esc-table--wide">

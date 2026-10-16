@@ -33,7 +33,8 @@ builder.Services.AddDbContext<CloudDbContext>(o =>
 builder.Services.AddHostedService<CreateCloudDatabaseOnStartup>();
 builder.Services.AddSingleton(TimeProvider.System);
 
-// Panel users (bearer tokens) and store nodes (shared secret).
+// Panel users (bearer tokens) and store nodes (signed with their own key, TK-241).
+builder.Services.AddSingleton<NodeNonces>();
 builder.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, NodeAuthenticationHandler>(CloudAuth.NodeScheme, null);
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(CloudAuth.NodePolicy, p => p.AddAuthenticationSchemes(CloudAuth.NodeScheme).RequireAuthenticatedUser())
