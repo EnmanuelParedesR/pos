@@ -31,6 +31,8 @@ public sealed class EscuadraVisualTests
         await using var browser = await playwright.Chromium.LaunchAsync();
         var page = await browser.NewPageAsync(new() { BaseURL = web.Base.ToString(), ViewportSize = new() { Width = 1366, Height = 768 }, Locale = "es-DO" });
         await page.GotoAsync("/dev/escuadra");
+        // The whole-page shot has no locator to wait on: wait for the gallery's last section, or it captures the blank page before Blazor renders.
+        await page.Locator(".esc-admin[data-theme=dark]").WaitForAsync();
         await page.EvaluateAsync("() => document.fonts.ready");
 
         var shot = new LocatorScreenshotOptions { Animations = ScreenshotAnimations.Disabled, Caret = ScreenshotCaret.Hide };
