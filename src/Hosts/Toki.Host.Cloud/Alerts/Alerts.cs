@@ -179,7 +179,7 @@ public sealed class AlertNotifier(CloudDbContext db, IEmailSender email, IConfig
             try
             {
                 await email.SendAsync(m.Email!, $"Toki · {storeName}: {alert.Subject}",
-                    $"{alert.Text}\n\nTienda: {storeName}\n\nCambie qué avisos recibe en {panel}/notifications\n" +
+                    $"{alert.Text}\n\nTienda: {storeName}\n\nCambie qué avisos recibe en {panel}/app/notifications\n" +
                     $"Para no recibir más avisos: {panel}/unsubscribe#{pref.UnsubscribeToken}", ct);
                 count++;
             }

@@ -205,7 +205,7 @@ function IssueRow({ issue }: { issue: Issue }) {
               .join(" · ")}
           </div>
         </div>
-        <Link className="esc-button esc-button--small" to="/shifts">
+        <Link className="esc-button esc-button--small" to="/app/shifts">
           Ver cuadres <Icon name="chevron-right" size={16} />
         </Link>
       </li>
@@ -220,7 +220,7 @@ function IssueRow({ issue }: { issue: Issue }) {
         <div className="esc-alert__title">{issue.message}</div>
         <div className="esc-alert__meta">{issue.storeName}</div>
       </div>
-      <Link className="esc-button esc-button--small" to="/stores">
+      <Link className="esc-button esc-button--small" to="/app/stores">
         Ver tienda <Icon name="chevron-right" size={16} />
       </Link>
     </li>

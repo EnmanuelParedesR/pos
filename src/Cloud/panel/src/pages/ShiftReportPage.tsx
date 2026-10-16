@@ -25,7 +25,7 @@ export function ShiftReportPage() {
   return (
     <>
       <div className="esc-row esc-no-print" style={{ gap: 8 }}>
-        <Link className="esc-button esc-button--ghost" to="/shifts">
+        <Link className="esc-button esc-button--ghost" to="/app/shifts">
           Volver a Cuadres
         </Link>
         <span className="esc-spacer" />

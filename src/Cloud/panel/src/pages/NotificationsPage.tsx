@@ -78,7 +78,7 @@ export function UnsubscribePage() {
         {state === "working" && <p>Un momento…</p>}
         {state === "done" && (
           <Notice kind="success" title="Listo: ya no le enviaremos avisos.">
-            Puede volver a activarlos en <Link to="/notifications">Avisos</Link>, dentro del panel.
+            Puede volver a activarlos en <Link to="/app/notifications">Avisos</Link>, dentro del panel.
           </Notice>
         )}
         {state === "invalid" && <Notice kind="error" title="El enlace no es válido.">Cambie sus avisos desde el panel, en Avisos.</Notice>}

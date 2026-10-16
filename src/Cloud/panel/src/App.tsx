@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { NavLink, Outlet, Route, Routes, useLocation, useNavigate, useOutletContext } from "react-router";
+import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate, useOutletContext } from "react-router";
 import { api, hasSession, renewSession, setOnSignedOut, signOut, useApi, roleNames, type Me, type Store } from "./api";
 import { Icon, Logo, ThemeToggle, type IconName } from "./ui";
 import { SignIn } from "./pages/SignIn";
@@ -15,6 +15,8 @@ import { MembersPage } from "./pages/MembersPage";
 import { InvitePage } from "./pages/InvitePage";
 import { NotificationsPage, UnsubscribePage } from "./pages/NotificationsPage";
 import { ReceivedPage } from "./pages/ReceivedPage";
+import { SiteLayout } from "./pages/site/SiteLayout";
+import { notFound, sitePages } from "./pages/site/SitePages";
 
 /** What every screen gets from the frame: the tenant's stores, the selected one ("" = all) and whether this member may change things (TK-217: Owner). */
 export interface PanelContext {
@@ -27,39 +29,50 @@ export interface PanelContext {
 
 export const usePanel = () => useOutletContext<PanelContext>();
 
+/** Signed-in screens live under /app (TK-228); these older addresses forward there so saved links and older e-mails keep working. */
+const movedToApp = ["sales", "shifts", "stores", "assistant", "received", "notifications", "members", "platform"];
+
+function ToApp() {
+  const { pathname, search, hash } = useLocation();
+  return <Navigate replace to={`/app${pathname}${search}${hash}`} />;
+}
+
+/** One app, two halves (TK-228): the public site and the pages a link opens without a session at the root, the owner's panel under /app. */
 export function App() {
-  // The public catalog (TK-195) needs no session: a store's customers open it from a QR.
-  const { pathname } = useLocation();
-  const isPublic = pathname.startsWith("/c/");
-  // TK-217: the invite link works signed in or not; the page itself asks for the account. R8 #12: the token is after "#" (/invite#token).
-  const isInvite = pathname === "/invite" || pathname.startsWith("/invite/");
-  // TK-222: the unsubscribe link of an alert e-mail works without a session.
-  const isUnsubscribe = pathname === "/unsubscribe";
+  return (
+    <Routes>
+      <Route element={<SiteLayout />}>
+        {sitePages.map((p) => (
+          <Route key={p.path} path={p.path} element={p.element} />
+        ))}
+        <Route path="*" element={notFound.element} />
+      </Route>
+      {/* The public catalog (TK-195): a store's customers open it from a QR. */}
+      <Route path="c/:storeId" element={<CatalogPage />} />
+      {/* TK-217: the invite link works signed in or not; the page itself asks for the account. R8 #12: the token is after "#" (/invite#token). */}
+      <Route path="invite" element={<InvitePage />} />
+      <Route path="invite/:token" element={<InvitePage />} />
+      {/* TK-222: the unsubscribe link of an alert e-mail works without a session. */}
+      <Route path="unsubscribe" element={<UnsubscribePage />} />
+      <Route path="app/*" element={<Panel />} />
+      {movedToApp.map((p) => (
+        <Route key={p} path={`${p}/*`} element={<ToApp />} />
+      ))}
+    </Routes>
+  );
+}
+
+/** The owner's panel: asks for the account, then shows the shell. */
+function Panel() {
   // undefined = checking a saved session, null = signed out.
-  const [me, setMe] = useState<Me | null | undefined>(hasSession() && !isPublic && !isInvite && !isUnsubscribe ? undefined : null);
+  const [me, setMe] = useState<Me | null | undefined>(hasSession() ? undefined : null);
 
   useEffect(() => {
+    document.title = "Toki · Panel";
     setOnSignedOut(() => setMe(null));
     if (me === undefined) api<Me>("/api/me").then(setMe, () => setMe(null));
     // Only on start: later sign-ins set `me` themselves.
   }, []);
-
-  if (isPublic)
-    return (
-      <Routes>
-        <Route path="/c/:storeId" element={<CatalogPage />} />
-      </Routes>
-    );
-
-  if (isInvite)
-    return (
-      <Routes>
-        <Route path="/invite" element={<InvitePage onJoined={setMe} />} />
-        <Route path="/invite/:token" element={<InvitePage onJoined={setMe} />} />
-      </Routes>
-    );
-
-  if (isUnsubscribe) return <UnsubscribePage />;
 
   if (me === undefined)
     return (
@@ -97,17 +110,17 @@ export function App() {
 }
 
 const sections: { to: string; label: string; icon: IconName }[] = [
-  { to: "/", label: "Resumen", icon: "dashboard" },
-  { to: "/sales", label: "Ventas", icon: "chart" },
-  { to: "/shifts", label: "Cuadres", icon: "wallet" },
-  { to: "/stores", label: "Tiendas", icon: "store" },
-  { to: "/assistant", label: "Asistente", icon: "sparkles" },
-  { to: "/received", label: "Recibidos", icon: "inbox" },
-  { to: "/notifications", label: "Avisos", icon: "bell" },
+  { to: "/app", label: "Resumen", icon: "dashboard" },
+  { to: "/app/sales", label: "Ventas", icon: "chart" },
+  { to: "/app/shifts", label: "Cuadres", icon: "wallet" },
+  { to: "/app/stores", label: "Tiendas", icon: "store" },
+  { to: "/app/assistant", label: "Asistente", icon: "sparkles" },
+  { to: "/app/received", label: "Recibidos", icon: "inbox" },
+  { to: "/app/notifications", label: "Avisos", icon: "bell" },
 ];
 
-const membersSection = { to: "/members", label: "Equipo", icon: "users" as IconName };
-const platformSection = { to: "/platform", label: "Plataforma", icon: "shield" as IconName };
+const membersSection = { to: "/app/members", label: "Equipo", icon: "users" as IconName };
+const platformSection = { to: "/app/platform", label: "Plataforma", icon: "shield" as IconName };
 
 
 const collapsedKey = "toki.menuCollapsed";
@@ -136,9 +149,9 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
     await api("/api/me/tenant", "POST", { tenantId });
     await renewSession();
     onMe(await api<Me>("/api/me"));
-    navigate("/");
+    navigate("/app");
   };
-  const onPlatform = pathname.startsWith("/platform");
+  const onPlatform = pathname.startsWith("/app/platform");
 
   const toggle = () => {
     setCollapsed(!collapsed);
@@ -174,7 +187,7 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
         </div>
         <nav className="esc-side__nav" aria-label="Secciones">
           {nav.map((s) => (
-            <NavLink key={s.to} to={s.to} end={s.to === "/"} title={s.label}>
+            <NavLink key={s.to} to={s.to} end={s.to === "/app"} title={s.label}>
               <Icon name={s.icon} />
               <span className="esc-side__label">{s.label}</span>
             </NavLink>
@@ -209,14 +222,14 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
 
       <main className="esc-main">
         <div className="esc-page">
-          {pathname !== "/assistant" && !onPlatform && <AskBar />}
+          {pathname !== "/app/assistant" && !onPlatform && <AskBar />}
           <Outlet context={context} />
         </div>
       </main>
 
       <nav className="esc-tabbar" aria-label="Secciones">
         {nav.map((s) => (
-          <NavLink key={s.to} to={s.to} end={s.to === "/"}>
+          <NavLink key={s.to} to={s.to} end={s.to === "/app"}>
             <Icon name={s.icon} size={22} />
             {s.label}
           </NavLink>
@@ -232,7 +245,7 @@ function AskBar() {
   const [question, setQuestion] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    navigate("/assistant", { state: question.trim() ? { question: question.trim() } : null });
+    navigate("/app/assistant", { state: question.trim() ? { question: question.trim() } : null });
   };
   return (
     <form className="esc-ask" onSubmit={submit} role="search">
