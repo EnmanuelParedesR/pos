@@ -1,0 +1,43 @@
+@inject TokiApi Api
+
+@* TK-238: every check of the store server (/health), in plain Spanish, with what to do. *@
+<section class="esc-card esc-setting">
+    <div class="esc-setting__about"><h2>Salud de la tienda</h2><p>Lo que la PC principal revisa sola: respaldos, cajas, comprobantes, hora y nube. Lo que necesita atención sale primero.</p>
+        <div style="margin-top:12px"><Button OnClick="LoadAsync" Disabled="_loading">Revisar otra vez</Button></div></div>
+    <div class="esc-setting__body">
+        @if (_checks is null)
+        {
+            <Skeleton Height="120px" />
+        }
+        else
+        {
+            <ul class="esc-alerts" aria-label="Revisiones">
+                @foreach (var c in _checks)
+                {
+                    var (kind, text) = c.Status switch { "Healthy" => ("success", "Bien"), "Degraded" => ("warning", "Revisar"), _ => ("error", "Urgente") };
+                    <li class="esc-alert esc-alert--@(kind == "success" ? "info" : kind)">
+                        <div class="esc-alert__body">
+                            <div class="esc-alert__title">@c.Title <span class="esc-pill esc-pill--@kind">@text</span></div>
+                            @if (c.Detail is not null) { <div class="esc-alert__meta">@c.Detail</div> }
+                            @if (c.Action is not null) { <div class="esc-alert__meta"><b>Qué hacer:</b> @c.Action</div> }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</section>
+
+@code {
+    private List<StoreHealthCheck>? _checks;
+    private bool _loading;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _checks = (await Api.GetAsync<List<StoreHealthCheck>>("/api/settings/health")).Value ?? [];
+        _loading = false;
+    }
+}

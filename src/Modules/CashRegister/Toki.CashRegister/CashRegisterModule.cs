@@ -19,7 +19,7 @@ public static class CashRegisterModule
         services.AddScoped<CashRegisterOperations>();
         services.AddScoped<ICashRegisterOperations>(sp => sp.GetRequiredService<CashRegisterOperations>());
         services.AddScoped<ICashRegisterReports, CashRegisterReports>();
-        services.AddSingleton<Features.CloseShift.BlindCloseAttempts>();
+        services.AddScoped<Features.CloseShift.BlindCloseAttempts>();
         services.AddScoped<ICloudSnapshot, RegisterSnapshot>();
         return services;
     }

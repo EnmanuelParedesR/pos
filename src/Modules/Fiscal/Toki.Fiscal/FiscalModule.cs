@@ -17,7 +17,7 @@ namespace Toki.Fiscal;
 
 public static class FiscalModule
 {
-    /// <summary><c>Fiscal:Signer</c> picks who signs: <c>Simulated</c> (default, no certificate) or <c>Certificate</c> (XMLDSig, see <see cref="CertificateEcfSigner"/>).
+    /// <summary>Until the owner picks an environment on screen (TK-238, <see cref="FiscalMode"/>): <c>Fiscal:Signer</c> picks who signs: <c>Simulated</c> (default, no certificate) or <c>Certificate</c> (XMLDSig, see <see cref="CertificateEcfSigner"/>).
     /// <c>Fiscal:Provider</c> picks who receives: <c>Simulated</c> (default) or <c>Dgii</c> (the DGII web services, directly, in
     /// <c>Fiscal:Dgii:Environment</c> = <c>TesteCF</c> | <c>CerteCF</c> | <c>eCF</c>; needs the certificate signer). <c>Fiscal:Dgii:TimeoutSeconds</c> (30).</summary>
     public static IServiceCollection AddFiscalModule(this IServiceCollection services, IConfiguration config)
@@ -30,29 +30,25 @@ public static class FiscalModule
         services.AddScoped<IFiscalReports, FiscalReports>();
         services.AddScoped<ITaxpayerRegistry, Features.TaxpayerNames>();
         var signer = config["Fiscal:Signer"] ?? "Simulated";
-        _ = signer switch
+        if (signer is not ("Simulated" or "Certificate")) throw new InvalidOperationException($"Unknown Fiscal:Signer '{signer}': use Simulated or Certificate.");
+        var configured = (config["Fiscal:Provider"] ?? "Simulated") switch
         {
-            "Simulated" => services.AddSingleton<IEcfSigner, SimulatedEcfSigner>(),
-            "Certificate" => services.AddSingleton<IEcfSigner>(sp => new CertificateEcfSigner(sp.GetRequiredService<EcfCertificate>())),
-            var other => throw new InvalidOperationException($"Unknown Fiscal:Signer '{other}': use Simulated or Certificate."),
+            "Simulated" => FiscalEnvironment.Simulated,
+            // The DGII authenticates with the seed signed by the certificate: there is no DGII without it.
+            "Dgii" when signer != "Certificate" => throw new InvalidOperationException("Fiscal:Provider Dgii needs Fiscal:Signer Certificate."),
+            "Dgii" => DgiiClient.UrlsFrom(config).Environment,
+            var other => throw new InvalidOperationException($"Unknown Fiscal:Provider '{other}': use Simulated or Dgii."),
         };
-        switch (config["Fiscal:Provider"] ?? "Simulated")
-        {
-            case "Simulated":
-                services.AddSingleton<IEcfProvider, SimulatedEcfProvider>();
-                break;
-            case "Dgii":
-                // The DGII authenticates with the seed signed by the certificate: there is no DGII without it.
-                if (signer != "Certificate") throw new InvalidOperationException("Fiscal:Provider Dgii needs Fiscal:Signer Certificate.");
-                var urls = DgiiClient.UrlsFrom(config);
-                services.AddHttpClient(DgiiClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(config.GetValue("Fiscal:Dgii:TimeoutSeconds", 30)));
-                services.AddSingleton(sp => new DgiiClient(sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<IEcfSigner>(), urls,
-                    sp.GetRequiredService<TimeProvider>()));
-                services.AddSingleton<IEcfProvider>(sp => sp.GetRequiredService<DgiiClient>());
-                break;
-            case var other:
-                throw new InvalidOperationException($"Unknown Fiscal:Provider '{other}': use Simulated or Dgii.");
-        }
+        // TK-238: the environment chosen on screen (FiscalMode) wins over these settings, without a restart.
+        services.AddSingleton<FiscalMode>();
+        services.AddScoped<FiscalModeChecks>();
+        services.AddHostedService<FiscalModeLoader>(); // before the workers: they read it
+        services.AddSingleton(sp => new CertificateEcfSigner(sp.GetRequiredService<EcfCertificate>()));
+        services.AddSingleton<IEcfSigner>(sp => new ModeEcfSigner(sp.GetRequiredService<FiscalMode>(),
+            signer == "Certificate" ? sp.GetRequiredService<CertificateEcfSigner>() : new SimulatedEcfSigner(), sp.GetRequiredService<CertificateEcfSigner>()));
+        services.AddHttpClient(DgiiClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(config.GetValue("Fiscal:Dgii:TimeoutSeconds", 30)));
+        services.AddSingleton<IEcfProvider>(sp => new ModeEcfProvider(sp.GetRequiredService<FiscalMode>(), configured, env =>
+            new DgiiClient(sp.GetRequiredService<IHttpClientFactory>(), sp.GetRequiredService<CertificateEcfSigner>(), new DgiiUrls(env), sp.GetRequiredService<TimeProvider>())));
         services.AddScoped<EcfSubmissionQueue>();
         services.AddScoped<IRestoreGuard, FiscalRestoreGuard>();
         services.AddSingleton<Features.TaxpayerImport>();
@@ -135,6 +131,8 @@ internal interface IEcfSigner
 {
     /// <summary>True for the stand-in signer: its documents are stored as Simulated and never sent.</summary>
     bool IsSimulated { get; }
+    /// <summary>TK-157: why nothing can be signed right now, or null when it can.</summary>
+    string? CannotSign(DateTime nowUtc) => null;
     (string SignedXml, string SecurityCode) Sign(XDocument xml);
 }
 
@@ -183,7 +181,7 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
     public FiscalEnvironment Environment => signer.IsSimulated || provider.IsSimulated ? FiscalEnvironment.Simulated : provider.Environment;
 
     /// <summary>TK-157: why the store cannot sign an e-CF now (no certificate, or an expired one), or null when it can.</summary>
-    public string? CannotSign() => signer is CertificateEcfSigner c ? c.CannotSign(clock.GetUtcNow().UtcDateTime) : null;
+    public string? CannotSign() => signer.CannotSign(clock.GetUtcNow().UtcDateTime);
 
     public async Task<Result<IssuedDocument>> IssueAsync(DocumentToIssue doc, CancellationToken ct)
     {

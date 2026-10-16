@@ -24,10 +24,30 @@ namespace Toki.Settings;
 
 public sealed record BackupFile(string FileName, long Bytes, DateTime DateUtc);
 
-/// <summary>What the last run could not do besides the backup itself (today: the copy off the PC), for the health check.</summary>
+/// <summary>What the last run could not do besides the backup itself (today: the copy off the PC), for the health check.
+/// <see cref="Changed"/> wakes <see cref="NightlyBackup"/> when the schedule is saved (TK-238).</summary>
+#pragma warning disable CA1001 // a singleton for the app's lifetime; each replaced source is already cancelled
 internal sealed class BackupStatus
+#pragma warning restore CA1001
 {
+    private CancellationTokenSource _changed = new();
+
     public string? CopyError { get; set; }
+    public CancellationToken Changed => _changed.Token;
+    public void ScheduleChanged() => Interlocked.Exchange(ref _changed, new CancellationTokenSource()).Cancel();
+}
+
+/// <summary>TK-238: when and where the backups go. Each value saved on screen (<see cref="Business"/>) wins over appsettings
+/// (<c>Backup:CopyTo</c>, <c>Backup:Time</c> 23:30, <c>Backup:Keep</c> 14, <c>Backup:Automatic</c> true). An empty copy folder saved on screen means no copy.</summary>
+/// <remarks>shortcut: no copy to the cloud yet. The hook is <see cref="CopyTo"/>: a cloud copy would be one more target after the folder copy in
+/// <see cref="Backups.CreateAsync"/>, with its own status here; build it when stores ask for it.</remarks>
+internal sealed record BackupSchedule(string? CopyTo, TimeSpan Time, int Keep, bool Automatic)
+{
+    public static BackupSchedule Of(Business b, IConfiguration config) => new(
+        (b.BackupCopyTo ?? config["Backup:CopyTo"]) is { Length: > 0 } copy ? copy : null,
+        b.BackupTime ?? config.GetValue("Backup:Time", new TimeSpan(23, 30, 0)),
+        b.BackupKeep ?? config.GetValue("Backup:Keep", 14),
+        b.BackupAutomatic ?? config.GetValue("Backup:Automatic", true));
 }
 
 /// <summary>Backs up the whole database, encrypts it with the owner's passphrase and keeps the newest ones here and in the off-PC copy, if set.
@@ -46,7 +66,8 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
 
     public string Folder => config["Backup:Folder"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki", "backups");
     public string WorkFolder => Path.Combine(Folder, "work");
-    private int Keep => config.GetValue("Backup:Keep", 14);
+
+    public async Task<BackupSchedule> ScheduleAsync(CancellationToken ct) => BackupSchedule.Of(await db.Business.AsNoTracking().SingleAsync(ct), config);
 
     public IDataProtector Protector => protection.CreateProtector("Toki.Backup.Key");
 
@@ -97,15 +118,16 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
         }
         if (label is not null) return new BackupFile(Path.GetFileName(target), new FileInfo(target).Length, now);
 
-        Prune(Folder);
+        var schedule = await ScheduleAsync(ct);
+        Prune(Folder, schedule.Keep);
         status.CopyError = null;
-        if (config["Backup:CopyTo"] is { Length: > 0 } copy)
+        if (schedule.CopyTo is { } copy)
         {
             // A full USB stick or an offline share must not stop the local backups.
             try
             {
                 Directory.CreateDirectory(copy);
-                Prune(copy, makeRoom: true);
+                Prune(copy, schedule.Keep, makeRoom: true);
                 File.Copy(target, Path.Combine(copy, name + Extension), overwrite: true);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
@@ -222,9 +244,17 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
     private static IEnumerable<FileInfo> List(string folder) =>
         Directory.Exists(folder) ? new DirectoryInfo(folder).GetFiles("*" + Extension).OrderByDescending(f => f.Name) : [];
 
-    private void Prune(string folder, bool makeRoom = false)
+    private static void Prune(string folder, int keep, bool makeRoom = false)
     {
-        foreach (var old in List(folder).Skip(makeRoom ? Keep - 1 : Keep)) old.Delete();
+        foreach (var old in List(folder).Skip(makeRoom ? keep - 1 : keep)) old.Delete();
+    }
+
+    /// <summary>TK-238: whether the newest backup is in the off-PC folder, or why not; null when there is no copy to make.</summary>
+    public string? CopyProblem(BackupSchedule schedule, FileInfo? newest)
+    {
+        if (schedule.CopyTo is not { } copy || newest is null) return null;
+        if (status.CopyError is { } error) return error;
+        return File.Exists(Path.Combine(copy, newest.Name)) ? null : $"El último respaldo no está en {copy}. Revise que la memoria o la carpeta compartida esté conectada.";
     }
 }
 
@@ -323,19 +353,51 @@ internal static class RestoreBackup
 }
 
 /// <summary>Backs up three minutes after every start when the newest backup is older than 20 hours (many store PCs are off at night),
-/// and every night at <c>Backup:Time</c> (23:30 store time), unless <c>Backup:Automatic</c> is false.</summary>
-internal sealed class NightlyBackup(IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<NightlyBackup> log) : BackgroundService
+/// and every night at the <see cref="BackupSchedule"/> time (23:30 store time), unless it is not automatic. A schedule saved on screen wakes it.</summary>
+internal sealed class NightlyBackup(IServiceScopeFactory scopes, BackupStatus status, IConfiguration config, TimeProvider clock, ILogger<NightlyBackup> log)
+    : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!config.GetValue("Backup:Automatic", true)) return;
-        var time = config.GetValue("Backup:Time", new TimeSpan(23, 30, 0));
-        await Task.Delay(TimeSpan.FromMinutes(3), clock, stoppingToken);
-        await BackUpAsync(onlyIfDue: true, stoppingToken);
+        var started = false;
         while (!stoppingToken.IsCancellationRequested)
         {
-            await Task.Delay(NightlyAuditCheck.UntilNext(clock.GetUtcNow().UtcDateTime, time), clock, stoppingToken);
-            await BackUpAsync(onlyIfDue: false, stoppingToken);
+            var changed = status.Changed; // taken before reading, so a save in between is not missed
+            var schedule = await ScheduleAsync(stoppingToken);
+            using var wake = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, changed);
+            try
+            {
+                if (!schedule.Automatic) await Task.Delay(Timeout.InfiniteTimeSpan, wake.Token);
+                else if (!started)
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(3), clock, wake.Token);
+                    started = true;
+                    await BackUpAsync(onlyIfDue: true, stoppingToken);
+                }
+                else
+                {
+                    await Task.Delay(NightlyAuditCheck.UntilNext(clock.GetUtcNow().UtcDateTime, schedule.Time), clock, wake.Token);
+                    await BackUpAsync(onlyIfDue: false, stoppingToken);
+                }
+            }
+            catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+            {
+                // The schedule changed: read it again.
+            }
+        }
+    }
+
+    private async Task<BackupSchedule> ScheduleAsync(CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<Backups>().ScheduleAsync(ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            log.LogError(ex, "Could not read the backup schedule; using the application settings");
+            return BackupSchedule.Of(new Business(), config);
         }
     }
 
@@ -366,5 +428,70 @@ internal sealed class BackupHealthCheck(Backups backups, BackupStatus status, Ti
         var newest = backups.List().FirstOrDefault()?.LastWriteTimeUtc;
         if (newest is null || newest < clock.GetUtcNow().UtcDateTime.AddHours(-36)) return HealthCheckResult.Degraded("El último respaldo tiene más de 36 horas.");
         return status.CopyError is { } error ? HealthCheckResult.Degraded(error) : HealthCheckResult.Healthy();
+    }
+}
+
+/// <summary>TK-238: the backup schedule on screen (Configuración → Respaldos), with what the owner needs to trust it: whether the passphrase works,
+/// the newest backup and whether it reached the off-PC folder. Saved values win over appsettings and apply at once.</summary>
+internal static class BackupSettings
+{
+    /// <param name="Time">Store time, "HH:mm".</param>
+    public sealed record Command(string? CopyTo, string Time, int Keep, bool Automatic) : ICommand<Ok>;
+
+    /// <param name="Saved">False while every value still comes from appsettings.</param>
+    /// <param name="PassphraseProblem">Why backups cannot be made (no phrase, or a key this PC cannot read); null when they can.</param>
+    public sealed record Response(string? CopyTo, string Time, int Keep, bool Automatic, bool Saved, string Folder, string? PassphraseProblem,
+        BackupFile? Last, string? CopyProblem);
+
+    /// <summary>For the register's status bar and the Resumen: only the passphrase, cheap enough to ask every 15 seconds.</summary>
+    public sealed record Warning(string? PassphraseProblem);
+
+    internal sealed class Validator : AbstractValidator<Command>
+    {
+        public Validator()
+        {
+            RuleFor(c => c.CopyTo).MaximumLength(260).Must(p => Path.IsPathFullyQualified(p!)).When(c => !string.IsNullOrWhiteSpace(c.CopyTo))
+                .WithMessage("Escriba la carpeta completa, por ejemplo E:\\Respaldos o \\\\servidor\\respaldos.");
+            RuleFor(c => c.Time).Must(t => TimeOnly.TryParseExact(t, "HH:mm", out _)).WithMessage("Escriba la hora como 23:30.");
+            RuleFor(c => c.Keep).InclusiveBetween(1, 365).WithMessage("Guarde entre 1 y 365 respaldos.");
+        }
+    }
+
+    internal sealed class Handler(SettingsDbContext db, BackupStatus status, IAuditLog audit) : ICommandHandler<Command, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
+        {
+            var b = await db.Business.SingleAsync(ct);
+            b.BackupCopyTo = c.CopyTo?.Trim() ?? "";
+            b.BackupTime = TimeOnly.ParseExact(c.Time, "HH:mm").ToTimeSpan();
+            b.BackupKeep = c.Keep;
+            b.BackupAutomatic = c.Automatic;
+            await audit.RecordAsync("settings.backup-schedule", "Business", Guid.Empty, c, ct);
+            status.ScheduleChanged();
+            return Ok.Value;
+        }
+    }
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app)
+        {
+            app.MapGet("/api/backups/settings", async (Backups backups, SettingsDbContext db, IConfiguration config, CancellationToken ct) =>
+                {
+                    var b = await db.Business.AsNoTracking().SingleAsync(ct);
+                    var s = BackupSchedule.Of(b, config);
+                    var key = await backups.KeyAsync(ct);
+                    // A backup made before a restore is not copied off the PC: the copy is judged on the scheduled ones.
+                    var newest = backups.List().FirstOrDefault(f => !f.Name.EndsWith("-antes-de-restaurar" + Backups.Extension, StringComparison.Ordinal));
+                    return Results.Ok(new Response(s.CopyTo, $"{s.Time:hh\\:mm}", s.Keep, s.Automatic, b.BackupAutomatic is not null, backups.Folder,
+                        key.Error?.Description, newest is null ? null : new BackupFile(newest.Name, newest.Length, backups.CreatedUtc(newest.Name)),
+                        backups.CopyProblem(s, newest)));
+                })
+                .RequirePermission(Permissions.BackupsManage).WithTags("Backups");
+            app.MapPut("/api/backups/settings", async (Command c, ICommandHandler<Command, Ok> h, CancellationToken ct) => (await h.Handle(c, ct)).ToHttp(_ => Results.NoContent()))
+                .RequirePermission(Permissions.BackupsManage).WithTags("Backups");
+            app.MapGet("/api/backups/warning", async (Backups backups, CancellationToken ct) => Results.Ok(new Warning((await backups.KeyAsync(ct)).Error?.Description)))
+                .RequirePermission(Permissions.BackupsManage).WithTags("Backups");
+        }
     }
 }

@@ -27,8 +27,8 @@
                         <Field Label="Nombre del negocio" Wide="true" Error="@Err("name")">
                             <input class="esc-input" maxlength="150" @bind="_business.Name" @bind:after='() => Clear("name")' aria-invalid="@Invalid("name")" />
                         </Field>
-                        <Field Label="RNC" Error="@Err("rnc")" Hint="9 u 11 números, sin guiones.">
-                            <input class="esc-input" inputmode="numeric" maxlength="11" @bind="_business.Rnc" @bind:after='() => Clear("rnc")' aria-invalid="@Invalid("rnc")" />
+                        <Field Label="RNC" Error="@Err("rnc")" Hint="@(_registryName is { } dgii ? $"En el padrón de la DGII: {dgii}" : "9 u 11 números, sin guiones.")">
+                            <input class="esc-input" inputmode="numeric" maxlength="11" @bind="_business.Rnc" @bind:after="RncChangedAsync" aria-invalid="@Invalid("rnc")" />
                         </Field>
                         <Field Label="Teléfono">
                             <input class="esc-input" maxlength="30" @bind="_business.Phone" />
@@ -181,6 +181,13 @@
                         <Field Label="Vence el">
                             <input class="esc-input" type="date" @bind="_seqExpires" />
                         </Field>
+                        <Field Label="Ambiente" Hint="Para cambiar de ambiente, cargue antes las secuencias del nuevo.">
+                            <select class="esc-select" @bind="_seqEnvironment">
+                                <option value="">El actual</option>
+                                <option value="CerteCF">Certificación (CerteCF)</option>
+                                <option value="eCF">Producción</option>
+                            </select>
+                        </Field>
                     </div>
                     <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary">Cargar secuencia</Button></div>
                 </div>
@@ -314,7 +321,12 @@
             <RolesSettings />
             break;
 
+        case Section.Health:
+            <HealthPanel />
+            break;
+
         case Section.Backups:
+            <BackupSettingsCard />
             <section class="esc-card esc-setting">
                 <div class="esc-setting__about"><h2>Frase de los respaldos</h2><p>Los respaldos se cifran con esta frase. Guárdela fuera de la PC: sin ella no se pueden restaurar.</p></div>
                 <div class="esc-setting__body">
@@ -451,7 +463,7 @@
 </Admin>
 
 @code {
-    private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, ScaleLabels, Users, Roles, Backups, Cloud, License }
+    private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, ScaleLabels, Users, Roles, Backups, Cloud, License, Health }
     private sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
     private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; }
 
@@ -470,6 +482,7 @@
         Section.Roles => "Roles y permisos",
         Section.Backups => "Respaldos",
         Section.Cloud => "Nube",
+        Section.Health => "Salud",
         _ => "Licencia",
     };
 
@@ -479,7 +492,7 @@
         Session.Can("fiscal.manage") ? Section.FiscalSequences : null, Session.Can("devices.manage") ? Section.Devices : null, Session.Can("settings.manage") ? Section.Hardware : null,
         Session.Can("settings.manage") ? Section.ScaleLabels : null,
         Session.Can("users.manage") ? Section.Users : null, Session.Can("users.manage") ? Section.Roles : null,
-        Session.Can("backups.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License,
+        Session.Can("backups.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License, Session.Can("settings.manage") ? Section.Health : null,
     }.OfType<Section>()];
 
     /// <summary>Configuración shows in the menu when any of its sections does (License alone is only informative).</summary>
@@ -522,6 +535,9 @@
     protected override Task OnInitializedAsync() => GoAsync(Requested switch
     {
         "fiscal" when Sections.Contains(Section.FiscalSequences) => Section.FiscalSequences,
+        "health" when Sections.Contains(Section.Health) => Section.Health,
+        "backups" when Sections.Contains(Section.Backups) => Section.Backups,
+        "business" when Sections.Contains(Section.Business) => Section.Business,
         "license" => Section.License, // the Resumen's "Comprar licencia" and "Quitar ejemplos" (TK-196/220)
         "cloud" when Sections.Contains(Section.Cloud) => Section.Cloud, // TK-233: "Solicitar acompañamiento" needs the cloud
         _ => Sections[0],
@@ -751,6 +767,17 @@
         ShowResult(r.Problem, $"{register.Name} ahora se llama {name}.");
     }
 
+    private string? _registryName, _seqEnvironment;
+
+    /// <summary>TK-238: the name the DGII registry (if loaded) has for the RNC typed, so a wrong digit shows before saving.</summary>
+    private async Task RncChangedAsync()
+    {
+        Clear("rnc");
+        _registryName = _business?.Rnc is { Length: 9 or 11 } rnc ? (await Api.GetAsync<TaxpayerName>($"/api/fiscal/taxpayers/{rnc}")).Value?.Name : null;
+    }
+
+    private sealed record TaxpayerName(string Rnc, string Name);
+
     private async Task LoadSequenceAsync()
     {
         _errors.Clear();
@@ -758,7 +785,7 @@
         if (!long.TryParse(_seqTo, out var to) || to <= 0) _errors["to"] = "Escriba el último número de la secuencia.";
         else if (from > 0 && to < from) _errors["to"] = "Debe ser mayor o igual que “Desde”.";
         if (_errors.Count > 0) return;
-        var r = await Api.PostAsync<Created>("/api/fiscal/sequences", new { Type = _seqType, From = from, To = to, ExpiresOn = _seqExpires });
+        var r = await Api.PostAsync<Created>("/api/fiscal/sequences", new { Type = _seqType, From = from, To = to, ExpiresOn = _seqExpires, Environment = _seqEnvironment is { Length: > 0 } env ? env : null });
         await GoAsync(Section.FiscalSequences);
         ShowResult(r.Problem?.Code == "Fiscal.OverlappingRange" ? r.Problem with { Message = "Ese rango se cruza con uno ya cargado." } : r.Problem, "Secuencia cargada.");
     }

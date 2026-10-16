@@ -34,6 +34,8 @@ internal sealed class Shift
     public int? ZNumber { get; set; }
     /// <summary>Head of the audit chain at the closing, as printed on the Z.</summary>
     public string? AuditChainHead { get; set; }
+    /// <summary>R8 #19, TK-238: blind counts with a difference sent without a supervisor. Kept here so a restart does not give fresh tries.</summary>
+    public int BlindMisses { get; set; }
     public int Version { get; set; }
 }
 

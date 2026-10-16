@@ -485,6 +485,24 @@ namespace Toki.Fiscal.Persistence.Migrations
                     b.ToTable("EcfDeliveries", "fiscal");
                 });
 
+            modelBuilder.Entity("Toki.Fiscal.FiscalModeSetting", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Environment")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Mode", "fiscal");
+                });
+
             modelBuilder.Entity("Toki.Fiscal.ReceivedDocument", b =>
                 {
                     b.Property<Guid>("Id")

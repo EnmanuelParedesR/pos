@@ -401,6 +401,13 @@
         if (Session.Can("products.manage") && (await Api.GetAsync<SampleDataStatus>("/api/inventory/sample-data")).Value is { Products: > 0 } sample)
             _alerts.Add(new("info", "package", $"Hay <b>{sample.Products}</b> productos de ejemplo",
                 "Sirven para probar la caja. Quítelos con un clic cuando cargue sus productos.", "Quitar ejemplos", "admin/settings?section=license"));
+        // TK-238: no backup without the passphrase; and the business data the first-run wizard left empty.
+        if (Session.Can("backups.manage") && (await Api.GetAsync<BackupWarning>("/api/backups/warning")).Value is { PassphraseProblem: { } backup })
+            _alerts.Add(new("error", "database", "Los respaldos <b>no se están haciendo</b>", backup, "Configurar respaldos", "admin/settings?section=backups"));
+        if (Session.Can("settings.manage") && (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value is { } b
+            && (b.Name == "Mi tienda" || string.IsNullOrWhiteSpace(b.Rnc) || string.IsNullOrWhiteSpace(b.Address)))
+            _alerts.Add(new("info", "receipt", "Complete los datos del negocio",
+                "El nombre, el RNC y la dirección salen en cada factura; sin RNC no se emiten comprobantes fiscales.", "Completar datos", "admin/settings?section=business"));
         _loading = false;
     }
 

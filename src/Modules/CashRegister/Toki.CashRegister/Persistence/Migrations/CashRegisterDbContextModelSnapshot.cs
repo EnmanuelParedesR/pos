@@ -119,6 +119,9 @@ namespace Toki.CashRegister.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<int>("BlindMisses")
+                        .HasColumnType("int");
+
                     b.Property<string>("CashCount")
                         .HasMaxLength(8000)
                         .HasColumnType("nvarchar(max)");

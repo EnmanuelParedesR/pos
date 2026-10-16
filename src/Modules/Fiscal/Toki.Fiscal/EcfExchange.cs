@@ -126,7 +126,7 @@ internal sealed class EcfDeliveryQueue(FiscalDbContext db, IEcfProvider provider
 
     public async Task<int> ProcessAsync(CancellationToken ct)
     {
-        if (provider is not DgiiClient dgii) return 0; // simulated: nothing leaves the store
+        if (((provider as ModeEcfProvider)?.Dgii ?? provider as DgiiClient) is not { } dgii) return 0; // simulated: nothing leaves the store
         var now = clock.GetUtcNow().UtcDateTime;
         var deliveries = db.Set<EcfDelivery>();
         // R9 #19: only 31 accepted within the delivery window. When the update that brings TK-153 arrives, the old ones are not handed out.
@@ -305,15 +305,16 @@ internal sealed class ReceivedDocumentsPuller(FiscalDbContext db, ICloudClient c
     }
 }
 
-/// <summary>Every <c>Fiscal:SubmitIntervalSeconds</c> (30) when <c>Fiscal:AutoSubmit</c> is true: the 31 deliveries and the pull of received e-CF.</summary>
-internal sealed class EcfExchangeWorker(IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<EcfExchangeWorker> log) : BackgroundService
+/// <summary>Every <c>Fiscal:SubmitIntervalSeconds</c> (30) while <see cref="FiscalMode.AutoSubmit"/> is true: the 31 deliveries and the pull of received e-CF.</summary>
+internal sealed class EcfExchangeWorker(IServiceScopeFactory scopes, IConfiguration config, FiscalMode mode, TimeProvider clock, ILogger<EcfExchangeWorker> log)
+    : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!config.GetValue<bool>("Fiscal:AutoSubmit")) return;
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(config.GetValue("Fiscal:SubmitIntervalSeconds", 30)), clock);
         do
         {
+            if (!mode.AutoSubmit) continue;
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
