@@ -24,6 +24,8 @@
             </Notice>
         }
 
+        <EcfConditionalNotice />
+
         <section class="esc-card" aria-label="Cola de envío">
             <div class="esc-stats">
                 <div class="esc-stat">
@@ -100,6 +102,7 @@
                                     {
                                         <Button class="esc-button esc-button--small" Disabled="_sending" OnClick="() => ReplaceAsync(d)">@(_confirming == d.Id ? "¿Reemplazar? Toque otra vez" : "Reemplazar")</Button>
                                     }
+                                    <EcfPrintedButton DocumentId="d.Id" />
                                 </td></tr>
                         }
                     </tbody>
@@ -159,6 +162,7 @@
         </form>
 
         @* TK-156, TK-157, TK-155, TK-221: health and contingency guide, paper series B, certification assistant, switching from another program. *@
+        <EcfDeliveriesPanel />
         <EcfHealthPanel @ref="_health" />
         <EcfContingencyPanel Changed="ContingencyChangedAsync" />
         <EcfCertificationPanel />

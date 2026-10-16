@@ -14,12 +14,12 @@ namespace Toki.IntegrationTests.Purchasing;
 /// <summary>TK-223 (cross with the DGII Excel of received documents) and TK-224 (purchase draft from the supplier invoice read by the cloud AI).</summary>
 public sealed class DgiiReconciliationTests(TokiApp app) : IClassFixture<TokiApp>
 {
-    private static readonly DateOnly Day = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-3);
+    internal static readonly DateOnly Day = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-3);
 
-    private static async Task<Guid> SupplierAsync(HttpClient c, string rnc) =>
+    internal static async Task<Guid> SupplierAsync(HttpClient c, string rnc) =>
         (await (await c.PostAsJsonAsync("/api/purchasing/suppliers", new { Name = "Suplidor " + rnc, Rnc = rnc, CreditDays = 0 })).Json()).GetProperty("id").GetGuid();
 
-    private static async Task<Guid> PostedPurchaseAsync(HttpClient c, Guid supplier, Guid product, string ncf, decimal cost)
+    internal static async Task<Guid> PostedPurchaseAsync(HttpClient c, Guid supplier, Guid product, string ncf, decimal cost)
     {
         var r = await c.PostAsJsonAsync("/api/purchasing/purchases", new
         {
@@ -132,6 +132,24 @@ public sealed class DgiiReconciliationTests(TokiApp app) : IClassFixture<TokiApp
         (await c.PostAsync($"/api/purchasing/purchases/{id}/post", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
         Status(await CrossAsync(c, file), "B0100000777").ShouldBe("Matched");
+    }
+
+    [Fact]
+    public async Task The_DGII_file_as_CSV_in_Windows_1252_with_semicolons_is_read_too()
+    {
+        var c = app.Client(await app.AdminAsync());
+        var csv = $"Consulta de comprobantes recibidos\r\nRNC Emisor;Razón Social Emisor;e-NCF / NCF;Fecha de Emisión;ITBIS Facturado;Monto Total;Estado\r\n"
+            + $"134000004;Lácteos del Este SRL;B0100004444;{Day:dd/MM/yyyy};18.00;118.00;Aceptado\r\n"
+            + $"134000004;Lácteos del Este SRL;B0100004445;{Day:dd/MM/yyyy};18.00;118.00;Anulado\r\n";
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        var file = Convert.ToBase64String(System.Text.Encoding.GetEncoding(1252).GetBytes(csv));
+
+        var cross = await CrossAsync(c, file);
+
+        cross.GetProperty("rows").GetInt32().ShouldBe(1);
+        var row = cross.GetProperty("items")[0];
+        (row.GetProperty("status").GetString(), row.GetProperty("name").GetString(), row.GetProperty("dgiiTotal").GetDecimal())
+            .ShouldBe(("Missing", "Lácteos del Este SRL", 118m));
     }
 
     [Fact]

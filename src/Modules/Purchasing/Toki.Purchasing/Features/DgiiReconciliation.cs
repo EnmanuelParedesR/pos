@@ -1,6 +1,6 @@
 using System.Globalization;
 using System.Text;
-using ClosedXML.Excel;
+using ExcelDataReader;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -17,34 +17,83 @@ using Toki.SharedKernel;
 namespace Toki.Purchasing.Features;
 
 /// <summary>TK-223: the Excel of received NCF / e-CF the owner downloads from the DGII Oficina Virtual. Columns are found by their header names,
-/// so their order and extra columns do not matter (assumed layout: docs/ecf-propio.md §11 #41).</summary>
+/// so their order and extra columns do not matter (assumed layout: docs/ecf-propio.md §11 #41). TK-240: as .xlsx, the old .xls or .csv (comma,
+/// semicolon or tab; UTF-8 or Windows-1252), told apart by their first bytes, all read with ExcelDataReader (MIT).</summary>
 internal static class DgiiReceivedFile
 {
     public sealed record Row(int Number, string Rnc, string? Name, string Ncf, DateOnly? Date, decimal? Total, decimal? Itbis);
 
     public static readonly Error Unreadable = Error.Validation("Purchasing.DgiiFileUnreadable",
-        "El archivo no parece el Excel de comprobantes recibidos de la DGII: necesita columnas con el RNC del emisor y el NCF. Si lo bajó como .xls o .csv, ábralo y guárdelo como .xlsx.");
+        "El archivo no parece el Excel de comprobantes recibidos de la DGII (.xlsx, .xls o .csv): necesita columnas con el RNC del emisor y el NCF. "
+        + "Si la Oficina Virtual lo bajó en otro formato, ábralo en Excel y guárdelo como .xlsx.");
+
+    /// <summary>A non-empty line of a sheet: its number in the file (1 = first) and its cells (string, double, DateTime or null).</summary>
+    private sealed record Line(int Number, object?[] Cells)
+    {
+        public object? Cell(int column) => column <= Cells.Length ? Cells[column - 1] : null;
+
+        public string Text(int column) => Cell(column) switch
+        {
+            null => "",
+            double d => d.ToString(CultureInfo.InvariantCulture),
+            DateTime t => t.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture),
+            var v => v.ToString()?.Trim() ?? "",
+        };
+    }
+
+    static DgiiReceivedFile() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); // .xls and Windows-1252 CSV
 
     public static Result<IReadOnlyList<Row>> Read(byte[] file)
     {
         try
         {
-            using var book = new XLWorkbook(new MemoryStream(file));
-            foreach (var sheet in book.Worksheets)
+            foreach (var lines in Sheets(file))
             {
-                var last = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
-                var rows = sheet.RowsUsed().ToList();
                 // The OFV puts a title or the period above the header: look for it in the first rows.
-                foreach (var header in rows.Take(15))
+                foreach (var header in lines.Take(15))
                 {
-                    var names = Enumerable.Range(1, last).Select(c => Normalize(header.Cell(c).GetString())).ToList();
+                    var names = Enumerable.Range(1, header.Cells.Length).Select(c => Normalize(header.Text(c))).ToList();
                     if (Columns.Find(names) is not { } cols) continue;
-                    return rows.Where(r => r.RowNumber() > header.RowNumber()).Select(r => cols.Read(r)).OfType<Row>().ToList();
+                    return lines.Where(r => r.Number > header.Number).Select(cols.Read).OfType<Row>().ToList();
                 }
             }
         }
         catch (Exception e) when (e is not OutOfMemoryException) { }
         return Unreadable;
+    }
+
+    private static List<List<Line>> Sheets(byte[] file)
+    {
+        using var stream = new MemoryStream(file);
+        using var reader = file is [0x50, 0x4B, ..] or [0xD0, 0xCF, 0x11, 0xE0, ..] // .xlsx (zip) or .xls (OLE)
+            ? ExcelReaderFactory.CreateReader(stream)
+            : ExcelReaderFactory.CreateCsvReader(stream, new ExcelReaderConfiguration
+            {
+                FallbackEncoding = IsUtf8(file) ? Encoding.UTF8 : Encoding.GetEncoding(1252),
+                AutodetectSeparators = [',', ';', '\t', '|'],
+            });
+        var sheets = new List<List<Line>>();
+        do
+        {
+            var lines = new List<Line>();
+            for (var number = 1; reader.Read(); number++)
+            {
+                var cells = Enumerable.Range(0, reader.FieldCount).Select(reader.GetValue).ToArray();
+                if (cells.Any(c => c?.ToString()?.Trim() is { Length: > 0 })) lines.Add(new Line(number, cells));
+            }
+            sheets.Add(lines);
+        } while (reader.NextResult());
+        return sheets;
+    }
+
+    private static bool IsUtf8(byte[] file)
+    {
+        try
+        {
+            _ = new UTF8Encoding(false, true).GetString(file);
+            return true;
+        }
+        catch (DecoderFallbackException) { return false; }
     }
 
     /// <summary>Lower case, no accents, letters and digits only: "Fecha de Emisión" → "fechadeemision", "e-NCF" → "encf".</summary>
@@ -78,29 +127,32 @@ internal static class DgiiReceivedFile
         }
 
         /// <summary>Null for a blank line, a total line or a document the DGII lists as voided or rejected.</summary>
-        public Row? Read(IXLRow r)
+        public Row? Read(Line r)
         {
-            var ncf = r.Cell(Ncf).GetString().Trim().ToUpperInvariant();
-            var rnc = SharedKernel.Rnc.Normalize(r.Cell(Rnc).GetString());
+            var ncf = r.Text(Ncf).ToUpperInvariant();
+            var rnc = SharedKernel.Rnc.Normalize(r.Text(Rnc));
             if (!Domain.Ncf.IsValid(ncf) || !SharedKernel.Rnc.IsValid(rnc)) return null;
-            if (Status is { } s && Normalize(r.Cell(s).GetString()) is var status && (status.Contains("anul") || status.Contains("rechaz"))) return null;
-            return new Row(r.RowNumber(), rnc!, Name is { } n && r.Cell(n).GetString().Trim() is { Length: > 0 } name ? name : null, ncf,
+            if (Status is { } s && Normalize(r.Text(s)) is var status && (status.Contains("anul") || status.Contains("rechaz"))) return null;
+            return new Row(r.Number, rnc!, Name is { } n && r.Text(n) is { Length: > 0 } name ? name : null, ncf,
                 Date is { } d ? DateOf(r.Cell(d)) : null, Total is { } t ? Amount(r.Cell(t)) : null, Itbis is { } i ? Amount(r.Cell(i)) : null);
         }
     }
 
     private static readonly string[] DateFormats = ["dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd", "dd-MM-yyyy", "d-M-yyyy", "yyyyMMdd"];
 
-    private static DateOnly? DateOf(IXLCell cell)
+    private static DateOnly? DateOf(object? cell) => cell switch
     {
-        if (cell.Value.IsDateTime) return DateOnly.FromDateTime(cell.Value.GetDateTime());
-        var text = cell.GetString().Trim().Split(' ')[0];
-        return DateOnly.TryParseExact(text, DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null;
-    }
+        DateTime t => DateOnly.FromDateTime(t),
+        null => null,
+        var v => DateOnly.TryParseExact(v.ToString()!.Trim().Split(' ')[0], DateFormats, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null,
+    };
 
-    private static decimal? Amount(IXLCell cell) =>
-        cell.Value.IsNumber ? Math.Round((decimal)cell.Value.GetNumber(), 2)
-        : decimal.TryParse(cell.GetString().Replace("RD$", "").Replace(",", "").Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var n) ? n : null;
+    private static decimal? Amount(object? cell) => cell switch
+    {
+        double d => Math.Round((decimal)d, 2),
+        null => null,
+        var v => decimal.TryParse(v.ToString()!.Replace("RD$", "").Replace(",", "").Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var n) ? n : null,
+    };
 }
 
 /// <summary>TK-223: crosses the DGII Excel with the purchases and expenses in Toki: what the DGII has that Toki does not (missing), what is in both with

@@ -102,6 +102,7 @@ internal static class EcfExchange
         services.AddSingleton<ReceiverDirectoryCache>();
         services.AddScoped<EcfDeliveryQueue>();
         services.AddScoped<ReceivedDocumentsPuller>();
+        services.AddScoped<ISupplierEcfs, SupplierEcfs>(); // TK-240: Compras reads the received e-CF
         services.AddHttpClient(EcfDeliveryQueue.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddHostedService<EcfExchangeWorker>();
     }

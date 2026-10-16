@@ -30,7 +30,7 @@ public sealed record PurchaseDetailLine(Guid ProductId, Guid? PresentationId, st
     decimal Subtotal, decimal Itbis);
 public sealed record PurchaseDetail(Guid Id, long Number, Guid SupplierId, string SupplierName, string Ncf, DateOnly InvoiceDate, PaymentTerms Terms,
     SupplierPaymentMethod? Method, DateOnly? DueDate, Guid? WarehouseId, string Status, decimal Subtotal, decimal Itbis, decimal Total, string? Notes,
-    string? VoidReason, PurchaseDetailLine[] Lines);
+    string? VoidReason, PurchaseDetailLine[] Lines, string? AttachmentName = null);
 
 public sealed record Expense(Guid Id, Guid SupplierId, string SupplierName, string? SupplierRnc, string Ncf, DateOnly Date, string Description, ExpenseType Type,
     PaymentTerms Terms, SupplierPaymentMethod? Method, DateOnly? DueDate, decimal Subtotal, decimal Itbis, decimal Total, bool IsVoided, string? VoidReason);
@@ -64,7 +64,7 @@ public sealed record SupplierFound(Guid Id, string Name);
 /// <summary>TK-224: the supplier invoice as the AI read it, checked by the store. Nothing is saved until the person saves the purchase.</summary>
 public sealed record InvoiceLineRead(string Description, decimal? Quantity, decimal? UnitCost, ItbisRate? ItbisRate, Guid? ProductId, string? ProductName);
 public sealed record InvoiceRead(Guid? SupplierId, string? SupplierRnc, string? SupplierName, string? Ncf, DateOnly? Date, InvoiceLineRead[] Lines,
-    decimal? Subtotal, decimal? Itbis, decimal? Total, decimal Confidence, string[] Warnings);
+    decimal? Subtotal, decimal? Itbis, decimal? Total, decimal Confidence, string[] Warnings, string? Source = null);
 
 /// <summary>What is owed to a supplier by days overdue (from /api/reports/payables).</summary>
 public sealed record SupplierPayable(Guid SupplierId, string Supplier, decimal NotYetDue, decimal Overdue1To30, decimal Overdue31To60, decimal Overdue61To90,

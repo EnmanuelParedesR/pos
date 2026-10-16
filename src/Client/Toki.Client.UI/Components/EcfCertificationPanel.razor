@@ -53,7 +53,23 @@
 
     <h3 class="esc-card__title">Simulación (paso 5)</h3>
     <p class="esc-muted">Con el ambiente en Certificación, venda en la caja como un día normal (cada tipo de comprobante que use). @(_state?.Simulation is { } sim ? $"Aceptados: {sim.Accepted} · rechazados: {sim.Rejected} · esperando: {sim.Waiting}." : "")
-        El PDF de cada comprobante para el paso 6 está pendiente (TK-148); las URL de recepción y aprobación de la tienda llegan con el servicio de la nube (TK-152).</p>
+        Para el paso 6, descargue la representación impresa de cada comprobante, ábrala y use "Imprimir o guardar como PDF".</p>
+    @if (_simulation.Count > 0)
+    {
+        <div class="esc-table-wrap">
+            <table class="esc-table" aria-label="Comprobantes de la simulación">
+                <thead><tr><th>e-NCF</th><th>Estado</th><th><span class="esc-visually-hidden">Representación impresa</span></th></tr></thead>
+                <tbody>
+                    @foreach (var d in _simulation)
+                    {
+                        var (text, pill) = Names.EcfStatus(d.Status);
+                        <tr><td>@d.ENcf<span class="esc-table__sub esc-muted">@Names.DocumentType(d.Type)</span></td><td><span class="esc-pill esc-pill--@pill">@text</span></td>
+                            <td class="esc-num"><EcfPrintedButton DocumentId="d.Id" /></td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
 
     <h3 class="esc-card__title">Firmar archivo de la DGII (pasos 2 y 11)</h3>
     <p class="esc-muted">El portal entrega un XML para firmar (postulación, declaración jurada). Elíjalo, revise que es el correcto y fírmelo con el certificado de la tienda; luego súbalo al portal.</p>
@@ -85,7 +101,7 @@
         new("Pruebas de datos e-CF (set de pruebas)", "Toki", "Suba el Excel del portal"),
         new("Pruebas de aprobaciones comerciales", "Toki", "Pendiente: llega con el servicio de la nube (TK-152)"),
         new("Simulación con datos reales", "Toki", "Ventas normales con el ambiente en CerteCF"),
-        new("Subir el PDF de cada comprobante de la simulación", "Dueño", "PDF pendiente (TK-148)"),
+        new("Subir el PDF de cada comprobante de la simulación", "Dueño", "Descargue cada uno en \"Simulación\" aquí abajo y guárdelo como PDF"),
         new("Confirmar las URL de prueba", "Dueño", "Recepción y aprobación comercial de la tienda"),
         new("Comunicación: la DGII envía e-CF y espera el acuse", "Nube de Toki", "Pendiente (TK-152)"),
         new("Comunicación: aprobaciones comerciales", "Nube de Toki", "Pendiente (TK-152)"),
@@ -103,7 +119,14 @@
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
-    private async Task LoadAsync() => _state = (await Api.GetAsync<CertificationState>("/api/fiscal/certification")).Value ?? _state;
+    private List<EcfDocument> _simulation = [];
+
+    private async Task LoadAsync()
+    {
+        _state = (await Api.GetAsync<CertificationState>("/api/fiscal/certification")).Value ?? _state;
+        // TK-240: the e-CF signed in CerteCF are the simulation whose printed representation the portal asks for (step 6).
+        _simulation = (await Api.GetAsync<List<EcfDocument>>("/api/fiscal/documents?environment=CerteCF&last=50")).Value ?? [];
+    }
 
     private void Show(Problem? p, string success) => (_error, _message) = (p is not null, p?.Message ?? success);
 

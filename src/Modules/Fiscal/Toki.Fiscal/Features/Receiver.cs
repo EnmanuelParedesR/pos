@@ -170,11 +170,6 @@ internal static class ReceivedDocuments
                 if (answer.IsFailure) return EndpointExtensions.Problem(answer.Error!);
                 return (await record.Handle(new Recorded(id, answer.Value), ct)).ToHttp();
             }).RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");
-
-            app.MapGet("/api/fiscal/deliveries", async (FiscalDbContext db, CancellationToken ct) =>
-                    Results.Ok(await db.Set<EcfDelivery>().AsNoTracking().OrderByDescending(d => d.CreatedUtc).Take(100)
-                        .Select(d => new { d.ENcf, d.BuyerRnc, Status = d.Status.ToString(), d.Attempts, d.CreatedUtc, d.DeliveredUtc, d.Message }).ToListAsync(ct)))
-                .RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");
         }
     }
 }

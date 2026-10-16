@@ -176,6 +176,10 @@ namespace Toki.Purchasing.Persistence.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Number"));
 
+                    b.Property<string>("AttachmentName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -264,6 +268,34 @@ namespace Toki.Purchasing.Persistence.Migrations
                         .HasFilter("[Status] <> 'Voided' AND [Ncf] <> ''");
 
                     b.ToTable("Purchases", "purchasing");
+                });
+
+            modelBuilder.Entity("Toki.Purchasing.Domain.PurchaseFile", b =>
+                {
+                    b.Property<Guid>("PurchaseId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.HasKey("PurchaseId");
+
+                    b.ToTable("PurchaseFiles", "purchasing");
                 });
 
             modelBuilder.Entity("Toki.Purchasing.Domain.PurchaseLine", b =>

@@ -1,6 +1,8 @@
 @page "/admin/purchasing"
 @inject TokiApi Api
 @inject Session Session
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
 <Admin Title="Compras" Subtitle="Mercancía que entra con factura. Al recibirla sube la existencia y se actualiza el costo promedio.">
     <Actions>
@@ -8,7 +10,7 @@
         @* TK-224: the invoice goes to the cloud's AI; the answer only fills the form. *@
         <label class="esc-button" style="cursor:pointer" title="Sube el PDF o la foto de la factura y llena el formulario. Usted revisa antes de guardar.">
             <Icon Name="sparkles" /> @(_reading ? "Leyendo factura…" : "Leer factura con IA")
-            <Microsoft.AspNetCore.Components.Forms.InputFile style="display:none" accept=".pdf,.jpg,.jpeg,.png,.webp" OnChange="ReadInvoiceAsync" disabled="@_reading" />
+            <Microsoft.AspNetCore.Components.Forms.InputFile style="display:none" accept=".pdf,.jpg,.jpeg,.png,.webp,.xml" OnChange="ReadInvoiceAsync" disabled="@_reading" />
         </label>
         <Button Variant="Button.Variants.Primary" OnClick="NewAsync"><Icon Name="plus" /> Nueva compra</Button>
     </Actions>
@@ -68,7 +70,7 @@
                 <ChildContent>
                     @if (f.Review.Count > 0)
                     {
-                        <Notice Kind="Notice.Kinds.Warning" Title="Leída con IA: compare todo con la factura antes de guardar">
+                        <Notice Kind="Notice.Kinds.Warning" Title="@(f.FromEcf ? "Tomada del e-CF del suplidor: elija los productos que falten antes de guardar" : "Leída con IA: compare todo con la factura antes de guardar")">
                             <ul style="margin:0;padding-left:18px">@foreach (var w in f.Review) { <li>@w</li> }</ul>
                         </Notice>
                     }
@@ -164,6 +166,10 @@
                         <dt>Total</dt><dd class="totals__grand">@Format.WithCurrency(d.Total)</dd>
                     </dl>
                     @if (d.Notes is { Length: > 0 }) { <p class="esc-muted">@d.Notes</p> }
+                    @if (d.AttachmentName is { } attached)
+                    {
+                        <p><Button class="esc-button esc-button--small" OnClick="() => DownloadAttachmentAsync(d)">Factura original (@attached)</Button></p>
+                    }
                     @if (_voiding)
                     {
                         <Field Label="¿Por qué se anula? *" Hint="La mercancía sale del inventario. No se puede si ya tiene pagos.">
@@ -206,7 +212,13 @@
         public List<LineForm> Lines = [];
         /// <summary>What to check after the AI read the invoice (TK-224).</summary>
         public List<string> Review = [];
+        /// <summary>TK-240: filled from the supplier's e-CF (exact) instead of the AI.</summary>
+        public bool FromEcf;
+        /// <summary>TK-240: the uploaded invoice, attached to the purchase when it is saved.</summary>
+        public (byte[] Content, string ContentType, string Name)? Original;
     }
+
+    [SupplyParameterFromQuery(Name = "fromEcf")] public Guid? FromReceived { get; set; }
 
     private List<PurchaseSummary>? _purchases;
     private List<Supplier> _suppliers = [];
@@ -218,7 +230,15 @@
     private bool _sending, _voiding, _reading;
     private readonly Dictionary<string, string> _errors = [];
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        // TK-240: "Registrar compra" on a received e-CF opens the form filled from it.
+        if (FromReceived is not { } id) return;
+        var r = await Api.PostAsync<InvoiceRead>("/api/purchasing/purchases/from-ecf", new { ReceivedId = id });
+        if (r.Value is { } read) await FillAsync(read, null);
+        else _readError = r.Problem?.Message;
+    }
 
     private async Task ChangePeriodAsync(string period)
     {
@@ -278,13 +298,19 @@
         }
         catch (IOException) { _readError = "La factura pasa de 4 MB: tome la foto con menos resolución."; return; }
         (_reading, _readError) = (true, null);
+        var type = e.File.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ? "application/xml" : e.File.ContentType;
         var r = await Api.PostAsync<InvoiceRead>("/api/purchasing/purchases/read-invoice",
-            new { File = Convert.ToBase64String(copy.ToArray()), e.File.ContentType, FileName = e.File.Name }, TimeSpan.FromSeconds(90));
+            new { File = Convert.ToBase64String(copy.ToArray()), ContentType = type, FileName = e.File.Name }, TimeSpan.FromSeconds(90));
         _reading = false;
         if (r.Value is not { } read) { _readError = r.Problem?.Message; return; }
+        await FillAsync(read, (copy.ToArray(), type, e.File.Name));
+    }
 
+    private async Task FillAsync(InvoiceRead read, (byte[] Content, string ContentType, string Name)? original)
+    {
         await NewAsync();
         var f = _editing!;
+        (f.FromEcf, f.Original) = (read.Source == "ecf", original);
         (f.SupplierId, f.Ncf, f.InvoiceTotal) = (read.SupplierId, read.Ncf, read.Total is { } t ? AdminNames.Number(t) : null);
         if (read.Date is { } date) f.Date = date;
         f.Lines.AddRange(read.Lines.Where(l => l.ProductId is not null).Select(l => new LineForm
@@ -341,6 +367,19 @@
             return;
         }
         f.Saved = true;
+        // TK-240: the original invoice goes with the purchase, once.
+        if (f.Original is { } o)
+        {
+            var attached = await Api.PutAsync<Empty>($"/api/purchasing/purchases/{f.Id}/attachment",
+                new { File = Convert.ToBase64String(o.Content), o.ContentType, FileName = o.Name });
+            if (attached.Problem is { } notAttached)
+            {
+                _sending = false;
+                _error = $"Se guardó el borrador, pero no se pudo adjuntar la factura: {notAttached.Message}";
+                return;
+            }
+            f.Original = null;
+        }
         if (post && (await Api.PostAsync<Empty>($"/api/purchasing/purchases/{f.Id}/post")).Problem is { } notPosted)
         {
             _sending = false;
@@ -362,6 +401,13 @@
         if (r.Problem is { } p) { _error = p.Message; return; }
         (_editing, _notice) = (null, "Borrador descartado.");
         await LoadAsync();
+    }
+
+    private async Task DownloadAttachmentAsync(PurchaseDetail d)
+    {
+        var file = await Api.GetAsync<FileDownload>($"/api/purchasing/purchases/{d.Id}/attachment");
+        if (file.Value is { } f) await JS.InvokeVoidAsync("escuadra.download", f.FileName, f.ContentType, f.Content);
+        else _error = file.Problem?.Message;
     }
 
     private async Task VoidAsync(PurchaseDetail d)

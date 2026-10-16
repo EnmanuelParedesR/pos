@@ -8,6 +8,7 @@
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.Xml" />
     <PackageReference Include="ClosedXML" />
+    <PackageReference Include="QRCoder" />
     <EmbeddedResource Include="Schemas\*.xsd" LogicalName="Toki.Fiscal.Schemas.%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>

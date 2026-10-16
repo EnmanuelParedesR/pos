@@ -1,0 +1,17 @@
+@inject TokiApi Api
+
+@* TK-147/TK-240: e-CF the DGII accepted with conditions. Valid, nothing to replace; the owner reads why to fix it in the next invoices. *@
+@if (_rows.Count > 0)
+{
+    <Notice Kind="Notice.Kinds.Warning" Title="@($"La DGII aceptó {_rows.Count} {(_rows.Count == 1 ? "comprobante" : "comprobantes")} con observaciones")">
+        <p>Son válidos y no hay que reemplazarlos. Corrija lo que indica la DGII para las próximas facturas.</p>
+        <ul style="margin:0;padding-left:18px">@foreach (var d in _rows) { <li><b>@d.ENcf</b> (@Format.Date(d.SignedUtc)): @(d.DgiiMessages ?? "sin mensaje")</li> }</ul>
+    </Notice>
+}
+
+@code {
+    private List<EcfDocument> _rows = [];
+
+    protected override async Task OnInitializedAsync() =>
+        _rows = (await Api.GetAsync<List<EcfDocument>>("/api/fiscal/documents?conditionalOnly=true&last=10")).Value ?? [];
+}
