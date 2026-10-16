@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Toki.BuildingBlocks.Persistence;
 using Toki.Fiscal.Contracts;
 using Toki.SharedKernel;
 
@@ -135,6 +136,7 @@ internal sealed class OperationsConfiguration : IEntityTypeConfiguration<EcfCont
         b.HasIndex(d => d.Ncf).IsUnique();
         b.Property(d => d.Type).HasConversion<int>();
         b.Property(d => d.RegularizedByENcf).HasMaxLength(13);
+        b.Property(d => d.Data).HasMaxLength(ModuleDbContext.LongText); // the whole document as JSON: lines included, far over the 200 default
     }
 
     public void Configure(EntityTypeBuilder<CertificationStep> b)

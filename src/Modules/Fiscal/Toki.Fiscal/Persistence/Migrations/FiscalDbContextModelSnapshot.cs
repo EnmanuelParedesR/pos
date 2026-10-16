@@ -350,8 +350,8 @@ namespace Toki.Fiscal.Persistence.Migrations
 
                     b.Property<string>("Data")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime>("IssuedUtc")
                         .HasColumnType("datetime2");
