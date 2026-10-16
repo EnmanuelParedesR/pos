@@ -52,6 +52,19 @@ public sealed record SuggestedLine(Guid ProductId, string Product, UnitOfMeasure
 /// <param name="Subtotal">Null (and every LastCost) without costs.view.</param>
 public sealed record SuggestedGroup(Guid? SupplierId, string? Supplier, SuggestedLine[] Lines, decimal? Subtotal);
 
+/// <summary>TK-223: one row of the cross with the DGII Excel. Status: Matched, Missing, Difference, Duplicate or OnlyInToki.</summary>
+public sealed record DgiiMatch(string Status, int? Row, string Rnc, string? Name, string Ncf, DateOnly? Date, decimal? DgiiTotal, decimal? DgiiItbis,
+    string? DocumentType, Guid? DocumentId, string? DocumentStatus, decimal? TokiTotal, decimal? TokiItbis, Guid? SupplierId);
+public sealed record DgiiCross(int Rows, int Matched, int Missing, int Differences, int Duplicates, int OnlyInToki, DgiiMatch[] Items);
+public sealed record DraftFromDgii(string Rnc, string? Name, string Ncf, DateOnly Date, decimal Total, decimal Itbis);
+public sealed record DraftFromDgiiCreated(Guid PurchaseId, Guid SupplierId, string Supplier);
+public sealed record SupplierFound(Guid Id, string Name);
+
+/// <summary>TK-224: the supplier invoice as the AI read it, checked by the store. Nothing is saved until the person saves the purchase.</summary>
+public sealed record InvoiceLineRead(string Description, decimal? Quantity, decimal? UnitCost, ItbisRate? ItbisRate, Guid? ProductId, string? ProductName);
+public sealed record InvoiceRead(Guid? SupplierId, string? SupplierRnc, string? SupplierName, string? Ncf, DateOnly? Date, InvoiceLineRead[] Lines,
+    decimal? Subtotal, decimal? Itbis, decimal? Total, decimal Confidence, string[] Warnings);
+
 /// <summary>What is owed to a supplier by days overdue (from /api/reports/payables).</summary>
 public sealed record SupplierPayable(Guid SupplierId, string Supplier, decimal NotYetDue, decimal Overdue1To30, decimal Overdue31To60, decimal Overdue61To90,
     decimal OverdueOver90, decimal Total);

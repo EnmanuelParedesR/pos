@@ -17,7 +17,12 @@ namespace Toki.Host.Cloud.Assistant;
 public sealed record ChatToolCall(string Id, string Name, string Arguments);
 
 /// <param name="Role">system, user, assistant or tool.</param>
-public sealed record ChatMessage(string Role, string? Content, IReadOnlyList<ChatToolCall>? ToolCalls = null, string? ToolCallId = null);
+/// <param name="Attachments">Files a user message carries (TK-224: the supplier's invoice as an image or a PDF).</param>
+public sealed record ChatMessage(string Role, string? Content, IReadOnlyList<ChatToolCall>? ToolCalls = null, string? ToolCallId = null,
+    IReadOnlyList<ChatAttachment>? Attachments = null);
+
+/// <param name="ContentType">image/jpeg, image/png, image/webp or application/pdf.</param>
+public sealed record ChatAttachment(string ContentType, byte[] Data, string FileName);
 
 /// <param name="Parameters">JSON schema of the arguments.</param>
 public sealed record ChatTool(string Name, string Description, JsonObject Parameters);
@@ -75,6 +80,13 @@ internal sealed class AzureOpenAIChatModel(HttpClient http, AzureOpenAIOptions o
     private static JsonNode ToWire(ChatMessage m)
     {
         var o = new JsonObject { ["role"] = m.Role, ["content"] = m.Content };
+        if (m.Attachments is { Count: > 0 })
+            o["content"] = new JsonArray([
+                new JsonObject { ["type"] = "text", ["text"] = m.Content ?? "" },
+                .. m.Attachments.Select(a => (JsonNode)(a.ContentType == "application/pdf"
+                    ? new JsonObject { ["type"] = "file", ["file"] = new JsonObject { ["filename"] = a.FileName, ["file_data"] = DataUrl(a) } }
+                    : new JsonObject { ["type"] = "image_url", ["image_url"] = new JsonObject { ["url"] = DataUrl(a) } })),
+            ]);
         if (m.ToolCallId is not null) o["tool_call_id"] = m.ToolCallId;
         if (m.ToolCalls is { Count: > 0 })
             o["tool_calls"] = new JsonArray([.. m.ToolCalls.Select(c => (JsonNode)new JsonObject
@@ -83,6 +95,8 @@ internal sealed class AzureOpenAIChatModel(HttpClient http, AzureOpenAIOptions o
             })]);
         return o;
     }
+
+    private static string DataUrl(ChatAttachment a) => $"data:{a.ContentType};base64,{Convert.ToBase64String(a.Data)}";
 }
 
 public sealed record AssistantTurn(string? Role, string? Content);

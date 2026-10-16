@@ -5,6 +5,11 @@
 <Admin Title="Compras" Subtitle="Mercancía que entra con factura. Al recibirla sube la existencia y se actualiza el costo promedio.">
     <Actions>
         <Segmented Label="Periodo" Options="Periods.Options" Value="@_period" ValueChanged="ChangePeriodAsync" />
+        @* TK-224: the invoice goes to the cloud's AI; the answer only fills the form. *@
+        <label class="esc-button" style="cursor:pointer" title="Sube el PDF o la foto de la factura y llena el formulario. Usted revisa antes de guardar.">
+            <Icon Name="sparkles" /> @(_reading ? "Leyendo factura…" : "Leer factura con IA")
+            <Microsoft.AspNetCore.Components.Forms.InputFile style="display:none" accept=".pdf,.jpg,.jpeg,.png,.webp" OnChange="ReadInvoiceAsync" disabled="@_reading" />
+        </label>
         <Button Variant="Button.Variants.Primary" OnClick="NewAsync"><Icon Name="plus" /> Nueva compra</Button>
     </Actions>
     <ChildContent>
@@ -12,6 +17,10 @@
         @if (_notice is not null)
         {
             <Notice Kind="Notice.Kinds.Success" Title="@_notice" />
+        }
+        @if (_readError is not null)
+        {
+            <Notice Title="@_readError" />
         }
         @if (_purchases is { Count: > 0 })
         {
@@ -57,6 +66,12 @@
         {
             <Dialog Title="@(f.Number is { } n ? $"Compra #{n} (borrador)" : "Nueva compra")" Subtitle="Copie la factura del suplidor. Los costos van sin ITBIS." Wide="true" OnClose="() => _editing = null">
                 <ChildContent>
+                    @if (f.Review.Count > 0)
+                    {
+                        <Notice Kind="Notice.Kinds.Warning" Title="Leída con IA: compare todo con la factura antes de guardar">
+                            <ul style="margin:0;padding-left:18px">@foreach (var w in f.Review) { <li>@w</li> }</ul>
+                        </Notice>
+                    }
                     <SupplierFields Suppliers="_suppliers" @bind-SupplierId="f.SupplierId" @bind-Ncf="f.Ncf" @bind-Date="f.Date" Errors="_errors" />
                     @if (_warehouses.Count > 1)
                     {
@@ -189,6 +204,8 @@
         public Guid Id = Guid.CreateVersion7(); public long? Number; public bool Saved; public Guid? SupplierId; public string? Ncf, Warehouse, CreditDays, InvoiceTotal, Notes;
         public DateOnly Date = Format.Today; public PaymentTerms Terms = PaymentTerms.Credit; public SupplierPaymentMethod? Method = SupplierPaymentMethod.Cash;
         public List<LineForm> Lines = [];
+        /// <summary>What to check after the AI read the invoice (TK-224).</summary>
+        public List<string> Review = [];
     }
 
     private List<PurchaseSummary>? _purchases;
@@ -197,8 +214,8 @@
     private PurchaseForm? _editing;
     private PurchaseDetail? _shown;
     private string _period = "month";
-    private string? _message, _error, _notice, _voidReason;
-    private bool _sending, _voiding;
+    private string? _message, _error, _notice, _voidReason, _readError;
+    private bool _sending, _voiding, _reading;
     private readonly Dictionary<string, string> _errors = [];
 
     protected override Task OnInitializedAsync() => LoadAsync();
@@ -243,8 +260,43 @@
         {
             Id = d.Id, Number = d.Number, Saved = true, SupplierId = d.SupplierId, Ncf = d.Ncf, Date = d.InvoiceDate, Terms = d.Terms, Method = d.Method ?? SupplierPaymentMethod.Cash,
             Warehouse = (d.WarehouseId ?? _warehouses.Find(w => w.IsMain)?.Id)?.ToString(), Notes = d.Notes,
+            // A draft from the DGII Excel (TK-223) has the invoice total and no products yet.
+            InvoiceTotal = d.Lines.Length == 0 && d.Total > 0 ? AdminNames.Number(d.Total) : null,
             Lines = [.. d.Lines.Select(l => new LineForm { ProductId = l.ProductId, Name = l.Description, Quantity = AdminNames.Number(l.Quantity), Cost = AdminNames.Number(l.UnitCost), Rate = l.ItbisRate })],
         };
+    }
+
+    /// <summary>TK-224: the AI's reading fills a new purchase form; lines it could not match to a product are listed for the person to add.</summary>
+    private async Task ReadInvoiceAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        (_error, _notice) = (null, null);
+        using var copy = new MemoryStream();
+        try
+        {
+            await using var stream = e.File.OpenReadStream(4_000_000);
+            await stream.CopyToAsync(copy);
+        }
+        catch (IOException) { _readError = "La factura pasa de 4 MB: tome la foto con menos resolución."; return; }
+        (_reading, _readError) = (true, null);
+        var r = await Api.PostAsync<InvoiceRead>("/api/purchasing/purchases/read-invoice",
+            new { File = Convert.ToBase64String(copy.ToArray()), e.File.ContentType, FileName = e.File.Name }, TimeSpan.FromSeconds(90));
+        _reading = false;
+        if (r.Value is not { } read) { _readError = r.Problem?.Message; return; }
+
+        await NewAsync();
+        var f = _editing!;
+        (f.SupplierId, f.Ncf, f.InvoiceTotal) = (read.SupplierId, read.Ncf, read.Total is { } t ? AdminNames.Number(t) : null);
+        if (read.Date is { } date) f.Date = date;
+        f.Lines.AddRange(read.Lines.Where(l => l.ProductId is not null).Select(l => new LineForm
+        {
+            ProductId = l.ProductId!.Value, Name = l.ProductName ?? l.Description, Quantity = l.Quantity is { } q ? AdminNames.Number(q) : null,
+            Cost = l.UnitCost is { } c ? AdminNames.Number(c) : null, Rate = l.ItbisRate ?? ItbisRate.General18,
+        }));
+        f.Review = [
+            $"Proveedor leído: {read.SupplierName ?? "?"} (RNC {read.SupplierRnc ?? "?"}) · Total {(read.Total is { } total ? Format.WithCurrency(total) : "?")} · Seguridad {read.Confidence:P0}",
+            .. read.Warnings,
+            .. read.Lines.Where(l => l.ProductId is null).Select(l => $"Agregue: {l.Description} ({(l.Quantity is { } q ? AdminNames.Number(q) : "?")} × {(l.UnitCost is { } c ? Format.Amount(c) : "?")})"),
+        ];
     }
 
     /// <summary>Adds the product with its last cost and ITBIS; a product already in the list is not repeated.</summary>

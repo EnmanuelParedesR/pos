@@ -207,6 +207,13 @@ internal static class TaxpayerRegistry
     }
 }
 
+/// <summary>TK-223: a supplier found in the DGII Excel of received documents gets its name from the registry.</summary>
+internal sealed class TaxpayerNames(FiscalDbContext db) : Contracts.ITaxpayerRegistry
+{
+    public Task<string?> NameAsync(string rnc, CancellationToken ct) =>
+        db.Taxpayers.AsNoTracking().Where(t => t.Rnc == (Rnc.Normalize(rnc) ?? "")).Select(t => t.Name).FirstOrDefaultAsync(ct);
+}
+
 /// <summary>TK-162: one registry import at a time, off the request and in its own scope; the admin screen polls <see cref="Status"/>.</summary>
 internal sealed class TaxpayerImport(IServiceScopeFactory scopes, IHostApplicationLifetime life, IConfiguration config, TimeProvider clock,
     ILogger<TaxpayerImport> log)

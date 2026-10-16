@@ -85,8 +85,8 @@ Leyenda de Toki: ✅ hecho · 🔨 en curso · ⬜ planeado · — no previsto.
 | **Cambio desde otro emisor** | Documentado, sin recertificar ([certificación](https://glecf.com/certificacion/)) | — | ⬜ TK-221 |
 | **Aviso de vencimiento del certificado** | Muestra el vencimiento al subirlo ([certificación](https://glecf.com/certificacion/)) | ✅ Aviso a 30 días (TK-176) | ✅ |
 | **Avisos** | Notificación push aunque la app esté cerrada (rechazo de la DGII) y correo ([instalar](https://glecf.com/instalar/)) | ✅ Alertas en el Resumen y la barra de la caja | ⬜ TK-222 |
-| **Reportes fiscales** | 606, armado desde el Excel de comprobantes recibidos de la DGII y completado con el XML del suplidor ([ERP](https://glecf.com/erp/), [novedades](https://glecf.com/novedades)). 607 y 608 no se mencionan | ✅ 606, 607 y 608 | ⬜ Cruce con el Excel de la DGII (TK-223) |
-| **Compras desde la factura del suplidor** | Lectura con IA de PDF por lote, revisada por una persona ([IA](https://glecf.com/ia/)) | — | ⬜ TK-224 |
+| **Reportes fiscales** | 606, armado desde el Excel de comprobantes recibidos de la DGII y completado con el XML del suplidor ([ERP](https://glecf.com/erp/), [novedades](https://glecf.com/novedades)). 607 y 608 no se mencionan | ✅ 606, 607 y 608 | 🟡 Cruce con el Excel de la DGII (TK-223; falta confirmar el formato real) |
+| **Compras desde la factura del suplidor** | Lectura con IA de PDF por lote, revisada por una persona ([IA](https://glecf.com/ia/)) | — | 🟡 TK-224: un PDF o foto a la vez, revisada antes de guardar |
 | **Cotizaciones** | ✅ Con ahorro del cliente y descuento por línea ([novedades](https://glecf.com/novedades)) | ✅ TK-194 | ✅ |
 | **Usuarios y permisos** | Roles Administrador y Usuario ([ERP](https://glecf.com/erp/)); en Glé, siete interruptores por persona ([IA](https://glecf.com/ia/)) | ✅ Permisos por acción, roles de partida, nadie da lo que no tiene (TK-212 a TK-216) | ✅ |
 | **Auditoría** | Más de 40 tipos de evento con antes y después ([ERP](https://glecf.com/erp/)) | ✅ Encadenada por hash, verificada cada noche | ✅ |

@@ -62,6 +62,13 @@ public interface IFiscalReports
     Task<IReadOnlyList<Report608Row>> Report608Async(DateOnly from, DateOnly to, CancellationToken ct);
 }
 
+/// <summary>The DGII taxpayer registry the owner loaded (DGII_RNC.TXT): names by RNC or cédula.</summary>
+public interface ITaxpayerRegistry
+{
+    /// <summary>The registered name (razón social), or null when the RNC is not in the loaded registry.</summary>
+    Task<string?> NameAsync(string rnc, CancellationToken ct);
+}
+
 /// <summary>The legend the receipt of an e-CF issued in contingency carries (Decreto 587-24; DGII "Representación Impresa").</summary>
 public static class EcfReceiptTexts
 {

@@ -28,7 +28,8 @@ public static class SyncModule
     public static IServiceCollection AddSyncModule(this IServiceCollection services)
     {
         services.AddModuleDbContext<SyncDbContext>();
-        services.AddHttpClient(CloudClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(30));
+        // 60 s: reading a supplier invoice with the AI (TK-224) can take longer than an upload.
+        services.AddHttpClient(CloudClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddScoped<CloudClient>();
         services.AddScoped<ICloudClient>(sp => sp.GetRequiredService<CloudClient>());
         services.AddScoped<CloudUploader>();

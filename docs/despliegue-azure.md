@@ -48,6 +48,8 @@ Precios de pago por uso (GlobalStandard, eastus2, API pública de precios de Azu
 
 `gpt-5-nano` es un modelo de razonamiento: los tokens de razonamiento se cobran como salida. Con preguntas cortas del dueño igual sale en fracciones de centavo por pregunta. Necesita `api-version` `2025-04-01-preview` o más nueva (parámetro `openAiApiVersion`, va a `AzureOpenAI__ApiVersion`). Si algún día la factura del asistente sube, `gpt-4.1-nano` es el respaldo (mismo precio de salida, sin razonamiento).
 
+**Lectura de facturas de suplidores (TK-224).** El mismo despliegue `chat` lee el PDF o la foto que sube la tienda (`POST /ai/v1/supplier-invoice`, autenticado como el nodo; la nube no guarda el archivo). `gpt-5-nano` acepta imágenes y PDF como entrada: la foto va como `image_url` y el PDF como parte `file` (base64) de Chat Completions. Costo estimado por factura: ~1,500–6,000 tokens de entrada y ~1,000–5,000 de salida con el razonamiento, o sea **~US$0.001–0.003** (menos de RD$0.20). Pendiente (🟡): probar el PDF contra el despliegue real (la parte `file` en Azure puede exigir una `api-version` preview más nueva; si la rechaza, el plan B es mandar fotos) y subir la cuota de 10K tokens/min si varias tiendas leen facturas a la vez. Si `gpt-5-nano` dejara de aceptar imágenes, el modelo con visión más barato de la tabla es `gpt-4.1-nano`.
+
 ### Costo estimado al mes en reposo
 
 | Recurso | USD/mes |

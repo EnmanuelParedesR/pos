@@ -27,6 +27,7 @@ public static class FiscalModule
         services.AddScoped<FiscalDocuments>();
         services.AddSingleton<EcfCertificate>();
         services.AddScoped<IFiscalReports, FiscalReports>();
+        services.AddScoped<ITaxpayerRegistry, Features.TaxpayerNames>();
         var signer = config["Fiscal:Signer"] ?? "Simulated";
         _ = signer switch
         {
