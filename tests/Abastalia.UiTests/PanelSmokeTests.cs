@@ -48,12 +48,21 @@ public sealed class PanelSmokeTests
 
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.LaunchAsync();
-            var page = await browser.NewPageAsync(new() { BaseURL = origin });
-            await page.GotoAsync("/app"); // TK-228: the site is at the root, the panel under /app
-            await page.GetByLabel("Correo").FillAsync("duena@esquina.do");
-            await page.GetByLabel("Contraseña").FillAsync("Carniceria2026");
-            await page.GetByLabel("Contraseña").PressAsync("Enter");
-            await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Resumen" })).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            await using var context = await browser.NewContextAsync(new() { BaseURL = origin });
+            await Traces.StartAsync(context);
+            try
+            {
+                var page = await context.NewPageAsync();
+                await page.GotoAsync("/app"); // TK-228: the site is at the root, the panel under /app
+                await page.GetByLabel("Correo").FillAsync("duena@esquina.do");
+                await page.GetByLabel("Contraseña").FillAsync("Carniceria2026");
+                await page.GetByLabel("Contraseña").PressAsync("Enter");
+                await Expect(page.GetByRole(AriaRole.Heading, new() { Name = "Resumen" })).ToBeVisibleAsync(new() { Timeout = 15_000 });
+            }
+            finally
+            {
+                await Traces.StopAsync(context, "panel-smoke");
+            }
         }
         catch (Exception e) when (e is PlaywrightException or TimeoutException or HttpRequestException or InvalidOperationException)
         {
