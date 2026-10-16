@@ -380,6 +380,13 @@
                     $"Vence el {Format.StoreTime(expires).ToString("d 'de' MMMM", Es)}. Sin certificado vigente no se pueden firmar comprobantes: renuévelo e impórtelo.",
                     "Importar certificado", "admin/settings?section=fiscal"));
         }
+        // TK-156/157: queue age, DGII contact, contingency and B receipts to regularize, and no certificate at all (sequences and an expiring
+        // certificate are already above).
+        var certificateShown = _alerts.Exists(a => a.Icon == "shield");
+        foreach (var i in (await Api.GetAsync<EcfHealth>("/api/fiscal/health")).Value?.Items
+                     .Where(i => i.Code != "sequences" && !(i.Code == "certificate" && (certificateShown || i.Level == "warning"))) ?? [])
+            _alerts.Add(new(i.Level, i.Code is "contingency" or "regularize" ? "receipt" : "alert", System.Net.WebUtility.HtmlEncode(i.Title), i.Detail,
+                "Ver comprobantes", "admin/ecf"));
         _loading = false;
     }
 

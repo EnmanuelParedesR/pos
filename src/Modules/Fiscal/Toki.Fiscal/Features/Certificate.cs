@@ -7,6 +7,7 @@ using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
 using Toki.Fiscal.Domain;
+using Toki.Settings.Contracts;
 using Toki.SharedKernel;
 
 namespace Toki.Fiscal.Features;
@@ -48,7 +49,8 @@ internal static class ImportCertificate
         public Validator() => RuleFor(c => c.File).NotEmpty().MaximumLength(200_000).WithMessage("Elija el archivo .p12 o .pfx del certificado.");
     }
 
-    internal sealed class Handler(EcfCertificate certificate, IEcfSigner signer, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, CertificateStatus.Response>
+    internal sealed class Handler(EcfCertificate certificate, IEcfSigner signer, ISettingsQueries settings, IAuditLog audit, TimeProvider clock)
+        : ICommandHandler<Command, CertificateStatus.Response>
     {
         public async Task<Result<CertificateStatus.Response>> Handle(Command c, CancellationToken ct)
         {
@@ -56,7 +58,8 @@ internal static class ImportCertificate
             try { pfx = Convert.FromBase64String(c.File); }
             catch (FormatException) { return FiscalErrors.CertificateUnreadable; }
             var now = clock.GetUtcNow().UtcDateTime;
-            var imported = certificate.Import(pfx, c.Password, now);
+            var rnc = (await settings.GetBusinessProfileAsync(ct)).Rnc;
+            var imported = certificate.Import(pfx, c.Password, now, Rnc.IsValid(rnc) ? rnc : null);
             if (imported.IsFailure) return imported.Error!;
             var i = imported.Value;
             await audit.RecordAsync("fiscal.import-certificate", "EcfCertificate", Guid.Empty, new { i.Subject, i.TaxId, i.Thumbprint, i.NotAfterUtc, i.Store }, ct);

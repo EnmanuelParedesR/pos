@@ -180,10 +180,10 @@ public sealed class EcfCertificateTests(TokiApp app) : IClassFixture<TokiApp>
 internal static class TestCertificates
 {
     /// <summary>A self-signed signing certificate shaped like the DGII ones: the holder's cédula in SERIALNUMBER.</summary>
-    public static X509Certificate2 Create(DateTimeOffset notAfter)
+    public static X509Certificate2 Create(DateTimeOffset notAfter, DateTimeOffset? notBefore = null, string serial = "IDCDO-00112345678")
     {
         using var rsa = RSA.Create(2048);
-        return new CertificateRequest("CN=Firmante de Prueba, SERIALNUMBER=IDCDO-00112345678", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
-            .CreateSelfSigned(notAfter.AddYears(-1), notAfter);
+        return new CertificateRequest($"CN=Firmante de Prueba, SERIALNUMBER={serial}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
+            .CreateSelfSigned(notBefore ?? (notAfter < DateTimeOffset.UtcNow ? notAfter.AddYears(-1) : DateTimeOffset.UtcNow.AddDays(-1)), notAfter);
     }
 }

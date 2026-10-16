@@ -55,6 +55,7 @@ public static class FiscalModule
         services.AddSingleton<Features.TaxpayerImport>();
         services.AddHostedService<EcfSubmissionWorker>();
         services.AddHealthChecks().AddCheck<EcfQueueHealthCheck>("ecf-queue");
+        services.AddEcfOperations();
         return services;
     }
 }
@@ -176,6 +177,9 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
     /// <summary>Where this store's documents go now. Simulated when either the signer or the provider is the stand-in.</summary>
     public FiscalEnvironment Environment => signer.IsSimulated || provider.IsSimulated ? FiscalEnvironment.Simulated : provider.Environment;
 
+    /// <summary>TK-157: why the store cannot sign an e-CF now (no certificate, or an expired one), or null when it can.</summary>
+    public string? CannotSign() => signer is CertificateEcfSigner c ? c.CannotSign(clock.GetUtcNow().UtcDateTime) : null;
+
     public async Task<Result<IssuedDocument>> IssueAsync(DocumentToIssue doc, CancellationToken ct)
     {
         if (doc.Type == EcfType.FiscalCredit31 && !Rnc.IsValid(doc.BuyerRnc)) return FiscalErrors.RncRequired;
@@ -184,12 +188,18 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
             return FiscalErrors.ReferenceRequired;
         var business = await settings.GetBusinessProfileAsync(ct);
         if (!Rnc.IsValid(business.Rnc)) return FiscalErrors.MissingIssuerRnc;
+        // TK-157: series B only while the store cannot sign and the contingency is declared; never while it can sign.
+        if (CannotSign() is { } why)
+            return await db.Set<EcfContingency>().AnyAsync(c => c.EndedUtc == null, ct)
+                ? await Features.PaperContingency.IssueAsync(db, doc, clock.GetUtcNow().UtcDateTime, ct)
+                : OperationsErrors.CannotSign(why);
         if (!signer.IsSimulated && string.IsNullOrWhiteSpace(business.Address)) return FiscalErrors.MissingIssuerAddress;
 
         DateOnly? modifiedIssuedOn = null;
         if (doc.ModifiedENcf is not null)
         {
-            var original = await db.Documents.Where(d => d.ENcf == doc.ModifiedENcf).Select(d => (DateTime?)d.SignedUtc).FirstOrDefaultAsync(ct);
+            var original = await db.Documents.Where(d => d.ENcf == doc.ModifiedENcf).Select(d => (DateTime?)d.SignedUtc).FirstOrDefaultAsync(ct)
+                ?? await db.Set<PaperDocument>().Where(d => d.Ncf == doc.ModifiedENcf).Select(d => (DateTime?)d.IssuedUtc).FirstOrDefaultAsync(ct);
             if (original is null) return FiscalErrors.ReferenceNotFound;
             modifiedIssuedOn = BusinessDay.Of(original.Value);
         }
@@ -250,7 +260,7 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
     /// <summary>Validates (before signing: an XML the DGII would reject is neither signed nor uses up a number, the caller rolls back), signs,
     /// builds and signs the RFCE of a 32 under RD$250,000, and stores the document for the queue.
     /// The simulated signer's documents are never sent, so they skip validation (a store without an address can keep selling).</summary>
-    private async Task<Result<IssuedDocument>> SignAndStoreAsync(FiscalDocument d, XDocument unsigned, BusinessProfile business, DateTime now, CancellationToken ct)
+    internal async Task<Result<IssuedDocument>> SignAndStoreAsync(FiscalDocument d, XDocument unsigned, BusinessProfile business, DateTime now, CancellationToken ct)
     {
         d.Channel = d.Type == EcfType.Consumer32 && d.Total < EcfLimits.IdentifiedConsumer ? EcfChannel.Rfce : EcfChannel.Ecf;
         if (!signer.IsSimulated && EcfXml.ValidateUnsigned(unsigned, d.Type) is [var first, ..]) return FiscalErrors.InvalidXml(first);
@@ -277,7 +287,7 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
 
     /// <summary>Takes the next number of the oldest valid range of the current environment. The update locks the range row until commit;
     /// a rollback gives the number back. In TesteCF the DGII range (1 to 10,000,000; the 32 to 50,000,000) is loaded on first use.</summary>
-    private async Task<(long Number, DateOnly? ExpiresOn)?> ReserveAsync(EcfType type, DateOnly today, CancellationToken ct)
+    internal async Task<(long Number, DateOnly? ExpiresOn)?> ReserveAsync(EcfType type, DateOnly today, CancellationToken ct)
     {
         var env = Environment;
         var candidates = await db.Sequences.Where(s => s.Type == type && s.Environment == env && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today))

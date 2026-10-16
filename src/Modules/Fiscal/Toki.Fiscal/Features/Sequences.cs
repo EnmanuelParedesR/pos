@@ -85,26 +85,27 @@ internal static class SequenceAlerts
 {
     public sealed record Item(EcfType Type, long Available, DateOnly? ExpiresOn, bool Alert);
 
+    public static async Task<IReadOnlyList<Item>> ComputeAsync(FiscalDbContext db, FiscalEnvironment env, DateOnly today, CancellationToken ct)
+    {
+        var usable = await db.Sequences.Where(s => s.Environment == env && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today))
+            .AsNoTracking().ToListAsync(ct);
+        var types = new[] { EcfType.FiscalCredit31, EcfType.Consumer32, EcfType.CreditNote34 };
+        return [.. types.Select(t =>
+        {
+            var ranges = usable.Where(s => s.Type == t).ToList();
+            var available = ranges.Sum(s => s.To - s.Next + 1);
+            var total = ranges.Sum(s => s.Total);
+            // A range without expiry (32 and 34 may have none) never expires.
+            var expires = ranges.Count == 0 || ranges.Any(s => s.ExpiresOn is null) ? null : ranges.Max(s => s.ExpiresOn);
+            return new Item(t, available, expires, available == 0 || available * 5 < total || expires?.DayNumber - today.DayNumber <= 30);
+        })];
+    }
+
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
             app.MapGet("/api/fiscal/alerts", async (FiscalDbContext db, FiscalDocuments documents, TimeProvider clock, CancellationToken ct) =>
-                {
-                    var today = BusinessDay.Of(clock.GetUtcNow().UtcDateTime);
-                    var env = documents.Environment;
-                    var usable = await db.Sequences.Where(s => s.Environment == env && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today))
-                        .AsNoTracking().ToListAsync(ct);
-                    var types = new[] { EcfType.FiscalCredit31, EcfType.Consumer32, EcfType.CreditNote34 };
-                    return Results.Ok(types.Select(t =>
-                    {
-                        var ranges = usable.Where(s => s.Type == t).ToList();
-                        var available = ranges.Sum(s => s.To - s.Next + 1);
-                        var total = ranges.Sum(s => s.Total);
-                        // A range without expiry (32 and 34 may have none) never expires.
-                        var expires = ranges.Count == 0 || ranges.Any(s => s.ExpiresOn is null) ? null : ranges.Max(s => s.ExpiresOn);
-                        return new Item(t, available, expires, available == 0 || available * 5 < total || expires?.DayNumber - today.DayNumber <= 30);
-                    }));
-                })
+                    Results.Ok(await ComputeAsync(db, documents.Environment, BusinessDay.Of(clock.GetUtcNow().UtcDateTime), ct)))
                 .RequireAuthorization().WithTags("Fiscal");
     }
 }

@@ -157,6 +157,11 @@
                 }
             </div>
         </form>
+
+        @* TK-156, TK-157, TK-155: health and contingency guide, paper series B, certification assistant. *@
+        <EcfHealthPanel @ref="_health" />
+        <EcfContingencyPanel Changed="ContingencyChangedAsync" />
+        <EcfCertificationPanel />
     </ChildContent>
 </Admin>
 
@@ -170,6 +175,13 @@
     private Guid? _confirming;
     private Guid _rangeId;
     private bool _confirmingRange, _sending;
+    private EcfHealthPanel? _health;
+
+    private async Task ContingencyChangedAsync()
+    {
+        if (_health is not null) await _health.ReloadAsync();
+        await LoadAsync();
+    }
 
     private List<EcfSequence> Voidable => [.. _sequences.Where(s => s.Current && s.Available > 0)];
 

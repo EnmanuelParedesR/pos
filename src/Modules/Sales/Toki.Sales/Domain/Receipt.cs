@@ -27,11 +27,13 @@ public sealed record Receipt(
     {
         var itbis = s.Lines.GroupBy(l => l.ItbisRate).OrderBy(g => g.Key)
             .Select(g => new ReceiptItbis(RateName(g.Key), g.Sum(l => l.Total - l.Itbis), g.Sum(l => l.Itbis))).ToList();
-        return new Receipt(b.Name, b.Rnc, b.Address, b.Phone, TypeName(s.DocumentType), s.ENcf, s.Number,
+        // TK-157: a paper NCF of series B (contingency) has no security code, signing time nor QR, and is not "electrónica".
+        var paper = s.ENcf.StartsWith('B');
+        return new Receipt(b.Name, b.Rnc, b.Address, b.Phone, paper ? TypeName(s.DocumentType).Replace(" Electrónica", "", StringComparison.Ordinal) : TypeName(s.DocumentType), s.ENcf, s.Number,
             s.DateUtc + BusinessDay.Offset, s.Register, s.Cashier, s.CustomerName, s.CustomerRnc,
             s.Lines.OrderBy(l => l.Position).Select(l => new ReceiptLine(l.Description, l.Quantity, l.Unit, l.UnitPrice, l.Discount, l.Total, l.Note)).ToList(),
             s.Subtotal, s.Discount, itbis, s.Total, s.Payments.Select(p => new ReceiptPayment(PaymentMethodNames.Display(p.Method), p.Amount, p.Received)).ToList(), s.Change,
-            s.SecurityCode, s.QrUrl, b.ReceiptFooter, s.Status == SaleStatus.Voided, s.SignedUtc + BusinessDay.Offset,
+            s.SecurityCode, s.QrUrl, b.ReceiptFooter, s.Status == SaleStatus.Voided, paper ? null : s.SignedUtc + BusinessDay.Offset,
             s.DocumentType == EcfType.FiscalCredit31 ? s.SequenceExpiresOn : null, s.Contingency ? EcfReceiptTexts.ContingencyLegend : null);
     }
 

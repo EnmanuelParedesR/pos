@@ -23,6 +23,102 @@ namespace Toki.Fiscal.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Toki.Fiscal.Domain.CertificationCase", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ENcf")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<string>("Messages")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime?>("ResultUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RfceXml")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<int>("Row")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SecurityCode")
+                        .IsRequired()
+                        .HasMaxLength(6)
+                        .HasColumnType("nvarchar(6)");
+
+                    b.Property<byte[]>("SignedXml")
+                        .IsRequired()
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TrackId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("CertificationCases", "fiscal");
+                });
+
+            modelBuilder.Entity("Toki.Fiscal.Domain.CertificationStep", b =>
+                {
+                    b.Property<int>("Step")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Done")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("DoneUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Step");
+
+                    b.ToTable("CertificationSteps", "fiscal");
+                });
+
+            modelBuilder.Entity("Toki.Fiscal.Domain.EcfContingency", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("EndedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Contingencies", "fiscal");
+                });
+
             modelBuilder.Entity("Toki.Fiscal.Domain.EcfVoid", b =>
                 {
                     b.Property<Guid>("Id")
@@ -240,6 +336,82 @@ namespace Toki.Fiscal.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("EcfSequences", "fiscal");
+                });
+
+            modelBuilder.Entity("Toki.Fiscal.Domain.PaperDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ContingencyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Data")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("IssuedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Ncf")
+                        .IsRequired()
+                        .HasMaxLength(11)
+                        .HasColumnType("nvarchar(11)");
+
+                    b.Property<Guid>("ReferenceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RegularizedByENcf")
+                        .HasMaxLength(13)
+                        .HasColumnType("nvarchar(13)");
+
+                    b.Property<DateTime?>("RegularizedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<decimal>("Total")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Ncf")
+                        .IsUnique();
+
+                    b.ToTable("PaperDocuments", "fiscal");
+                });
+
+            modelBuilder.Entity("Toki.Fiscal.Domain.PaperSequence", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateOnly?>("ExpiresOn")
+                        .HasColumnType("date");
+
+                    b.Property<long>("From")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Next")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("To")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PaperSequences", "fiscal");
                 });
 
             modelBuilder.Entity("Toki.Fiscal.Domain.Taxpayer", b =>
