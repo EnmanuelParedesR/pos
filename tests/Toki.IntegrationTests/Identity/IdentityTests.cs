@@ -1,5 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Toki.IntegrationTests.Infra;
 
@@ -7,6 +10,25 @@ namespace Toki.IntegrationTests.Identity;
 
 public sealed class IdentityTests(TokiApp app) : IClassFixture<TokiApp>
 {
+    /// <summary>TK-251: the anonymous first-run setup only answers the main PC itself.</summary>
+    [Fact]
+    public async Task Setup_from_another_machine_is_forbidden()
+    {
+        using var remote = app.WithWebHostBuilder(b => b.ConfigureServices(s => s.AddSingleton<IStartupFilter, FromTheNetwork>()));
+        var r = await remote.CreateClient().PostAsJsonAsync("/api/identity/setup",
+            new { AdministratorName = "Intruso", AdministratorCode = "intruso", Pin = "9999", DeviceName = "PC" });
+        r.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    private sealed class FromTheNetwork : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use((http, n) => { http.Connection.RemoteIpAddress = IPAddress.Parse("192.168.1.20"); return n(); });
+            next(app);
+        };
+    }
+
     [Fact]
     public async Task Setting_up_twice_fails()
     {

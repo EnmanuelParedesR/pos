@@ -23,13 +23,12 @@ namespace Toki.Identity;
 public static class IdentityModule
 {
     public const string Scheme = "Toki";
-    /// <summary>Header carrying the device secret of registers paired before TK-091, or over plain http in development.</summary>
+    /// <summary>Header carrying the device secret over plain http (development, tests).</summary>
     public const string DeviceHeader = "X-Device";
 
-    /// <summary>Whether a device may still prove itself with its secret (<see cref="DeviceHeader"/>): always over plain http (development,
-    /// tests), and over https only while <c>Toki:LegacyDeviceSecrets</c> keeps registers paired before TK-091 working (ADR-0009).</summary>
-    public static bool AcceptsDeviceSecrets(IConfiguration config) =>
-        !config.GetValue<bool>("Toki:HttpsWithNodeCertificate") || config.GetValue<bool>("Toki:LegacyDeviceSecrets");
+    /// <summary>Whether a device may prove itself with its secret (<see cref="DeviceHeader"/>): only over plain http (development, tests);
+    /// over https a client certificate is the only way (ADR-0009).</summary>
+    public static bool AcceptsDeviceSecrets(IConfiguration config) => !config.GetValue<bool>("Toki:HttpsWithNodeCertificate");
 
     public static IServiceCollection AddIdentityModule(this IServiceCollection services)
     {
@@ -121,11 +120,10 @@ internal sealed class SessionAuthenticationHandler(
             join u in db.Users on s.UserId equals u.Id
             join r in db.Roles on u.RoleId equals r.Id
             where s.TokenHash == tokenHash && s.ClosedUtc == null && s.ExpiresUtc > now && s.DeviceId == deviceId && u.IsActive
-            select new { SessionId = s.Id, UserId = u.Id, u.Name, DeviceId = s.DeviceId, u.RoleId, r.Permissions })
+            select new { SessionId = s.Id, UserId = u.Id, u.Name, DeviceId = s.DeviceId, Role = r })
             .AsNoTracking().FirstOrDefaultAsync(Context.RequestAborted);
         if (data is null) return AuthenticateResult.Fail("Invalid or expired session.");
-        // The administrator always has every permission, including ones added after the database was created.
-        var permissions = data.RoleId == Role.AdministratorId ? Permissions.All : data.Permissions;
+        var permissions = data.Role.Effective;
 
         List<Claim> claims =
         [

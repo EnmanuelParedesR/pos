@@ -69,9 +69,6 @@ public static class TokiServices
         var creator = (RelationalDatabaseCreator)contexts[0].GetService<IDatabaseCreator>();
         if (scope.ServiceProvider.GetRequiredService<DatabaseOptions>().Provider == DbProvider.SqlServer)
         {
-            if (await creator.ExistsAsync(ct) && await contexts[0].Database.SqlQuery<int>(
-                    $"SELECT CASE WHEN OBJECT_ID('infra.AuditHead') IS NOT NULL AND OBJECT_ID('dbo.__EFMigrationsHistory') IS NULL THEN 1 ELSE 0 END AS Value").SingleAsync(ct) == 1)
-                throw new InvalidOperationException("This database was created before migrations existed (TK-090): back it up and create it again (ADR-0005).");
             foreach (var db in contexts)
             {
                 db.Database.SetCommandTimeout(TimeSpan.FromMinutes(30)); // an index over a year of sales takes a while on SQL Server Express

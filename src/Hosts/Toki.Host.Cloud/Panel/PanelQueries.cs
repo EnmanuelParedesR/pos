@@ -35,8 +35,7 @@ public sealed record CashierSales(Guid CashierId, int Count, decimal Total, int 
 public sealed record CustomerDebt(Guid CustomerId, Guid StoreId, decimal Debt, string? CustomerName = null);
 /// <param name="Total">What all customers owe on credit (fiado) right now.</param>
 public sealed record Receivables(decimal Total, int CustomerCount, IReadOnlyList<CustomerDebt> TopDebtors);
-/// <param name="UsesSecret">R10 #5: still signs in with the shared secret from before TK-241 (it moves to its own key on its next upload).</param>
-public sealed record NodeStatus(Guid NodeId, string Name, DateTime? LastEventUtc, DateTime? LastSyncUtc, bool UsesSecret);
+public sealed record NodeStatus(Guid NodeId, string Name, DateTime? LastEventUtc, DateTime? LastSyncUtc);
 public sealed record StoreSyncStatus(Guid StoreId, string StoreName, DateTime? LastEventUtc, DateTime? LastSyncUtc, int PendingEvents, int FailedEvents, IReadOnlyList<NodeStatus> Nodes);
 
 /// <summary>Read-only queries over the replica for the panel and the assistant. Every query filters by the tenant first.
@@ -98,7 +97,6 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
     }
 
     /// <summary>Sold minus returned in the range (returns on the day they happened, like the store's reports).</summary>
-    /// <remarks>Returns uploaded as ReturnRecordedV1 have no lines, so they are not subtracted.</remarks>
     public async Task<IReadOnlyList<ProductSales>> TopProductsAsync(PanelFilter f, int limit, bool showCosts, CancellationToken ct)
     {
         var (start, end) = BusinessDay.UtcRange(f.From, f.To);
@@ -165,27 +163,12 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
             .OrderByDescending(c => c.Total)];
     }
 
-    /// <summary>Credit (fiado) owed right now. A customer the store sent its account for (CustomerBalanceChangedV1, TK-174) owes the store's own
-    /// figure, with their name. For the rest (stores on an older version) it is rebuilt: charges of sales not voided, minus returns credited to
-    /// the account on those sales (up to the charge), minus payments; a customer whose payments cover more owes nothing.</summary>
-    /// <remarks>shortcut: the rebuilt figure misses voided customer payments (no event before TK-174); it goes away once every store has updated.</remarks>
+    /// <summary>Credit (fiado) owed right now: the store's own figure per customer (CustomerBalanceChangedV1, TK-174), with their name.</summary>
     public async Task<Receivables> ReceivablesAsync(Guid tenantId, Guid? storeId, int limit, CancellationToken ct)
     {
         var f = new PanelFilter(tenantId, storeId, default, default);
-        var known = await Rows(db.Customers, f).Select(c => new { c.Id, c.StoreId, c.Name, c.Debt }).ToListAsync(ct);
-        var knownIds = known.Select(c => c.Id).ToHashSet();
-        var voids = Rows(db.SaleVoids, f).Select(v => v.SaleId);
-        var charges = (await Rows(db.CustomerCharges, f).Where(c => !voids.Contains(c.SaleId)).ToListAsync(ct)).Where(c => !knownIds.Contains(c.CustomerId)).ToList();
-        var chargedSales = charges.Select(c => c.SaleId).ToList();
-        var credited = await Rows(db.Returns, f).Where(r => r.Method == "CreditBalance" && chargedSales.Contains(r.SaleId))
-            .Select(r => new { r.SaleId, r.Total }).ToListAsync(ct);
-        var payments = await Rows(db.CustomerPayments, f).Select(p => new { p.CustomerId, p.Amount }).ToListAsync(ct);
-
-        var debts = charges
-            .Select(c => new { c.CustomerId, c.StoreId, Owed = c.Amount - Math.Min(c.Amount, credited.Where(r => r.SaleId == c.SaleId).Sum(r => r.Total)) })
-            .GroupBy(c => c.CustomerId)
-            .Select(g => new CustomerDebt(g.Key, g.First().StoreId, Math.Max(0, g.Sum(c => c.Owed) - payments.Where(p => p.CustomerId == g.Key).Sum(p => p.Amount))))
-            .Concat(known.Select(c => new CustomerDebt(c.Id, c.StoreId, c.Debt, c.Name)))
+        // Sqlite cannot compare decimals: filtered and sorted in memory (see the class remark).
+        var debts = (await Rows(db.Customers, f).Select(c => new CustomerDebt(c.Id, c.StoreId, c.Debt, c.Name)).ToListAsync(ct))
             .Where(d => d.Debt > 0).OrderByDescending(d => d.Debt).ToList();
         return new Receivables(debts.Sum(d => d.Debt), debts.Count, [.. debts.Take(Math.Clamp(limit, 1, 50))]);
     }
@@ -211,7 +194,7 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
             var own = nodes.Where(n => n.StoreId == s.Id).OrderBy(n => n.CreatedUtc).ToList();
             return new StoreSyncStatus(s.Id, s.Name, own.Max(n => n.LastEventUtc), own.Max(n => n.LastSyncUtc),
                 waiting.Where(w => w.StoreId == s.Id && !w.Failed).Sum(w => w.Count), waiting.Where(w => w.StoreId == s.Id && w.Failed).Sum(w => w.Count),
-                [.. own.Select(n => new NodeStatus(n.Id, n.Name, n.LastEventUtc, n.LastSyncUtc, n.SecretHash.Length > 0))]);
+                [.. own.Select(n => new NodeStatus(n.Id, n.Name, n.LastEventUtc, n.LastSyncUtc))]);
         })];
     }
 

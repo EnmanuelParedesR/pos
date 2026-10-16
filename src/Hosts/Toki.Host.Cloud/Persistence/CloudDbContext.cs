@@ -110,7 +110,6 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         {
             e.ToTable("Nodes");
             e.Property(n => n.Name).HasMaxLength(100);
-            e.Property(n => n.SecretHash).HasMaxLength(32);
             e.Property(n => n.PublicKey).HasMaxLength(200);
             e.HasIndex(n => new { n.TenantId, n.StoreId });
         });
@@ -405,15 +404,13 @@ public sealed class ConnectionCode
     public DateTime? UsedUtc { get; set; }
 }
 
-/// <summary>A store's main PC. It signs every call with its own key (TK-241); an older node has a shared secret, of which only the SHA-256 is kept.</summary>
+/// <summary>A store's main PC. It signs every call with its own key (TK-241).</summary>
 public sealed class Node
 {
     public Guid Id { get; set; }
     public Guid TenantId { get; set; }
     public Guid StoreId { get; set; }
     public string Name { get; set; } = "";
-    /// <summary>Empty for a node that signs with its key.</summary>
-    public byte[] SecretHash { get; set; } = [];
     /// <summary>TK-241: the node's ECDSA P-256 public key (SubjectPublicKeyInfo). The private key never leaves the store's PC.</summary>
     public byte[]? PublicKey { get; set; }
     public DateTime CreatedUtc { get; set; }

@@ -118,3 +118,24 @@ public sealed class IngestTests(CloudApp app) : IClassFixture<CloudApp>
         (await app.InDbAsync(db => db.ClosedShifts.SingleAsync(s => s.ShiftId == e.ShiftId))).Difference.ShouldBe(-20);
     }
 }
+
+/// <summary>TK-251: applied inbox rows do not pile up forever. Own app: it moves the clock a month.</summary>
+public sealed class InboxPurgeTests(CloudApp app) : IClassFixture<CloudApp>
+{
+    [Fact]
+    public async Task Applied_events_leave_the_inbox_after_30_days_and_their_projection_stays()
+    {
+        var node = await app.StoreWithNodeAsync(await app.OwnerAsync());
+        var old = new ShiftClosedV1(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), 1, 1000, 1000, 0);
+        await node.SendAsync(Events.Envelope(old, app.Clock.GetUtcNow().UtcDateTime));
+        (await app.ApplyAsync()).ShouldBe(1);
+
+        app.Clock.Advance(TimeSpan.FromDays(31));
+        var recent = new ShiftClosedV1(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), 2, 500, 500, 0);
+        await node.SendAsync(Events.Envelope(recent, app.Clock.GetUtcNow().UtcDateTime));
+        (await app.ApplyAsync()).ShouldBe(1);
+
+        (await app.InDbAsync(db => db.Inbox.CountAsync(i => i.StoreId == node.StoreId))).ShouldBe(1); // only the recent one
+        (await app.InDbAsync(db => db.ClosedShifts.CountAsync(s => s.StoreId == node.StoreId))).ShouldBe(2);
+    }
+}

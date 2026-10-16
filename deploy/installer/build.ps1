@@ -19,7 +19,9 @@
 param(
     [Parameter(Mandatory)] [string] $Version,
     [ValidateSet('stable', 'pilot')] [string] $Channel = 'stable',
-    [string] $FeedUrl = ''
+    [string] $FeedUrl = '',
+    # Empty: the production cloud (store-settings.ps1).
+    [string] $CloudUrl = ''
 )
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
@@ -29,16 +31,14 @@ Remove-Item $publish -Recurse -Force -ErrorAction SilentlyContinue
 function Publish($project, $out) {
     dotnet publish (Join-Path $root $project) -c Release -r win-x64 --self-contained -p:Version=$Version -o $out
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish $project falló" }
-    # The feed and the channel go into the published settings; empty FeedUrl = no update checks.
-    $settings = Join-Path $out 'appsettings.json'
-    $json = Get-Content $settings -Raw | ConvertFrom-Json
-    if (-not $json.Updates) { $json | Add-Member -NotePropertyName Updates -NotePropertyValue ([pscustomobject]@{}) }
-    $json.Updates | Add-Member -Force -NotePropertyName FeedUrl -NotePropertyValue $FeedUrl
-    $json.Updates | Add-Member -Force -NotePropertyName Channel -NotePropertyValue $Channel
-    $json | ConvertTo-Json -Depth 20 | Set-Content $settings -Encoding utf8
 }
 Publish 'src\Hosts\Toki.Host.Local' (Join-Path $publish 'server')
 Publish 'src\Client\Toki.Client.Wpf' (Join-Path $publish 'app')
+# TK-251: the app reaches the server on https 5443, the server the production cloud; the feed and channel go into both (empty FeedUrl = no update checks).
+. (Join-Path $PSScriptRoot 'store-settings.ps1')
+$cloud = if ($CloudUrl) { $CloudUrl } else { $ProductionCloudUrl }
+Set-StoreSettings -AppSettings (Join-Path $publish 'app\appsettings.json') -ServerSettings (Join-Path $publish 'server\appsettings.json') `
+    -FeedUrl $FeedUrl -Channel $Channel -CloudUrl $cloud
 
 if (-not (Get-Command vpk -ErrorAction SilentlyContinue)) {
     Write-Warning 'Falta vpk (dotnet tool install -g vpk): no se empaquetó la app de caja ni el instalador.'

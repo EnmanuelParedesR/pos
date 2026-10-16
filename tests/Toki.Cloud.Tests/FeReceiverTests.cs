@@ -620,10 +620,7 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
         owner.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.GetProperty("accessToken").GetString());
         var store = (await (await owner.PostAsJsonAsync("/api/stores", new { name = "Tienda" })).Json()).GetProperty("id").GetGuid();
         var code = (await (await owner.PostAsync($"/api/stores/{store}/connection-codes", null)).Json()).GetProperty("code").GetString();
-        var json = await (await factory.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "PC principal" })).Json();
-        var node = factory.CreateClient();
-        node.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Node", $"{json.GetProperty("nodeId").GetGuid()}.{json.GetProperty("nodeSecret").GetString()}");
-        return node;
+        return (await CloudApp.RegisterNodeAsync(factory, factory.Services.GetRequiredService<TimeProvider>(), code)).Client;
     }
 
     /// <summary>A supplier authenticated at the tenant's receiver: seed → signed with its certificate → token.</summary>

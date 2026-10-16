@@ -8,10 +8,7 @@ public sealed record Discount(bool IsPercentage, decimal Value);
 /// <param name="FixedAmount">Line amount read from a price label: the line total is fixed, quantity is informative.</param>
 internal sealed record LineInput(decimal UnitPrice, decimal Quantity, ItbisRate Rate, Discount? Discount, decimal? FixedAmount = null);
 
-internal sealed record CalculatedLine(decimal Gross, decimal LineDiscount, decimal GlobalDiscount, decimal Total, decimal Itbis)
-{
-    public decimal Discount => LineDiscount + GlobalDiscount;
-}
+internal sealed record CalculatedLine(decimal Gross, decimal Discount, decimal Total, decimal Itbis);
 
 internal sealed record Totals(IReadOnlyList<CalculatedLine> Lines, decimal Gross, decimal Discount, decimal Subtotal, decimal Itbis, decimal Total)
 {
@@ -22,35 +19,21 @@ internal sealed record Totals(IReadOnlyList<CalculatedLine> Lines, decimal Gross
 /// so ITBIS is extracted from each line's final amount. Rounding: 2 decimals, half away from zero, per line.</summary>
 internal static class TotalsCalculator
 {
-    public static Result<Totals> Calculate(IReadOnlyList<LineInput> lines, Discount? global)
+    public static Result<Totals> Calculate(IReadOnlyList<LineInput> lines)
     {
-        var gross = new decimal[lines.Count];
-        var net = new decimal[lines.Count];
-        var lineDiscounts = new decimal[lines.Count];
-        for (var i = 0; i < lines.Count; i++)
+        var calculated = new List<CalculatedLine>(lines.Count);
+        foreach (var l in lines)
         {
-            var l = lines[i];
-            gross[i] = l.FixedAmount ?? Money.Round(l.UnitPrice * l.Quantity);
-            var d = DiscountAmount(l.Discount, gross[i]);
+            var gross = l.FixedAmount ?? Money.Round(l.UnitPrice * l.Quantity);
+            var d = DiscountAmount(l.Discount, gross);
             if (d.IsFailure) return d.Error!;
-            lineDiscounts[i] = d.Value;
-            net[i] = gross[i] - lineDiscounts[i];
+            var total = gross - d.Value;
+            calculated.Add(new CalculatedLine(gross, d.Value, total, Itbis.Included(total, l.Rate)));
         }
-
-        var netSum = net.Sum();
-        var g = DiscountAmount(global, netSum);
-        if (g.IsFailure) return g.Error!;
-        var shares = Spread(g.Value, net);
-
-        var calculated = lines.Select((l, i) =>
-        {
-            var total = net[i] - shares[i];
-            return new CalculatedLine(gross[i], lineDiscounts[i], shares[i], total, Itbis.Included(total, l.Rate));
-        }).ToList();
 
         var saleTotal = calculated.Sum(c => c.Total);
         var itbis = calculated.Sum(c => c.Itbis);
-        return new Totals(calculated, gross.Sum(), calculated.Sum(c => c.Discount), saleTotal - itbis, itbis, saleTotal);
+        return new Totals(calculated, calculated.Sum(c => c.Gross), calculated.Sum(c => c.Discount), saleTotal - itbis, itbis, saleTotal);
     }
 
     private static Result<decimal> DiscountAmount(Discount? d, decimal over)
@@ -61,18 +44,6 @@ internal static class TotalsCalculator
         var amount = Money.Round(d.IsPercentage ? over * d.Value / 100 : d.Value);
         if (amount > over) return Error.Validation("Sales.InvalidDiscount", "El descuento es mayor que el importe.");
         return amount;
-    }
-
-    /// <summary>Spreads a global discount over the lines in proportion to their amount; the rounding remainder goes to the biggest line.</summary>
-    private static decimal[] Spread(decimal amount, decimal[] net)
-    {
-        var shares = new decimal[net.Length];
-        var sum = net.Sum();
-        if (amount == 0 || sum == 0) return shares;
-        for (var i = 0; i < net.Length; i++) shares[i] = Money.Round(amount * net[i] / sum);
-        var biggest = Array.IndexOf(net, net.Max());
-        shares[biggest] += amount - shares.Sum();
-        return shares;
     }
 }
 

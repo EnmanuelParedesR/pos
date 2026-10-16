@@ -150,7 +150,7 @@ internal static class FeServices
             using var imported = await vault.ImportAsync(name, pfx, r.Password, ct);
             return await ActivateAsync(db, vault, new FeCertificate
             {
-                Id = id, TenantId = node.TenantId, Rnc = rnc, Subject = Cut(imported.Subject, 500), Thumbprint = imported.Thumbprint,
+                Id = id, TenantId = node.TenantId, Rnc = rnc, Subject = FeXml.Cut(imported.Subject, 500), Thumbprint = imported.Thumbprint,
                 NotAfterUtc = imported.NotAfter.ToUniversalTime(), SigningMode = FeSigningModes.CloudCustody, KeyName = name, OwnerName = owner,
                 HolderName = holder, ConsentVersion = FeConsent.Version, ConsentedByNodeId = node.NodeId, ConsentedUtc = now,
             }, http, config, ct);
@@ -264,7 +264,7 @@ internal static class FeServices
     private static async Task RevokeAsync(CloudDbContext db, IFeCertificateVault vault, Guid tenant, string by, DateTime now, CancellationToken ct)
     {
         var active = await db.FeCertificates.Where(c => c.TenantId == tenant && c.RevokedUtc == null).ToListAsync(ct);
-        foreach (var c in active) (c.RevokedUtc, c.RevokedBy) = (now, Cut(by, 256));
+        foreach (var c in active) (c.RevokedUtc, c.RevokedBy) = (now, FeXml.Cut(by, 256));
         await db.SaveChangesAsync(ct);
         foreach (var c in active.Where(c => c.KeyName.Length > 0)) await vault.DeleteAsync(c.KeyName, ct);
     }
@@ -291,6 +291,4 @@ internal static class FeServices
         var buffer = new byte[s.Length * 3 / 4 + 3];
         return Convert.TryFromBase64String(s, buffer, out var written) ? buffer[..written] : null;
     }
-
-    internal static string Cut(string s, int max) => s.Length > max ? s[..max] : s;
 }

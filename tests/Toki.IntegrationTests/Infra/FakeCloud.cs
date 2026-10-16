@@ -13,16 +13,12 @@ public sealed class FakeCloud : HttpMessageHandler
 {
     public const string Url = "https://cloud.test";
     public const string ValidCode = "12345678";
-    public const string NodeSecret = "node-secret-for-tests-0123456789";
 
     public Guid TenantId { get; } = Guid.NewGuid();
     public Guid StoreId { get; } = Guid.NewGuid();
     public Guid NodeId { get; } = Guid.NewGuid();
 
     public List<Received> Requests { get; } = [];
-
-    /// <summary>TK-241: answer the register with a secret, as a cloud from before (the store then keeps the secret). Default: no secret, the key.</summary>
-    public bool IssueSecret { get; set; }
 
     /// <summary>The public key the last register sent.</summary>
     public byte[]? NodePublicKey { get; private set; }
@@ -42,7 +38,6 @@ public sealed class FakeCloud : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var bytes = request.Content is null ? [] : await request.Content.ReadAsByteArrayAsync(cancellationToken);
-        var raw = bytes;
         var gzip = request.Content?.Headers.ContentEncoding.Contains("gzip") == true;
         if (gzip)
         {
@@ -52,15 +47,14 @@ public sealed class FakeCloud : HttpMessageHandler
         }
         var body = bytes.Length == 0 ? default : JsonDocument.Parse(bytes).RootElement.Clone();
         var path = request.RequestUri!.AbsolutePath;
-        lock (Requests) Requests.Add(new Received(request.RequestUri.GetLeftPart(UriPartial.Authority), path, request.Headers.Authorization?.ToString(), gzip, body, raw));
+        lock (Requests) Requests.Add(new Received(request.RequestUri.GetLeftPart(UriPartial.Authority), path, request.Headers.Authorization?.ToString(), gzip, body, bytes));
 
         if (Respond?.Invoke(path) is { } custom) return custom;
         return path switch
         {
             "/api/nodes/register" when body.GetProperty("code").GetString() == ValidCode && Register(body) =>
-                Json(new { tenantId = TenantId, storeId = StoreId, nodeId = NodeId, nodeSecret = IssueSecret ? NodeSecret : null }),
+                Json(new { tenantId = TenantId, storeId = StoreId, nodeId = NodeId }),
             "/api/nodes/revoke" => new HttpResponseMessage(HttpStatusCode.NoContent),
-            "/api/nodes/rekey" when Register(body) => new HttpResponseMessage(HttpStatusCode.NoContent),
             "/ingest/v1/events" =>
                 Json(new { accepted = body.GetProperty("events").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).Where(Accept).ToList() }),
             "/fiscal/v1/archive" => new HttpResponseMessage(HttpStatusCode.OK),
@@ -88,6 +82,6 @@ public sealed class FakeCloud : HttpMessageHandler
         return key.VerifyData(Encoding.UTF8.GetBytes($"{node}.{seconds}.{nonce}.POST {r.Path} {bodyHash}"), bytes, HashAlgorithmName.SHA256);
     }
 
-    /// <param name="Raw">The body as sent (before inflating), which the node signature covers (R10 #7).</param>
+    /// <param name="Raw">The body as the cloud reads it (inflated: it decompresses before it checks), which the node signature covers (R10 #7).</param>
     public sealed record Received(string Origin, string Path, string? Authorization, bool Gzip, JsonElement Body, byte[] Raw);
 }

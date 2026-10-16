@@ -80,7 +80,7 @@ public sealed class ApprovalPolicyTests(TokiApp app) : IClassFixture<TokiApp>
         var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco " + Guid.NewGuid().ToString()[..4], 59m, cost: 35m, stock: 24);
         object Body() => new
         {
-            SaleId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Lines = new[] { Line(soda, 2) }, GlobalDiscount = new { IsPercentage = true, Value = 20m },
+            SaleId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Lines = new[] { new { ProductId = soda, Quantity = 2m, Discount = new { IsPercentage = true, Value = 20m } } },
             Payments = new[] { new { Method = "Cash", Amount = 100m } }, ExpectedTotal = 94.40m, SupervisorApprovals = Array.Empty<Guid>(),
         };
 

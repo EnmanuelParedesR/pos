@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Security.Claims;
 using System.Threading.Channels;
 using Azure;
@@ -188,13 +187,6 @@ internal static class ColdArchiveSetup
             }
             var ready = xml is not null && (rfce is not null || !row.ColdHasRfce);
             return Results.Ok(new ArchivedEcfResponse(row.ENcf, row.Status, row.Environment, row.SignedUtc, row.ReceivedUtc, row.ReplacedByENcf, row.ColdUtc is not null,
-                ready, ready && xml is not null ? Unzip(xml) : null, ready && rfce is not null ? Unzip(rfce) : null));
+                ready, ready && xml is not null ? Fe.FeXml.Unzip(xml) : null, ready && rfce is not null ? Fe.FeXml.Unzip(rfce) : null));
         }).RequireAuthorization(CloudAuth.PanelPolicy).RequireRateLimiting(QuotaRateLimits.PanelUser);
-
-    private static string Unzip(byte[] gzip)
-    {
-        using var input = new GZipStream(new MemoryStream(gzip), CompressionMode.Decompress);
-        using var reader = new StreamReader(input);
-        return reader.ReadToEnd();
-    }
 }

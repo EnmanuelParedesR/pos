@@ -24,9 +24,7 @@ public sealed class NodeKeyTests(CloudApp app) : IClassFixture<CloudApp>
         var r = await app.CreateClient().PostAsJsonAsync("/api/nodes/register",
             new { code, nodeName = "PC principal", publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) });
         r.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var json = await r.Json();
-        json.GetProperty("nodeSecret").ValueKind.ShouldBe(System.Text.Json.JsonValueKind.Null); // no shared secret is issued
-        return (json.GetProperty("nodeId").GetGuid(), store, key, owner);
+        return ((await r.Json()).GetProperty("nodeId").GetGuid(), store, key, owner);
     }
 
     private static string Sign(ECDsa key, Guid nodeId, DateTimeOffset at, string path, string? nonce = null, string body = "")
@@ -61,7 +59,7 @@ public sealed class NodeKeyTests(CloudApp app) : IClassFixture<CloudApp>
 
         using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         (await PostAsync(client, StatusPath, Sign(other, nodeId, now, StatusPath))).StatusCode.ShouldBe(HttpStatusCode.Unauthorized); // another key
-        // A key node has no secret: the old header format gets nothing.
+        // The shared-secret header format from before TK-241 gets nothing.
         (await PostAsync(client, StatusPath, $"{nodeId}.{NodeSignature.Base64Url(RandomNumberGenerator.GetBytes(32))}")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
@@ -73,31 +71,6 @@ public sealed class NodeKeyTests(CloudApp app) : IClassFixture<CloudApp>
         var now = app.Clock.GetUtcNow();
         (await PostAsync(client, StatusPath, Sign(key, nodeId, now, StatusPath, body: "{}"), "{}")).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await PostAsync(client, StatusPath, Sign(key, nodeId, now, StatusPath, body: "{}"), "{\"x\":1}")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task A_node_on_the_shared_secret_moves_to_its_own_key_and_the_secret_ends_at_its_first_signed_call()
-    {
-        var owner = await app.OwnerAsync();
-        var legacy = await app.StoreWithNodeAsync(owner);
-        bool UsesSecret(System.Text.Json.JsonElement stores) => stores.EnumerateArray().Single(s => s.GetProperty("storeId").GetGuid() == legacy.StoreId)
-            .GetProperty("nodes")[0].GetProperty("usesSecret").GetBoolean();
-        UsesSecret(await owner.Client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/panel/sync-status")).ShouldBeTrue();
-
-        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
-        (await legacy.Client.PostAsJsonAsync("/api/nodes/rekey", new { publicKey = "no" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await legacy.Client.PostAsJsonAsync("/api/nodes/rekey", new { publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }))
-            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await legacy.Client.PostAsync(StatusPath, null)).StatusCode.ShouldBe(HttpStatusCode.OK); // an answer lost on the way does not lock the store out
-
-        var client = app.CreateClient();
-        (await PostAsync(client, StatusPath, Sign(key, legacy.NodeId, app.Clock.GetUtcNow(), StatusPath))).StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await legacy.Client.PostAsync(StatusPath, null)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-        UsesSecret(await owner.Client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/panel/sync-status")).ShouldBeFalse();
-        var body = $$"""{"publicKey":"{{Convert.ToBase64String(key.ExportSubjectPublicKeyInfo())}}"}""";
-        var again = new HttpRequestMessage(HttpMethod.Post, "/api/nodes/rekey") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
-        again.Headers.Authorization = new AuthenticationHeaderValue("Node", Sign(key, legacy.NodeId, app.Clock.GetUtcNow(), "/api/nodes/rekey", body: body));
-        (await client.SendAsync(again)).StatusCode.ShouldBe(HttpStatusCode.Conflict); // only a secret sign-in rekeys
     }
 
     [Fact]
@@ -124,23 +97,30 @@ public sealed class NodeKeyTests(CloudApp app) : IClassFixture<CloudApp>
     }
 
     [Fact]
-    public async Task With_the_migration_window_closed_a_secret_is_neither_issued_nor_accepted()
+    public async Task A_PC_without_a_key_cannot_register_and_keeps_its_code()
     {
-        var legacy = await app.StoreWithNodeAsync(await app.OwnerAsync()); // registered with a secret while the window is open
-        (await legacy.Client.PostAsync(StatusPath, null)).StatusCode.ShouldBe(HttpStatusCode.OK);
-
-        using var closed = app.WithWebHostBuilder(b => b.UseSetting(CloudAuth.AcceptSharedSecretSetting, "false"));
-        var client = closed.CreateClient();
-        client.DefaultRequestHeaders.Authorization = legacy.Client.DefaultRequestHeaders.Authorization;
-        (await client.PostAsync(StatusPath, null)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-
         var owner = await app.OwnerAsync();
         var store = (await (await owner.Client.PostAsJsonAsync("/api/stores", new { name = "Tienda" })).Json()).GetProperty("id").GetGuid();
         var code = (await (await owner.Client.PostAsync($"/api/stores/{store}/connection-codes", null)).Json()).GetProperty("code").GetString();
-        var noKey = await closed.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "PC vieja" });
+        var noKey = await app.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "PC vieja" });
         (await noKey.ErrorCode()).ShouldBe("Nodes.UpdateRequired");
         // The code was not used up: the updated PC connects with it.
-        (await RegisterWithCodeAsync(closed.CreateClient(), code!)).ShouldBe(HttpStatusCode.OK);
+        (await RegisterWithCodeAsync(app.CreateClient(), code!)).ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public void The_nonce_store_sweeps_expired_nonces_at_most_once_a_minute()
+    {
+        var nonces = new NodeNonces();
+        var start = new DateTime(2026, 10, 16, 12, 0, 0, DateTimeKind.Utc);
+        var aExpires = start + 2 * NodeSignature.Window;
+        nonces.TryUse("a", start).ShouldBeTrue();
+        nonces.TryUse("a", start).ShouldBeFalse(); // replay
+        nonces.TryUse("b", aExpires.AddSeconds(-30)).ShouldBeTrue(); // sweeps; "a" is still valid
+        nonces.TryUse("c", aExpires.AddSeconds(1)).ShouldBeTrue(); // "a" expired, but the last sweep was 31 s ago
+        nonces.Count.ShouldBe(3);
+        nonces.TryUse("d", aExpires.AddSeconds(31)).ShouldBeTrue(); // a minute after the last sweep: "a" goes
+        nonces.Count.ShouldBe(3);
     }
 
     private static async Task<HttpStatusCode> RegisterWithCodeAsync(HttpClient client, string code)

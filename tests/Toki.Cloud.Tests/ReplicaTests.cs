@@ -80,7 +80,7 @@ public sealed class ReplicaTests(CloudApp app) : IClassFixture<CloudApp>
     }
 
     [Fact]
-    public async Task Receivables_purchases_shift_openings_and_cash_movements_are_projected()
+    public async Task Charges_purchases_shift_openings_and_cash_movements_are_projected()
     {
         var owner = await app.OwnerAsync();
         var node = await app.StoreWithNodeAsync(owner);
@@ -103,13 +103,7 @@ public sealed class ReplicaTests(CloudApp app) : IClassFixture<CloudApp>
             Events.Envelope(new CashMovementRecordedV1(shift.ShiftId, "Withdrawal", PaymentMethod.Cash, -500, null), now))).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await app.ApplyAsync()).ShouldBe(10);
 
-        var receivables = await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/receivables");
-        receivables.GetProperty("total").GetDecimal().ShouldBe(550); // Ana 500 − 50 − 100, Luis 200
-        receivables.GetProperty("customerCount").GetInt32().ShouldBe(2);
-        var top = receivables.GetProperty("topDebtors")[0];
-        (top.GetProperty("customerId").GetGuid(), top.GetProperty("debt").GetDecimal()).ShouldBe((ana, 350m));
-        (await (await app.OwnerAsync()).Client.GetFromJsonAsync<JsonElement>("/api/panel/receivables")).GetProperty("total").GetDecimal().ShouldBe(0);
-
+        (await app.InDbAsync(db => db.CustomerCharges.CountAsync(c => c.CustomerId == ana))).ShouldBe(2);
         (await app.InDbAsync(db => db.Purchases.CountAsync(p => p.Id == purchase.PurchaseId && p.OnCredit))).ShouldBe(1);
         (await app.InDbAsync(db => db.PurchaseVoids.CountAsync(v => v.PurchaseId == purchase.PurchaseId))).ShouldBe(1);
         (await app.InDbAsync(db => db.OpenedShifts.SingleAsync(s => s.ShiftId == shift.ShiftId))).OpeningFloat.ShouldBe(2000);
@@ -131,7 +125,7 @@ public sealed class ReplicaTests(CloudApp app) : IClassFixture<CloudApp>
             // The payment was voided: no other event says so, the balance does.
             Events.Envelope(new CustomerBalanceChangedV1(ana, "Ana Pérez", 500, 0), now.AddMinutes(2)),
             Events.Envelope(new CustomerBalanceChangedV1(ana, "Ana", 300, 0), now.AddMinutes(1)), // arrives late
-            Events.Envelope(new OnAccountChargeRecordedV1(luis, Guid.CreateVersion7(), 120), now))).StatusCode.ShouldBe(HttpStatusCode.OK); // older store: no balance
+            Events.Envelope(new CustomerBalanceChangedV1(luis, "Luis", 120, 0), now))).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await app.ApplyAsync()).ShouldBe(5);
 
         var receivables = await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/receivables");
@@ -139,27 +133,11 @@ public sealed class ReplicaTests(CloudApp app) : IClassFixture<CloudApp>
         var top = receivables.GetProperty("topDebtors").EnumerateArray().ToList();
         (top[0].GetProperty("customerName").GetString(), top[0].GetProperty("debt").GetDecimal()).ShouldBe(("Ana Pérez", 500m));
         (top[1].GetProperty("customerId").GetGuid(), top[1].GetProperty("debt").GetDecimal()).ShouldBe((luis, 120m));
-        top[1].GetProperty("customerName").ValueKind.ShouldBe(JsonValueKind.Null);
 
         // Paid off: the customer leaves the list.
         await node.SendAsync(Events.Envelope(new CustomerBalanceChangedV1(ana, "Ana Pérez", 0, 25), now.AddMinutes(3)));
         await app.ApplyAsync();
         (await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/receivables")).GetProperty("total").GetDecimal().ShouldBe(120);
-    }
-
-    [Fact]
-    public async Task A_sale_uploaded_as_V1_still_counts_in_top_products_without_a_unit()
-    {
-        var owner = await app.OwnerAsync();
-        var node = await app.StoreWithNodeAsync(owner);
-        var sale = new SaleRecordedV1(Guid.CreateVersion7(), 1, Guid.CreateVersion7(), Guid.CreateVersion7(), null, "E320000000001", 300, 0, 0,
-            [new SaleLineV1(Guid.CreateVersion7(), null, "Chuleta", 1.5m, 300, 0, 150)], [new SalePaymentV1("Cash", 300)]);
-
-        await node.SendAsync(Events.Envelope(sale, app.Clock.GetUtcNow().UtcDateTime));
-        (await app.ApplyAsync()).ShouldBe(1);
-
-        var product = (await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/sales/top-products")).EnumerateArray().ShouldHaveSingleItem();
-        product.GetProperty("quantity").GetDecimal().ShouldBe(1.5m);
-        product.GetProperty("unit").ValueKind.ShouldBe(JsonValueKind.Null);
+        (await (await app.OwnerAsync()).Client.GetFromJsonAsync<JsonElement>("/api/panel/receivables")).GetProperty("total").GetDecimal().ShouldBe(0); // another tenant
     }
 }
