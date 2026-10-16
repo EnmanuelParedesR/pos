@@ -45,6 +45,7 @@ it.each(sitePages.map((p) => [p.path, p.title]))("TK-228: %s is public: it rende
 it("TK-228: the prices stay as placeholders until the owner confirms them", () => {
   renderAt("/precios");
   expect(screen.getAllByText("Precio por confirmar").length).toBe(3);
+  expect(screen.getByRole("link", { name: "Crear su cuenta y elegir plan" }).getAttribute("href")).toBe("/app/billing"); // TK-249
 });
 
 it("TK-242: /descargar shows both roles and the installer placeholder until it is hosted; the menu and /certificacion link to it", () => {

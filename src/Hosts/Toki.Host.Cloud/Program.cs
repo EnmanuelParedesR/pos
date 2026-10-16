@@ -9,6 +9,7 @@ using Scalar.AspNetCore;
 using Serilog;
 using Toki.Host.Cloud.Accounts;
 using Toki.Host.Cloud.Assistant;
+using Toki.Host.Cloud.Billing;
 using Toki.Host.Cloud.Catalog;
 using Toki.Host.Cloud.Fe;
 using Toki.Host.Cloud.Ingest;
@@ -95,6 +96,7 @@ AcsEmailSender.AddEmail(builder.Services, config);
 builder.Services.AddScoped<Toki.Host.Cloud.Alerts.AlertNotifier>();
 builder.Services.AddColdArchive(config);
 builder.Services.AddFe(config, builder.Environment);
+builder.Services.AddBilling(config, builder.Environment); // TK-249: off until Billing:Paddle is set
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
 if (openAi.IsConfigured)
@@ -144,6 +146,7 @@ app.MapGroup("/api/auth").MapIdentityApi<CloudUser>().Add(e =>
     else if (QuotaRateLimits.AuthRoutes.Any(r => route.EndsWith(r, StringComparison.Ordinal))) e.Metadata.Add(new EnableRateLimitingAttribute(QuotaRateLimits.Auth));
 });
 app.MapQuotas();
+app.MapBilling();
 app.MapStores();
 app.MapMembers();
 app.MapNodes();

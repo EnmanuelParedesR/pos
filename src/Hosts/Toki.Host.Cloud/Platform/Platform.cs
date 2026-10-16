@@ -115,6 +115,7 @@ internal static class PlatformEndpoints
         });
 
         Certification.AccompanimentEndpoints.MapPlatformAccompaniment(platform); // TK-234
+        Billing.BillingEndpoints.MapPlatformBilling(platform); // TK-249
 
         var metrics = platform.MapGroup("/metrics");
         metrics.MapGet("/overview", async (PlatformQueries q, CancellationToken ct) => Results.Ok((await q.MetricsAsync(ct)).Overview()));

@@ -408,6 +408,48 @@ export interface TenantMetrics {
 export type Meter = "AssistantQuestions" | "AssistantTokens" | "SupplierInvoices" | "Emails" | "ArchiveRetrievals" | "AccompanimentRequests" | "Invites";
 export interface Usage { plan: string; addOns: string[]; resetsOn: string; meters: { meter: Meter; used: number; limit: number }[] }
 export interface PlatformUsage { usage: Usage; plans: string[]; addOns: string[] }
+/** TK-249: Paddle Billing. `enabled` false = not set up yet (the page shows the plan and how to ask Toki). */
+export type SubscriptionStatus = "None" | "Trialing" | "Active" | "PastDue" | "Paused" | "Canceled";
+export type BillingInterval = "Monthly" | "Annual";
+export interface BillingOption { code: string; monthly: boolean; annual: boolean }
+export interface Billing {
+  enabled: boolean;
+  environment: "sandbox" | "live" | null;
+  plan: string;
+  addOns: string[];
+  status: SubscriptionStatus;
+  interval: BillingInterval | null;
+  paidThroughUtc: string | null;
+  nextBilledUtc: string | null;
+  pastDueSinceUtc: string | null;
+  manualUntilUtc: string | null;
+  canManage: boolean;
+  plans: BillingOption[];
+  addOnOptions: BillingOption[];
+}
+/** What Paddle.js needs to open the checkout. A business already subscribed gets `{ changed: true }` instead (Paddle changed its items). */
+export interface Checkout {
+  environment: "sandbox" | "live";
+  clientToken: string;
+  items: { priceId: string; quantity: number }[];
+  customerEmail: string | null;
+  customData: Record<string, string>;
+}
+export interface PlatformBilling {
+  subscription: {
+    status: SubscriptionStatus;
+    interval: BillingInterval | null;
+    paddleSubscriptionId: string | null;
+    paddleCustomerId: string | null;
+    paidThroughUtc: string | null;
+    nextBilledUtc: string | null;
+    pastDueSinceUtc: string | null;
+    manualUntilUtc: string | null;
+    manualNote: string | null;
+    updatedUtc: string | null;
+  };
+  events: { id: string; type: string; occurredUtc: string; receivedUtc: string }[];
+}
 export interface PlatformTenantDetail {
   id: string;
   name: string;

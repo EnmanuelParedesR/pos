@@ -58,6 +58,8 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Alerts.SentAlert> SentAlerts => Set<Alerts.SentAlert>();
     public DbSet<Assistant.AiUsage> AiUsage => Set<Assistant.AiUsage>();
     public DbSet<Quotas.TenantUsage> TenantUsage => Set<Quotas.TenantUsage>();
+    public DbSet<Billing.TenantSubscription> TenantSubscriptions => Set<Billing.TenantSubscription>();
+    public DbSet<Billing.BillingEvent> BillingEvents => Set<Billing.BillingEvent>();
     public DbSet<Certification.AccompanimentRequest> AccompanimentRequests => Set<Certification.AccompanimentRequest>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -136,6 +138,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.ToTable("AiUsage");
             e.HasKey(u => new { u.TenantId, u.Day });
         });
+        Billing.BillingModel.Configure(builder); // TK-249
         builder.Entity<Quotas.TenantUsage>(e =>
         {
             e.ToTable("TenantUsage");

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Shouldly;
+using Toki.BuildingBlocks.Security;
 using Toki.Settings;
 using Toki.IntegrationTests.Infra;
 

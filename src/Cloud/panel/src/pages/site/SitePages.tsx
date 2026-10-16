@@ -426,6 +426,12 @@ function Pricing() {
           </Plan>
         </div>
         <p className="muted">Entre planes cambian las cajas, las sucursales y el acceso desde el celular del dueño.</p>
+        {/* TK-249: the account first, then "Plan y facturación" in the panel (pago con tarjeta por Paddle). */}
+        <p className="actions">
+          <Link className="btn" to="/app/billing">
+            Crear su cuenta y elegir plan
+          </Link>
+        </p>
       </Section>
       <Section className="counter">
         <h2>En todos los planes</h2>
