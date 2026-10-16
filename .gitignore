@@ -36,3 +36,6 @@ src/Cloud/panel/.ssr/
 
 # Installer build output (deploy/installer/build.ps1)
 artifacts/
+
+# Private business analysis (pricing, market): never in the public repo
+docs/privado/

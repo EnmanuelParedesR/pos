@@ -23,126 +23,126 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Por qué importa:** el sitio no se puede anunciar sin precios; el plan propuesto cuesta varias veces el Básico de Poszy.
 - **Hoy:** `config.ts` → `prices` en `null`; el sitio dice "Precio por confirmar".
 - **Fuente:** TK-203, TK-197; `docs/competencia-poszy.md` §3 y "Lectura"; `src/Cloud/panel/src/pages/site/config.ts`.
-- **Respuesta:**
+- **Respuesta:** (16/10/2026) Hacer un análisis con un consejo de analistas del mercado dominicano para identificar qué planes benefician al proyecto y a los clientes (en curso).
 
 ### D2 · Precio de la instalación
 - **Pregunta:** ¿Cuánto cuesta la instalación (pago único)?
 - **Por qué importa:** es uno de los precios pendientes antes de anunciar el sitio.
 - **Hoy:** `prices.installation` en `null`.
 - **Fuente:** `docs/despliegue-azure.md` ("Pendiente del dueño antes de anunciar el sitio"); `config.ts`.
-- **Respuesta:**
+- **Respuesta:** Sale del análisis de D1. La instalación debe ser fácil para el usuario; el negocio de Toki es la post-instalación, con horas de soporte.
 
 ### D3 · Precio y condiciones del acompañamiento en la certificación (TK-236)
 - **Pregunta:** ¿Precio del servicio, cómo se cobra, cuántas reprogramaciones y reintentos incluye y qué se devuelve si la DGII rechaza la certificación de forma definitiva?
 - **Por qué importa:** el servicio (TK-219) está listo salvo esto; sin precio no se puede vender.
 - **Hoy:** `[PRECIO DEL SERVICIO]` en el documento; `prices.certificationSupport` en `null` ("Precio por confirmar" en `/certificacion`); el documento propone reprogramar una vez sin costo y reenviar la FI-GDF-016 sin costo.
 - **Fuente:** TK-236; `docs/servicio-certificacion.md` §6 y §7.
-- **Respuesta:**
+- **Respuesta:** El acompañamiento debe ser válido y mínimo; la app y el asistente (bot) deben ayudar más.
 
 ### D4 · Horario y tiempo de respuesta del acompañamiento
 - **Pregunta:** ¿En qué horario se atiende el servicio y en cuánto tiempo se responde?
 - **Por qué importa:** se publica en el sitio y en los correos de las citas.
 - **Hoy:** "por definir"; no se publica hasta tener personal asignado.
 - **Fuente:** `docs/servicio-certificacion.md` §8.
-- **Respuesta:**
+- **Respuesta:** SLA por plan: planes baratos con SLA bajo. Investigar los mejores (en el análisis de D1).
 
 ### D5 · Programa de referidos (TK-199)
 - **Pregunta:** ¿Qué incentivo reciben revendedores, contadores y clientes que refieren (comisión recurrente o meses gratis)?
 - **Por qué importa:** define el código de referido en el alta y el reporte de pagos.
 - **Hoy:** no existe.
 - **Fuente:** TK-199; `docs/competencia-poszy.md` (TK-199).
-- **Respuesta:**
+- **Respuesta:** Se puede configurar: descuento en el siguiente pago, solo cuando el referido paga un plan específico (no cuando entra a la plataforma).
 
 ### D6 · ¿La caja espera hasta 5 s el resultado de una 31 antes de imprimir? (TK-208)
 - **Pregunta:** Para la factura de crédito fiscal (31), ¿la caja espera unos 5 segundos la respuesta de la DGII antes de imprimir?
 - **Por qué importa:** con espera, el cliente recibe la factura ya aceptada; sin ella, la fila avanza más rápido pero la RI puede salir con la leyenda de contingencia.
 - **Hoy:** la venta nunca espera a la DGII; el diseño propone esperar hasta 5 s solo en la 31 e imprimir con leyenda si no llega.
 - **Fuente:** TK-208; `docs/ecf-propio.md` §10 ("Cuándo imprimir la leyenda de contingencia").
-- **Respuesta:**
+- **Respuesta:** Sí, esperar la respuesta de la DGII.
 
 ### D7 · Dominio
 - **Pregunta:** ¿Qué dominio usan el sitio, el panel, la API y el correo?
 - **Por qué importa:** sin dominio no hay URL canónica; el dominio administrado de Azure limita los correos por hora.
 - **Hoy:** `config.ts` → `url` vacío; correo con el dominio administrado de Azure.
 - **Fuente:** TK-197; `docs/despliegue-azure.md` §Pendiente; `config.ts`.
-- **Respuesta:**
+- **Respuesta:** Un dominio sobre "toki", el que esté disponible, con subdominios (app., api.).
 
 ### D8 · Número de WhatsApp
 - **Pregunta:** ¿Qué número de WhatsApp usa Toki para ventas, soporte y el acompañamiento?
 - **Por qué importa:** "Hablemos" y los mensajes del técnico dependen de él.
 - **Hoy:** `config.ts` → `whatsapp` vacío; los botones van a `/precios#contacto`.
 - **Fuente:** TK-197; `docs/servicio-certificacion.md` §8; `config.ts`.
-- **Respuesta:**
+- **Respuesta:** Sin número por ahora.
 
 ### D9 · Configuración de Paddle (TK-249)
 - **Pregunta:** ¿Cuenta de Paddle, productos y precios a cargar para el cobro?
 - **Por qué importa:** pedido del dueño para cobrar en línea.
 - **Hoy:** TK-249 todavía no está en `backlog/BACKLOG.md` ni hay documento de cobro en el repositorio; no hay código de Paddle.
 - **Fuente:** pedido del dueño (TK-249).
-- **Respuesta:**
+- **Respuesta:** Hecho: la llave de la API de sandbox ya se pasó y se pidió crear los productos (creados).
 
 ### D10 · Custodia del certificado en la nube (TK-247, ADR-0011)
 - **Pregunta:** ¿Se enciende el modo CloudCustody cuando se cumplan las condiciones? ¿Se asume el costo de las que piden dinero (llaves en HSM con Key Vault Premium o Managed HSM, seguro de ciberriesgo, mandato notarizable)?
 - **Por qué importa:** con la PC apagada el receptor no acusa; la custodia lo resolvería, con riesgo legal y de seguridad.
 - **Hoy:** apagado (`Fe:AllowCloudCustody` = false); la tienda firma (StoreSigned). Condiciones 1 a 7 en ADR-0011; la 2 ya está hecha.
 - **Fuente:** `docs/adr/0011-firma-del-receptor-en-la-tienda.md` ("Condiciones para encender B"); TK-246; TK-247.
-- **Respuesta:**
+- **Respuesta:** Queda apagado por ahora; si se enciende, se hace con HSM (TK-247).
 
 ### D11 · Aprobación comercial desde el panel que la tienda no puede firmar (TK-250)
 - **Pregunta:** Si el dueño decide en el panel y la tienda no tiene certificado, ¿basta con el registro o debe avisársele?
 - **Por qué importa:** el dueño cree que aprobó y la decisión nunca sale.
 - **Hoy:** se reintenta en cada consulta de la tienda y solo queda en el registro (atajo de TK-250).
 - **Fuente:** TK-250 en `backlog/BACKLOG.md`; nota TK-250 en ADR-0011.
-- **Respuesta:**
+- **Respuesta:** Debe haber conectividad entre la nube y la tienda sin exponer la aplicación (así funciona: la tienda abre la conexión hacia la nube).
 
 ### D12 · Precio del adicional de lectura de facturas con IA
 - **Pregunta:** ¿Cuánto cuesta al mes el adicional `SupplierInvoiceReading` (300 facturas)?
 - **Por qué importa:** la tienda lo sugiere cuando se agotan las 20 incluidas.
 - **Hoy:** `[PRECIO]`.
 - **Fuente:** TK-248; `docs/cuotas.md` ("Servicio adicional").
-- **Respuesta:**
+- **Respuesta:** Lo responde el análisis de D1.
 
 ### D13 · Cuotas mensuales por plan
 - **Pregunta:** ¿Se aprueban los límites propuestos por plan (preguntas al asistente, facturas leídas, correos, invitaciones, etc.)?
 - **Por qué importa:** fijan el costo máximo de cada negocio y lo que ve el cliente al pasarse (429).
 - **Hoy:** valores por defecto en `appsettings.json`, propuestos en el documento.
 - **Fuente:** TK-248; `docs/cuotas.md` ("Cuotas mensuales por plan").
-- **Respuesta:**
+- **Respuesta:** Lo responde el análisis de D1.
 
 ### D14 · Bloquear la retención del archivo frío (TK-207)
 - **Pregunta:** ¿Se bloquea la política de retención de 10 años del contenedor `ecf-archive`? Es irreversible.
 - **Por qué importa:** bloqueada, nadie (ni Toki) puede borrar un e-CF antes de 10 años.
 - **Hoy:** retención puesta pero sin bloquear.
 - **Fuente:** TK-207; `docs/despliegue-azure.md` ("Bloquear la retención").
-- **Respuesta:**
+- **Respuesta:** "Debe mantenerse" (por confirmar si significa bloquearla, que es irreversible).
 
 ### D15 · Revisión de la guía de contingencia (TK-156)
 - **Pregunta:** ¿La guía de contingencia para el dueño de la tienda se entiende y se aprueba?
 - **Por qué importa:** es lo que lee el dueño cuando no puede emitir.
 - **Hoy:** escrita, sin revisar.
 - **Fuente:** TK-156; `docs/contingencia-ecf.md`.
-- **Respuesta:**
+- **Respuesta:** No.
 
 ### D16 · Plan B ante el plazo del 15/11/2026 (§11 #2)
 - **Pregunta:** Si la primera tienda no queda certificada a tiempo, ¿se usa el Facturador Gratuito de la DGII para poco volumen?
 - **Por qué importa:** el plazo de pequeños y micro vence el 15/11/2026.
 - **Hoy:** prioridad a TesteCF y al piloto; sin plan B decidido.
 - **Fuente:** `docs/ecf-propio.md` §11 #2.
-- **Respuesta:**
+- **Respuesta:** Sí, usar la propuesta (Facturador Gratuito de la DGII como plan B).
 
 ### D17 · Umbral del reloj para firmar (§11 #12)
 - **Pregunta:** ¿Desde qué diferencia de hora con la DGII se deja de firmar (propuesta: 2 minutos)?
 - **Por qué importa:** una `FechaHoraFirma` posterior a la hora de la DGII causa rechazo; bloquear de más detiene ventas.
 - **Hoy:** sin umbral bloqueante; TK-156 dice que falta el reloj.
 - **Fuente:** `docs/ecf-propio.md` §11 #12; TK-156.
-- **Respuesta:**
+- **Respuesta:** Sin respuesta: queda la propuesta de 2 minutos.
 
 ### D18 · Certificado digital: entidad, formato y precio (§11 #4)
 - **Pregunta:** ¿Con quién se compra el certificado de prueba (Avansi o Digifirma), en qué formato (`.p12` exportable, token o nube), a qué precio y con qué vigencia?
 - **Por qué importa:** Toki solo importa `.p12`/`.pfx`; sin certificado no se prueba nada con la DGII (TK-141).
 - **Hoy:** la guía del dueño pide `.p12` o `.pfx`; precio y formato "por confirmar".
 - **Fuente:** `docs/ecf-propio.md` §11 #4 y §12 (TK-141); `docs/servicio-certificacion.md` §5.
-- **Respuesta:**
+- **Respuesta:** Se hará con la cuenta piloto (Toki no tendrá RNC); investigar cuál entidad es la más económica para nuestros clientes.
 
 ---
 
