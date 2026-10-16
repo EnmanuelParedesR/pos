@@ -121,6 +121,13 @@ public sealed record FiscalDocumentIssuedV1(Guid DocumentId, string ENcf, EcfTyp
 public sealed record FiscalDocumentReplacedV1(Guid DocumentId, string RejectedENcf, string ENcf, EcfType Type, Guid ReferenceId, string SecurityCode,
     string QrUrl, DateTime SignedUtc, DateOnly? SequenceExpiresOn) : IntegrationEvent(DocumentId);
 
+/// <summary>TK-246: the store signed (and tried to send) its commercial approval or rejection of a received e-CF. The cloud only shows it.</summary>
+/// <param name="CloudId">The received document's id in the cloud.</param>
+/// <param name="Approval">Approved or Rejected.</param>
+/// <param name="XmlGzip">The signed ACECF (gzip), kept in the cloud with the received document.</param>
+public sealed record CommercialApprovalRecordedV1(Guid ReceivedId, long CloudId, string Approval, string? Reason, DateTime ApprovalUtc, DateTime? DeliveredUtc,
+    DateTime? DgiiUtc, string? Message, byte[] XmlGzip) : IntegrationEvent(ReceivedId);
+
 /// <summary>TK-240: one line of a supplier's e-CF as it reads for a purchase: the unit price without ITBIS (the e-CF may carry it included).</summary>
 /// <param name="ItbisPercent">18, 16 or 0; null when the line is exempt.</param>
 public sealed record SupplierEcfLine(string Description, decimal Quantity, decimal UnitCost, decimal? ItbisPercent, string? Code);

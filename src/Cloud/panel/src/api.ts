@@ -495,6 +495,8 @@ export interface ReceivedEcf {
   approvalDeliveredUtc: string | null;
   approvalDgiiUtc: string | null;
   approvalMessage: string | null;
+  /** TK-246: null while its acknowledgement waits for the store (it arrived with the store's PC off). */
+  acknowledgedUtc?: string | null;
 }
 
 /** TK-241: the cloud receiver (TK-151) as the panel shows it: GET /api/panel/fe. */
@@ -508,9 +510,13 @@ export interface ReceiverStatus {
   ownerName: string | null;
   holderName: string | null;
   urls: ReceiverUrls[] | null;
+  /** TK-246: StoreSigned (the store's PC signs) or CloudCustody (a copy of the certificate in Key Vault). */
+  signingMode?: "StoreSigned" | "CloudCustody" | null;
 }
 export interface ReceiverPanel {
   status: ReceiverStatus;
   signatures: { atUtc: string; root: string; eNcf: string | null; sha256: string }[];
   approvals: { eNcf: string; buyerRnc: string; approved: boolean; reason: string | null; environment: string; receivedUtc: string }[];
+  /** TK-246: hours each store PC left the receiver without its signature (last 30 days). */
+  offline?: { node: string; hours: number; offlineSinceUtc: string | null }[];
 }

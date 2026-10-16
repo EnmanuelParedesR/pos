@@ -5,10 +5,8 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
-using System.Xml;
 using System.Xml.Linq;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
@@ -21,17 +19,18 @@ using Toki.SharedKernel;
 
 namespace Toki.Cloud.Tests;
 
-/// <summary>The cloud with the outside world it talks to for a tenant (the DGII and a supplier's receiver) in memory.</summary>
+/// <summary>The cloud receiver with the test authority as INDOTEL's, both signing modes allowed (TK-246) and short waits for the store's signature.</summary>
 public sealed class FeCloudApp : CloudApp
 {
-    public FakeFeOutside Outside { get; } = new();
-
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
         builder.UseSetting("Fe:TrustedRoots:0", TestPki.RootBase64); // R9 #1: the test authority stands in for INDOTEL's
         builder.UseSetting("Fe:CheckRevocation", "false"); // the test authority publishes no CRL
-        builder.ConfigureTestServices(s => s.AddHttpClient(FeOutbound.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Outside));
+        builder.UseSetting("Fe:AllowCloudCustody", "true");
+        builder.UseSetting("Fe:LateAcksInBackground", "false");
+        builder.UseSetting("Fe:SignTimeoutSeconds", "3");
+        builder.UseSetting("Fe:SignPollSeconds", "1");
     }
 }
 
@@ -72,51 +71,54 @@ public static class TestPki
     public static X509Certificate2 Issue(string subject) => Issue(subject, out _);
 }
 
-/// <summary>The DGII (seed, token, directory, approval copy) and a supplier's receiver (seed authentication, approval URL), per the documented contracts.</summary>
-public sealed class FakeFeOutside : HttpMessageHandler
+/// <summary>TK-246: the store's main PC as the cloud sees it in StoreSigned mode: a long poll for sign requests, answered with the store's own signer
+/// (or with what a test makes it answer), until disposed.</summary>
+public sealed class FakeStoreSigner : IAsyncDisposable
 {
-    public const string SupplierHost = "proveedor.test";
-    public List<(string Url, string? Authorization, string? Xml)> Requests { get; } = [];
-    /// <summary>RNCs the directory lists, with the supplier's URLs.</summary>
-    public HashSet<string> Electronic { get; } = [];
+    private readonly CancellationTokenSource _stop = new();
+    private readonly Task _loop;
 
-    public IEnumerable<string?> XmlTo(string pathEnd)
+    /// <summary>What to post back for a request (the XML to sign); null: never answer. Default: signed with the store's certificate.</summary>
+    public Func<string, string?> Answer { get; set; }
+    public List<string> Requests { get; } = [];
+
+    public FakeStoreSigner(HttpClient node, X509Certificate2 certificate)
     {
-        lock (Requests) return Requests.Where(r => r.Url.EndsWith(pathEnd, StringComparison.OrdinalIgnoreCase)).Select(r => r.Xml).ToList();
-    }
-
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-    {
-        string? xml = null;
-        if (request.Content is MultipartFormDataContent multipart)
-            foreach (var part in multipart) xml = await part.ReadAsStringAsync(cancellationToken);
-        var url = request.RequestUri!.GetLeftPart(UriPartial.Path);
-        lock (Requests) Requests.Add((url, request.Headers.Authorization?.ToString(), xml));
-        var path = request.RequestUri.AbsolutePath.ToLowerInvariant();
-        var bearer = request.Headers.Authorization?.Scheme == "Bearer";
-
-        if (path.EndsWith("/semilla", StringComparison.Ordinal))
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($"<SemillaModel><valor>{Guid.NewGuid():N}</valor><fecha>2026-10-15T11:00:00</fecha></SemillaModel>") };
-        if (path.EndsWith("/validarsemilla", StringComparison.Ordinal) || path.EndsWith("/validacioncertificado", StringComparison.Ordinal))
-            return xml!.Contains("<SignatureValue>", StringComparison.Ordinal) ? Json(new { token = "tok", expira = "2026-10-15T16:00:00Z" }) : new HttpResponseMessage(HttpStatusCode.Unauthorized);
-        if (!bearer) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
-        if (path.EndsWith("/obtenerdirectorioporrnc", StringComparison.Ordinal))
+        Answer = xml => new CertificateEcfSigner(certificate).Sign(XDocument.Parse(xml)).SignedXml;
+        _loop = Task.Run(async () =>
         {
-            var rnc = System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query)["RNC"]!;
-            return Electronic.Contains(rnc)
-                ? Json(new[] { new { urlRecepcion = $"https://{SupplierHost}/fe/recepcion/api/ecf", urlAceptacion = $"https://{SupplierHost}/fe/aprobacioncomercial/api/ecf", urlOpcional = $"https://{SupplierHost}/fe/autenticacion" } })
-                : new HttpResponseMessage(HttpStatusCode.NotFound);
-        }
-        if (path.EndsWith("/aprobacioncomercial/api/aprobacioncomercial", StringComparison.Ordinal)) return Json(new { mensaje = Array.Empty<string>(), estado = "Recibido", codigo = 1 });
-        if (path.EndsWith("/fe/aprobacioncomercial/api/ecf", StringComparison.Ordinal)) return new HttpResponseMessage(HttpStatusCode.OK);
-        return new HttpResponseMessage(HttpStatusCode.NotFound);
+            while (!_stop.IsCancellationRequested)
+            {
+                try
+                {
+                    using var r = await node.PostAsJsonAsync("/fiscal/v1/receiver/sign-requests/next", new { }, _stop.Token);
+                    if (r.StatusCode != HttpStatusCode.OK)
+                    {
+                        if (r.StatusCode != HttpStatusCode.NoContent) await Task.Delay(50, _stop.Token);
+                        continue;
+                    }
+                    var request = await r.Content.ReadFromJsonAsync<JsonElement>(_stop.Token);
+                    var xml = request.GetProperty("xml").GetString()!;
+                    lock (Requests) Requests.Add(xml);
+                    if (Answer(xml) is { } signed)
+                        (await node.PostAsJsonAsync($"/fiscal/v1/receiver/sign-requests/{request.GetProperty("id").GetGuid()}", new { signedXml = signed }, _stop.Token)).Dispose();
+                }
+                catch (OperationCanceledException) { }
+            }
+        });
     }
 
-    private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
+    public async ValueTask DisposeAsync()
+    {
+        await _stop.CancelAsync();
+        await _loop;
+        _stop.Dispose();
+    }
 }
 
-/// <summary>TK-151 to TK-154 in the cloud: consent and the vault copy, the restricted signer, the receiver services with their authentication,
-/// the store's pull and the commercial approval. The supplier's e-CF are built and signed exactly as a Toki store does.</summary>
+/// <summary>TK-151 to TK-154 and TK-246 in the cloud: the two signing modes (StoreSigned, CloudCustody), the restricted signer, the receiver services
+/// with their authentication, the store's pull and the approvals synced from the store. The supplier's e-CF are built and signed exactly as a Toki
+/// store does.</summary>
 public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
 {
     private const string SupplierRnc = "101672919";
@@ -140,6 +142,144 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
             new { file = Convert.ToBase64String(pfx), password = "otra", rnc, ownerName = "Ana Pérez", holderName = "Ana Pérez", accepted = true, consentVersion = FeConsent.Version });
         (await wrongPassword.ErrorCode()).ShouldBe("Fe.CertificateUnreadable");
         (await app.InDbAsync(db => db.FeCertificates.CountAsync(c => c.Rnc == rnc))).ShouldBe(0);
+
+        // TK-246: the screens offer StoreSigned first.
+        var status = await (await node.Client.PostAsync("/fiscal/v1/receiver/status", null)).Json();
+        (status.GetProperty("active").GetBoolean(), status.GetProperty("defaultSigningMode").GetString(), status.GetProperty("cloudCustodyAvailable").GetBoolean())
+            .ShouldBe((false, FeSigningModes.StoreSigned, true));
+    }
+
+    [Fact]
+    public async Task TK246_store_signed_the_store_signs_each_acknowledgement_over_the_node_channel_and_the_cloud_keeps_no_certificate()
+    {
+        var (node, owner, rnc, ours) = await StoreSignedReceiverAsync();
+        var row = await app.InDbAsync(db => db.FeCertificates.AsNoTracking().SingleAsync(c => c.TenantId == owner.TenantId && c.RevokedUtc == null));
+        (row.SigningMode, row.KeyName, row.Thumbprint).ShouldBe((FeSigningModes.StoreSigned, "", ours.Thumbprint));
+        typeof(FeCertificate).GetProperties().ShouldNotContain(p => p.PropertyType == typeof(byte[])); // public facts only: no certificate, no key
+        var status = await (await node.Client.PostAsync("/fiscal/v1/receiver/status", null)).Json();
+        status.GetProperty("signingMode").GetString().ShouldBe(FeSigningModes.StoreSigned);
+
+        await using var store = new FakeStoreSigner(node.Client, ours);
+        await OnlineAsync(node);
+        var supplier = await SupplierClientAsync(rnc);
+        var ack = await AckAsync(supplier, rnc, SupplierEcf(rnc, "E310000000701"));
+        (ack.Estado, ack.SignedBy).ShouldBe(("0", ours.Thumbprint));
+        (await AckAsync(supplier, rnc, SupplierEcf(NewRnc(), "E310000000702"))).Reason.ShouldBe("4"); // a refusal is signed by the store too
+        store.Requests.Count.ShouldBe(2);
+        store.Requests.ShouldAllBe(x => XDocument.Parse(x).Root!.Name == "ARECF");
+
+        var signatures = (await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/fe")).GetProperty("signatures").EnumerateArray().ToList();
+        signatures.Count(s => s.GetProperty("root").GetString() == "ARECF").ShouldBe(2);
+        var item = (await (await node.Client.PostAsJsonAsync("/fiscal/v1/received/pull", new { after = 0 })).Json()).GetProperty("items").EnumerateArray().ShouldHaveSingleItem();
+        item.GetProperty("acknowledgedUtc").ValueKind.ShouldBe(JsonValueKind.String);
+
+        // Another PC of the tenant does not sign for the receiver, and cannot answer for the one that does.
+        var other = await app.StoreWithNodeAsync(owner, "Sucursal");
+        (await (await other.Client.PostAsJsonAsync("/fiscal/v1/receiver/sign-requests/next", new { })).ErrorCode()).ShouldBe("Fe.NotSigningNode");
+        (await (await other.Client.PostAsJsonAsync($"/fiscal/v1/receiver/sign-requests/{Guid.NewGuid()}", new { signedXml = "<x/>" })).ErrorCode())
+            .ShouldBe("Fe.SignRequestGone");
+    }
+
+    [Fact]
+    public async Task TK246_store_off_answers_503_with_Retry_After_keeps_the_e_CF_pending_and_acknowledges_it_when_the_store_is_back()
+    {
+        var (node, owner, rnc, ours) = await StoreSignedReceiverAsync();
+        var supplier = await SupplierClientAsync(rnc);
+        var retried = SupplierEcf(rnc, "E310000000801");
+        var late = SupplierEcf(rnc, "E310000000802");
+
+        foreach (var ecf in new[] { retried, late })
+        {
+            var r = await supplier.PostAsync($"/testecf/{rnc}/fe/recepcion/api/ecf", Xml(ecf));
+            r.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+            r.Headers.RetryAfter!.Delta.ShouldBe(TimeSpan.FromSeconds(FeReceiverEndpoints.RetryAfterSeconds));
+        }
+        // Kept, pending its acknowledgement; the store pulls it already; the panel shows the PC without connection.
+        var pending = await app.InDbAsync(db => db.FeReceived.Where(d => d.TenantId == owner.TenantId).ToListAsync());
+        pending.Count.ShouldBe(2);
+        pending.ShouldAllBe(d => d.AcknowledgedUtc == null);
+        (await (await node.Client.PostAsJsonAsync("/fiscal/v1/received/pull", new { after = 0 })).Json()).GetProperty("items").GetArrayLength().ShouldBe(2);
+        var offline = (await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/fe")).GetProperty("offline").EnumerateArray().ShouldHaveSingleItem();
+        offline.GetProperty("node").GetString().ShouldBe("PC principal");
+        offline.GetProperty("offlineSinceUtc").ValueKind.ShouldBe(JsonValueKind.String);
+
+        await using var store = new FakeStoreSigner(node.Client, ours);
+        await OnlineAsync(node);
+        (await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/fe")).GetProperty("offline")[0].GetProperty("offlineSinceUtc").ValueKind
+            .ShouldBe(JsonValueKind.Null); // closed at the store's poll
+
+        // The supplier's retry of the same bytes is received now (not a duplicate); the other one is acknowledged by the late pass and kept.
+        (await AckAsync(supplier, rnc, retried)).Estado.ShouldBe("0");
+        await using (var scope = app.Services.CreateAsyncScope())
+            (await scope.ServiceProvider.GetRequiredService<FeLateAcknowledger>().RunAsync(CancellationToken.None)).ShouldBe(1);
+        var saved = await app.InDbAsync(db => db.FeReceived.Where(d => d.TenantId == owner.TenantId).ToListAsync());
+        saved.Count.ShouldBe(2);
+        saved.ShouldAllBe(d => d.AcknowledgedUtc != null);
+        var kept = await app.InDbAsync(db => db.FeSignatures.Where(s => s.TenantId == owner.TenantId && s.ENcf == "E310000000802").SingleAsync());
+        var lateAck = FeXml.Parse(FeXml.Unzip(kept.XmlGzip!))!;
+        (FeXml.Text(lateAck, "/ARECF/DetalleAcusedeRecibo/Estado"), FeXml.SignatureIsValid(lateAck)).ShouldBe(("0", true));
+    }
+
+    [Fact]
+    public async Task TK246_a_store_that_does_not_answer_in_time_or_answers_another_signature_gives_no_acknowledgement()
+    {
+        var (node, owner, rnc, ours) = await StoreSignedReceiverAsync();
+        await using var store = new FakeStoreSigner(node.Client, ours) { Answer = _ => null };
+        await OnlineAsync(node);
+        var supplier = await SupplierClientAsync(rnc);
+
+        var started = DateTime.UtcNow;
+        (await supplier.PostAsync($"/testecf/{rnc}/fe/recepcion/api/ecf", Xml(SupplierEcf(rnc, "E310000000901")))).StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        (DateTime.UtcNow - started).ShouldBeGreaterThanOrEqualTo(TimeSpan.FromSeconds(2.5)); // waited for the store (Fe:SignTimeoutSeconds)
+
+        // Signed by a trusted certificate of another RNC, or a different document than the one asked for: not an acknowledgement.
+        store.Answer = xml => new CertificateEcfSigner(TestPki.Issue("CN=Otra, SERIALNUMBER=130000001")).Sign(XDocument.Parse(xml)).SignedXml;
+        (await supplier.PostAsync($"/testecf/{rnc}/fe/recepcion/api/ecf", Xml(SupplierEcf(rnc, "E310000000902")))).StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        store.Answer = xml => new CertificateEcfSigner(ours).Sign(XDocument.Parse(xml.Replace("<Estado>1<", "<Estado>0<", StringComparison.Ordinal)
+            .Replace("<CodigoMotivoNoRecibido>4</CodigoMotivoNoRecibido>", "", StringComparison.Ordinal))).SignedXml;
+        (await supplier.PostAsync($"/testecf/{rnc}/fe/recepcion/api/ecf", Xml(SupplierEcf(NewRnc(), "E310000000903")))).StatusCode
+            .ShouldBe(HttpStatusCode.ServiceUnavailable);
+        (await app.InDbAsync(db => db.FeSignatures.CountAsync(s => s.TenantId == owner.TenantId))).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task TK246_activation_without_a_certificate_needs_a_signed_proof_of_the_RNC_and_switching_modes_deletes_the_vault_key()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        var rnc = NewRnc();
+        var own = TestPki.Issue($"CN=Empresa, SERIALNUMBER={rnc}", out var pfx);
+
+        (await (await ActivateAsync(node, rnc, Certificate($"CN=Falsa, SERIALNUMBER={rnc}", out _))).ErrorCode()).ShouldBe("Fe.CertificateUntrusted");
+        (await (await ActivateAsync(node, rnc, TestPki.Issue("CN=Otra, SERIALNUMBER=130000001"))).ErrorCode()).ShouldBe("Fe.CertificateRncMismatch");
+        (await (await ActivateAsync(node, rnc, own, challenge: "inventado")).ErrorCode()).ShouldBe("Fe.ProofInvalid");
+        (await (await ActivateAsync(node, rnc, own, proofRnc: NewRnc())).ErrorCode()).ShouldBe("Fe.ProofInvalid");
+        // A challenge is this tenant's only.
+        var otherTenant = await app.StoreWithNodeAsync(await app.OwnerAsync());
+        var foreign = (await (await otherTenant.Client.PostAsync("/fiscal/v1/receiver/challenge", null)).Json()).GetProperty("challenge").GetString();
+        (await (await ActivateAsync(node, rnc, own, challenge: foreign)).ErrorCode()).ShouldBe("Fe.ProofInvalid");
+
+        // CloudCustody first, then switching to StoreSigned: the vault key goes.
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/receiver/certificate", new
+        {
+            file = Convert.ToBase64String(pfx), password = "prueba", rnc, ownerName = "Ana", holderName = "Ana", accepted = true, consentVersion = FeConsent.Version,
+        })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var keyName = await app.InDbAsync(db => db.FeCertificates.Where(c => c.TenantId == owner.TenantId && c.RevokedUtc == null).Select(c => c.KeyName).SingleAsync());
+        (await app.Services.GetRequiredService<IFeCertificateVault>().KeyAsync(keyName, CancellationToken.None)).ShouldNotBeNull();
+        var switched = await ActivateAsync(node, rnc, own);
+        switched.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await switched.Json()).GetProperty("signingMode").GetString().ShouldBe(FeSigningModes.StoreSigned);
+        await Should.ThrowAsync<InvalidOperationException>(() => app.Services.GetRequiredService<IFeCertificateVault>().KeyAsync(keyName, CancellationToken.None));
+
+        // While the platform keeps CloudCustody off, nobody turns it on.
+        using var off = app.WithWebHostBuilder(b => b.UseSetting("Fe:AllowCloudCustody", "false"));
+        var offNode = await StoreWithNodeAsync(off);
+        var refused = await offNode.PostAsJsonAsync("/fiscal/v1/receiver/certificate", new
+        {
+            file = Convert.ToBase64String(pfx), password = "prueba", rnc = NewRnc(), ownerName = "Ana", holderName = "Ana", accepted = true, consentVersion = FeConsent.Version,
+        });
+        (await refused.ErrorCode()).ShouldBe("Fe.CloudCustodyUnavailable");
+        (await (await offNode.PostAsync("/fiscal/v1/receiver/status", null)).Json()).GetProperty("cloudCustodyAvailable").GetBoolean().ShouldBeFalse();
     }
 
     [Fact]
@@ -148,6 +288,7 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
         var (node, owner, rnc, ours) = await ReceiverAsync();
         var status = await (await node.Client.PostAsync("/fiscal/v1/receiver/status", null)).Json();
         status.GetProperty("active").GetBoolean().ShouldBeTrue();
+        status.GetProperty("signingMode").GetString().ShouldBe(FeSigningModes.CloudCustody);
         status.GetProperty("urls").EnumerateArray().First(u => u.GetProperty("environment").GetString() == "testecf")
             .GetProperty("reception").GetString().ShouldEndWith($"/testecf/{rnc}/fe/recepcion/api/ecf");
 
@@ -183,14 +324,14 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
         var other = await app.StoreWithNodeAsync(await app.OwnerAsync());
         (await (await other.Client.PostAsJsonAsync("/fiscal/v1/received/pull", new { after = 0 })).Json()).GetProperty("items").GetArrayLength().ShouldBe(0);
 
-        // Every cloud signature is in the panel: the seed is the supplier's (signed at the supplier), so five acknowledgements.
+        // Every signature is in the panel: the seed is the supplier's (signed at the supplier), so five acknowledgements.
         var panel = await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/fe");
         panel.GetProperty("signatures").EnumerateArray().Count(s => s.GetProperty("root").GetString() == "ARECF").ShouldBe(5);
         panel.GetProperty("status").GetProperty("rnc").GetString().ShouldBe(rnc);
     }
 
     [Fact]
-    public async Task The_cloud_signer_refuses_anything_but_acknowledgements_approvals_and_seeds()
+    public async Task The_receiver_signer_refuses_anything_but_acknowledgements_and_approvals_even_a_seed()
     {
         var (_, owner, rnc, _) = await ReceiverAsync();
         await using var scope = app.Services.CreateAsyncScope();
@@ -198,11 +339,12 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
         var certificate = await db.FeCertificates.SingleAsync(c => c.TenantId == owner.TenantId && c.RevokedUtc == null);
         var signer = scope.ServiceProvider.GetRequiredService<FeSigner>();
 
-        foreach (var root in new[] { "ECF", "RFCE", "ANECF" })
+        // TK-246 (council): a signed SemillaModel is a DGII token for the RNC; the cloud never signs one.
+        foreach (var root in new[] { "ECF", "RFCE", "ANECF", "SemillaModel" })
             await Should.ThrowAsync<InvalidOperationException>(() => signer.SignAsync(certificate, new XDocument(new XElement(root)), null, false, CancellationToken.None));
         await Should.ThrowAsync<InvalidOperationException>(() =>
             signer.SignAsync(certificate, new XDocument(new XElement(XName.Get("ARECF", "urn:otro"))), null, false, CancellationToken.None));
-        (await signer.SignAsync(certificate, new XDocument(new XElement("SemillaModel", new XElement("valor", "x"))), null, false, CancellationToken.None)).ShouldNotBeNull();
+        (await signer.SignAsync(certificate, new XDocument(new XElement("ACECF", new XElement("x", "y"))), null, false, CancellationToken.None)).ShouldNotBeNull();
 
         // The same RNC cannot be claimed by a second tenant.
         var intruder = await app.StoreWithNodeAsync(await app.OwnerAsync());
@@ -228,38 +370,30 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
     }
 
     [Fact]
-    public async Task The_owners_commercial_approval_is_signed_once_and_sent_to_the_supplier_and_the_DGII()
+    public async Task TK246_the_commercial_approval_is_decided_at_the_store_and_reaches_the_cloud_as_an_event()
     {
-        app.Outside.Electronic.Add(SupplierRnc);
-        var (node, _, rnc, ours) = await ReceiverAsync();
-        var supplier = await SupplierClientAsync(rnc);
-        (await AckAsync(supplier, rnc, SupplierEcf(rnc, "E310000000021"))).Estado.ShouldBe("0");
+        var (node, owner, rnc, _) = await ReceiverAsync();
+        (await AckAsync(await SupplierClientAsync(rnc), rnc, SupplierEcf(rnc, "E310000000021"))).Estado.ShouldBe("0");
         var id = (await (await node.Client.PostAsJsonAsync("/fiscal/v1/received/pull", new { after = 0 })).Json()).GetProperty("items")[0].GetProperty("id").GetInt64();
+        // The cloud no longer signs or sends approvals.
+        (await node.Client.PostAsJsonAsync($"/fiscal/v1/received/{id}/approval", new { approve = true })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await owner.Client.PostAsJsonAsync($"/api/panel/fe/received/{id}/approval", new { approve = true })).StatusCode
+            .ShouldBeOneOf(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed);
 
-        (await (await node.Client.PostAsJsonAsync($"/fiscal/v1/received/{id}/approval", new { approve = false })).ErrorCode()).ShouldBe("Fe.ApprovalReasonRequired");
-        var r = await node.Client.PostAsJsonAsync($"/fiscal/v1/received/{id}/approval", new { approve = false, reason = "Llegó carne en mal estado" });
-        r.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var answer = await r.Json();
-        answer.GetProperty("approval").GetString().ShouldBe("Rejected");
-        answer.GetProperty("approvalDeliveredUtc").ValueKind.ShouldBe(JsonValueKind.String);
-        answer.GetProperty("approvalDgiiUtc").ValueKind.ShouldBe(JsonValueKind.String);
+        var at = CloudApp.Today.ToDateTime(new TimeOnly(15, 0), DateTimeKind.Utc);
+        var acecf = FeXml.Zip("<ACECF/>");
+        (await node.SendAsync(
+            Events.Envelope(new CommercialApprovalRecordedV1(Guid.NewGuid(), id, "Rejected", "Llegó dañado", at, null, at, "No se pudo entregar al suplidor", acecf), at),
+            Events.Envelope(new CommercialApprovalRecordedV1(Guid.NewGuid(), id, "Rejected", "Llegó dañado", at, at.AddMinutes(5), null, null, acecf), at.AddMinutes(5)),
+            Events.Envelope(new CommercialApprovalRecordedV1(Guid.NewGuid(), id, "Approved", null, at, at, at, null, acecf), at.AddMinutes(6))))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+        await app.ApplyAsync();
 
-        // Other tests of this class send approvals too: only this e-NCF's count.
-        IEnumerable<string?> Sent(string path) => app.Outside.XmlTo(path).Where(x => x!.Contains("E310000000021", StringComparison.Ordinal));
-        var toSupplier = Sent("/fe/aprobacioncomercial/api/ecf").ShouldHaveSingleItem()!;
-        Sent("/aprobacioncomercial/api/aprobacioncomercial").ShouldHaveSingleItem().ShouldBe(toSupplier);
-        FeXml.Validate(toSupplier, FeXml.Acecf).ShouldBeEmpty();
-        var acecf = FeXml.Parse(toSupplier)!;
-        FeXml.SignatureIsValid(acecf).ShouldBeTrue();
-        FeXml.Text(acecf, "/ACECF/DetalleAprobacionComercial/Estado").ShouldBe("2");
-        FeXml.Text(acecf, "/ACECF/DetalleAprobacionComercial/RNCComprador").ShouldBe(rnc);
-        acecf.OuterXml.ShouldContain(Convert.ToBase64String(ours.RawData));
-        // The supplier asked for its seed authentication: the approval went with its token.
-        app.Outside.Requests.ShouldContain(q => q.Url.EndsWith("/fe/aprobacioncomercial/api/ecf", StringComparison.Ordinal) && q.Authorization == "Bearer tok");
-
-        (await (await node.Client.PostAsJsonAsync($"/fiscal/v1/received/{id}/approval", new { approve = true })).ErrorCode()).ShouldBe("Fe.ApprovalAlreadySigned");
-        (await node.Client.PostAsJsonAsync($"/fiscal/v1/received/{id}/approval", new { approve = false, reason = "otra vez" })).StatusCode.ShouldBe(HttpStatusCode.OK);
-        Sent("/fe/aprobacioncomercial/api/ecf").Count().ShouldBe(1); // nothing missing: nothing sent again
+        var shown = (await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/fe/received")).EnumerateArray().Single(d => d.GetProperty("id").GetInt64() == id);
+        (shown.GetProperty("approval").GetString(), shown.GetProperty("approvalReason").GetString()).ShouldBe(("Rejected", "Llegó dañado")); // the first decision stays
+        shown.GetProperty("approvalDeliveredUtc").ValueKind.ShouldBe(JsonValueKind.String);
+        shown.GetProperty("approvalDgiiUtc").ValueKind.ShouldBe(JsonValueKind.String);
+        shown.GetProperty("approvalMessage").ValueKind.ShouldBe(JsonValueKind.Null);
     }
 
     [Fact]
@@ -433,26 +567,9 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
         }));
     }
 
-    [Fact]
-    public async Task R9_10_the_panel_and_the_store_deciding_at_once_sign_one_decision()
-    {
-        var (node, owner, rnc, _) = await ReceiverAsync();
-        (await AckAsync(await SupplierClientAsync(rnc), rnc, SupplierEcf(rnc, "E310000000601"))).Estado.ShouldBe("0");
-        var id = (await (await node.Client.PostAsJsonAsync("/fiscal/v1/received/pull", new { after = 0 })).Json()).GetProperty("items")[0].GetProperty("id").GetInt64();
-
-        var answers = await Task.WhenAll(
-            node.Client.PostAsJsonAsync($"/fiscal/v1/received/{id}/approval", new { approve = true }),
-            owner.Client.PostAsJsonAsync($"/api/panel/fe/received/{id}/approval", new { approve = false, reason = "No pedimos esto" }));
-
-        var saved = await app.InDbAsync(db => db.FeReceived.SingleAsync(d => d.Id == id));
-        var winner = saved.Approval == "Approved" ? 0 : 1;
-        answers[winner].StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await answers[1 - winner].ErrorCode()).ShouldBe("Fe.ApprovalAlreadySigned");
-        FeXml.Text(FeXml.Parse(FeXml.Unzip(saved.ApprovalXmlGzip!))!, "/ACECF/DetalleAprobacionComercial/Estado").ShouldBe(winner == 0 ? "1" : "2");
-    }
-
     // --- helpers ---
 
+    /// <summary>CloudCustody (TK-151): the certificate's copy in the (local, test) vault.</summary>
     private async Task<(StoreNode Node, Owner Owner, string Rnc, X509Certificate2 Certificate)> ReceiverAsync()
     {
         var owner = await app.OwnerAsync();
@@ -463,6 +580,50 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
             new { file = Convert.ToBase64String(pfx), password = "prueba", rnc, ownerName = "Ana Pérez", holderName = "Ana Pérez", accepted = true, consentVersion = FeConsent.Version });
         r.StatusCode.ShouldBe(HttpStatusCode.OK, await r.Content.ReadAsStringAsync());
         return (node, owner, rnc, certificate);
+    }
+
+    /// <summary>StoreSigned (TK-246): the store proves the RNC with its certificate; the certificate stays with the test.</summary>
+    private async Task<(StoreNode Node, Owner Owner, string Rnc, X509Certificate2 Certificate)> StoreSignedReceiverAsync()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        var rnc = NewRnc();
+        var certificate = TestPki.Issue($"CN=Empresa, SERIALNUMBER={rnc}");
+        var r = await ActivateAsync(node, rnc, certificate);
+        r.StatusCode.ShouldBe(HttpStatusCode.OK, await r.Content.ReadAsStringAsync());
+        return (node, owner, rnc, certificate);
+    }
+
+    private static async Task<HttpResponseMessage> ActivateAsync(StoreNode node, string rnc, X509Certificate2 certificate, string? challenge = null, string? proofRnc = null)
+    {
+        challenge ??= (await (await node.Client.PostAsync("/fiscal/v1/receiver/challenge", null)).Json()).GetProperty("challenge").GetString();
+        var proof = new CertificateEcfSigner(certificate).Sign(new XDocument(new XElement("ActivacionReceptor", new XElement("RNC", proofRnc ?? rnc),
+            new XElement("Reto", challenge)))).SignedXml;
+        return await node.Client.PostAsJsonAsync("/fiscal/v1/receiver/activate",
+            new { proof, rnc, ownerName = "Ana Pérez", holderName = "Ana Pérez", accepted = true, consentVersion = FeConsent.StoreSignedVersion });
+    }
+
+    /// <summary>Until the cloud has seen the store's poll (a store never seen is offline: nothing waits for it).</summary>
+    private async Task OnlineAsync(StoreNode node)
+    {
+        var broker = app.Services.GetRequiredService<FeSignBroker>();
+        for (var i = 0; i < 100 && !broker.IsOnline(node.NodeId); i++) await Task.Delay(50);
+        broker.IsOnline(node.NodeId).ShouldBeTrue();
+    }
+
+    private static async Task<HttpClient> StoreWithNodeAsync(Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> factory)
+    {
+        var email = $"owner{Guid.NewGuid():N}@example.com";
+        (await factory.CreateClient().PostAsJsonAsync("/api/auth/register", new { email, password = CloudApp.Password })).EnsureSuccessStatusCode();
+        var login = await (await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = CloudApp.Password })).Json();
+        var owner = factory.CreateClient();
+        owner.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.GetProperty("accessToken").GetString());
+        var store = (await (await owner.PostAsJsonAsync("/api/stores", new { name = "Tienda" })).Json()).GetProperty("id").GetGuid();
+        var code = (await (await owner.PostAsync($"/api/stores/{store}/connection-codes", null)).Json()).GetProperty("code").GetString();
+        var json = await (await factory.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "PC principal" })).Json();
+        var node = factory.CreateClient();
+        node.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Node", $"{json.GetProperty("nodeId").GetGuid()}.{json.GetProperty("nodeSecret").GetString()}");
+        return node;
     }
 
     /// <summary>A supplier authenticated at the tenant's receiver: seed → signed with its certificate → token.</summary>

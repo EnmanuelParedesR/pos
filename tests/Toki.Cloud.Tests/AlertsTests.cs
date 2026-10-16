@@ -142,7 +142,7 @@ public sealed class AlertsTests(MailingCloudApp app) : IClassFixture<MailingClou
     }
 
     [Fact]
-    public async Task Received_e_CF_are_listed_in_the_panel_and_only_an_owner_may_approve()
+    public async Task Received_e_CF_are_listed_in_the_panel_and_approved_only_at_the_store()
     {
         var owner = await app.OwnerAsync();
         var member = await MemberAsync(owner);
@@ -168,10 +168,8 @@ public sealed class AlertsTests(MailingCloudApp app) : IClassFixture<MailingClou
         (await other.Client.GetFromJsonAsync<JsonElement>("/api/panel/fe/received")).GetArrayLength().ShouldBe(0);
         (await other.Client.GetAsync($"/api/panel/fe/received/{id}/xml")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
-        (await member.Client.PostAsJsonAsync($"/api/panel/fe/received/{id}/approval", new { approve = true })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-        // The owner may: without the certificate consent the cloud cannot sign the approval yet.
-        (await (await owner.Client.PostAsJsonAsync($"/api/panel/fe/received/{id}/approval", new { approve = true })).ErrorCode()).ShouldBe("Fe.NoConsent");
-        (await (await other.Client.PostAsJsonAsync($"/api/panel/fe/received/{id}/approval", new { approve = true })).ErrorCode()).ShouldBe("Fe.NotFound");
+        // TK-246: approvals are decided, signed and sent at the store; the panel only shows them.
+        (await owner.Client.PostAsJsonAsync($"/api/panel/fe/received/{id}/approval", new { approve = true })).IsSuccessStatusCode.ShouldBeFalse();
     }
 
     private static byte[] FeXmlTestZip(string xml)

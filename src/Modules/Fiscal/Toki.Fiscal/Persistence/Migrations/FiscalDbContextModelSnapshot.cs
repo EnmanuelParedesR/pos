@@ -530,6 +530,9 @@ namespace Toki.Fiscal.Persistence.Migrations
                     b.Property<DateTime?>("ApprovalUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<byte[]>("ApprovalXmlGzip")
+                        .HasColumnType("varbinary(max)");
+
                     b.Property<long>("CloudId")
                         .HasColumnType("bigint");
 

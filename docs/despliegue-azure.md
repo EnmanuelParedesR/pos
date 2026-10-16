@@ -8,7 +8,7 @@ Cómo se crea y se publica la nube de Toki (ADR-0008): la API `Toki.Host.Cloud`,
 |---|---|---|
 | App Service Linux B1 + Web App .NET 10 | La API (`Toki.Host.Cloud`). Siempre encendida, solo HTTPS, con identidad administrada. | ~13 USD/mes |
 | Azure SQL serverless (Gen5, 1 vCore, mínimo 0.5, pausa a los 60 min) | Esquemas `cloud`, `ingest` y `replica`. Solo cuentas de Entra ID: no hay usuario ni contraseña de SQL. | Casi nada mientras está en pausa; se cobra el almacenamiento |
-| Key Vault (RBAC) | La clave de Azure OpenAI. La API la lee con su identidad administrada (referencia `@Microsoft.KeyVault(...)`). | Centavos |
+| Key Vault (RBAC) | La clave de Azure OpenAI. La API la lee con su identidad administrada (referencia `@Microsoft.KeyVault(...)`). Las copias de certificados e-CF (CloudCustody, TK-151) están apagadas desde TK-246. | Centavos |
 | Log Analytics + Application Insights | Logs y trazas de la API (agente automático de App Service). | Según el volumen |
 | Static Web App (Free) | El sitio público y el panel del dueño: una sola app React (TK-228). | Gratis |
 | Azure OpenAI (S0) + despliegue `chat` | El asistente. El modelo se elige por precio. | Solo por uso |
@@ -275,6 +275,23 @@ Con el código de la nube (`KeyVaultFeVault`, el mismo archivo enlazado en un pr
 SHA-256 con la llave del vault y verificarla con el certificado ✅, borrar ✅ (después da 404 y la llave ya no firma). El certificado
 `tk151-test-20261016042431` quedó en borrado suave hasta el 2026-11-15 (la protección contra purga no deja borrarlo antes). Para la prueba se le
 dieron al usuario "Key Vault Certificates Officer" y "Key Vault Crypto User" en el vault y se quitaron al terminar.
+
+### Receptor e-CF: la tienda firma (TK-246, ADR-0011)
+
+Desde TK-246 el modo por defecto del receptor es **StoreSigned**: la nube no guarda certificados de las tiendas y no llama a la DGII; cada acuse lo
+firma la PC de la tienda por el canal del nodo. La copia en Key Vault (TK-151, **CloudCustody**) sigue en el código pero apagada en producción:
+
+| Configuración | Producción | Qué hace |
+|---|---|---|
+| `Fe__DefaultSigningMode` | `StoreSigned` | El modo que ofrece primero la pantalla de la tienda. |
+| `Fe__AllowCloudCustody` | `false` | Con false la API se niega a activar CloudCustody (`Fe.CloudCustodyUnavailable`). Se enciende solo con las condiciones de ADR-0011. |
+| `Fe__SignTimeoutSeconds` | 10 (por defecto) | Cuánto espera el receptor la firma de la tienda antes de responder 503 con `Retry-After`. |
+| `Fe__SignPollSeconds` | 25 (por defecto) | Cuánto dura el sondeo largo de la tienda (menor que el tiempo de espera del cliente de la tienda, 60 s). |
+
+Los roles "Key Vault Certificates Officer" y "Key Vault Crypto User" de la API se quedan en el Bicep para CloudCustody. **No hay que borrar nada en
+Azure:** el certificado de la prueba ya está en borrado suave y el vault tiene protección contra purga. La cola de solicitudes de firma vive en memoria:
+con más de una instancia de App Service el sondeo de la tienda y la petición del suplidor pueden caer en instancias distintas (igual que los nonces
+de ADR-0008); mientras haya una sola instancia, no cambia nada.
 
 ## Desarrollo local
 

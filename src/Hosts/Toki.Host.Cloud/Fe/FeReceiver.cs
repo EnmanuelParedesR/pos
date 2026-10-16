@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -104,28 +104,47 @@ internal static class FeReceiverEndpoints
             return Results.BadRequest();
 
         var buyer = FeXml.Text(doc, "/ECF/Encabezado/Comprador/RNCComprador");
-        var received = Read(doc, bytes!, receiver!.TenantId, env, issuer!, encf, buyer ?? "", clock.GetUtcNow().UtcDateTime);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var received = Read(doc, bytes!, receiver!.TenantId, env, issuer!, encf, buyer ?? "", now);
         var versions = db.FeReceived.Where(d => d.TenantId == receiver.TenantId && d.Environment == env && d.IssuerRnc == issuer && d.ENcf == encf);
-        int? reason = received is null || (FeXml.EcfSchema(received.Type) is { } schema && FeXml.Validate(bytes!, schema).Count > 0) ? 1
+        // TK-246: the same bytes kept pending (the store was off and the supplier got a 503) are the supplier's retry: acknowledged now as received.
+        var pending = received is null ? null : await versions.FirstOrDefaultAsync(d => d.Sha256 == received.Sha256 && d.AcknowledgedUtc == null, ct);
+        int? reason = pending is not null ? null
+            : received is null || (FeXml.EcfSchema(received.Type) is { } schema && FeXml.Validate(bytes!, schema).Count > 0) ? 1
             : !trust.SignedByTrusted(doc, issuer) ? 2
             : buyer != receiver.Rnc ? 4
             : await versions.AnyAsync(d => d.Sha256 == received.Sha256, ct) || await versions.CountAsync(ct) >= MaxVersions ? 3
             : null;
-        if (reason is null) db.FeReceived.Add(received!);
+        var kept = pending ?? (reason is null ? received : null);
+        if (kept is not null) kept.AcknowledgedUtc = now;
+        if (pending is null && kept is not null) db.FeReceived.Add(kept);
 
         string? signed;
         try { signed = await AcknowledgeAsync(signer, receiver, issuer!, Rnc.IsValid(buyer) ? buyer! : receiver.Rnc, encf, reason, clock, ct); }
         catch (DbUpdateException) when (reason is null)
         {
             db.ChangeTracker.Clear(); // the same e-CF arrived twice at once: the other request kept it
+            kept = null;
             signed = await AcknowledgeAsync(signer, receiver, issuer!, buyer!, encf, 3, clock, ct);
             reason = 3;
         }
+        if (signed is null)
+        {
+            // TK-246: the store did not sign in time. What was received stays, pending its acknowledgement (signed and kept when the store is back,
+            // FeLateAcknowledger); the supplier is told to retry. (verificar) §11, question 44.
+            if (kept is not null) kept.AcknowledgedUtc = null;
+            await db.SaveChangesAsync(ct);
+            http.Response.Headers.RetryAfter = RetryAfterSeconds.ToString(CultureInfo.InvariantCulture);
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+        }
         // After the save, so two versions arriving at once are flagged too.
-        if (signed is not null && reason is null && await versions.CountAsync(ct) > 1)
+        if (reason is null && await versions.CountAsync(ct) > 1)
             await versions.ExecuteUpdateAsync(s => s.SetProperty(d => d.Conflict, true), ct);
-        return signed is null ? Results.StatusCode(StatusCodes.Status503ServiceUnavailable) : Results.Text(signed, "application/xml", Encoding.UTF8);
+        return Results.Text(signed, "application/xml", Encoding.UTF8);
     }
+
+    /// <summary>What a 503 of the receiver tells the supplier to wait before retrying (TK-246).</summary>
+    public const int RetryAfterSeconds = 60;
 
     /// <summary>A buyer's commercial approval (ACECF) of an e-CF this tenant issued, signed by a certificate of an INDOTEL authority that belongs to
     /// <c>RNCComprador</c> (R9 #1). Kept (10 years) and shown with the archived e-CF.</summary>
@@ -169,7 +188,7 @@ internal static class FeReceiverEndpoints
         };
     }
 
-    private static async Task<string?> AcknowledgeAsync(FeSigner signer, FeCertificate receiver, string issuer, string buyer, string encf, int? reason,
+    internal static async Task<string?> AcknowledgeAsync(FeSigner signer, FeCertificate receiver, string issuer, string buyer, string encf, int? reason,
         TimeProvider clock, CancellationToken ct)
     {
         var ack = new XDocument(new XElement("ARECF", new XElement("DetalleAcusedeRecibo",

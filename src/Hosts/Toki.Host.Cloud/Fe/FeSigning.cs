@@ -262,23 +262,39 @@ internal sealed class FeTrust
         .FirstOrDefault(d => d.Length is 9 or 11);
 }
 
-/// <summary>TK-151: the cloud signer. It signs with a tenant's certificate in the vault, and <b>only</b> acknowledgements (ARECF), commercial approvals
-/// (ACECF) and authentication seeds (SemillaModel): anything else (an e-CF, an RFCE, an ANECF) is refused here, in code, whoever asks.
+/// <summary>TK-151/TK-246: who signs for the receiver. <b>Only</b> acknowledgements (ARECF) and commercial approvals (ACECF): anything else (an e-CF, an
+/// RFCE, an ANECF, and a SemillaModel, which signed is a DGII token for the RNC) is refused here, in code, whoever asks. StoreSigned: the store signs
+/// over the node channel (<see cref="FeSignBroker"/>) and its answer is checked (<see cref="FeStoreSignature"/>); CloudCustody: the vault key.
 /// Every signature is written to <see cref="FeSignature"/> (the panel shows them). A withdrawn consent stops it at the next signature.</summary>
-internal sealed class FeSigner(CloudDbContext db, IFeCertificateVault vault, TimeProvider clock)
+internal sealed class FeSigner(CloudDbContext db, IFeCertificateVault vault, FeSignBroker broker, FeTrust trust, TimeProvider clock, ILogger<FeSigner> log)
 {
-    public static readonly IReadOnlySet<string> AllowedRoots = new HashSet<string>(StringComparer.Ordinal) { "ARECF", "ACECF", "SemillaModel" };
+    public static readonly IReadOnlySet<string> AllowedRoots = new HashSet<string>(StringComparer.Ordinal) { "ARECF", "ACECF" };
 
-    /// <returns>The signed XML, or null when the consent was withdrawn.</returns>
+    /// <returns>The signed XML, or null when the consent was withdrawn or the store did not sign in time (an outage is added: the caller saves).</returns>
     /// <param name="keepXml">Keep the signed document in the log (the acknowledgements of what was received: they have no other home).</param>
     public async Task<string?> SignAsync(FeCertificate certificate, XDocument xml, string? encf, bool keepXml, CancellationToken ct)
     {
         var root = xml.Root ?? throw new InvalidOperationException("Empty document.");
         if (root.Name.Namespace != XNamespace.None || !AllowedRoots.Contains(root.Name.LocalName))
-            throw new InvalidOperationException($"The cloud signer never signs a {root.Name.LocalName}: only ARECF, ACECF and SemillaModel.");
+            throw new InvalidOperationException($"The receiver never signs a {root.Name.LocalName}: only ARECF and ACECF.");
         if (!await db.FeCertificates.AnyAsync(c => c.Id == certificate.Id && c.RevokedUtc == null, ct)) return null;
 
-        var signed = await FeXml.SignAsync(xml, await vault.KeyAsync(certificate.KeyName, ct), ct);
+        string? signed;
+        if (certificate.SigningMode == FeSigningModes.StoreSigned)
+        {
+            signed = await broker.SignAsync(certificate.ConsentedByNodeId, xml.ToString(SaveOptions.DisableFormatting), ct);
+            if (signed is not null && !FeStoreSignature.Matches(signed, xml, certificate.Rnc, trust))
+            {
+                log.LogWarning("The store of tenant {TenantId} answered a signature that is not the document asked for, or not of RNC {Rnc}", certificate.TenantId, certificate.Rnc);
+                signed = null;
+            }
+            if (signed is null)
+            {
+                await OutageAsync(certificate, ct);
+                return null;
+            }
+        }
+        else signed = await FeXml.SignAsync(xml, await vault.KeyAsync(certificate.KeyName, ct), ct);
         db.FeSignatures.Add(new FeSignature
         {
             TenantId = certificate.TenantId, CertificateId = certificate.Id, AtUtc = clock.GetUtcNow().UtcDateTime, Root = root.Name.LocalName, ENcf = encf,
@@ -286,5 +302,14 @@ internal sealed class FeSigner(CloudDbContext db, IFeCertificateVault vault, Tim
         });
         await db.SaveChangesAsync(ct); // with whatever the caller added: the received document and its acknowledgement go together
         return signed;
+    }
+
+    /// <summary>Adds the PC's outage unless one is open (the caller saves it, with the document it keeps pending); <see cref="FeRemoteSigningEndpoints"/>
+    /// closes it at the next poll.</summary>
+    private async Task OutageAsync(FeCertificate certificate, CancellationToken ct)
+    {
+        var node = certificate.ConsentedByNodeId;
+        if (!await db.FeReceiverOutages.AnyAsync(o => o.TenantId == certificate.TenantId && o.NodeId == node && o.ToUtc == null, ct))
+            db.FeReceiverOutages.Add(new FeReceiverOutage { TenantId = certificate.TenantId, NodeId = node, FromUtc = clock.GetUtcNow().UtcDateTime });
     }
 }

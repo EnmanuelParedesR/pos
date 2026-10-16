@@ -5,8 +5,9 @@ import { LoadError, Notice } from "../ui";
 
 const environmentNames: Record<string, string> = { ecf: "Producción", certecf: "Certificación", testecf: "Pruebas" };
 
-/** TK-241: the cloud receiver (TK-151): the certificate copy, the addresses to register in the DGII directory, the latest cloud signatures
- * and the approvals buyers sent. Only an Owner withdraws the consent, after confirming twice. */
+/** TK-241: the cloud receiver (TK-151): who signs (TK-246: the store's PC or a certificate copy), the hours it was without its store, the
+ * addresses to register in the DGII directory, the latest signatures and the approvals buyers sent. Only an Owner withdraws the consent, after
+ * confirming twice. */
 export function ReceiverPanel({ canEdit }: { canEdit: boolean }) {
   const { data, error, reload } = useApi<ReceiverData>("/api/panel/fe");
   const s = data?.status;
@@ -28,6 +29,10 @@ export function ReceiverPanel({ canEdit }: { canEdit: boolean }) {
               <b>{s.rnc}</b>
             </li>
             <li>
+              <span>Firma</span>
+              <b>{s.signingMode === "CloudCustody" ? "Copia del certificado en la nube" : "En la PC de la tienda (el certificado no sale de la tienda)"}</b>
+            </li>
+            <li>
               <span>Certificado</span>
               <b>{s.subject}</b>
             </li>
@@ -46,6 +51,11 @@ export function ReceiverPanel({ canEdit }: { canEdit: boolean }) {
               </li>
             )}
           </ul>
+          {data.offline?.map((o) => (
+            <Notice key={o.node} kind="warning" title={o.offlineSinceUtc ? `Receptor sin conexión: ${o.node} no responde desde ${dateTime(o.offlineSinceUtc)}` : `Receptor sin conexión: ${o.hours} h en 30 días (${o.node})`}>
+              Mientras la PC de la tienda está apagada, los suplidores reciben "intente de nuevo" y el acuse se firma cuando vuelve.
+            </Notice>
+          ))}
           <details>
             <summary>Direcciones para el directorio de la DGII</summary>
             <p className="esc-muted">Cópielas completas en la OFV, "Mantenimiento Directorio FE", para cada ambiente.</p>
@@ -71,7 +81,7 @@ export function ReceiverPanel({ canEdit }: { canEdit: boolean }) {
             ))}
           </details>
           <details>
-            <summary>Últimas firmas en la nube ({data.signatures.length})</summary>
+            <summary>Últimas firmas del receptor ({data.signatures.length})</summary>
             {data.signatures.length === 0 ? (
               <p className="esc-muted">Todavía no hay firmas.</p>
             ) : (
@@ -132,7 +142,8 @@ function Revoke({ onDone }: { onDone: () => void }) {
     );
   return (
     <div className="esc-col" style={{ gap: 8 }}>
-      <Notice kind="warning" title="Se borra la copia del certificado en la nube y el receptor deja de responder.">
+      <Notice kind="warning" title="El receptor deja de responder (y si hay copia del certificado en la nube, se borra).">
+
         Los suplidores no podrán enviarle comprobantes hasta que lo active otra vez desde la tienda.
       </Notice>
       {error && <Notice kind="error" title={error.detail} />}
@@ -143,7 +154,7 @@ function Revoke({ onDone }: { onDone: () => void }) {
           </button>
         ) : (
           <button type="button" className="esc-button esc-button--danger" onClick={() => void revoke()}>
-            Sí, retirar el certificado
+            Sí, retirar el receptor
           </button>
         )}
         <button type="button" className="esc-button esc-button--ghost" onClick={() => (setStep(0), setError(null))}>

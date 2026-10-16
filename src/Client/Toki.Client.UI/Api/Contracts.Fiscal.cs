@@ -32,9 +32,10 @@ public sealed record EcfIssued(Guid DocumentId, string ENcf);
 public sealed record EcfCertificateStatus(bool Installed, bool InUse, string? Subject, string? TaxId, string? Issuer, DateTime? NotAfterUtc, string? Thumbprint,
     string? Store, int? DaysLeft, bool ExpiresSoon);
 
-/// <summary><c>GET /api/fiscal/receiver</c> (TK-151): the receiver services in the cloud and the URLs to register in the DGII, per environment.</summary>
+/// <summary><c>GET /api/fiscal/receiver</c> (TK-151): the receiver services in the cloud and the URLs to register in the DGII, per environment.
+/// TK-246: <c>SigningMode</c> StoreSigned or CloudCustody; CloudCustody can be chosen only while <c>CloudCustodyAvailable</c>.</summary>
 public sealed record EcfReceiverStatus(bool Active, string? Rnc, string? Subject, DateTime? NotAfterUtc, DateTime? ConsentedUtc, string? OwnerName,
-    string? HolderName, List<EcfReceiverUrls>? Urls);
+    string? HolderName, List<EcfReceiverUrls>? Urls, string? SigningMode = null, string? DefaultSigningMode = null, bool CloudCustodyAvailable = false);
 
 public sealed record EcfReceiverUrls(string Environment, string Reception, string Approval, string Authentication);
 

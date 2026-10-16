@@ -289,7 +289,8 @@ resource apiWritesArchive 'Microsoft.Authorization/roleAssignments@2022-04-01' =
 }
 
 // TK-151: the API imports and deletes the stores' certificates (Key Vault Certificates Officer) and signs receiver acknowledgements with their
-// non-exportable keys (Key Vault Crypto User). The cloud signer refuses in code anything but ARECF, ACECF and seeds.
+// non-exportable keys (Key Vault Crypto User): the CloudCustody mode. TK-246: kept for that mode, which stays off (Fe__AllowCloudCustody false)
+// until the conditions of ADR-0011; the default is StoreSigned (no certificate in the cloud). The signer refuses in code anything but ARECF and ACECF.
 resource apiManagesCertificates 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(vault.id, api.id, 'a4417e6f-fecd-4de8-b567-7b0420556985')
   scope: vault
@@ -331,6 +332,8 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Archive__Blob__Container: archiveContainer.name
     Fe__Vault: 'KeyVault'
     Fe__KeyVaultUri: vault.properties.vaultUri
+    Fe__DefaultSigningMode: 'StoreSigned' // TK-246 (ADR-0011)
+    Fe__AllowCloudCustody: 'false'
   }, empty(emailEndpoint) ? {} : {
     // TK-222: alerts and invites by e-mail. Off (logged only) until both params are set; see docs/despliegue-azure.md.
     Email__Provider: 'AzureCommunicationServices'

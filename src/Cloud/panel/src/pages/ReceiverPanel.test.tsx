@@ -19,9 +19,11 @@ const active: ReceiverData = {
     ownerName: "Ana Pérez",
     holderName: "Ana Pérez",
     urls: [{ environment: "ecf", reception: "https://api.toki/ecf/101010101/fe/recepcion/api/ecf", approval: "https://api.toki/a", authentication: "https://api.toki/s" }],
+    signingMode: "StoreSigned",
   },
   signatures: [{ atUtc: "2026-10-15T16:00:00Z", root: "ARECF", eNcf: "E310000000001", sha256: "abc" }],
   approvals: [],
+  offline: [{ node: "PC principal", hours: 3.5, offlineSinceUtc: null }],
 };
 
 it("TK-241: shows the receiver and withdraws it only after two confirmations", async () => {
@@ -43,11 +45,14 @@ it("TK-241: shows the receiver and withdraws it only after two confirmations", a
   expect(await screen.findByText("101010101")).toBeTruthy();
   expect(screen.getByText("https://api.toki/ecf/101010101/fe/recepcion/api/ecf")).toBeTruthy();
   expect(screen.getByText(/ARECF/)).toBeTruthy();
+  // TK-246: who signs and the hours without the store
+  expect(screen.getByText(/En la PC de la tienda/)).toBeTruthy();
+  expect(screen.getByText(/Receptor sin conexión: 3.5 h en 30 días/)).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "Retirar" }));
   fireEvent.click(screen.getByRole("button", { name: "Entiendo, continuar" }));
   expect(posts).toEqual([]);
-  fireEvent.click(screen.getByRole("button", { name: "Sí, retirar el certificado" }));
+  fireEvent.click(screen.getByRole("button", { name: "Sí, retirar el receptor" }));
   expect(await screen.findByText(/No está activo/)).toBeTruthy();
   expect(posts).toHaveLength(1);
   expect(posts[0]).toMatch("/api/panel/fe/revoke");

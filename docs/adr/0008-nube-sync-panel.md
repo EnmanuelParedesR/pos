@@ -101,6 +101,7 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 - La nube lo pasa a su propio `IEcfProvider`, que hoy también es el simulado.
 - La API key de un proveedor real vive solo en la nube (Key Vault), nunca en la tienda.
 - Cuando el dueño decida el proveedor (TK-055), solo cambia la implementación en la nube.
+- **Superado (TK-140, TK-246):** toda llamada a la DGII sale de la tienda, con su certificado. El canal del nodo también lleva las firmas que pide el receptor de comprobantes de la nube (sondeo largo `POST /fiscal/v1/receiver/sign-requests/next`, firmado como cualquier llamada del nodo): ver ADR-0011.
 
 **Contrato del relevo e-CF**
 
