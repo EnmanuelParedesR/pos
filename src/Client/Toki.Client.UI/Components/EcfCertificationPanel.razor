@@ -1,0 +1,171 @@
+@inject TokiApi Api
+
+@* TK-155: the DGII certification portal, step by step (docs/ecf-propio.md §8). The owner does the portal steps in his browser and ticks them
+   here; Toki generates, signs and sends the test set, shows the simulation and signs the XML files the portal hands out. *@
+<section class="esc-card esc-card--padded" aria-labelledby="cert-title">
+    <div class="esc-card__head">
+        <h2 id="cert-title" class="esc-card__title">Certificación con la DGII</h2>
+        <span class="esc-card__aside">@(_state is { } st ? $"{st.Steps.Count(s => s.Done)} de {Steps.Length} pasos" : "")</span>
+    </div>
+    @if (_message is not null)
+    {
+        <p role="status" class="@(_error ? "esc-error" : "esc-muted")">@_message</p>
+    }
+    <ol class="esc-steps" aria-label="Pasos de la certificación">
+        @foreach (var (step, i) in Steps.Select((s, i) => (s, i)))
+        {
+            var done = _state?.Steps.Find(s => s.Number == i)?.Done == true;
+            <li>
+                <label><input type="checkbox" checked="@done" disabled="@_sending" @onchange="e => MarkAsync(i, e.Value is true)" /> <b>@step.Title</b></label>
+                <span class="esc-table__sub esc-muted">@step.Who · @step.Hint</span>
+            </li>
+        }
+    </ol>
+
+    <h3 class="esc-card__title">Set de pruebas (paso 3)</h3>
+    <p class="esc-muted">Descargue el Excel del portal y súbalo aquí. Toki arma cada e-CF con los mismos campos y en el mismo orden, lo firma y lo envía a Certificación (CerteCF). Si la DGII rechaza uno, el set se reinicia: descargue el nuevo y súbalo otra vez.</p>
+    <div class="esc-form-grid">
+        <Field Label="Excel del set (.xlsx o .csv)">
+            <Microsoft.AspNetCore.Components.Forms.InputFile class="esc-input" accept=".xlsx,.csv" OnChange="ImportAsync" disabled="@_sending" />
+        </Field>
+    </div>
+    @if (_errors.Count > 0)
+    {
+        <ul class="esc-error" aria-label="Filas con problemas">@foreach (var e in _errors) { <li>@e</li> }</ul>
+    }
+    @if (_state is { Cases.Count: > 0 } withCases)
+    {
+        <div class="esc-form-actions"><Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SendAsync">@(_sending ? "Enviando…" : "Enviar y consultar")</Button></div>
+        <div class="esc-table-wrap">
+            <table class="esc-table" aria-label="Set de pruebas">
+                <thead><tr><th class="esc-num">Fila</th><th>e-NCF</th><th>Estado</th></tr></thead>
+                <tbody>
+                    @foreach (var c in withCases.Cases)
+                    {
+                        var (text, pill) = Names.EcfStatus(c.Status);
+                        <tr><td class="esc-num">@c.Row</td><td>@c.ENcf<span class="esc-table__sub esc-muted">@Names.DocumentType(c.Type)@(c.Channel == "Rfce" ? " · resumen (RFCE)" : "")</span></td>
+                            <td><span class="esc-pill esc-pill--@pill">@text</span>@if (c.Messages is { } m) { <span class="esc-table__sub esc-muted">@m</span> }</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    <h3 class="esc-card__title">Simulación (paso 5)</h3>
+    <p class="esc-muted">Con el ambiente en Certificación, venda en la caja como un día normal (cada tipo de comprobante que use). @(_state?.Simulation is { } sim ? $"Aceptados: {sim.Accepted} · rechazados: {sim.Rejected} · esperando: {sim.Waiting}." : "")
+        El PDF de cada comprobante para el paso 6 está pendiente (TK-148); las URL de recepción y aprobación de la tienda llegan con el servicio de la nube (TK-152).</p>
+
+    <h3 class="esc-card__title">Firmar archivo de la DGII (pasos 2 y 11)</h3>
+    <p class="esc-muted">El portal entrega un XML para firmar (postulación, declaración jurada). Elíjalo, revise que es el correcto y fírmelo con el certificado de la tienda; luego súbalo al portal.</p>
+    <div class="esc-form-grid">
+        <Field Label="Archivo XML del portal">
+            <Microsoft.AspNetCore.Components.Forms.InputFile class="esc-input" accept=".xml" OnChange="PickXmlAsync" disabled="@_sending" />
+        </Field>
+    </div>
+    @if (_xml is not null)
+    {
+        <pre class="esc-code" aria-label="Vista previa del XML">@(_xml.Length > 1500 ? _xml[..1500] + "…" : _xml)</pre>
+        <div class="esc-form-actions"><Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SignAsync">@(_confirmSign ? "¿Firmar este archivo? Toque otra vez" : "Firmar")</Button></div>
+    }
+    @if (_signed is { } signed)
+    {
+        <p role="status"><a class="esc-button esc-button--small" download="@($"{_fileName}-firmado.xml")" href="@($"data:application/xml;base64,{Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(signed.SignedXml))}")">Descargar @signed.Root firmado</a></p>
+    }
+</section>
+
+@code {
+    private sealed record Step(string Title, string Who, string Hint);
+
+    /// <summary>The certification portal (docs/ecf-propio.md §8). The index is what the server keeps.</summary>
+    private static readonly Step[] Steps =
+    [
+        new("Solicitud FI-GDF-016 en la OFV", "Dueño", "La DGII responde por el buzón con el acceso al portal"),
+        new("Pruebas libres en Pre-certificación (TesteCF)", "Toki", "Ventas de prueba de cada tipo con el ambiente en TesteCF"),
+        new("Postulación", "Dueño + Toki", "Nombre y versión del software, URL de la tienda; firme el XML aquí abajo"),
+        new("Pruebas de datos e-CF (set de pruebas)", "Toki", "Suba el Excel del portal"),
+        new("Pruebas de aprobaciones comerciales", "Toki", "Pendiente: llega con el servicio de la nube (TK-152)"),
+        new("Simulación con datos reales", "Toki", "Ventas normales con el ambiente en CerteCF"),
+        new("Subir el PDF de cada comprobante de la simulación", "Dueño", "PDF pendiente (TK-148)"),
+        new("Confirmar las URL de prueba", "Dueño", "Recepción y aprobación comercial de la tienda"),
+        new("Comunicación: la DGII envía e-CF y espera el acuse", "Nube de Toki", "Pendiente (TK-152)"),
+        new("Comunicación: aprobaciones comerciales", "Nube de Toki", "Pendiente (TK-152)"),
+        new("URL de producción", "Dueño", "Las mismas URL, ambiente de producción"),
+        new("Declaración jurada", "Dueño + Toki", "Descárguela, fírmela aquí abajo y súbala"),
+        new("Verificación del RNC por la DGII", "DGII", "Esperar la respuesta"),
+        new("Autorización: secuencias de producción y ambiente eCF", "Dueño", "Pida las secuencias en la OFV y cárguelas en Configuración"),
+    ];
+
+    private CertificationState? _state;
+    private string? _message, _xml, _fileName;
+    private DgiiFileSigned? _signed;
+    private List<string> _errors = [];
+    private bool _sending, _error, _confirmSign;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync() => _state = (await Api.GetAsync<CertificationState>("/api/fiscal/certification")).Value ?? _state;
+
+    private void Show(Problem? p, string success) => (_error, _message) = (p is not null, p?.Message ?? success);
+
+    private async Task MarkAsync(int step, bool done)
+    {
+        var r = await Api.PutAsync<Empty>($"/api/fiscal/certification/steps/{step}", new { Done = done });
+        if (r.Problem is { } p) Show(p, "");
+        await LoadAsync();
+    }
+
+    private static async Task<byte[]?> ReadAsync(Microsoft.AspNetCore.Components.Forms.IBrowserFile file, long max)
+    {
+        using var copy = new MemoryStream();
+        try
+        {
+            await using var stream = file.OpenReadStream(max);
+            await stream.CopyToAsync(copy);
+            return copy.ToArray();
+        }
+        catch (IOException) { return null; }
+    }
+
+    private async Task ImportAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        _errors = [];
+        if (await ReadAsync(e.File, 10_000_000) is not { } bytes) { Show(new Problem(400, "", "El archivo pasa de 10 MB."), ""); return; }
+        _sending = true;
+        var r = await Api.PostAsync<TestSetImported>("/api/fiscal/certification/test-set", new { File = Convert.ToBase64String(bytes), e.File.Name }, TimeSpan.FromMinutes(2));
+        _sending = false;
+        _errors = r.Value?.Errors ?? [];
+        Show(r.Problem, _errors.Count > 0 ? "El set no se cargó: corrija o reporte estas filas." : $"Set cargado: {r.Value?.Imported} comprobantes firmados, listos para enviar.");
+        _error |= _errors.Count > 0;
+        await LoadAsync();
+    }
+
+    private async Task SendAsync()
+    {
+        _sending = true;
+        var r = await Api.PostAsync<List<CertificationCaseRow>>("/api/fiscal/certification/send", timeout: TimeSpan.FromMinutes(5));
+        _sending = false;
+        var rows = r.Value ?? [];
+        Show(r.Problem, rows.Count(c => c.Status is "Pending" or "Sent") is > 0 and var open
+            ? $"{open} comprobantes esperan respuesta: vuelva a consultar en un momento."
+            : $"Listo: {rows.Count(c => c.Status is "Accepted" or "AcceptedConditional")} aceptados, {rows.Count(c => c.Status == "Rejected")} rechazados.");
+        await LoadAsync();
+    }
+
+    private async Task PickXmlAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        (_signed, _confirmSign, _message) = (null, false, null);
+        _fileName = Path.GetFileNameWithoutExtension(e.File.Name);
+        _xml = await ReadAsync(e.File, 2_000_000) is { } bytes ? System.Text.Encoding.UTF8.GetString(bytes) : null;
+        if (_xml is null) Show(new Problem(400, "", "El archivo pasa de 2 MB."), "");
+    }
+
+    private async Task SignAsync()
+    {
+        if (!_confirmSign) { _confirmSign = true; return; }
+        (_confirmSign, _sending) = (false, true);
+        var r = await Api.PostAsync<DgiiFileSigned>("/api/fiscal/certification/sign", new { Xml = _xml });
+        _sending = false;
+        _signed = r.Value;
+        Show(r.Problem, "Archivo firmado: descárguelo y súbalo al portal de la DGII.");
+    }
+}

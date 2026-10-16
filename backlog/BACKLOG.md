@@ -189,7 +189,7 @@ Decisión: ADR-0008. Despliegue: `docs/despliegue-azure.md`.
 
 ## M13 · e-CF propio con la DGII
 
-Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket en su §12; lo implementado de TK-144 a TK-150, en §10.9). Sin proveedor de terceros: la PC principal firma y envía directo a la DGII; la nube publica los servicios de receptor.
+Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket en su §12; lo implementado de TK-144 a TK-150, en §10.9; de TK-155 a TK-157, en §10.11). Sin proveedor de terceros: la PC principal firma y envía directo a la DGII; la nube publica los servicios de receptor.
 
 | Ticket | Qué | Estado |
 |---|---|---|
@@ -208,9 +208,9 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 | TK-152 | Servicios de receptor en la nube: Recepción (acuse firmado) y Aprobación Comercial | ⬜ |
 | TK-153 | Entrega de la 31 al comprador electrónico | ⬜ |
 | TK-154 | Comprobantes recibidos de suplidores en la tienda (y aprobación comercial opcional) | ⬜ |
-| TK-155 | Asistente de certificación (set de pruebas, simulación, firmar XML de la DGII) | ⬜ |
-| TK-156 | Operación: salud, estatus de la DGII y guía de contingencia | ⬜ |
-| TK-157 | Contingencia por imposibilidad de emitir (serie B y regularización) | ⬜ |
+| TK-155 | Asistente de certificación (set de pruebas, simulación, firmar XML de la DGII) | 🟡 Falta CerteCF real (TK-141), el PDF de la RI (TK-148), las URL de receptor y el set de aprobaciones (TK-152). Pasos con progreso, set de pruebas desde el Excel o CSV (generador genérico por el XSD, firmado, RFCE), envío y consulta en CerteCF, simulación y "Firmar archivo de la DGII" (`docs/ecf-propio.md` §10.11) |
+| TK-156 | Operación: salud, estatus de la DGII y guía de contingencia | 🟡 Falta la URL real de "Estatus de servicios" (§11 #6), el reloj (§11 #12) y la revisión de la guía por el dueño. `GET /api/fiscal/health`, health check `ecf-operations`, "Consultar a la DGII", Resumen y `docs/contingencia-ecf.md` (§10.11) |
+| TK-157 | Contingencia por imposibilidad de emitir (serie B y regularización) | ✅ Rangos B, contingencia solo cuando no se puede firmar, venta con NCF B (nunca mientras se pueda firmar), aviso en la caja, contador de 15 y 30 días y regularización con `CodigoModificacion` 4; preguntas en §11 #31–32 (§10.11) |
 | TK-158 | Pruebas de contrato y de punta a punta contra TesteCF | ⬜ |
 | TK-159 | (Después de V1) Receptor sin custodia por túnel y E41 de compras | ⬜ |
 | TK-176 | Importar el `.p12` desde Configuración → Comprobantes y avisar 30 días antes de que venza el certificado (resto de TK-142) | ✅ `POST/GET /api/fiscal/certificate`: contraseña una sola vez, nunca guardada; `LocalMachine\My` no exportable (o `CurrentUser\My` de la cuenta del servicio), carpeta de llaves cifrada en desarrollo; aviso a 30 días en el Resumen y en la barra de la caja (`docs/ecf-propio.md` §10.10) |

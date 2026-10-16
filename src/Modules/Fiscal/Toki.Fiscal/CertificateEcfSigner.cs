@@ -26,6 +26,16 @@ internal sealed class CertificateEcfSigner : IEcfSigner
 
     public bool IsSimulated => false;
 
+    /// <summary>TK-157: why nothing can be signed right now (no certificate, an expired or not yet valid one), or null when it can sign.</summary>
+    public string? CannotSign(DateTime nowUtc)
+    {
+        X509Certificate2 c;
+        try { c = _certificate(); }
+        catch (InvalidOperationException) { return "no hay certificado digital"; }
+        if (c.NotAfter.ToUniversalTime() < nowUtc) return "el certificado digital venció";
+        return c.NotBefore.ToUniversalTime() > nowUtc ? "el certificado digital todavía no es válido" : null;
+    }
+
     /// <summary>For tests and tools: the certificate of <see cref="EcfCertificate.LoadConfigured"/>, or an exception when none is configured.</summary>
     public static CertificateEcfSigner FromConfiguration(IConfiguration config) =>
         new(EcfCertificate.LoadConfigured(config)

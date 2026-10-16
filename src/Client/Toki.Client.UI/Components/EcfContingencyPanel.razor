@@ -1,0 +1,145 @@
+@inject TokiApi Api
+
+@* TK-157: paper receipts of series B when the store cannot issue e-CF. Start only when it cannot sign (the server refuses otherwise), end when
+   the certificate is back, then Regularizar replaces each B receipt with an e-CF (only to the DGII). Irreversible steps ask a second tap. *@
+<section class="esc-card esc-card--padded" aria-labelledby="contingency-title">
+    <div class="esc-card__head">
+        <h2 id="contingency-title" class="esc-card__title">Contingencia (serie B)</h2>
+        <span class="esc-card__aside">Solo cuando no se pueden emitir e-CF</span>
+    </div>
+    @if (_message is not null)
+    {
+        <p role="status" class="@(_error ? "esc-error" : "esc-muted")">@_message</p>
+    }
+    @if (_status is { } s)
+    {
+        @if (s.Active)
+        {
+            <p role="status"><span class="esc-pill esc-pill--error">Activa · día @s.Day de @s.MaxDays</span> Desde el @Format.Date(s.StartedUtc!.Value). @s.Reason</p>
+            <p class="esc-muted">La caja factura con comprobantes serie B en papel. @(s.CanSign ? "La tienda ya puede firmar: termine la contingencia y declare la salida en la OFV." : $"Motivo: {s.CannotSignReason}.")</p>
+            <div class="esc-form-actions"><Button Variant="Button.Variants.Danger" Disabled="_sending" OnClick="EndAsync">@(_confirm == "end" ? "¿Terminar la contingencia? Toque otra vez" : "Terminar contingencia")</Button></div>
+        }
+        else if (!s.CanSign)
+        {
+            <p class="esc-muted">No se pueden firmar comprobantes (@s.CannotSignReason). Declare la contingencia en la OFV y actívela aquí para seguir facturando con serie B.</p>
+            <div class="esc-form-grid">
+                <Field Label="Motivo (lo mismo que declaró en la OFV)">
+                    <input class="esc-input" maxlength="500" @bind="_reason" />
+                </Field>
+            </div>
+            <div class="esc-form-actions"><Button Variant="Button.Variants.Danger" Disabled="_sending" OnClick="StartAsync">@(_confirm == "start" ? "¿Activar la serie B? Toque otra vez" : "Activar contingencia")</Button></div>
+        }
+        else
+        {
+            <p class="esc-muted">La tienda firma comprobantes electrónicos: no hace falta la serie B. Deje cargado un rango B por si un día no se puede firmar.</p>
+        }
+
+        @if (s.ToRegularize.Count > 0)
+        {
+            <p role="status"><b>@s.ToRegularize.Count</b> @(s.ToRegularize.Count == 1 ? "comprobante serie B" : "comprobantes serie B") por regularizar@(s.RegularizeBy is { } by ? $", a más tardar el {by:dd/MM/yyyy}" : "").</p>
+            @if (!s.Active)
+            {
+                <div class="esc-form-actions"><Button Variant="Button.Variants.Primary" Disabled="_sending || !s.CanSign" OnClick="RegularizeAsync">@(_confirm == "regularize" ? "¿Emitir los e-CF de reemplazo? Toque otra vez" : "Regularizar")</Button></div>
+            }
+        }
+
+        <div class="esc-table-wrap">
+            <table class="esc-table" aria-label="Rangos serie B">
+                <thead><tr><th>Tipo</th><th>Rango</th><th>Siguiente</th><th class="esc-num">Quedan</th></tr></thead>
+                <tbody>
+                    @foreach (var r in s.Ranges)
+                    {
+                        <tr><td>@PaperName(r.Type)</td><td class="esc-muted">@r.From – @r.To</td><td>@r.Next</td><td class="esc-num">@r.Available</td></tr>
+                    }
+                </tbody>
+            </table>
+            @if (s.Ranges.Count == 0)
+            {
+                <EmptyState Icon="receipt" Title="No hay rangos serie B">Pídalos en la OFV y cárguelos antes de necesitarlos.</EmptyState>
+            }
+        </div>
+        <form class="esc-form-grid" @onsubmit="LoadRangeAsync" novalidate aria-label="Cargar rango serie B">
+            <Field Label="Tipo">
+                <select class="esc-select" @bind="_type">
+                    <option value="Consumer32">Consumo (B02)</option>
+                    <option value="FiscalCredit31">Crédito fiscal (B01)</option>
+                    <option value="CreditNote34">Nota de crédito (B04)</option>
+                </select>
+            </Field>
+            <Field Label="Desde (número)"><input class="esc-input esc-num" inputmode="numeric" @bind="_from" /></Field>
+            <Field Label="Hasta (número)"><input class="esc-input esc-num" inputmode="numeric" @bind="_to" /></Field>
+            <Field Label="Vence (opcional)"><input class="esc-input" type="date" @bind="_expires" /></Field>
+            <div class="esc-form-actions"><Button Type="submit" Disabled="_sending">Cargar rango B</Button></div>
+        </form>
+    }
+</section>
+
+@code {
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private EcfContingencyStatus? _status;
+    private string? _message, _reason, _confirm, _from, _to;
+    private string _type = "Consumer32";
+    private DateOnly? _expires;
+    private bool _sending, _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync() => _status = (await Api.GetAsync<EcfContingencyStatus>("/api/fiscal/contingency")).Value ?? _status;
+
+    private static string PaperName(string type) => type switch
+    {
+        "FiscalCredit31" => "Crédito fiscal (B01)",
+        "Consumer32" => "Consumo (B02)",
+        "DebitNote33" => "Nota de débito (B03)",
+        _ => "Nota de crédito (B04)",
+    };
+
+    private bool Confirmed(string action)
+    {
+        if (_confirm == action) { _confirm = null; return true; }
+        (_confirm, _message) = (action, null);
+        return false;
+    }
+
+    private async Task DoneAsync(Problem? p, string success)
+    {
+        (_sending, _error, _message) = (false, p is not null, p?.Message ?? success);
+        await LoadAsync();
+        await Changed.InvokeAsync();
+    }
+
+    private async Task StartAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_reason)) { (_error, _message) = (true, "Escriba el motivo antes de activar la contingencia."); return; }
+        if (!Confirmed("start")) return;
+        _sending = true;
+        var r = await Api.PostAsync<EcfContingencyStatus>("/api/fiscal/contingency/start", new { Reason = _reason });
+        await DoneAsync(r.Problem, "Contingencia activa: la caja factura con serie B. Recuerde declararla en la OFV.");
+    }
+
+    private async Task EndAsync()
+    {
+        if (!Confirmed("end")) return;
+        _sending = true;
+        var r = await Api.PostAsync<EcfContingencyStatus>("/api/fiscal/contingency/end");
+        await DoneAsync(r.Problem, "Contingencia terminada. Declare la salida en la OFV y regularice los comprobantes serie B.");
+    }
+
+    private async Task RegularizeAsync()
+    {
+        if (!Confirmed("regularize")) return;
+        _sending = true;
+        var r = await Api.PostAsync<PaperRegularized>("/api/fiscal/contingency/regularize");
+        await DoneAsync(r.Problem, $"Se emitieron {r.Value?.Regularized} e-CF de reemplazo. Salen hacia la DGII con la cola.");
+    }
+
+    private async Task LoadRangeAsync()
+    {
+        if (!long.TryParse(_from, out var from) || !long.TryParse(_to, out var to)) { (_error, _message) = (true, "Escriba los números del rango."); return; }
+        _sending = true;
+        var r = await Api.PostAsync<Empty>("/api/fiscal/contingency/sequences", new { Type = _type, From = from, To = to, ExpiresOn = _expires });
+        if (r.Problem is null) (_from, _to, _expires) = (null, null, null);
+        await DoneAsync(r.Problem, "Rango serie B cargado.");
+    }
+}

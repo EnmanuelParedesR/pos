@@ -51,7 +51,8 @@ internal static class EcfXml
                 Buyer(doc),
                 Totals(doc)),
             new XElement("DetallesItems", doc.Lines.Select((l, i) => Item(l, i + 1))),
-            isNote
+            // A note, or the e-CF that replaces a paper NCF issued in contingency (TK-157).
+            isNote || doc.ModificationCode == ModificationCode.ContingencyReplacement
                 ? new XElement("InformacionReferencia",
                     new XElement("NCFModificado", doc.ModifiedENcf),
                     modifiedIssuedOn is { } modified ? new XElement("FechaNCFModificado", Date(modified)) : null,
@@ -90,6 +91,9 @@ internal static class EcfXml
         copy.Root!.Add(new XElement(SignaturePlaceholder));
         return Validate(copy, schema);
     }
+
+    /// <summary>The compiled XSD (TK-155 walks it to build the test set in schema order).</summary>
+    internal static XmlSchemaSet Schema(string file) => Schemas.GetOrAdd(file, s => new Lazy<XmlSchemaSet>(() => LoadSchema(s))).Value;
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<XmlSchemaSet>> Schemas = new(StringComparer.Ordinal);
 

@@ -32,10 +32,15 @@ internal sealed class EcfCertificate
     private readonly bool _toStore;
     private readonly Lock _lock = new();
     private (X509Certificate2? Certificate, string? Source)? _current;
+    private readonly TimeProvider _clock;
+    private DateTimeOffset _failedAt;
 
-    public EcfCertificate(IConfiguration config, IDataProtectionProvider protection, IHostEnvironment env)
+    /// <summary>R8 #20: a load that failed (thumbprint not in the store yet, file locked) is tried again after this long, not only after a restart.</summary>
+    public static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(60);
+
+    public EcfCertificate(IConfiguration config, IDataProtectionProvider protection, IHostEnvironment env, TimeProvider clock)
     {
-        _config = config;
+        (_config, _clock) = (config, clock);
         _protector = protection.CreateProtector("Toki.Fiscal.EcfCertificate");
         // The same default as the Settings module's key ring.
         _folder = config["Toki:KeysFolder"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki", "keys");
@@ -54,12 +59,12 @@ internal sealed class EcfCertificate
     {
         lock (_lock)
         {
-            if (_current is { } current) return current;
-            try { _current = Load(); }
+            if (_current is { } current && (current.Certificate is not null || Problem is null || _clock.GetUtcNow() - _failedAt < RetryAfter)) return current;
+            try { (_current, Problem) = (Load(), null); }
             // A missing or unreadable certificate must not break the screens that show it: they say there is none, and signing says why.
             catch (Exception e) when (e is InvalidOperationException or CryptographicException or IOException or FormatException)
             {
-                (_current, Problem) = ((null, null), e.Message);
+                (_current, Problem, _failedAt) = ((null, null), e.Message, _clock.GetUtcNow());
             }
             return _current.Value;
         }
@@ -92,7 +97,10 @@ internal sealed class EcfCertificate
     }
 
     /// <summary>Opens the .p12/.pfx with its password, checks it can sign and has not expired, keeps it (see the class) and uses it from now on.</summary>
-    public Result<CertificateInfo> Import(byte[] pfx, string? password, DateTime nowUtc)
+    /// <param name="businessRnc">R8 #4: a certificate that names another RNC (or another cédula, for a business that is a person) is refused: the
+    /// DGII would reject everything signed with it. A cédula on the certificate of a company (9-digit RNC) is the delegated signer's and is accepted
+    /// (docs/ecf-propio.md §11 #28).</param>
+    public Result<CertificateInfo> Import(byte[] pfx, string? password, DateTime nowUtc, string? businessRnc)
     {
         X509Certificate2 opened;
         try { opened = X509CertificateLoader.LoadPkcs12(pfx, password, X509KeyStorageFlags.EphemeralKeySet | X509KeyStorageFlags.Exportable); }
@@ -102,6 +110,9 @@ internal sealed class EcfCertificate
             using (var key = opened.GetRSAPrivateKey())
                 if (key is null) return FiscalErrors.CertificateWithoutKey;
             if (opened.NotAfter.ToUniversalTime() <= nowUtc) return FiscalErrors.CertificateExpired;
+            if (opened.NotBefore.ToUniversalTime() > nowUtc) return FiscalErrors.CertificateNotYetValid;
+            if (CertificateInfo.Of(opened, "").TaxId is { } taxId && businessRnc is { } rnc && taxId.Length == rnc.Length && taxId != rnc)
+                return FiscalErrors.CertificateWrongRnc(taxId, rnc);
 
             Directory.CreateDirectory(_folder);
             var (certificate, source) = _toStore ? ToStore(pfx, password) : ToKeysFolder(opened);

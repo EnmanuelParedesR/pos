@@ -7,8 +7,9 @@ public enum EcfType { FiscalCredit31 = 31, Consumer32 = 32, DebitNote33 = 33, Cr
 
 public sealed record FiscalLine(string Description, decimal Quantity, decimal UnitPrice, decimal Discount, ItbisRate Rate, decimal Itbis, decimal Total);
 
-/// <summary>DGII modification code of a credit note: 1 cancels the whole document (a void), 3 corrects amounts (a return).</summary>
-public enum ModificationCode { Void = 1, AmountCorrection = 3 }
+/// <summary>DGII modification code: 1 cancels the whole document (a void), 3 corrects amounts (a return), 4 replaces a paper NCF (series B)
+/// issued in contingency (TK-157).</summary>
+public enum ModificationCode { Void = 1, AmountCorrection = 3, ContingencyReplacement = 4 }
 
 public enum EcfPaymentType { Cash = 1, Credit = 2 }
 

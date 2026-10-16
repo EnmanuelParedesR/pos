@@ -140,6 +140,10 @@ internal static class FiscalErrors
     public static readonly Error CertificateWithoutKey = Error.Validation("Fiscal.CertificateWithoutKey",
         "Ese archivo no trae la llave privada (o no es RSA): pida a la entidad certificadora el .p12 completo.");
     public static readonly Error CertificateExpired = Error.Validation("Fiscal.CertificateExpired", "Ese certificado ya venció. Renuévelo con la entidad certificadora.");
+    public static readonly Error CertificateNotYetValid = Error.Validation("Fiscal.CertificateNotYetValid",
+        "Ese certificado todavía no es válido (su vigencia empieza más adelante). Revise la fecha de la PC o espere a que entre en vigencia.");
+    public static Error CertificateWrongRnc(string certificate, string business) => Error.Validation("Fiscal.CertificateWrongRnc",
+        $"Ese certificado es de {certificate} y el negocio es {business}: la DGII rechazaría todo lo firmado con él. Importe el certificado de este negocio.");
     public static readonly Error AlreadyReplaced = Error.Conflict("Fiscal.AlreadyReplaced", "Ese comprobante ya tiene un reemplazo.");
     public static readonly Error SequenceNotFound = Error.NotFound("Fiscal.SequenceNotFound", "La secuencia no existe en el ambiente actual.");
     public static readonly Error NothingToVoid = Error.Conflict("Fiscal.NothingToVoid", "Esa secuencia no tiene números sin usar para anular.");
