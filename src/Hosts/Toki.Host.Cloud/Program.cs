@@ -9,6 +9,7 @@ using Serilog;
 using Toki.Host.Cloud.Accounts;
 using Toki.Host.Cloud.Assistant;
 using Toki.Host.Cloud.Catalog;
+using Toki.Host.Cloud.Fe;
 using Toki.Host.Cloud.Ingest;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Panel;
@@ -69,6 +70,7 @@ builder.Services.AddScoped<PanelQueries>();
 builder.Services.AddScoped<PlatformQueries>();
 builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
 builder.Services.AddColdArchive(config);
+builder.Services.AddFe(config, builder.Environment);
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
 if (openAi.IsConfigured)
@@ -122,6 +124,7 @@ app.MapEcfArchive();
 app.MapColdArchive();
 app.MapPlatform();
 app.MapPublicCatalog();
+app.MapFe();
 
 await app.RunAsync();
 

@@ -31,6 +31,9 @@ public sealed class FakeDgii : HttpMessageHandler
     /// <summary>The final answer of a full e-CF and of an RFCE (code 1 accepted, 2 rejected, 4 accepted with conditions), by e-NCF.</summary>
     public Func<string, (int Code, bool SequenceUsed, string? Message)> Result { get; set; } = _ => (1, true, null);
 
+    /// <summary>TK-153: the electronic issuers directory, RNC → base URL of its receiver services.</summary>
+    public Dictionary<string, string> Directory { get; } = [];
+
     private readonly Dictionary<string, (string Encf, int Polls)> _tracks = [];
     private int _lastTrack;
 
@@ -98,6 +101,10 @@ public sealed class FakeDgii : HttpMessageHandler
             return To("/recepcionfc/api/recepcion/ecf").Any(r => EncfOf(r.Xml!) == Query("ENCF")) ? Final(Query("ENCF"), null) : Json(new { codigo = 0, estado = "No encontrado" });
         if (path.EndsWith("/anulacionrangos/api/operaciones/anularrango", StringComparison.Ordinal))
             return Json(new { rnc = XDocument.Parse(xml!).Descendants("RncEmisor").Single().Value, codigo = 1, nombre = "Aceptado", mensajes = Array.Empty<string>() });
+        if (path.EndsWith("/consultadirectorio/api/consultas/obtenerdirectorioporrnc", StringComparison.Ordinal))
+            return Directory.TryGetValue(Query("RNC"), out var receiver)
+                ? Json(new[] { new { nombre = "Comprador", rnc = Query("RNC"), urlRecepcion = receiver + "/fe/recepcion/api/ecf", urlAceptacion = receiver + "/fe/aprobacioncomercial/api/ecf", urlOpcional = receiver + "/fe/autenticacion" } })
+                : new HttpResponseMessage(HttpStatusCode.NotFound);
         return new HttpResponseMessage(HttpStatusCode.NotFound);
     }
 

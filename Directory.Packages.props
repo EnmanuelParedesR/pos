@@ -21,7 +21,10 @@
     <!-- Cloud host: e-CF cold archive in Blob Storage with the managed identity (MIT; TK-207) -->
     <PackageVersion Include="Azure.Storage.Blobs" Version="12.30.1" />
     <PackageVersion Include="Azure.Identity" Version="1.21.0" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
+    <!-- Cloud host: the stores' e-CF certificates in Key Vault, signed with the managed identity (TK-151, MIT) -->
+     <PackageVersion Include="Azure.Security.KeyVault.Certificates" Version="4.9.2" />
+     <PackageVersion Include="Azure.Security.KeyVault.Keys" Version="4.10.2" />
+     <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
     <!-- Cloud host: panel accounts (bearer tokens) -->
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
     <!-- Excel export (MIT) -->

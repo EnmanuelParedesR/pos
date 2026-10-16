@@ -13,5 +13,7 @@
     <ProjectReference Include="..\..\src\Hosts\Toki.Host.Cloud\Toki.Host.Cloud.csproj" />
     <!-- An event type the cloud does not project yet -->
     <ProjectReference Include="..\..\src\Modules\Purchasing\Toki.Purchasing.Contracts\Toki.Purchasing.Contracts.csproj" />
+    <!-- e-CF built and signed as a store does, for the receiver tests (TK-152) -->
+    <ProjectReference Include="..\..\src\Modules\Fiscal\Toki.Fiscal\Toki.Fiscal.csproj" />
   </ItemGroup>
 </Project>

@@ -13,6 +13,13 @@
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Azure.Storage.Blobs" />
     <PackageReference Include="Azure.Identity" />
+    <PackageReference Include="Azure.Security.KeyVault.Certificates" />
+    <PackageReference Include="Azure.Security.KeyVault.Keys" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- TK-152: the DGII XSDs of the receiver (acknowledgement, approval) and of the e-CF types the store already validates (linked, not copied). -->
+    <EmbeddedResource Include="Fe\Schemas\*.xsd" LogicalName="Toki.Fe.Schemas.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\Modules\Fiscal\Toki.Fiscal\Schemas\e-CF 3*.xsd" LogicalName="Toki.Fe.Schemas.%(Filename)%(Extension)" Link="Fe\Schemas\%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <!-- Read-only: the event payloads the stores upload (deserialized with the same JSON options as the node outbox). -->

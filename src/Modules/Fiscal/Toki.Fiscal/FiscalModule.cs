@@ -54,6 +54,7 @@ public static class FiscalModule
         services.AddScoped<EcfSubmissionQueue>();
         services.AddSingleton<Features.TaxpayerImport>();
         services.AddHostedService<EcfSubmissionWorker>();
+        EcfExchange.Register(services); // TK-153/154: 31 deliveries to buyers and received e-CF
         services.AddHealthChecks().AddCheck<EcfQueueHealthCheck>("ecf-queue");
         services.AddEcfOperations();
         return services;
