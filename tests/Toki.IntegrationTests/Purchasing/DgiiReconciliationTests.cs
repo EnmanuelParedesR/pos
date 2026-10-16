@@ -164,7 +164,7 @@ public sealed class DgiiReconciliationTests(TokiApp app) : IClassFixture<TokiApp
     public async Task The_supplier_invoice_is_read_by_the_cloud_and_checked_but_nothing_is_saved()
     {
         var c = app.Client(await app.AdminAsync());
-        var png = new { File = Convert.ToBase64String([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]), ContentType = "image/png", FileName = "factura.png" };
+        var png = new { File = Convert.ToBase64String([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3]), ContentType = "image/jpeg", FileName = "factura.png" };
 
         // Not connected to the cloud: a clear message, no AI.
         (await (await c.PostAsJsonAsync("/api/purchasing/purchases/read-invoice", png)).ErrorCode()).ShouldBe("Purchasing.AiNeedsCloud");
@@ -200,7 +200,8 @@ public sealed class DgiiReconciliationTests(TokiApp app) : IClassFixture<TokiApp
         sent.Body.GetProperty("contentType").GetString().ShouldBe("image/png");
         (await c.GetFromJsonAsync<JsonElement>("/api/purchasing/purchases")).GetArrayLength().ShouldBe(purchasesBefore);
 
-        // A file that is not a PDF or a photo never leaves the store.
-        (await (await c.PostAsJsonAsync("/api/purchasing/purchases/read-invoice", png with { ContentType = "text/plain" })).ErrorCode()).ShouldBe("Purchasing.AiInvalidFile");
+        // The type sent is the one the bytes show (not the browser's guess, above), and a file that is not a PDF, a photo or an XML never leaves the store.
+        (await (await c.PostAsJsonAsync("/api/purchasing/purchases/read-invoice", png with { File = Convert.ToBase64String("hola"u8.ToArray()), ContentType = "image/png" })).ErrorCode()).ShouldBe("Purchasing.AiInvalidFile");
+        app.Cloud.To("/ai/v1/supplier-invoice").ShouldHaveSingleItem();
     }
 }

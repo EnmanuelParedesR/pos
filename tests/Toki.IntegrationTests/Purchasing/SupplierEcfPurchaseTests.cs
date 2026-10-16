@@ -92,20 +92,20 @@ public sealed class SupplierEcfPurchaseTests(TokiApp app) : IClassFixture<TokiAp
         });
         var id = (await saved.Json()).GetProperty("id").GetGuid();
         (await (await c.GetAsync($"/api/purchasing/purchases/{id}/attachment")).ErrorCode()).ShouldBe("Purchasing.NoAttachment");
-        (await (await c.PutAsJsonAsync($"/api/purchasing/purchases/{id}/attachment", png with { ContentType = "text/plain" })).ErrorCode()).ShouldBe("Purchasing.InvalidAttachment");
-        (await c.PutAsJsonAsync($"/api/purchasing/purchases/{id}/attachment", png)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var text = png with { File = Convert.ToBase64String("hola, no soy una factura"u8.ToArray()), FileName = "factura.png" };
+        (await (await c.PutAsJsonAsync($"/api/purchasing/purchases/{id}/attachment", text)).ErrorCode()).ShouldBe("Purchasing.InvalidAttachment");
+        // R10 #11: the browser's type (guessed from the name) is not trusted, the bytes are: a PNG sent as a PDF is kept as a PNG.
+        (await c.PutAsJsonAsync($"/api/purchasing/purchases/{id}/attachment", png with { ContentType = "application/pdf" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await c.GetFromJsonAsync<JsonElement>($"/api/purchasing/purchases/{id}")).GetProperty("attachmentName").GetString().ShouldBe("factura.png");
         var file = await c.GetAsync($"/api/purchasing/purchases/{id}/attachment");
         file.Content.Headers.ContentType!.MediaType.ShouldBe("image/png");
         (await file.Content.ReadAsByteArrayAsync()).ShouldBe(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3 });
 
-        // R10 #11: the declared type must match the bytes, and a second file replaces the first only when asked.
+        // A second file replaces the first (the person picked it), with the type its bytes show.
         var url = $"/api/purchasing/purchases/{id}/attachment";
-        (await (await c.PutAsJsonAsync(url + "?replace=true", png with { ContentType = "application/pdf" })).ErrorCode()).ShouldBe("Purchasing.AttachmentTypeMismatch");
-        (await (await c.PutAsJsonAsync(url + "?replace=true", xml with { ContentType = "image/jpeg" })).ErrorCode()).ShouldBe("Purchasing.AttachmentTypeMismatch");
-        (await (await c.PutAsJsonAsync(url, xml)).ErrorCode()).ShouldBe("Purchasing.AttachmentExists");
-        (await c.PutAsJsonAsync(url + "?replace=true", xml)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await c.GetAsync(url)).Content.Headers.ContentType!.MediaType.ShouldBe("text/xml");
+        (await c.PutAsJsonAsync(url, xml with { ContentType = "image/jpeg" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await c.GetAsync(url)).Content.Headers.ContentType!.MediaType.ShouldBe("application/xml");
+        (await c.GetFromJsonAsync<JsonElement>($"/api/purchasing/purchases/{id}")).GetProperty("attachmentName").GetString().ShouldBe("e-cf.xml");
     }
 
 }
