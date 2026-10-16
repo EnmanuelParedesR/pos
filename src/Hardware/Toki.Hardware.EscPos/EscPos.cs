@@ -17,10 +17,19 @@ public static class EscPos
 
     internal sealed record Line(string Text, bool Center = false, bool Bold = false, bool Tall = false, string? Qr = null);
 
-    public static byte[] Render(Receipt r, int columns, bool openDrawer)
+    public static byte[] Render(Receipt r, int columns, bool openDrawer) => Bytes(Layout(r, columns), columns, openDrawer);
+
+    public static string Text(Receipt r, int columns) => TextOf(Layout(r, columns), columns);
+
+    /// <summary>TK-239: the Z (or X) report; never opens the drawer.</summary>
+    public static byte[] Render(ShiftReport r, int columns) => Bytes(Layout(r, columns), columns, openDrawer: false);
+
+    public static string Text(ShiftReport r, int columns) => TextOf(Layout(r, columns), columns);
+
+    private static byte[] Bytes(IEnumerable<Line> lines, int columns, bool openDrawer)
     {
         var o = new List<byte>(2048) { Esc, (byte)'@', Esc, (byte)'t', 2 }; // initialize; code table PC850
-        foreach (var l in Layout(r, columns))
+        foreach (var l in lines)
         {
             o.AddRange([Esc, (byte)'a', l.Center || l.Qr is not null ? (byte)1 : (byte)0]);
             if (l.Qr is { } data)
@@ -40,10 +49,10 @@ public static class EscPos
         return [.. o];
     }
 
-    public static string Text(Receipt r, int columns)
+    private static string TextOf(IEnumerable<Line> lines, int columns)
     {
         var s = new StringBuilder();
-        foreach (var l in Layout(r, columns))
+        foreach (var l in lines)
         {
             var text = l.Qr is not null ? "[QR] " + l.Qr : l.Text;
             s.Append(l.Center || l.Qr is not null ? Center(text, columns) : text).Append('\n');
@@ -109,6 +118,32 @@ public static class EscPos
         if (r.ContingencyLegend is not null) foreach (var t in Wrap(r.ContingencyLegend, w)) yield return new(t, Center: true, Bold: true);
         if (!string.IsNullOrEmpty(r.QrUrl)) yield return new("", Qr: r.QrUrl);
         if (r.Footer is not null) foreach (var t in Wrap(r.Footer, w)) yield return new(t, Center: true);
+    }
+
+    internal static IEnumerable<Line> Layout(ShiftReport r, int w)
+    {
+        var rule = new Line(new string('-', w));
+        foreach (var t in Wrap(r.BusinessName, w)) yield return new(t, Center: true, Bold: true);
+        if (r.Rnc is not null) yield return new($"RNC {r.Rnc}", Center: true);
+        yield return rule;
+        foreach (var t in Wrap(r.Title, w)) yield return new(t, Center: true, Bold: true, Tall: true);
+        foreach (var t in Pair(r.Register, r.Cashier, w)) yield return new(t);
+        foreach (var t in Pair("Apertura", r.OpenedLocal.ToString("dd/MM/yyyy h:mm tt", Invariant), w)) yield return new(t);
+        foreach (var t in Pair("Cierre", r.ClosedLocal?.ToString("dd/MM/yyyy h:mm tt", Invariant) ?? "sigue abierto", w)) yield return new(t);
+        foreach (var s in r.Sections)
+        {
+            yield return rule;
+            foreach (var t in Wrap(s.Title, w)) yield return new(t, Bold: true);
+            foreach (var l in s.Lines)
+                foreach (var t in Pair(l.Label, l.Text ?? (l.Amount is { } a ? Amount(a) : ""), w)) yield return new(t, Bold: l.Bold);
+        }
+        yield return rule;
+        if (r.AuditChainHead is not null) foreach (var t in Wrap($"Auditoría {r.AuditChainHead}", w)) yield return new(t, Center: true);
+        yield return new($"Impreso {r.PrintedLocal.ToString("dd/MM/yyyy h:mm tt", Invariant)}", Center: true);
+        yield return new("");
+        foreach (var t in Wrap("Firma del cajero: ______________", w)) yield return new(t);
+        yield return new("");
+        foreach (var t in Wrap("Firma del supervisor: __________", w)) yield return new(t);
     }
 
     private static string Amount(decimal v) => v.ToString("#,##0.00", Invariant);

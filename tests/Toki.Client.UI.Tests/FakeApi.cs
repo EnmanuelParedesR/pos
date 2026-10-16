@@ -122,4 +122,14 @@ internal sealed class RecordingPrinter : IReceiptPrinter
         Interlocked.Increment(ref _drawer);
         return Task.CompletedTask;
     }
+
+    private readonly List<ShiftReport> _reports = [];
+    public List<ShiftReport> Reports { get { lock (_reports) return [.. _reports]; } }
+
+    public Task PrintReportAsync(ShiftReport report, CancellationToken ct)
+    {
+        if (Offline) throw new HardwareException("offline", null);
+        lock (_reports) _reports.Add(report);
+        return Task.CompletedTask;
+    }
 }

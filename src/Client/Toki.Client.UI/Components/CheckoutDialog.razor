@@ -95,7 +95,7 @@
         </div>
         @if (_total <= 0)
         {
-            <Notice Kind="Notice.Kinds.Warning" Title="Esta venta queda en RD$ 0.00 y no se puede cobrar.">Quite el descuento del 100 % o la línea.</Notice>
+            <Notice Kind="Notice.Kinds.Info" Title="Esta venta queda en RD$ 0.00.">Se registra con su comprobante y sin cobro. Confirme para terminarla.</Notice>
         }
         @if (_notice is not null)
         {
@@ -145,8 +145,8 @@
     private decimal Change => Math.Max(0, Math.Floor(Received - Pending));
     /// <summary>Nobody hands over more than one extra RD$ 2,000 bill: more is a typo or a scanned code.</summary>
     private bool TooMuchCash => Received > MinimumCash + 2000;
-    // shortcut: a RD$ 0 sale (100 % discount) cannot be charged, because the API wants at least one payment; accept it without payments when a store needs it.
-    private bool CanConfirm => _total > 0 && (_method == PaymentMethod.Cash
+    // TK-239: a RD$ 0 sale (100 % discount) is confirmed without payments.
+    private bool CanConfirm => _total == 0 || (_method == PaymentMethod.Cash
         ? Received >= MinimumCash && Received == Math.Floor(Received) && !TooMuchCash
         : CurrentAmount == Pending && Pending > 0);
 
@@ -222,7 +222,7 @@
         if (_sending || !CanConfirm) return;
         _sending = true;
         _notice = null;
-        var payments = _payments.Append(new Payment(_method, _method == PaymentMethod.Cash ? Received : CurrentAmount,
+        List<Payment> payments = _total == 0 ? [] : _payments.Append(new Payment(_method, _method == PaymentMethod.Cash ? Received : CurrentAmount,
             string.IsNullOrWhiteSpace(_reference) ? null : _reference.Trim())).ToList();
 
         // Up to one supervisor per permission the sale needs (price change, big discount, credit over the limit).

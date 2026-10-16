@@ -24,6 +24,9 @@ public interface IReceiptPrinter
 
     /// <summary>The cash drawer hangs off the printer (RJ-11 port): opening it is a printer command. Throws <see cref="HardwareException"/>.</summary>
     Task OpenDrawerAsync(CancellationToken ct);
+
+    /// <summary>TK-239: prints the shift's Z (or X) report and cuts the paper. Throws <see cref="HardwareException"/>.</summary>
+    Task PrintReportAsync(ShiftReport report, CancellationToken ct);
 }
 
 public sealed class HardwareException(string message, Exception? inner) : Exception(message, inner);

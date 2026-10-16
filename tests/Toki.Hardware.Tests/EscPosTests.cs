@@ -83,6 +83,33 @@ public sealed class EscPosTests
         EscPos.EscPos.Text(Sample with { IsVoided = true }, 48).ShouldContain("*** ANULADA ***");
     }
 
+    internal static readonly ShiftReport SampleZ = new("Carnicería La Peña", "131000001", "Cierre Z #12", "Caja 1", "Yudelka Martínez",
+        new DateTime(2026, 10, 15, 7, 58, 0), new DateTime(2026, 10, 15, 18, 4, 0),
+        [
+            new("Por forma de pago (neto)", [new("Efectivo", 18450.25m), new("Tarjeta", 6320m), new("Fiado", 1200m)]),
+            new("Turno",
+            [
+                new("Ventas", null, "84 (1 anulada)"), new("Fondo inicial", 2000m), new("Abonos de fiado", 500m), new("Abonos de pedidos", 0m),
+                new("Entradas de efectivo", 300m), new("Retiros", 10000m), new("Gastos pagados de la caja", 150m), new("Redondeo", 3.75m),
+                new("Aperturas de gaveta sin venta", null, "2"),
+            ]),
+            new("Efectivo", [new("Esperado", 11104m), new("Contado", 11054m), new("Faltaron", 50m, Bold: true), new("Autorizó el cierre", null, "Ramón Peña")]),
+        ],
+        new DateTime(2026, 10, 15, 18, 5, 0), "#4521 9f2c11ab");
+
+    [Theory]
+    [InlineData(48)]
+    [InlineData(32)]
+    public void The_z_report_bytes_match_the_snapshot_and_every_line_fits(int columns)
+    {
+        var bytes = EscPos.EscPos.Render(SampleZ, columns);
+        Snapshot.Match($"z-{columns}.txt", Snapshot.Hex(bytes));
+        var text = EscPos.EscPos.Text(SampleZ, columns);
+        Snapshot.Match($"z-{columns}.text.txt", text);
+        foreach (var line in text.Split('\n')) line.Length.ShouldBeLessThanOrEqualTo(columns, line);
+        bytes[^4..].ShouldBe(new byte[] { 0x1D, 0x56, 0x42, 0x03 }); // cut, and never the drawer
+    }
+
     [Theory]
     [InlineData("COM4", true)]
     [InlineData("com12", true)]

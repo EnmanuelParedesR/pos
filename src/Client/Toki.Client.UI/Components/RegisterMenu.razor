@@ -17,6 +17,14 @@ else
         {
             <UnpaidSaleChoice OnCleared="SignOutAsync" />
         }
+        else if (_drawer)
+        {
+            <label class="esc-field">
+                <span>Motivo (obligatorio)</span>
+                <input @ref="_amountInput" class="esc-input" maxlength="200" placeholder="Por ejemplo: cambio para un cliente" @bind="_note" @bind:event="oninput" />
+            </label>
+            <div class="esc-row esc-muted"><Icon Name="lock" /> Cada apertura queda en el turno y sale en el cierre Z.</div>
+        }
         else if (_kind is null)
         {
             <div class="esc-col">
@@ -24,7 +32,7 @@ else
                 <Button Wide="true" OnClick="() => Choose(CashMovementKind.Withdrawal)" style="justify-content:space-between"><span>Salida de efectivo (retiro o gasto)</span></Button>
                 @if (Peripherals.Printer is not null)
                 {
-                    <Button Wide="true" Disabled="_sending" OnClick="OpenDrawerAsync" style="justify-content:space-between"><span>Abrir la gaveta sin venta</span>@if (!Session.Can("register.open-drawer")) { <Icon Name="lock" /> }</Button>
+                    <Button Wide="true" Disabled="_sending" OnClick="() => (_drawer, _note, _message, _focusAmount) = (true, null, null, true)" style="justify-content:space-between"><span>Abrir la gaveta sin venta</span>@if (!Session.Can("register.open-drawer")) { <Icon Name="lock" /> }</Button>
                 }
                 @if (Session.Can("credit.collect"))
                 {
@@ -77,8 +85,12 @@ else
         }
     </ChildContent>
     <Footer>
-        <Button OnClick="Back" Shortcut="Esc">@(_kind is null && !_leaving ? "Cerrar" : "Volver")</Button>
-        @if (_kind is not null && !_leaving)
+        <Button OnClick="Back" Shortcut="Esc">@(_kind is null && !_leaving && !_drawer ? "Cerrar" : "Volver")</Button>
+        @if (_drawer && !_leaving)
+        {
+            <Button Variant="Button.Variants.Primary" Shortcut="Enter" Disabled="_sending" OnClick="OpenDrawerAsync">Abrir la gaveta</Button>
+        }
+        else if (_kind is not null && !_leaving)
         {
             <Button Variant="Button.Variants.Primary" Money="true" Shortcut="Enter" Disabled="_sending" OnClick="RecordAsync">Registrar</Button>
         }
@@ -93,12 +105,12 @@ else
     private MovementReason _reason = MovementReason.CashPickup;
     private string? _amount, _note, _message;
     private Notice.Kinds _messageKind;
-    private bool _sending, _leaving, _focusAmount, _customerPayment;
+    private bool _sending, _leaving, _focusAmount, _customerPayment, _drawer;
     /// <summary>The movement's idempotency key: made when the form opens, kept across retries until the server records it.</summary>
     private Guid _movementId;
     private ElementReference _amountInput;
 
-    private string Title => _leaving ? "Cambiar de usuario" : _kind is null ? "Caja" : _kind == CashMovementKind.CashIn ? "Entrada de efectivo" : "Salida de efectivo";
+    private string Title => _leaving ? "Cambiar de usuario" : _drawer ? "Abrir la gaveta sin venta" : _kind is null ? "Caja" : _kind == CashMovementKind.CashIn ? "Entrada de efectivo" : "Salida de efectivo";
 
     // No "Pago a suplidor" here: it would take the cash out without lowering the supplier's balance. That payment belongs to Compras (TK-120).
     private IEnumerable<(MovementReason, string)> Reasons => _kind == CashMovementKind.CashIn
@@ -121,14 +133,16 @@ else
 
     private Task Back()
     {
-        if (_kind is null && !_leaving) return OnClose.InvokeAsync();
-        (_kind, _leaving) = (null, false);
+        if (_kind is null && !_leaving && !_drawer) return OnClose.InvokeAsync();
+        (_kind, _leaving, _drawer) = (null, false, false);
         return Task.CompletedTask;
     }
 
     private async Task KeyAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && _kind is not null && !_leaving) await RecordAsync();
+        if (e.Key != "Enter" || _leaving) return;
+        if (_drawer) await OpenDrawerAsync();
+        else if (_kind is not null) await RecordAsync();
     }
 
     private async Task RecordAsync()
@@ -153,17 +167,21 @@ else
             : r.Problem.Message);
     }
 
-    /// <summary>Needs register.open-drawer, or a supervisor who has it.</summary>
-    // shortcut: only a supervisor's approval leaves a trace on the server; add the audited drawer-opening endpoint (arquitectura §6.3) so every opening does.
+    /// <summary>TK-239 (arquitectura §6.3): the server records the opening first (register.open-drawer, or a supervisor who has it);
+    /// only then does the drawer open.</summary>
     private async Task OpenDrawerAsync()
     {
         if (_sending) return;
+        if (string.IsNullOrWhiteSpace(_note)) { (_messageKind, _message) = (Notice.Kinds.Error, "Escriba el motivo."); return; }
+        var shift = Session.Shift!.ShiftId;
         _sending = true;
-        var allowed = Session.Can("register.open-drawer")
-            || await Approver.RequestAsync("register.open-drawer", Session.Shift!.ShiftId, "Abrir la gaveta sin venta") is not null;
-        var opened = allowed && await Peripherals.TryAsync(p => p.OpenDrawerAsync(CancellationToken.None));
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/cash/shifts/{shift}/drawer-openings", new { Reason = _note.Trim(), SupervisorApprovalId = id }),
+            shift, "Abrir la gaveta sin venta");
+        var opened = r.Ok && await Peripherals.TryAsync(p => p.OpenDrawerAsync(CancellationToken.None));
         _sending = false;
-        if (allowed) (_messageKind, _message) = opened ? (Notice.Kinds.Success, "Gaveta abierta.") : (Notice.Kinds.Error, "No se pudo abrir la gaveta. Revise la impresora: la gaveta se conecta a ella.");
+        if (opened) (_drawer, _messageKind, _message) = (false, Notice.Kinds.Success, "Gaveta abierta.");
+        else if (r.Ok) (_messageKind, _message) = (Notice.Kinds.Error, "No se pudo abrir la gaveta. Revise la impresora: la gaveta se conecta a ella.");
+        else if (r.Problem!.Code != "Cancelled") (_messageKind, _message) = (r.Problem.Kind, r.Problem.IsUncertain ? "No hubo respuesta del servidor. Intente de nuevo." : r.Problem.Message);
     }
 
     private async Task SignOutAsync()

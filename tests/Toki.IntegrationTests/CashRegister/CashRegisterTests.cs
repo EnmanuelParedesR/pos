@@ -67,6 +67,28 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task Opening_the_drawer_without_a_sale_needs_a_reason_and_the_permission_and_shows_on_the_Z()
+    {
+        // TK-239: the Cajero role lacks register.open-drawer, so a supervisor approves; the opening never changes the expected cash.
+        var (cashier, shift) = await ShiftAsync(openingFloat: 1000m);
+        (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/drawer-openings", new { Reason = "" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var refused = await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/drawer-openings", new { Reason = "Cambio para un cliente" })).Json();
+        refused.GetProperty("errors").GetProperty("permission")[0].GetString().ShouldBe("register.open-drawer");
+
+        (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/drawer-openings",
+            new { Reason = "Cambio para un cliente", SupervisorApprovalId = await ApproveAsync(cashier, "register.open-drawer", shift) })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var admin = app.Client(await app.AdminAsync());
+        (await admin.PostAsJsonAsync($"/api/cash/shifts/{shift}/drawer-openings", new { Reason = "Revisar billetes" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var x = await admin.GetFromJsonAsync<JsonElement>($"/api/cash/shifts/{shift}/z");
+        x.GetProperty("drawerOpenings").GetInt32().ShouldBe(2);
+        x.GetProperty("expectedCash").GetDecimal().ShouldBe(1000m);
+        var today = Toki.SharedKernel.BusinessDay.Of(app.Clock.GetUtcNow().UtcDateTime);
+        var audit = await admin.GetFromJsonAsync<JsonElement>($"/api/audit?from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}&action=cash.open-drawer");
+        audit.EnumerateArray().Count(r => r.GetProperty("resourceId").GetGuid() == shift).ShouldBe(2);
+    }
+
+    [Fact]
     public async Task A_movement_sent_twice_with_the_same_id_is_recorded_once()
     {
         var (cashier, shift) = await ShiftAsync(openingFloat: 1000m);

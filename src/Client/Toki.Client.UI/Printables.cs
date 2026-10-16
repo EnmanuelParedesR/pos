@@ -68,11 +68,47 @@ public static class Printables
         Row(b, "Retiros", Format.Amount(z.Withdrawals));
         Row(b, "Gastos pagados de la caja", Format.Amount(z.Expenses));
         Row(b, "Redondeo", Format.Amount(z.Rounding));
+        Row(b, "Aperturas de gaveta sin venta", z.DrawerOpenings.ToString(CultureInfo.InvariantCulture));
         Row(b, "Autorizó el cierre", supervisor ?? "—");
         if (z.AuditChainHead is { } head) Row(b, "Auditoría", head);
         b.Append("</tbody></table>");
         var name = z.ZNumber is { } number ? $"cierre-z-{number}" : $"turno-x-{Format.StoreTime(z.OpenedUtc):yyyyMMdd-HHmm}";
         return ($"{name}.html", Page(title, business, b.ToString(), nowUtc));
+    }
+
+    /// <summary>What a printed Z needs besides the Z: the business header and the name of who approved the closing.</summary>
+    public static async Task<(BusinessProfile Business, string? Supervisor)> ZContextAsync(TokiApi api, ZReport z)
+    {
+        var business = (await api.GetAsync<BusinessProfile>("/api/settings/business")).Value ?? new BusinessProfile("Mi negocio", null, null, null, null, 0);
+        var supervisor = z.ClosingSupervisorId is { } sid ? (await api.GetAsync<List<ActiveUser>>("/api/identity/users/active")).Value?.Find(u => u.Id == sid)?.Name : null;
+        return (business, supervisor);
+    }
+
+    /// <summary>TK-239: the same Z for the thermal printer (58 or 80 mm).</summary>
+    public static Toki.Hardware.ShiftReport ZTicket(ZReport z, BusinessProfile business, string? supervisor, DateTime nowUtc)
+    {
+        static Toki.Hardware.ShiftReportLine L(string label, decimal amount, bool bold = false) => new(label, amount, Bold: bold);
+        var d = z.Difference;
+        return new(business.Name, business.Rnc, z.ZNumber is { } n ? $"Cierre Z #{n}" : "Reporte X (turno abierto)", z.Register, z.Cashier,
+            Format.StoreTime(z.OpenedUtc), z.ClosedUtc is { } c ? Format.StoreTime(c) : null,
+            [
+                new("Por forma de pago (neto)", [.. z.ByMethod.Select(m => L(Names.PaymentMethod(m.Method), m.Net))]),
+                new("Turno",
+                [
+                    new("Ventas", null, $"{z.SaleCount} ({z.VoidedCount} {(z.VoidedCount == 1 ? "anulada" : "anuladas")})"),
+                    L("Fondo inicial", z.OpeningFloat), L("Abonos de fiado", z.CustomerPayments), L("Abonos de pedidos", z.OrderDeposits),
+                    L("Entradas de efectivo", z.CashIn), L("Retiros", z.Withdrawals), L("Gastos pagados de la caja", z.Expenses), L("Redondeo", z.Rounding),
+                    new("Aperturas de gaveta sin venta", null, z.DrawerOpenings.ToString(CultureInfo.InvariantCulture)),
+                ]),
+                new("Efectivo",
+                [
+                    L("Esperado", z.ExpectedCash),
+                    new("Contado", z.CountedCash, z.CountedCash is null ? "—" : null),
+                    new(d is null ? "Diferencia" : d == 0 ? "Cuadró" : d < 0 ? "Faltaron" : "Sobraron", d is { } x ? Math.Abs(x) : null, d is null ? "—" : null, Bold: true),
+                    new("Autorizó el cierre", null, supervisor ?? "—"),
+                ]),
+            ],
+            Format.StoreTime(nowUtc), z.AuditChainHead);
     }
 
     /// <summary>The customer's credit account, oldest movement first, ending in the balance the screen shows.</summary>

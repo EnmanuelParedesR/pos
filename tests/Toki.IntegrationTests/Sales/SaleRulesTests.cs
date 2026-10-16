@@ -50,6 +50,31 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task A_sale_with_a_100_percent_discount_is_recorded_without_payments()
+    {
+        // TK-239: RD$ 0 (a gift or a promotion): no payment, still an e-CF (the XSD allows MontoTotal 0) and a sale on the shift.
+        var cashier = await app.CashierWithShiftAsync();
+        var soda = await ProductAsync("Refresco", 59m);
+        var saleId = Guid.CreateVersion7();
+        object Sale(Guid[] approvals) => new
+        {
+            SaleId = saleId, ShiftId = cashier.ShiftId, Lines = new[] { new { ProductId = soda, Quantity = 1m, Discount = new { IsPercentage = true, Value = 100m } } },
+            Payments = Array.Empty<object>(), ExpectedTotal = 0m, SupervisorApprovals = approvals,
+        };
+        (await RequestedPermission(await cashier.SellAsync(Sale([])))).ShouldBe("sales.large-discount");
+
+        var ok = await cashier.SellAsync(Sale([await cashier.Client.ApproveAsync("sales.large-discount", saleId)]));
+        ok.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var sale = await ok.Json();
+        (sale.GetProperty("total").GetDecimal(), sale.GetProperty("change").GetDecimal()).ShouldBe((0m, 0m));
+        sale.GetProperty("eNcf").GetString().ShouldStartWith("E32");
+
+        // A sale with a total still needs a payment.
+        var other = new { SaleId = Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Lines = new[] { Line(soda, 1m) }, Payments = Array.Empty<object>(), ExpectedTotal = 59m };
+        (await cashier.SellAsync(other)).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task A_small_discount_that_leaves_the_line_below_cost_needs_a_supervisor()
     {
         var cashier = await app.CashierWithShiftAsync();

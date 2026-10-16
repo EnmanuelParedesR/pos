@@ -306,6 +306,10 @@
             </form>
             break;
 
+        case Section.ScaleLabels:
+            <ScaleLabelsSettings />
+            break;
+
         case Section.Roles:
             <RolesSettings />
             break;
@@ -447,7 +451,7 @@
 </Admin>
 
 @code {
-    private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, Users, Roles, Backups, Cloud, License }
+    private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, ScaleLabels, Users, Roles, Backups, Cloud, License }
     private sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
     private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; }
 
@@ -461,6 +465,7 @@
         Section.FiscalSequences => "Comprobantes",
         Section.Devices => "Equipos",
         Section.Hardware => "Equipos de la caja",
+        Section.ScaleLabels => "Balanza y etiquetas",
         Section.Users => "Usuarios",
         Section.Roles => "Roles y permisos",
         Section.Backups => "Respaldos",
@@ -472,6 +477,7 @@
     {
         Session.Can("settings.manage") ? Section.Business : null, Session.Can("registers.manage") ? Section.Registers : null,
         Session.Can("fiscal.manage") ? Section.FiscalSequences : null, Session.Can("devices.manage") ? Section.Devices : null, Session.Can("settings.manage") ? Section.Hardware : null,
+        Session.Can("settings.manage") ? Section.ScaleLabels : null,
         Session.Can("users.manage") ? Section.Users : null, Session.Can("users.manage") ? Section.Roles : null,
         Session.Can("backups.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License,
     }.OfType<Section>()];

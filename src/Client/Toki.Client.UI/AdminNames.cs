@@ -82,7 +82,7 @@ public static class AdminNames
         ["orders.create"] = "Pedido creado", ["quotes.create"] = "Cotización creada", ["orders.cancel"] = "Pedido cancelado", ["orders.ready"] = "Pedido listo",
         ["cash.cash-in"] = "Entrada de efectivo", ["cash.withdrawal"] = "Retiro de efectivo", ["cash.expense"] = "Gasto de caja",
         ["cash.open-shift"] = "Abrió turno", ["cash.close-shift"] = "Cerró turno", ["cash.create-register"] = "Caja creada",
-        ["cash.rename-register"] = "Caja renombrada", ["cash.assign-device"] = "Equipo asignado a caja",
+        ["cash.rename-register"] = "Caja renombrada", ["cash.assign-device"] = "Equipo asignado a caja", ["cash.open-drawer"] = "Gaveta abierta sin venta",
         ["customers.save"] = "Cliente guardado", ["customers.payment"] = "Abono de cliente", ["customers.void-payment"] = "Abono anulado",
         ["inventory.create-product"] = "Producto creado", ["inventory.update-product"] = "Producto editado", ["inventory.adjustment"] = "Ajuste de inventario",
         ["inventory.transfer"] = "Transferencia", ["inventory.apply-stock-count"] = "Conteo físico aplicado", ["inventory.save-category"] = "Categoría guardada",

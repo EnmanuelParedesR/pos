@@ -13,6 +13,8 @@ public sealed class EscPosPrinter(PrinterSettings settings) : IReceiptPrinter
 
     public Task OpenDrawerAsync(CancellationToken ct) => SendAsync(EscPos.DrawerKick, ct);
 
+    public Task PrintReportAsync(ShiftReport report, CancellationToken ct) => SendAsync(EscPos.Render(report, settings.Columns), ct);
+
     private Task SendAsync(byte[] data, CancellationToken ct) => Task.Run(() =>
     {
         try

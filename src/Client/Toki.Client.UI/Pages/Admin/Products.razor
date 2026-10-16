@@ -72,10 +72,10 @@
                     @(string.IsNullOrWhiteSpace(_search) ? "Cree el primero con “Nuevo producto”." : "Pruebe con otra palabra o con el PLU de la balanza.")
                 </EmptyState>
             }
-            @* shortcut: one page of 50 (the API's page size); add "Ver más" (page=2) when the catalog makes searching tiresome. *@
-            @if (_products.Count >= 50)
+            @* TK-239: pages of 50 (the API's page size); the search stays on the server. *@
+            @if (_hasMore && !_loading)
             {
-                <div class="esc-table-foot">Se muestran los primeros 50. Busque por nombre o PLU para encontrar los demás.</div>
+                <div class="esc-table-foot"><Button Disabled="_sending" OnClick="MoreAsync">Ver más productos</Button></div>
             }
         </div>
 
@@ -162,6 +162,51 @@
                             <label class="esc-check"><input type="checkbox" @bind="f.IsActive" /> Activo (aparece en la caja)</label>
                         }
                     </div>
+                    @if (f.Id is not null)
+                    {
+                        @* TK-239: boxes and packs, each with its units, price and barcode. *@
+                        <section class="esc-col" style="gap:8px" aria-label="Presentaciones">
+                            <div class="esc-row" style="justify-content:space-between">
+                                <strong>Presentaciones (caja, paquete…)</strong>
+                                @if (_pres is null) { <Button OnClick="() => EditPresentation(null)"><Icon Name="plus" /> Agregar presentación</Button> }
+                            </div>
+                            @if (_presentations.Count > 0)
+                            {
+                                <div class="esc-table-wrap">
+                                    <table class="esc-table">
+                                        <thead><tr><th>Nombre</th><th class="esc-num">Unidades</th><th class="esc-num">Precio</th><th>Código de barras</th><th></th></tr></thead>
+                                        <tbody>
+                                            @foreach (var p in _presentations)
+                                            {
+                                                <tr>
+                                                    <td>@p.Name @if (!p.IsActive) { <span class="esc-pill esc-pill--neutral" style="margin-left:6px">Inactiva</span> }</td>
+                                                    <td class="esc-num">@p.Factor.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)</td>
+                                                    <td class="esc-num">@Format.WithCurrency(p.Price)</td>
+                                                    <td>@(BarcodeOf(p.Id) ?? "—")</td>
+                                                    <td class="esc-num"><Button class="esc-button esc-button--small" aria-label="@($"Editar {p.Name}")" OnClick="() => EditPresentation(p)">Editar</Button></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            @if (_pres is { } pf)
+                            {
+                                <div class="esc-form-grid">
+                                    <Field Label="Nombre *" Hint="Por ejemplo: Caja de 12."><input class="esc-input" maxlength="60" aria-label="Nombre de la presentación" @bind="pf.Name" /></Field>
+                                    <Field Label="Unidades que trae *"><input class="esc-input esc-num" inputmode="decimal" aria-label="Unidades de la presentación" @bind="pf.Factor" /></Field>
+                                    <Field Label="Precio RD$ (con ITBIS) *"><input class="esc-input esc-num" inputmode="decimal" aria-label="Precio de la presentación" @bind="pf.Price" /></Field>
+                                    <Field Label="Código de barras" Hint="Opcional."><input class="esc-input" maxlength="50" aria-label="Código de barras de la presentación" @bind="pf.Barcode" /></Field>
+                                </div>
+                                @if (pf.Id is not null) { <label class="esc-check"><input type="checkbox" @bind="pf.IsActive" /> Activa (se vende en la caja)</label> }
+                                @if (_presError is not null) { <Notice Title="@_presError" /> }
+                                <div class="esc-row">
+                                    <Button OnClick="() => _pres = null">Cancelar</Button>
+                                    <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SavePresentationAsync">Guardar presentación</Button>
+                                </div>
+                            }
+                        </section>
+                    }
                     @if (_error is not null) { <Notice Title="@_error" /> }
                 </ChildContent>
                 <Footer>
@@ -212,11 +257,29 @@
         await LoadAsync();
     }
 
+    private const int PageSize = 50;
+    private int _page = 1;
+    private bool _hasMore;
+
+    private async Task<List<ProductSummary>> PageAsync(int page)
+    {
+        var q = $"search={Uri.EscapeDataString(_search ?? "")}&includeInactive=true&page={page}" + (string.IsNullOrEmpty(_category) ? "" : $"&categoryId={_category}");
+        var list = (await Api.GetAsync<List<ProductSummary>>($"/api/inventory/products?{q}")).Value ?? [];
+        _hasMore = list.Count == PageSize;
+        return list;
+    }
+
     private async Task LoadAsync()
     {
-        var q = $"search={Uri.EscapeDataString(_search ?? "")}&includeInactive=true" + (string.IsNullOrEmpty(_category) ? "" : $"&categoryId={_category}");
-        var r = await Api.GetAsync<List<ProductSummary>>($"/api/inventory/products?{q}");
-        (_products, _loading) = (r.Value ?? [], false);
+        _page = 1;
+        (_products, _loading) = (await PageAsync(1), false);
+    }
+
+    private async Task MoreAsync()
+    {
+        _sending = true;
+        _products.AddRange(await PageAsync(++_page));
+        _sending = false;
     }
 
     private void New()
@@ -232,11 +295,64 @@
         if (r.Value is not { } p) return;
         string N(decimal? v) => v?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture) ?? "";
         _errors.Clear();
+        (_presentations, _barcodes, _pres) = ([.. p.Presentations ?? []], [.. p.Barcodes ?? []], null);
         (_editing, _error) = (new ProductForm
         {
             Id = p.Id, Version = p.Version, Name = p.Name, CategoryId = p.CategoryId, Unit = p.Unit, Plu = p.Plu, ItbisRate = p.ItbisRate,
             Price = N(p.Price), WholesalePrice = N(p.WholesalePrice), MinimumStock = N(p.MinimumStock), MaximumStock = N(p.MaximumStock), SellWithoutStock = p.SellWithoutStock, IsActive = p.IsActive,
         }, null);
+    }
+
+    private sealed class PresentationForm
+    {
+        public Guid? Id; public string Name = ""; public string? Factor, Price, Barcode, OldBarcode; public decimal? WholesalePrice; public bool IsActive = true;
+    }
+
+    private List<ProductPresentation> _presentations = [];
+    private List<ProductBarcode> _barcodes = [];
+    private PresentationForm? _pres;
+    private string? _presError;
+
+    private string? BarcodeOf(Guid presentationId) => _barcodes.Find(b => b.PresentationId == presentationId)?.Code;
+
+    private void EditPresentation(ProductPresentation? p)
+    {
+        string N(decimal v) => v.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        _presError = null;
+        _pres = p is null ? new PresentationForm()
+            : new PresentationForm { Id = p.Id, Name = p.Name, Factor = N(p.Factor), Price = N(p.Price), WholesalePrice = p.WholesalePrice, IsActive = p.IsActive, Barcode = BarcodeOf(p.Id), OldBarcode = BarcodeOf(p.Id) };
+    }
+
+    /// <summary>Saves the presentation, then its barcode (a changed code replaces the old one).</summary>
+    private async Task SavePresentationAsync()
+    {
+        if (_editing?.Id is not { } productId || _pres is not { } pf) return;
+        var factor = Format.ParseNumber(pf.Factor);
+        var price = Format.ParseNumber(pf.Price);
+        if (string.IsNullOrWhiteSpace(pf.Name) || factor is not > 0 || price is not > 0) { _presError = "Escriba el nombre, las unidades y el precio (mayores que cero)."; return; }
+        _sending = true;
+        var body = new { Name = pf.Name.Trim(), Factor = factor, Price = price, pf.WholesalePrice, pf.IsActive };
+        Guid? saved = pf.Id;
+        Problem? problem;
+        if (pf.Id is { } id) problem = (await Api.PutAsync<Empty>($"/api/inventory/products/{productId}/presentations/{id}", body)).Problem;
+        else
+        {
+            var created = await Api.PostAsync<Created>($"/api/inventory/products/{productId}/presentations", body);
+            (saved, problem) = (created.Value?.Id, created.Problem);
+        }
+        if (problem is not null) saved = null;
+        var barcode = string.IsNullOrWhiteSpace(pf.Barcode) ? null : pf.Barcode.Trim();
+        if (saved is { } presentationId && barcode != pf.OldBarcode)
+        {
+            if (pf.OldBarcode is { } old) problem = (await Api.DeleteAsync<Empty>($"/api/inventory/products/{productId}/barcodes/{Uri.EscapeDataString(old)}")).Problem;
+            if (problem is null && barcode is not null)
+                problem = (await Api.PostAsync<Empty>($"/api/inventory/products/{productId}/barcodes", new { Code = barcode, PresentationId = presentationId })).Problem;
+        }
+        _sending = false;
+        if (problem is not null) _presError = problem.Code == "Inventory.DuplicateBarcode" ? "Ese código de barras ya lo tiene otro producto." : problem.Message;
+        else _pres = null;
+        if ((await Api.GetAsync<ProductDetail>($"/api/inventory/products/{productId}")).Value is { } d)
+            (_presentations, _barcodes) = ([.. d.Presentations ?? []], [.. d.Barcodes ?? []]);
     }
 
     private async Task CreateCategoryAsync()

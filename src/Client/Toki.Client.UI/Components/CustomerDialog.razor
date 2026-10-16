@@ -57,9 +57,10 @@
             {
                 <div class="esc-subtitle">O escriba los datos para una sola factura:</div>
                 <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px">
-                    <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="Cart.ManualRnc" /></label>
+                    <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="Cart.ManualRnc" @bind:after="LookupManualAsync" /></label>
                     <label class="esc-field"><span>Nombre o razón social</span><input class="esc-input" maxlength="150" @bind="Cart.ManualName" /></label>
                 </div>
+                @if (_manualHint is not null) { <div class="esc-muted">@_manualHint</div> }
             }
 
             <details>
@@ -67,9 +68,10 @@
                 <form class="esc-col" style="gap:12px;padding-top:8px" @onsubmit="CreateAsync">
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
                         <label class="esc-field"><span>Nombre</span><input class="esc-input" maxlength="150" @bind="_newName" /></label>
-                        <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="_newTaxId" /></label>
+                        <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="_newTaxId" @bind:after="LookupNewAsync" /></label>
                         <label class="esc-field"><span>Teléfono</span><input class="esc-input" inputmode="tel" maxlength="30" @bind="_newPhone" /></label>
                     </div>
+                    @if (_newHint is not null) { <div class="esc-muted">@_newHint</div> }
                     <div><Button Type="submit">Crear y usar</Button></div>
                 </form>
             </details>
@@ -87,7 +89,19 @@
 @code {
     [Parameter] public EventCallback OnClose { get; set; }
 
-    private string? _search, _error, _newName, _newTaxId, _newPhone;
+    private string? _search, _error, _newName, _newTaxId, _newPhone, _newHint, _newFilled, _manualHint, _manualFilled;
+
+    private async Task LookupNewAsync()
+    {
+        var (name, hint) = await TaxpayerLookup.FindAsync(Api, _newTaxId);
+        (_newName, _newFilled, _newHint) = (TaxpayerLookup.Fill(_newName, _newFilled, name), name ?? _newFilled, hint);
+    }
+
+    private async Task LookupManualAsync()
+    {
+        var (name, hint) = await TaxpayerLookup.FindAsync(Api, Cart.ManualRnc);
+        (Cart.ManualName, _manualFilled, _manualHint) = (TaxpayerLookup.Fill(Cart.ManualName, _manualFilled, name), name ?? _manualFilled, hint);
+    }
     private List<CustomerSummary>? _results;
     private ElementReference _searchBox;
 

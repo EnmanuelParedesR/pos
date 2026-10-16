@@ -3,6 +3,7 @@
 @inject NavigationManager Nav
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
+@inject Peripherals Peripherals
 
 <Admin Title="Turnos y cuadres" Subtitle="Cada turno con lo que se esperaba en efectivo y lo que se contó. Toque uno para ver su cierre.">
     <Actions>
@@ -86,6 +87,7 @@
                         <dt>Retiros</dt><dd>@Format.Amount(z.Withdrawals)</dd>
                         <dt>Gastos</dt><dd>@Format.Amount(z.Expenses)</dd>
                         <dt>Redondeo</dt><dd>@Format.Amount(z.Rounding)</dd>
+                        <dt>Aperturas de gaveta sin venta</dt><dd>@z.DrawerOpenings</dd>
                     </dl>
                 </ChildContent>
                 <Footer>
@@ -95,6 +97,10 @@
                     {
                         @* R9 #13: a register that cannot sign in (Restricted) has its shift closed here, with its cash counted. *@
                         <Button OnClick='() => Nav.NavigateTo($"close-register?shift={z.ShiftId}")'>Cerrar este turno</Button>
+                    }
+                    @if (Peripherals.Printer is not null)
+                    {
+                        <Button Disabled="_downloading" OnClick="() => PrintAsync(z)"><Icon Name="printer" Size="16" /> Imprimir en la impresora de la caja</Button>
                     }
                     <Button Disabled="_downloading" OnClick="() => DownloadAsync(z)"><Icon Name="arrow-down" Size="16" /> @(_downloading ? "Preparando…" : "Descargar para PDF")</Button>
                     <Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="() => _z = null">Cerrar</Button>
@@ -145,11 +151,19 @@
     private async Task DownloadAsync(ZReport z)
     {
         _downloading = true;
-        var business = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value ?? new BusinessProfile("Mi negocio", null, null, null, null, 0);
-        var supervisor = z.ClosingSupervisorId is { } sid ? (await Api.GetAsync<List<ActiveUser>>("/api/identity/users/active")).Value?.Find(u => u.Id == sid)?.Name : null;
+        var (business, supervisor) = await Printables.ZContextAsync(Api, z);
         var (name, content) = Printables.Z(z, business, supervisor, DateTime.UtcNow);
         await JS.InvokeVoidAsync("escuadra.download", name, "text/html", content);
         (_downloading, _downloaded) = (false, $"Listo: {name}. Ábralo y elija “Imprimir o guardar como PDF”.");
+    }
+
+    /// <summary>TK-239: the Z on this PC's thermal printer (Configuración → Equipos de la caja).</summary>
+    private async Task PrintAsync(ZReport z)
+    {
+        _downloading = true;
+        var (business, supervisor) = await Printables.ZContextAsync(Api, z);
+        var ok = await Peripherals.TryAsync(p => p.PrintReportAsync(Printables.ZTicket(z, business, supervisor, DateTime.UtcNow), CancellationToken.None));
+        (_downloading, _downloaded) = (false, ok ? "Impreso." : "No se pudo imprimir. Revise que la impresora esté encendida y con papel.");
     }
 
     private static string Day(DateTime utc)

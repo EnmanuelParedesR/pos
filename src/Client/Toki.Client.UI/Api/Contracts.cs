@@ -50,7 +50,10 @@ public sealed record AuditUser(Guid Id, string Name);
 public sealed record Category(Guid Id, string Name, string Color, string[] Notes, bool IsActive);
 public sealed record ProductSummary(Guid Id, string Name, string Category, string Unit, string ItbisRate, decimal Price, decimal? WholesalePrice, decimal? Stock, bool IsActive);
 public sealed record ProductDetail(Guid Id, int Version, string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate,
-    decimal Price, decimal? WholesalePrice, decimal? Cost, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal MaximumStock = 0);
+    decimal Price, decimal? WholesalePrice, decimal? Cost, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal MaximumStock = 0,
+    ProductPresentation[]? Presentations = null, ProductBarcode[]? Barcodes = null);
+public sealed record ProductPresentation(Guid Id, string Name, decimal Factor, decimal Price, decimal? WholesalePrice, bool IsActive);
+public sealed record ProductBarcode(string Code, Guid? PresentationId);
 public sealed record CreateProduct(string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate, decimal Price,
     decimal? WholesalePrice, decimal Cost, bool SellWithoutStock, decimal MinimumStock, string[]? Barcodes, decimal InitialStock, decimal MaximumStock = 0);
 public sealed record UpdateProduct(int Version, string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate,
@@ -70,7 +73,8 @@ public sealed record DenominationCount(decimal Denomination, int Quantity);
 public sealed record MethodTotal(PaymentMethod Method, decimal SalePayments, decimal Voids, decimal Refunds, decimal CustomerPayments, decimal Net);
 public sealed record ZReport(Guid ShiftId, long? ZNumber, string Register, string Cashier, DateTime OpenedUtc, DateTime? ClosedUtc, decimal OpeningFloat,
     MethodTotal[] ByMethod, int SaleCount, int VoidedCount, decimal CustomerPayments, decimal Rounding, decimal CashIn, decimal Withdrawals, decimal Expenses,
-    decimal ExpectedCash, decimal? CountedCash, decimal? Difference, Guid? ClosingSupervisorId = null, string? AuditChainHead = null, decimal OrderDeposits = 0);
+    decimal ExpectedCash, decimal? CountedCash, decimal? Difference, Guid? ClosingSupervisorId = null, string? AuditChainHead = null, decimal OrderDeposits = 0,
+    int DrawerOpenings = 0);
 
 // Sales
 public sealed record Discount(bool IsPercentage, decimal Value);

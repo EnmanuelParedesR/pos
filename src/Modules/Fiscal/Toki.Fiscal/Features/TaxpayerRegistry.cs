@@ -201,7 +201,10 @@ internal static class TaxpayerRegistry
                     await db.Taxpayers.AsNoTracking().Where(c => c.Rnc == (Rnc.Normalize(rnc) ?? "")).Select(c => new Response(c.Rnc, c.Name, c.TradeName, c.IsActive))
                         .FirstOrDefaultAsync(ct) is { } r
                         ? Results.Ok(r)
-                        : EndpointExtensions.Problem(Error.NotFound("Fiscal.RncNotFound", "Ese RNC o cédula no está en el padrón de la DGII.")))
+                        // TK-239: an empty registry says so, so the screens can hint to load it instead of "not found".
+                        : EndpointExtensions.Problem(await db.Taxpayers.AnyAsync(ct)
+                            ? Error.NotFound("Fiscal.RncNotFound", "Ese RNC o cédula no está en el padrón de la DGII.")
+                            : Error.NotFound("Fiscal.RegistryNotLoaded", "El padrón de la DGII no está cargado.")))
                 .RequireAuthorization().WithTags("Fiscal");
         }
     }
