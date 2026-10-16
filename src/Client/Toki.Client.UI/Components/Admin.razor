@@ -1,5 +1,5 @@
 @* Back office shell (Escuadra Admin): icon menu on the PC (collapsible), top bar and bottom tabs on a narrow screen.
-   "Vender" goes to the register (F1). The register's dark status bar is not shown here (Frame skips it for admin routes). *@
+   "Vender" goes to the register (F2; F1 is the help, TK-242). The register's dark status bar is not shown here (Frame skips it for admin routes). *@
 @implements IDisposable
 @inject Session Session
 @inject BackOffice BackOffice
@@ -7,7 +7,7 @@
 @inject NavigationManager Nav
 @inject Cart Cart
 
-@* data-keys: escuadra.js sends here the keys pressed while nothing has the focus (F1 right after the page loads). *@
+@* data-keys: escuadra.js sends here the keys pressed while nothing has the focus (F2 right after the page loads). *@
 <div class="esc-admin esc-shell @(BackOffice.MenuCollapsed ? "esc-shell--collapsed" : "")" data-keys @onkeydown="KeyDown">
     <aside class="esc-side">
         <div class="esc-side__brand">
@@ -31,7 +31,8 @@
             }
         </nav>
         <div class="esc-side__foot">
-            <a href="sale" class="esc-side__sell" title="Ir a vender (F1)"><Icon Name="cart" /><span class="esc-side__label">Ir a vender</span><span class="esc-spacer"></span><Keycap>F1</Keycap></a>
+            <a href="sale" class="esc-side__sell" title="Ir a vender (F2)"><Icon Name="cart" /><span class="esc-side__label">Ir a vender</span><span class="esc-spacer"></span><Keycap>F2</Keycap></a>
+            <button type="button" class="esc-side__item esc-side__sell" title="Ayuda de esta pantalla (F1)" @onclick="() => Frame?.ShowHelp()"><Icon Name="info" /><span class="esc-side__label">Ayuda</span><span class="esc-spacer"></span><Keycap>F1</Keycap></button>
             <div class="esc-side__user">
                 <span class="esc-avatar" aria-hidden="true">@Names.Initials(Session.Name)</span>
                 <div><b>@Session.Name</b>@(Session.Online ? "En línea" : "Sin conexión · reintentando")</div>
@@ -105,6 +106,8 @@
     private sealed record SectionLink(string Href, string Label, string Short, string Icon);
     private bool _more;
 
+    [CascadingParameter] public Frame? Frame { get; set; }
+
     [Parameter, EditorRequired] public string Title { get; set; } = "";
     [Parameter] public string? Subtitle { get; set; }
     [Parameter] public RenderFragment? Actions { get; set; }
@@ -140,7 +143,7 @@
 
     private void KeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "F1") Nav.NavigateTo("sale");
+        if (e.Key == "F2") Nav.NavigateTo("sale");
     }
 
     private bool _leaving;

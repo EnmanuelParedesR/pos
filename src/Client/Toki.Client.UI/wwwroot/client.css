@@ -1,5 +1,13 @@
 /* Register screen layout. Pieces come from Escuadra; this file only places them. */
 
+/* TK-242: help panel (F1) */
+.esc-status-bar__help { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; color: var(--frame-muted); }
+.esc-status-bar__help .esc-keycap { border-color: var(--frame-muted); color: var(--frame-muted); }
+.esc-help { margin: 0 0 16px; padding-left: 20px; display: grid; gap: 8px; }
+.esc-help__title { font-size: var(--t-17); font-weight: 700; margin: 0 0 8px; }
+.esc-help__keys { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; margin: 0 0 16px; }
+.esc-help__keys dd { margin: 0; }
+
 .sale { flex: 1 1 auto; min-height: 0; display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; align-items: stretch; }
 .sale__left { flex: 999 1 520px; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .sale__scanner { flex: 1 1 auto; min-width: 0; height: 56px; border: 0; outline: 0; background: transparent; font-size: var(--t-20); font-weight: 600; }

@@ -7,7 +7,9 @@
 
 @if (_ready)
 {
-    <div style="min-height:100vh;display:flex;flex-direction:column">
+    @* TK-242: F1 bubbles here from every screen (data-keys-root: escuadra.js sends it here when no screen takes keys). *@
+    <CascadingValue Value="this" IsFixed="true">
+    <div style="min-height:100vh;display:flex;flex-direction:column" data-keys-root @onkeydown="HelpKey">
         @* The back office has its own shell (Admin.razor); the dark status bar is the register's. *@
         @if (!IsBackOffice)
         {
@@ -66,6 +68,7 @@
                 {
                     <span class="esc-offline" role="status">Sin conexión con el servidor · reintentando</span>
                 }
+                <button type="button" class="esc-status-bar__help" @onclick="ShowHelp">Ayuda <Keycap>F1</Keycap></button>
                 <span style="font-weight:600">@Format.Time(DateTimeOffset.UtcNow)</span>
             </div>
         </header>
@@ -92,7 +95,12 @@
             </ErrorBoundary>
         </main>
     </div>
+    </CascadingValue>
     <ApprovalDialog />
+    @if (_help)
+    {
+        <HelpPanel Route="@Nav.ToBaseRelativePath(Nav.Uri)" OnClose="() => _help = false" />
+    }
 }
 
 @code {
@@ -100,6 +108,19 @@
 
     private bool IsBackOffice => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("admin", StringComparison.Ordinal);
     private bool _ready;
+    private bool _help;
+
+    /// <summary>The back office's "Ayuda" button opens the same panel (Admin gets this Frame as a cascading value).</summary>
+    public void ShowHelp()
+    {
+        _help = true;
+        StateHasChanged();
+    }
+
+    private void HelpKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "F1") _help = !_help;
+    }
     private Timer? _clock;
     private ErrorBoundary? _boundary;
     private FiscalQueue? _queue;

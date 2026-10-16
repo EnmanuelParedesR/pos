@@ -21,6 +21,17 @@ Plan corto de lo que falta para que una persona baje Toki de la web y empiece la
 | **MSIX** | Instalación limpia de la tienda de Windows | No puede instalar un servicio de Windows clásico ni SQL Express | Descartada para el nodo |
 | **winget** | `winget install Toki.Toki` para técnicos | Solo distribuye: necesita el `.exe` de arriba igual | Más adelante, apuntando al mismo `.exe` |
 
+## Construido (TK-242)
+
+- **`deploy/installer/toki.iss`** (Inno Setup 6): un `TokiSetup-<versión>.exe` con dos tipos en el asistente, **PC principal** (servidor + caja) y **Caja**. Silencioso: `/VERYSILENT /TYPE=server` o `/TYPE=register`. La PC principal usa `deploy/install.ps1` (servicio, `prepare-service`, firewall 5443 privado) e instala SQL Server Express en `.\SQLEXPRESS` si falta (es la instancia del `appsettings.json` del servidor; se reutiliza si existe). Ambos tipos instalan WebView2 Evergreen si falta. SQL Express y WebView2 se **descargan de Microsoft al instalar**. Apps publicadas *self-contained*: no instala .NET.
+- **Carpeta `keys`:** `prepare-service` le quita la herencia de `C:\ProgramData` y la deja solo para el servicio, SYSTEM y Administradores.
+- **App de caja con Velopack:** el instalador corre el `Toki-Setup.exe` de Velopack como el usuario que inició sesión (queda en `%LocalAppData%\Toki`). La app baja la versión nueva en segundo plano y se aplica **al abrirla de nuevo** (`AppUpdates.cs`). Solo con `"Updates": { "FeedUrl" }` y si está instalada: en desarrollo y pruebas no busca nada.
+- **Servidor:** Velopack no sirve para un servicio de Windows. Con `Updates:FeedUrl`, `ServerUpdateCheck` lee `releases.<canal>.json` cada 30 min, anota "Hay una actualización" en el registro y escribe `C:\ProgramData\Toki\update.json`. La tarea programada `Toki\Actualizar servidor` (cada hora, `update-service.ps1`) baja `TokiSetup-<versión>.exe`, exige firma válida y lo corre en silencio **solo si no hay turnos abiertos o fuera del horario** (`Updates:OpensAt`/`ClosesAt`, por defecto 07:00–22:00).
+- **Canales (lanzamiento por etapas):** `pilot` y `stable` (`build.ps1 -Channel`). La caja usa el canal con que se empaquetó; `Updates:Channel` la cambia.
+- **Desinstalar:** quita el servicio, la regla de firewall y la tarea. Pregunta "¿Borrar también los datos de la tienda?" (No por defecto); solo con Sí corre `remove-data.ps1` (base de datos Toki y `C:\ProgramData\Toki`). La app de caja se quita aparte desde Aplicaciones de Windows (es por usuario).
+- **Construir:** `deploy/installer/build.ps1 -Version 1.0.0 -Channel pilot -FeedUrl <url>` publica las dos apps, las empaqueta con `vpk` y compila con `ISCC`. Sin `vpk` o sin Inno Setup publica lo que puede y dice qué falta. El feed (`artifacts/releases` + el setup) se sube a un GitHub Release o a un contenedor de Azure Blob.
+- **Página de descarga:** `/descargar` en el sitio (con `site.installerUrl` vacío muestra "[URL DEL INSTALADOR]").
+
 ## Pendiente antes de construirlo
 
 - Certificado de firma de código (Authenticode) para que SmartScreen no asuste en la primera descarga.

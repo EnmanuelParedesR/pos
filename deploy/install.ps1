@@ -23,7 +23,10 @@ $exe = Join-Path $Destination 'Toki.Host.Local.exe'
 
 if (Get-Service $Service -ErrorAction SilentlyContinue) { Stop-Service $Service -Force }
 New-Item -ItemType Directory -Force $Destination | Out-Null
-Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force
+# The setup (deploy/installer/toki.iss) already put the files in place: then there is nothing to copy.
+if ((Resolve-Path $Source).Path.TrimEnd('\') -ne (Resolve-Path $Destination).Path.TrimEnd('\')) {
+    Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force
+}
 
 if (-not (Get-Service $Service -ErrorAction SilentlyContinue)) {
     sc.exe create $Service binPath= "`"$exe`"" start= delayed-auto obj= $account DisplayName= "Toki (punto de venta)" | Out-Null

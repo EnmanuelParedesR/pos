@@ -331,6 +331,9 @@ function Certification() {
         <h2>Antes de empezar</h2>
         <p>Ten esto listo antes de la primera cita (con acompañamiento, te lo enviamos también en el correo que la confirma):</p>
         <ul className="checks">
+          <li>
+            Toki instalado en la PC principal de tu tienda. <Link to="/descargar">Descargar Toki</Link>
+          </li>
           {preparation.map((item) => (
             <li key={item}>{item}</li>
           ))}
@@ -381,6 +384,58 @@ function Certification() {
           <Step title="Los números que quedan">Escribes en Toki el último e-NCF que emitió el otro programa y Toki sigue desde el siguiente. Si la DGII pide anular los números sobrantes y usar una secuencia nueva, Toki los anula.</Step>
           <Step title="El cambio">Dejas de facturar con el otro programa (dos programas con la misma secuencia repiten números), pasas Toki a producción y revisas que la DGII acepte la primera venta.</Step>
         </ol>
+      </Section>
+    </>
+  );
+}
+
+function Download() {
+  return (
+    <>
+      <Hero
+        eyebrow="Descargar"
+        title="Instala Toki en tu tienda."
+        cta={
+          site.installerUrl ? (
+            <a className="btn" href={site.installerUrl}>
+              Descargar Toki para Windows
+            </a>
+          ) : (
+            <Tbd>[URL DEL INSTALADOR]</Tbd>
+          )
+        }
+      >
+        <p>Un solo instalador para todas las PC de la tienda. Al abrirlo eliges qué es esa PC. La prueba de 14 días empieza con tu primera venta, sin pedir código.</p>
+      </Hero>
+      <Section>
+        <h2>Elige el papel de cada PC</h2>
+        <div className="grid grid--2">
+          <Card title="PC principal">
+            La que guarda las ventas y atiende a las demás cajas. Instala el servidor de Toki, la base de datos (SQL Server Express, si no la tiene) y la app de caja. Instálala primero.
+          </Card>
+          <Card title="Caja">Cada PC de cobro adicional. Instala solo la app de caja y se une a la PC principal con un código que ves en Configuración → Equipos.</Card>
+        </div>
+      </Section>
+      <Section>
+        <h2>Requisitos</h2>
+        <ul className="checks">
+          <li>Windows 10 u 11 de 64 bits.</li>
+          <li>PC principal: 8 GB de RAM y 10 GB libres en disco. Caja: 4 GB de RAM y 2 GB libres.</li>
+          <li>Internet durante la instalación: el instalador baja de Microsoft lo que falte (SQL Server Express y WebView2).</li>
+          <li>Todas las PC en la misma red de la tienda.</li>
+        </ul>
+      </Section>
+      <Section>
+        <h2>Pasos</h2>
+        <ol className="steps">
+          <Step title="Descarga">Baja el instalador en la PC principal y ábrelo. Windows pide permiso de administrador una sola vez.</Step>
+          <Step title="En la PC principal">Elige "PC principal". Al terminar se abre Toki en "Primera instalación": escribe los datos de tu negocio y crea tu usuario.</Step>
+          <Step title="En cada caja">En cada caja abre el mismo instalador, elige "Caja" y une la PC con el código de Configuración → Equipos.</Step>
+          <Step title="Actualizaciones">Toki se actualiza solo: la caja al volver a abrirse y el servidor cuando no hay turnos abiertos o fuera del horario.</Step>
+        </ol>
+        <p className="muted">
+          ¿Quieres que lo instalemos por ti? <Contact>Hablemos</Contact> · ¿Te vas a certificar para el e-CF? Mira <Link to="/certificacion">Certifícate con Toki</Link>.
+        </p>
       </Section>
     </>
   );
@@ -563,6 +618,13 @@ export const sitePages: SitePage[] = [
     title: "Certifícate con Toki · Facturación electrónica ante la DGII",
     description: "Qué necesitas para certificarte como emisor electrónico, las etapas ante la DGII, quién hace qué y qué pasa si ya emites e-CF con otro programa.",
     element: <Certification />,
+  },
+  {
+    path: "/descargar",
+    nav: "Descargar",
+    title: "Descargar Toki · Instalador para Windows",
+    description: "Descarga el instalador de Toki para Windows 10 y 11: PC principal con servidor y base de datos, o caja. Requisitos y pasos para instalar.",
+    element: <Download />,
   },
   {
     path: "/precios",

@@ -33,3 +33,6 @@ src/Cloud/panel/dist/
 
 # Public site (built by src/Site/build.mjs)
 src/Cloud/panel/.ssr/
+
+# Installer build output (deploy/installer/build.ps1)
+artifacts/

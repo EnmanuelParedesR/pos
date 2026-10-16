@@ -23,5 +23,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.IntegrationTests" />
+    <InternalsVisibleTo Include="Toki.UnitTests" />
   </ItemGroup>
 </Project>
