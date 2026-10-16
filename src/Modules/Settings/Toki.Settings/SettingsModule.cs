@@ -27,7 +27,8 @@ public static class SettingsModule
         services.AddScoped<IApprovalPolicy, ApprovalPolicy>();
         services.AddSingleton<LastAuditCheck>();
         services.AddHostedService<NightlyAuditCheck>();
-        services.AddHealthChecks().AddCheck<LastAuditCheck>("audit").AddCheck<BackupHealthCheck>("backup");
+        services.AddHealthChecks().AddCheck<LastAuditCheck>("audit").AddCheck<BackupHealthCheck>("backup")
+            .AddCheck<DiskEncryptionHealthCheck>("disk-encryption");
         // The key ring that protects the backup key lives with the store's data, not in the service account's profile.
         var keys = services.AddDataProtection().SetApplicationName("Toki").PersistKeysToFileSystem(new DirectoryInfo(
             config["Toki:KeysFolder"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki", "keys")));
@@ -36,6 +37,7 @@ public static class SettingsModule
         services.AddScoped<Backups>();
         services.AddSingleton<LicenseService>();
         services.AddSingleton<IFeatureService>(sp => sp.GetRequiredService<LicenseService>());
+        services.AddScoped<IStoreLicense, StoreLicense>();
         services.AddHostedService<NightlyBackup>();
         return services;
     }

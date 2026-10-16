@@ -9,6 +9,7 @@ using Scalar.AspNetCore;
 using Serilog;
 using Toki.Host.Cloud.Accounts;
 using Toki.Host.Cloud.Assistant;
+using Toki.Host.Cloud.Billing;
 using Toki.Host.Cloud.Catalog;
 using Toki.Host.Cloud.Fe;
 using Toki.Host.Cloud.Ingest;
@@ -69,8 +70,9 @@ var assistantPerUserMinute = config.GetValue("Ai:AssistantQuestionsPerMinutePerU
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    o.AddPolicy(SupplierInvoiceEndpoint.NodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = invoicesPerNodeMinute, Window = TimeSpan.FromMinutes(1) }));
+    // TK-249: the node's, the panel's and the assistant's per-minute limits follow the business's plan (Paddle custom_data > Quotas:<Plan>:RateLimits > the setting).
+    o.AddPolicy(SupplierInvoiceEndpoint.NodeRateLimit, http =>
+        QuotaRateLimits.PerPlan(http, http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "", PlanLimits.SupplierInvoicesPerMinute, invoicesPerNodeMinute));
     o.AddPolicy(CloudAuth.RegisterNodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = registerPerMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(PublicCatalogEndpoints.RateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
@@ -79,10 +81,8 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = resendPerMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(QuotaRateLimits.Auth, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = authPerMinute, Window = TimeSpan.FromMinutes(1) }));
-    o.AddPolicy(QuotaRateLimits.PanelUser, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = panelPerUserMinute, Window = TimeSpan.FromMinutes(1) }));
-    o.AddPolicy(QuotaRateLimits.AssistantUser, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = assistantPerUserMinute, Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy(QuotaRateLimits.PanelUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.PanelPerMinute, panelPerUserMinute));
+    o.AddPolicy(QuotaRateLimits.AssistantUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.AssistantPerMinute, assistantPerUserMinute));
 });
 builder.Services.AddScoped<IQuota, Quota>();
 
@@ -95,6 +95,7 @@ AcsEmailSender.AddEmail(builder.Services, config);
 builder.Services.AddScoped<Toki.Host.Cloud.Alerts.AlertNotifier>();
 builder.Services.AddColdArchive(config);
 builder.Services.AddFe(config, builder.Environment);
+builder.Services.AddBilling(config, builder.Environment); // TK-249: off until Billing:Paddle is set
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
 if (openAi.IsConfigured)
@@ -144,6 +145,7 @@ app.MapGroup("/api/auth").MapIdentityApi<CloudUser>().Add(e =>
     else if (QuotaRateLimits.AuthRoutes.Any(r => route.EndsWith(r, StringComparison.Ordinal))) e.Metadata.Add(new EnableRateLimitingAttribute(QuotaRateLimits.Auth));
 });
 app.MapQuotas();
+app.MapBilling();
 app.MapStores();
 app.MapMembers();
 app.MapNodes();

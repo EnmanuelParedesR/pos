@@ -36,7 +36,7 @@ public static class IdentityModule
         services.AddSingleton<StoreCertificateAuthority>();
         services.AddHealthChecks().AddCheck<StoreCaHealthCheck>("store-ca").AddCheck<PinFailuresHealthCheck>("pin-failures");
         services.AddSingleton<PinPepper>();
-        services.AddSingleton<PinAttempts>();
+        services.AddSingleton<AttemptLimiter>();
         services.AddScoped<IRestoreGuard, IdentityRestoreGuard>();
         services.AddScoped<ISupervisorApprovals, SupervisorApprovals>();
         services.AddScoped<ICloudSnapshot, UserSnapshot>();
@@ -89,7 +89,7 @@ internal static class PairedDevices
         {
             // A certificate decides alone: an unknown or revoked one never falls back to a secret sent next to it.
             var thumbprint = StoreCertificateAuthority.Thumbprint(certificate);
-            devices = devices.Where(d => d.CertificateThumbprint == thumbprint);
+            devices = devices.Where(d => d.CertificateThumbprint == thumbprint || d.PreviousCertificateThumbprint == thumbprint);
         }
         else
         {
@@ -166,34 +166,6 @@ internal static class IdleLock
 internal sealed class PinPepper(ServiceKeys keys)
 {
     public byte[] Value => keys.GetOrCreate("pin-pepper");
-}
-
-/// <summary>R11 A14: wrong PINs for one user from one register (and from one cashier asking for approvals), in memory. After <see cref="Max"/>
-/// in <see cref="Window"/> that register gets no more tries for that user for a while, before the user's own count reaches its lockout: a cashier
-/// cannot lock the owner out from their register, and the per-user lockout stays for guessing from several.</summary>
-/// <remarks>shortcut: in memory; a restart of the service gives fresh tries (the per-user lockout is in the database).</remarks>
-internal sealed class PinAttempts
-{
-    public const int Max = 4;
-    public static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
-    private readonly Dictionary<string, Queue<DateTime>> _failures = [];
-
-    public bool Exhausted(string key, DateTime now)
-    {
-        lock (_failures) return Recent(key, now).Count >= Max;
-    }
-
-    public void Failed(string key, DateTime now)
-    {
-        lock (_failures) Recent(key, now).Enqueue(now);
-    }
-
-    private Queue<DateTime> Recent(string key, DateTime now)
-    {
-        if (!_failures.TryGetValue(key, out var q)) _failures[key] = q = new Queue<DateTime>();
-        while (q.Count > 0 && q.Peek() + Window <= now) q.Dequeue();
-        return q;
-    }
 }
 
 /// <summary>R11 A4: degraded while someone is locked out or collected several wrong PINs in the last hour, so the owner sees it in Salud

@@ -1,0 +1,273 @@
+﻿
+
+<!DOCTYPE html>
+<html>
+<head><title>
+	
+    Consulta RNC
+
+</title><link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700,800" rel="stylesheet" /><link href="https://fonts.googleapis.com/css?family=Abhaya+Libre:400,500,600,700" rel="stylesheet" />
+
+    
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/main.bundle.css" rel="stylesheet" />
+    
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/jquery-ui-1.10.0.custom.css" rel="stylesheet" />
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/jquery.ui.1.10.0.ie.css" rel="stylesheet" />
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/styles.consultasWeb.css" rel="stylesheet" />
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/DataTable.css" rel="stylesheet" />
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/font-awesome.css" rel="stylesheet" />
+
+    <style type="text/css">
+        button.ui-dialog-titlebar-close:after {
+            content: string("x");
+        }
+
+        @media print {
+            a[href]:after {
+                content: none !important;
+            }
+        }
+    </style>
+
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jquery.min.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jquery-ui.min.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jUtility.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jValidator.min.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/globalfunctions.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/scripts.consultasWeb.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jquery.blockUI.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jquery.dataTables.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/dataTables.rowGroup.min.js"></script>
+
+    
+    <style type="text/css">
+        .tituloDescarga {
+            color: #2cb34a !important;
+            transition: color .35S ease-in-out;
+            font-weight: 600;
+            font-size: 0.875rem;
+        }
+    </style>
+    <script type="text/javascript">
+        $(document).ready(function () {
+            $('#dOpcionesBusqueda a').click(function () {
+                $('#hidActiveTab').val($(this).attr('href').substring(1));
+            });
+        });
+
+        function setActiveTab(tabId) {
+            document.getElementById('cphMain_hidActiveTab').value = tabId;
+        }
+
+        function selectTab(tabId) {
+            $('.nav-tabs a[href="#' + tabId + '"]').tab('show');
+        }
+
+        function disableButtonRazonSocial(button) {
+            var razonSocial = document.getElementById('cphMain_txtRazonSocial').value;
+
+            if (razonSocial.trim().length >= 4) {
+                button.disabled = true;
+            }
+        }
+
+        function disableButtonRNC(button) {
+            var rnc = document.getElementById('cphMain_txtRNCCedula').value;
+
+            if (rnc.trim().length > 0) {
+                button.disabled = true;
+            }
+        }
+    </script>
+</head>
+<body role="document">
+    <form method="post" action="./rnc.aspx" id="frmMain" class="form-signin" role="form">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="wAB2m7vM48j1kY5GNoY2/nB6yPszsNkijIj+T0YHY36J2X9MIK/u6In3O42Ag7kwMv2ZODzyBRydZL73It2PZcykJShQCZHXBGdPgPk8ewT4CzEc+qc6rRLvflKgnevfxwH4BVjhmU4S2StZgozCjIWYO0lM2JG5Qcf4dOpn4x7vhOisBjVC+rv70KLqV1/78qROjeAVtair1Z4FzZaMYMMjtISN85Y3xlz8BWJn4zBIohvNdezlBPG5+UMwJ+CYaHDqSKQmxb4PJ6xlU/qQackPcMeQOhBK8VbI/g3O69EyVPetdVkPeRO0BVOW+CsAuBvw4lKbsBHAHquVgvLWn3jP1YkmrSjGKdzsv1dZ+QVVml2kUDkHcHBejsy9eucQLnb4PF6XcVIMyXC1WQrDToAWSP8s+hz/hP8jEscoEbGqTx0xrQ3q/sO2sAfLVr1zsNttwrMJvl8ycX1xbsprXcZJebj9vtS9umE1pk1uAS3R1Q4NYffp40Jvm7mLldfxcSdgPS0Wy7SQ6nBVAyagyTRGT4YeTzEMFeayd44wjTVBsj3GIeMvAWL3jS+dC64DhW4Z3isTvhBWUEIS/MDtf9qIoVOu6vRMpcgroGGN9om8kb+V5N0kc8SUqCHvxNSMspIDQkmG2p2uzuKO5mmGIpDKaiilWA7hPlv1ml23keZ2Hk3il2xwJxtFJVx5JeDKcEZ+I0ldyFcj8Nd8pYDjoj58CgHk6vIyeeGPxAJBIE872HPmQ90FCI1T4Nnvs94l5vEu9S1fBUFBCoYkKiCfsswpQf4UTNhA6kV1Gzb3H+c5i6HRFf8Ncdz64NE+11qCMylla5NrBFPPj48uaaB/NTK09Bh7lHXhPXEVHBZY6ed8S+snkuGHxuKr02h8QFfg579UF0L9a4nTNZiTqmxiwtWd+7C7cgzhtBLm8mJGlY+kMQnZ4mtXvnYuWuMbLFkVftPewsPPZStQSSOP+BE1s/HSEkoxS4Mda3mUPTMY5v/X7uyCNm9+OYGrktN3HD/i6mr3N0+w441ikc7RCoMBcyqp9phOLrj+IANSPPmw3aMgZz+i9vKwFSRjSBXnZ9pHnX+LFdiX4hFua+wyxJwM/BI2r3nXI2VImz9lRIwnPQI5G/KYeHkUpe+xphcseFQXi6hEBCrLGPLsvr4mrtsAVkFNn4BWM/l2VMB12dyXFqss3irgQDhMtbLL29zGQ/HEWGdhfPX/DWLide33h2HaSZDCXwXtlBrsJOosRr7arKaASzdEx1cUaPaRSVtxGY6bOGkB3D0eCJDfKvsLrdTczaH61Lbzkw0USbrBFuO8aI84hXUQ3uLexIQK2xcEmEFKWwRi+2eYqqtEvlvK9PKT/XovqVUkLN6SNLT5ZrbivkmyudMAsKQsLjJuy9j4wrXR5MtM83WBowUzbR57vdM2MAGrxRdkrHxUlc6k9pno0uOUTCxH" />
+
+
+<script src="/app/WebApps/ConsultasWeb2/ConsultasWeb/ScriptResource.axd?d=BIiOdmSL4x2HGdhDTs0anLFE7t3hf56oQu0KRhNcpSvjlmXCmzgVX2nFYkkr4WzrZLz_3OedmVYzqeyGCvGSTy0cKcK8QGvsDr-FWa4uY_plIe_WbOCvZL0dLv6pd0CiNI7SATk9DZupQivsXLwrkEJFhPQ1&amp;t=2a9d95e3" type="text/javascript"></script>
+<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="4F4BAA71" />
+<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="8bVlTuBZn82OOVvNSETqmii1BRQZ5uCAD0GIsnyXy+Ee4Rh6bc+VsJho0cUgT6+tvf1SDek1tL8C81cfLOONyGsdc1nS9tqqAE2sjI3OVdSdG7Ae6l5IWOQsYZOQJoxZFfBR1ONKeybKaFddUQIPdpqVF0XegDweBbNwqS42hdabb2FdvuMQ2oomWWTdsh5oxHMXHmtDh+i0nZumnLss0vSfTWOwMgMsL3G14A5LFueVgFc6Qm+f6b/AwxM4URNE6I31mGNRlrZSWiYmcasGuNbz0OY=" />
+        
+        <div class="site_content">
+            <div id="upMainMaster">
+	
+                    <div class="container-overflowed" role="main">
+                        
+    <div class="consult-search">
+        <div class="consult-search__fields">
+            <ul id="dOpcionesBusqueda" class="nav nav-tabs">
+                <li class="nav-item" onclick="setActiveTab('rnc')">
+                    <a href="#rnc" class="nav-link active" data-toggle="tab" id="aBusquedaPorRNC" data-divid="dBusquedaPorRNC">RNC/C&eacute;dula</a>
+                </li>
+                <li class="nav-item" onclick="setActiveTab('razonsocial')">
+                    <a href="#razonsocial" id="aBusquedaPorRazonSocial" data-toggle="tab" class="nav-link" data-divid="dBusquedaPorRazonSocial">Nombre/Raz&oacute;n Social</a>
+                </li>
+            </ul>
+
+        </div>
+        <div>
+            <div id="cphMain_upBusqueda">
+		
+                    <div class="tab-content">
+                        <div class="tab-pane fade show active" id="rnc">
+                            <div>
+			
+                                <h6 class="mb-2 bold">Introduzca el RNC o cédula</h6>
+                                <input name="ctl00$cphMain$txtRNCCedula" type="text" maxlength="11" id="cphMain_txtRNCCedula" class="consult-search__field rnccedula" placeholder="Escriba un RNC o Cédula válido" />
+                                
+
+                                <div class="consult-search__buttons">
+                                    <div class="row">
+                                        <div class="col-md-7 d-none d-md-block">
+                                            <a class="tituloDescarga">Descargar Listado de todos los RNC:</a>
+                                            <div class="mt-2">
+                                               <a href="https://dgii.gov.do/app/WebApps/Consultas/RNC/DGII_RNC.zip"><button type="button" class="btn btn-outline-success mr-2 "><span>TXT</span></button></a>
+                                               <a href="https://dgii.gov.do/app/WebApps/Consultas/RNC/RNC_CONTRIBUYENTES.zip"> <button type="button" class="btn btn-outline-success mr-2 "><span>CSV</span></button></a>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-5 col-sm-12 text-sm-left text-md-right">
+                                            <input type="button" name="ctl00$cphMain$Button1" value="LIMPIAR" onclick="javascript:__doPostBack(&#39;ctl00$cphMain$Button1&#39;,&#39;&#39;)" id="cphMain_Button1" class="consult-search__button-clear btn btn-outline-primary mr-2 btn-limpiar" data-items=".rnccedula" />
+                                            <input type="button" name="ctl00$cphMain$btnBuscarPorRNC" value="BUSCAR" onclick="disableButtonRNC(this);WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;ctl00$cphMain$btnBuscarPorRNC&quot;, &quot;&quot;, true, &quot;ConsultaRNC&quot;, &quot;&quot;, false, true))" id="cphMain_btnBuscarPorRNC" class="consult-search__button-search btn btn-primary ml-2" />
+                                        </div>
+                                    </div>
+                                </div>
+                            
+		</div>
+                        </div>
+
+                        <div class="tab-pane fade" id="razonsocial">
+                            <div>
+			
+                                <h6 class="mb-2 bold">Introduzca el nombre o razón social</h6>
+                                <input name="ctl00$cphMain$txtRazonSocial" type="text" id="cphMain_txtRazonSocial" class="consult-search__field razonsocial" placeholder="John Doe" />
+                                
+                                
+
+                                <div class="consult-search__buttons">
+                                    <div class="row">
+                                        <div class="col-md-7 d-none d-md-block">
+                                            <a class="tituloDescarga">Descargar Listado de todos los RNC:</a>
+                                            <div class="mt-2">
+                                                <a href="https://dgii.gov.do/app/WebApps/Consultas/RNC/DGII_RNC.zip"><button type="button" class="btn btn-outline-success mr-2 "><span>TXT</span></button></a>
+                                               <a href="https://dgii.gov.do/app/WebApps/Consultas/RNC/RNC_CONTRIBUYENTES.zip"> <button type="button" class="btn btn-outline-success mr-2 "><span>CSV</span></button></a>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-5 col-sm-12 text-sm-left text-md-right">
+                                            <input type="button" name="ctl00$cphMain$Button2" value="LIMPIAR" onclick="javascript:__doPostBack(&#39;ctl00$cphMain$Button2&#39;,&#39;&#39;)" id="cphMain_Button2" class="consult-search__button-clear btn btn-outline-primary mr-2 btn-limpiar" data-items=".razonsocial" />
+                                            <input type="button" name="ctl00$cphMain$btnBuscarPorRazonSocial" value="BUSCAR" onclick="disableButtonRazonSocial(this);WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;ctl00$cphMain$btnBuscarPorRazonSocial&quot;, &quot;&quot;, true, &quot;ConsultaRazonSocial&quot;, &quot;&quot;, false, true))" id="cphMain_btnBuscarPorRazonSocial" class="consult-search__button-search btn btn-primary ml-2" />
+                                        </div>
+                                    </div>
+                                </div>
+                            
+		</div>
+                        </div>
+                        <div class="d-sm-block d-xs-block d-md-none d-lg-none d-xl-none">
+                            <div class="col-md-7 d-none d-md-block">
+                                <a class="tituloDescarga">Descargar Listado de todos los RNC:</a>
+                                <div class="mt-2">
+                                     <a href="https://dgii.gov.do/app/WebApps/Consultas/RNC/DGII_RNC.zip"><button type="button" class="btn btn-outline-success mr-2 "><span>TXT</span></button></a>
+                                     <a href="https://dgii.gov.do/app/WebApps/Consultas/RNC/RNC_CONTRIBUYENTES.zip"> <button type="button" class="btn btn-outline-success mr-2 "><span>CSV</span></button></a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                
+	</div>
+        </div>
+        <input type="hidden" name="ctl00$cphMain$hidActiveTab" id="cphMain_hidActiveTab" />
+        <h5 class="feedback">
+            
+        </h5>
+
+        <div id="cphMain_divBusqueda" name="divBusqueda" class="row consult-search__results" style="display:Block;">
+            <div class="col-12">
+                <h5 class="text-black bold mb-3">Resultados de la b&uacute;squeda</h5>
+                <div id="cphMain_MensajeATPendiente" class="alert alert-warning" role="alert" name="MensajeATPendiente" style="display:None;">
+                    <span class="glyphicon glyphicon-exclamation-sign" aria-hidden="true"></span>
+                    <span class="sr-only">Error:</span>
+                    RNC pendiente de <a target="_blank" href="http://dgii.gov.do/contribuyentes/personasJuridicas/tramitesServicios/Documents/RequisitosAdecuacionTransformacionSociedades.pdf" class="alert-link">solicitar su Adecuación o Transformación.</a> Favor hacer su solicitud y evite inactivación y multas. Si ya la hizo, desestime este aviso. Para más información llame al 809-689-3444 y desde el interior sin cargos,  1-809-200-6060.
+                </div>
+                <div id="cphMain_MensajeATCumplio" class="alert alert-info" role="alert" name="MensajeATCumplio" style="display:None;">
+                    <span class="glyphicon glyphicon-exclamation-sign" aria-hidden="true"></span>
+                    <span class="sr-only">Mensaje:</span>
+                    RNC cumplió con la Adecuación/Transformación o no la requiere.
+                </div>
+
+                <div class="table-responsive">
+                    <div>
+		<table class="table table-striped detailview" cellspacing="0" align="Center" rules="all" border="1" id="cphMain_dvDatosContribuyentes">
+			<tr>
+				<td><b>C&#233;dula/RNC</b></td><td>401-50625-4</td>
+			</tr><tr>
+				<td><b>Nombre/Raz&#243;n Social</b></td><td>DIRECCION GENERAL DE IMPUESTOS INTERNOS</td>
+			</tr><tr>
+				<td><b>Nombre Comercial</b></td><td>DGII</td>
+			</tr><tr>
+				<td><b>Categor&#237;a</b></td><td>  </td>
+			</tr><tr>
+				<td><b>R&#233;gimen de pagos</b></td><td>NORMAL</td>
+			</tr><tr>
+				<td><b>Estado</b></td><td>ACTIVO</td>
+			</tr><tr>
+				<td><b>Actividad Economica</b></td><td>SERV GRALES DE LA ADM P&#218;BLICA (INCL. EL DESEMPE&#209;O DE FUNCIONES EJECUTIVAS Y LEGISLATIVAS DE ADM POR PARTE DE LAS ENTIDADES DE LA A</td>
+			</tr><tr>
+				<td><b>Administracion Local</b></td><td>ADM LOCAL GGC</td>
+			</tr><tr>
+				<td><b>Facturador Electr&#243;nico</b></td><td>SI</td>
+			</tr><tr>
+				<td><b>Licencias de Comercializaci&#243;n de VHM</b></td><td>N/A</td>
+			</tr>
+		</table>
+	</div>
+                </div>
+
+                <div class="table-stackable">
+                    
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <div id="cphMain_upCargando" style="display:none;">
+		
+            <div id="dCargando">
+                <img src="/app/WebApps/ConsultasWeb2/ConsultasWeb/consultas/images/cargando.gif" alt="Imagen animada para indicar cargando." />
+            </div>
+        
+	</div>
+
+                    </div>
+                
+</div>
+            <div id="upCargandoMaster" style="display:none;">
+	
+                    <div id="dCargando">
+                        <img src="/ConsultasWeb/images/cargando.gif" alt="Imagen animada para indicar cargando." />
+                    </div>
+                
+</div>
+        </div>
+                  
+        <div id="contenido_derecha">
+          <div id="content_content_derecha">
+            
+            
+          </div>
+        </div>
+    </form>
+
+    <script type="text/javascript">
+        var _pageRequest = Sys.WebForms.PageRequestManager.getInstance();
+        _pageRequest.add_endRequest(jUtility.BindControls);
+        _pageRequest.add_endRequest(jUtility.Init);
+        _pageRequest.add_endRequest(jUtility.HandlerException);
+
+    </script>
+
+    
+
+
+</body>
+</html>

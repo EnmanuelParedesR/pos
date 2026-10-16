@@ -1,6 +1,4 @@
 using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -16,57 +14,10 @@ using Toki.BuildingBlocks.Security;
 using Toki.Fiscal.Contracts;
 using Toki.Inventory.Contracts;
 using Toki.Sales.Contracts;
+using Toki.Settings.Contracts;
 using Toki.SharedKernel;
 
 namespace Toki.Settings;
-
-/// <summary>The license as the vendor signed it. <see cref="Features"/> holds <see cref="Feature"/> names; <see cref="Limits"/> by <see cref="Limit"/> name.</summary>
-public sealed record LicenseData(string Store, string Plan, IReadOnlyList<string> Features, IReadOnlyDictionary<string, int> Limits, DateTime IssuedUtc, DateTime ExpiresUtc);
-
-/// <summary>Compact JWS with ES256 (ECDSA P-256, SHA-256). Only the vendor's private key signs; the store has only the public key,
-/// so there is no license generator in the client (the old system shipped one).</summary>
-public static class Jws
-{
-    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
-
-    public static string Sign(LicenseData data, ECDsa privateKey)
-    {
-        var header = B64("""{"alg":"ES256","typ":"JWT"}"""u8);
-        var body = B64(JsonSerializer.SerializeToUtf8Bytes(data, Options));
-        var signature = privateKey.SignData(Encoding.ASCII.GetBytes($"{header}.{body}"), HashAlgorithmName.SHA256);
-        return $"{header}.{body}.{B64(signature)}";
-    }
-
-    public static Result<LicenseData> Verify(string jws, ECDsa publicKey)
-    {
-        var parts = jws.Trim().Split('.');
-        if (parts.Length != 3) return LicenseErrors.Invalid;
-        try
-        {
-            using var header = JsonDocument.Parse(Bytes(parts[0]));
-            if (header.RootElement.GetProperty("alg").GetString() != "ES256") return LicenseErrors.Invalid;
-            if (!publicKey.VerifyData(Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}"), Bytes(parts[2]), HashAlgorithmName.SHA256)) return LicenseErrors.Invalid;
-            return JsonSerializer.Deserialize<LicenseData>(Bytes(parts[1]), Options) is { } data ? data : LicenseErrors.Invalid;
-        }
-        catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException)
-        {
-            return LicenseErrors.Invalid;
-        }
-    }
-
-    private static string B64(ReadOnlySpan<byte> data) => Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-    private static byte[] Bytes(string b64url)
-    {
-        var s = b64url.Replace('-', '+').Replace('_', '/');
-        return Convert.FromBase64String(s.PadRight(s.Length + (4 - s.Length % 4) % 4, '='));
-    }
-}
-
-internal static class LicenseErrors
-{
-    public static readonly Error Invalid = Error.Validation("License.Invalid", "La licencia no es válida o no la firmó Toki.");
-}
 
 /// <summary>The installed license, read from <c>License:File</c> (C:\ProgramData\Toki\license.jws). The status follows the clock:
 /// Active until it expires, then 15 days of Grace, then Restricted. Without a license the store runs as Trial for 14 days from its first
@@ -82,7 +33,7 @@ internal sealed class LicenseService : IFeatureService
     /// <summary>"1 caja" once Restricted: the main PC plus one register keep selling (a store whose main PC is a back-office server still sells).</summary>
     public const int RestrictedRegisters = 1;
 
-    /// <summary>The vendor's public key. Its private key never ships with the product.</summary>
+    /// <summary>The vendor's public key (licenses issued offline by the owner, docs/licencias.md). Its private key never ships with the product.</summary>
     private const string TokiPublicKey = """
         -----BEGIN PUBLIC KEY-----
         MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9b9VXQE8pkSL0IgzQKC3xqvtAw+0
@@ -90,9 +41,13 @@ internal sealed class LicenseService : IFeatureService
         -----END PUBLIC KEY-----
         """;
 
+    /// <summary>TK-249: the cloud's license key (EC P-256 in Azure Key Vault, non-exportable), for licenses of a paid subscription.
+    /// Empty until the owner creates the key (docs/cobro-paddle.md §Licencias): paste its PEM here and ship an update.</summary>
+    private const string TokiCloudPublicKey = "";
+
     private readonly TimeProvider _clock;
     private readonly IServiceScopeFactory _scopes;
-    private readonly ECDsa _key = ECDsa.Create();
+    private readonly ECDsa[] _keys;
     private readonly Lock _gate = new();
     private bool _trialLoaded;
     private DateTime? _trialStartedUtc;
@@ -100,11 +55,26 @@ internal sealed class LicenseService : IFeatureService
     public LicenseService(IConfiguration config, IHostEnvironment environment, TimeProvider clock, IServiceScopeFactory scopes)
     {
         (_clock, _scopes) = (clock, scopes);
-        // Only test and development hosts may trust another key; a store (Production) always checks against Toki's.
-        _key.ImportFromPem(!environment.IsProduction() && config["License:PublicKey"] is { Length: > 0 } other ? other : TokiPublicKey);
+        // Only test and development hosts may trust other keys; a store (Production) always checks against Toki's.
+        var test = !environment.IsProduction();
+        _keys = [.. new[]
+            {
+                test && config["License:PublicKey"] is { Length: > 0 } offline ? offline : TokiPublicKey,
+                test && config["License:CloudPublicKey"] is { Length: > 0 } cloud ? cloud : TokiCloudPublicKey,
+            }
+            .Where(pem => pem.Length > 0)
+            .Select(pem =>
+            {
+                var key = ECDsa.Create();
+                key.ImportFromPem(pem);
+                return key;
+            })];
         FilePath = config["License:File"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki", "license.jws");
-        if (File.Exists(FilePath) && Jws.Verify(File.ReadAllText(FilePath), _key) is { IsSuccess: true } saved) Data = saved.Value;
+        if (File.Exists(FilePath) && Jws.Verify(File.ReadAllText(FilePath), _keys) is { IsSuccess: true } saved) (Data, Current) = (saved.Value, File.ReadAllText(FilePath).Trim());
     }
+
+    /// <summary>The installed license as signed (JWS), or null.</summary>
+    public string? Current { get; private set; }
 
     public string FilePath { get; }
     public LicenseData? Data { get; private set; }
@@ -172,14 +142,28 @@ internal sealed class LicenseService : IFeatureService
         _ => limit switch { Limit.Registers => TrialRegisters, _ => 0 },
     };
 
+    public Result<LicenseData> Verify(string jws) => Jws.Verify(jws, _keys);
+
     public Result<LicenseData> Install(string jws)
     {
-        var verified = Jws.Verify(jws, _key);
+        var verified = Verify(jws);
         if (verified.IsFailure) return verified.Error!;
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         File.WriteAllText(FilePath, jws.Trim());
-        Data = verified.Value;
+        (Data, Current) = (verified.Value, jws.Trim());
         return verified.Value;
+    }
+}
+
+/// <summary>TK-249: installs the license the cloud issued for a paid subscription (Sync brings it down). Only a valid one, and only when it was
+/// issued after the installed one: an older copy never replaces a newer license, whoever signed it.</summary>
+internal sealed class StoreLicense(LicenseService license, ICommandHandler<InstallLicense.Command, Ok> install) : IStoreLicense
+{
+    public async Task<bool> InstallFromCloudAsync(string jws, CancellationToken ct)
+    {
+        if (jws.Trim() == license.Current || license.Verify(jws) is not { IsSuccess: true } verified) return false;
+        if (license.Data is { } installed && verified.Value.IssuedUtc <= installed.IssuedUtc) return false;
+        return (await install.Handle(new InstallLicense.Command(jws), ct)).IsSuccess;
     }
 }
 
@@ -200,9 +184,9 @@ internal sealed class StartTrialOnFirstSale(SettingsDbContext db, LicenseService
     }
 }
 
-/// <summary>Installs the license the vendor sent (until Sync brings it down by itself, phase 2). It is also how a trial is bought (TK-220):
-/// Toki staff send the signed license as a file or as text to paste; it applies at once, without reinstalling, and keeps every sale.</summary>
-/// <remarks>shortcut: no payment in the app; the owner pays Toki by WhatsApp or transfer and gets the license back.</remarks>
+/// <summary>Installs the license the vendor sent. It is also how a trial is bought (TK-220): Toki staff send the signed license as a file or as
+/// text to paste; it applies at once, without reinstalling, and keeps every sale. TK-249: a store connected to the cloud with a paid subscription
+/// gets it by itself (<see cref="StoreLicense"/>); pasting stays for offline stores and special deals.</summary>
 internal static class InstallLicense
 {
     public sealed record Command(string License) : ICommand<Ok>;

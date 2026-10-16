@@ -18,7 +18,7 @@ public sealed class StoreSettingsScriptTests : IDisposable
         var info = new ProcessStartInfo("powershell.exe")
         {
             ArgumentList = { "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-                $". '{Repo(@"deploy\installer\store-settings.ps1")}'; Set-StoreSettings -AppSettings '{app}' -ServerSettings '{server}' -FeedUrl 'https://feed.example' -Channel 'pilot'" },
+                $". '{Repo(@"deploy\installer\store-settings.ps1")}'; Set-StoreSettings -AppSettings '{app}' -ServerSettings '{server}' -FeedUrl 'https://feed.example' -Channel 'pilot' -SignerThumbprints 'AB12'" },
             RedirectStandardError = true, RedirectStandardOutput = true,
         };
         using (var p = Process.Start(info)!)
@@ -37,8 +37,14 @@ public sealed class StoreSettingsScriptTests : IDisposable
         (api.Scheme, api.Host, api.Port).ShouldBe(("https", "localhost", listens.Port)); // what the installed server listens on
         serverJson.RootElement.GetProperty("Cloud").GetProperty("Url").GetString().ShouldBe("https://app-toki-prod-jhzq7n.azurewebsites.net");
         foreach (var json in new[] { appJson, serverJson })
+        {
             json.RootElement.GetProperty("Updates").GetProperty("Channel").GetString().ShouldBe("pilot");
+            // R11 C3: the update task of both roles only installs setups signed by this certificate.
+            json.RootElement.GetProperty("Updates").GetProperty("SignerThumbprints").EnumerateArray().Select(t => t.GetString()).ShouldBe(["AB12"]);
+        }
         serverJson.RootElement.GetProperty("Database").GetProperty("Provider").GetString().ShouldBe("SqlServer"); // the rest is kept
+        // R11 C1: the store's own SQL Server instance, which the setup installs (development keeps .\SQLEXPRESS in launchSettings).
+        serverJson.RootElement.GetProperty("Database").GetProperty("ConnectionString").GetString().ShouldStartWith(@"Server=.\TOKI;");
     }
 
     private string Copy(string source, string name)

@@ -10,6 +10,7 @@ import { ShiftsPage } from "./pages/ShiftsPage";
 import { ShiftReportPage } from "./pages/ShiftReportPage";
 import { StoresPage } from "./pages/StoresPage";
 import { AssistantPage } from "./pages/AssistantPage";
+import { BillingPage } from "./pages/BillingPage";
 import { PlatformAccompanimentPage, PlatformMetricsPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
 import { CatalogPage } from "./pages/CatalogPage";
 import { MembersPage } from "./pages/MembersPage";
@@ -99,6 +100,7 @@ function Panel() {
         <Route path="received" element={<ReceivedPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         {me.role === "Owner" && <Route path="members" element={<MembersPage me={me} />} />}
+        {me.role === "Owner" && <Route path="billing" element={<BillingPage />} />}
         {/* Toki staff only (TK-189); the API checks the role on every call anyway. */}
         {me.isPlatformAdmin && (
           <>
@@ -126,6 +128,7 @@ const sections: { to: string; label: string; icon: IconName }[] = [
 ];
 
 const membersSection = { to: "/app/members", label: "Equipo", icon: "users" as IconName };
+const billingSection = { to: "/app/billing", label: "Facturación", icon: "receipt" as IconName }; // TK-249
 const platformSection = { to: "/app/platform", label: "Plataforma", icon: "shield" as IconName };
 
 
@@ -148,7 +151,7 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   const navigate = useNavigate();
   const canEdit = me.role === "Owner";
   const context: PanelContext = { stores: stores.data ?? [], reloadStores: stores.reload, storeId, setStoreId, canEdit };
-  const nav = [...sections, ...(canEdit ? [membersSection] : []), ...(me.isPlatformAdmin ? [platformSection] : [])];
+  const nav = [...sections, ...(canEdit ? [membersSection, billingSection] : []), ...(me.isPlatformAdmin ? [platformSection] : [])];
 
   // TK-217: a member of several businesses picks one; the new token carries it.
   const switchTenant = async (tenantId: string) => {

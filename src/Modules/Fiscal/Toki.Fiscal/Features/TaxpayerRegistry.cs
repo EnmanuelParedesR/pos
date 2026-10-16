@@ -28,7 +28,9 @@ internal static class TaxpayerRegistry
 
     /// <summary>Where the background import is (TK-162). <c>Percent</c> is how much of the file was read.</summary>
     public sealed record ImportStatus(bool Running, int Percent, int Taxpayers, string? Error, DateTime? FinishedUtc);
-    public sealed record Response(string Rnc, string Name, string? TradeName, bool IsActive);
+    /// <param name="Status">TK-252: as the DGII consultation wrote it (ACTIVO, SUSPENDIDO…); null when the answer came from the loaded registry.</param>
+    /// <param name="FromDgii">Asked to the DGII just now (or cached), not read from the loaded registry.</param>
+    public sealed record Response(string Rnc, string Name, string? TradeName, bool IsActive, string? Status, string? Category, bool FromDgii);
 
     /// <summary>"RNC|RAZÓN SOCIAL|NOMBRE COMERCIAL|…|ESTADO|…". Null for the header, blank or malformed lines.</summary>
     /// <remarks>shortcut: the state is read from column 10 as DGII publishes it today; check the layout when DGII changes the file.</remarks>
@@ -197,8 +199,13 @@ internal static class TaxpayerRegistry
             app.MapGet("/api/fiscal/taxpayer-registry/import", (TaxpayerImport import) => Results.Ok(import.Status))
                 .RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");
 
-            app.MapGet("/api/fiscal/taxpayers/{rnc}", async (string rnc, FiscalDbContext db, CancellationToken ct) =>
-                    await db.Taxpayers.AsNoTracking().Where(c => c.Rnc == (Rnc.Normalize(rnc) ?? "")).Select(c => new Response(c.Rnc, c.Name, c.TradeName, c.IsActive))
+            // TK-252: the DGII public consultation first (today's status); the loaded registry when the DGII does not answer.
+            app.MapGet("/api/fiscal/taxpayers/{rnc}", async (string rnc, FiscalDbContext db, Contracts.IDgiiPublicLookup dgii, CancellationToken ct) =>
+                    await dgii.RncAsync(rnc, ct) is { Kind: not Contracts.DgiiAnswerKind.Unavailable } live
+                        ? live.Taxpayer is { } t
+                            ? Results.Ok(new Response(t.Rnc, t.Name, t.TradeName, t.IsActive, t.Status, t.Category, FromDgii: true))
+                            : EndpointExtensions.Problem(Error.NotFound("Fiscal.RncNotFound", "La DGII dice que ese RNC o cédula no está inscrito como contribuyente."))
+                    : await db.Taxpayers.AsNoTracking().Where(c => c.Rnc == (Rnc.Normalize(rnc) ?? "")).Select(c => new Response(c.Rnc, c.Name, c.TradeName, c.IsActive, null, null, false))
                         .FirstOrDefaultAsync(ct) is { } r
                         ? Results.Ok(r)
                         // TK-239: an empty registry says so, so the screens can hint to load it instead of "not found".

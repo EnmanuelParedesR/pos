@@ -57,6 +57,7 @@
                         </Field>
                         <Field Label="RNC o cédula" Error="@Err("rnc")" Hint="@(_taxHint ?? "9 u 11 números, sin guiones.")">
                             <input class="esc-input" inputmode="numeric" maxlength="13" @bind="f.Rnc" @bind:after='() => LookupAsync(f)' aria-invalid="@Invalid("rnc")" />
+                            <TaxpayerBadge Status="@_taxStatus" />
                         </Field>
                         <Field Label="Días de crédito" Error="@Err("days")" Hint="0 si le paga al contado.">
                             <input class="esc-input esc-num" inputmode="numeric" @bind="f.CreditDays" @bind:after='() => _errors.Remove("days")' aria-invalid="@Invalid("days")" />
@@ -94,14 +95,14 @@
         public Guid? Id; public string Name = ""; public string? Rnc, Phone, Contact, CreditDays = "0"; public bool IsActive = true;
     }
 
-    private string? _taxHint, _filledName;
+    private string? _taxHint, _filledName, _taxStatus;
 
     /// <summary>TK-239: the DGII registry fills the name (editable).</summary>
     private async Task LookupAsync(SupplierForm f)
     {
         _errors.Remove("rnc");
-        var (name, hint) = await TaxpayerLookup.FindAsync(Api, f.Rnc);
-        (f.Name, _filledName, _taxHint) = (TaxpayerLookup.Fill(f.Name, _filledName, name) ?? "", name ?? _filledName, hint);
+        var (name, hint, status) = await TaxpayerLookup.FindAsync(Api, f.Rnc);
+        (f.Name, _filledName, _taxHint, _taxStatus) = (TaxpayerLookup.Fill(f.Name, _filledName, name) ?? "", name ?? _filledName, hint, status);
     }
 
     private List<Supplier>? _suppliers;
@@ -128,12 +129,13 @@
     private async Task LoadAsync() =>
         _suppliers = (await Api.GetAsync<List<Supplier>>($"/api/purchasing/suppliers?search={Uri.EscapeDataString(_search ?? "")}")).Value ?? [];
 
-    private void New() => (_editing, _error) = (new SupplierForm(), null);
+    private void New() => (_editing, _error, _taxHint, _taxStatus) = (new SupplierForm(), null, null, null);
 
     private void Edit(Supplier s)
     {
         _errors.Clear();
         (_editing, _error) = (new SupplierForm { Id = s.Id, Name = s.Name, Rnc = s.Rnc, Phone = s.Phone, Contact = s.Contact, CreditDays = s.CreditDays.ToString(), IsActive = s.IsActive }, null);
+        (_taxHint, _taxStatus) = (null, null);
     }
 
     private async Task SaveAsync()

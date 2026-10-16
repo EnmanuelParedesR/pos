@@ -85,6 +85,7 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | instalación | `Setup` |
 | datos del negocio, pie del recibo | `BusinessProfile`, `ReceiptFooter` |
 | licencia, funciones | `License`, `Features` |
+| suscripción, pagado hasta, pago pendiente, acuerdo manual (TK-249) | `TenantSubscription`, `PaidThroughUtc`, `PastDue`, `ManualUntilUtc` |
 | respaldo, frase | `Backup`, `Passphrase` |
 | auditoría | `Audit` |
 

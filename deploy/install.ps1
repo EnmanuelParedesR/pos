@@ -1,12 +1,13 @@
-#Requires -RunAsAdministrator
+﻿#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
   Installs Toki on the store's main PC as a Windows service that runs without admin rights.
 .DESCRIPTION
   1. Copies the published API to C:\Program Files\Toki.
-  2. Creates the "Toki" service under its own virtual account (NT SERVICE\Toki), delayed start, restart on failure.
-  3. Runs `Toki.Host.Local prepare-service`: node certificate (and read access to its key for the service),
-     C:\ProgramData\Toki for logs, backups and the license, and the SQL Server login of the service.
+  2. Creates the "Toki" service under its own virtual account (NT SERVICE\Toki), delayed start, restart on failure,
+     with only SeChangeNotifyPrivilege (R11 C7).
+  3. Runs `Toki.Host.Local prepare-service`: C:\ProgramData\Toki for logs, backups, keys and the license, and the SQL Server login of the
+     service in the instance of the connection string (.\TOKI, which the setup installs; R11 C1).
   4. Opens TCP 5443 (HTTPS) in the firewall for private networks only, and starts the service.
   Publish first:  dotnet publish src/Hosts/Toki.Host.Local -c Release -r win-x64 --self-contained -o publish
 .EXAMPLE
@@ -33,6 +34,9 @@ if (-not (Get-Service $Service -ErrorAction SilentlyContinue)) {
     sc.exe description $Service "API de Toki para las cajas de la tienda." | Out-Null
 }
 sc.exe failure $Service reset= 86400 actions= restart/5000/restart/15000/restart/60000 | Out-Null
+# R11 C7: only the privilege it needs. A service keeps SeImpersonatePrivilege by default, which turns any code run inside it into SYSTEM.
+sc.exe privs $Service SeChangeNotifyPrivilege | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "sc.exe privs falló ($LASTEXITCODE)" }
 
 & $exe prepare-service $account
 if ($LASTEXITCODE -ne 0) { throw "prepare-service falló ($LASTEXITCODE)" }

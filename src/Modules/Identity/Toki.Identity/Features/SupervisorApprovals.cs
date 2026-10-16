@@ -35,21 +35,22 @@ internal static class GrantSupervisorApproval
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IUserContext me, IAuditLog audit, PinPepper pepper, PinAttempts attempts, TimeProvider clock)
+    internal sealed class Handler(IdentityDbContext db, IUserContext me, IAuditLog audit, PinPepper pepper, AttemptLimiter limiter, TimeProvider clock)
         : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             if (me.DeviceId is not { } deviceId) return IdentityErrors.DeviceNotPaired;
+            if (limiter.IsBlocked(AttemptLimiter.PinKey(deviceId), AttemptLimiter.PinsPerDevice)) return IdentityErrors.DeviceLocked;
             var now = clock.GetUtcNow().UtcDateTime;
             // R11 A14: a cashier trying PINs runs out here, before the supervisor's own count: nobody locks the owner out from a register.
-            var key = $"approval:{deviceId}:{me.UserId}:{User.NormalizeCode(c.Code)}";
-            if (attempts.Exhausted(key, now)) return new Response(null, null, null, IdentityErrors.TooManyAttempts);
+            var key = AttemptLimiter.UserPinKey(deviceId, User.NormalizeCode(c.Code), me.UserId);
+            if (limiter.IsBlocked(key, AttemptLimiter.PinsPerUser)) return new Response(null, null, null, IdentityErrors.TooManyAttempts);
 
             var supervisor = await db.Users.FirstOrDefaultAsync(u => u.Code == User.NormalizeCode(c.Code), ct);
             if (supervisor is null)
             {
-                attempts.Failed(key, now);
+                limiter.Fail(AttemptLimiter.PinKey(deviceId));
                 return new Response(null, null, null, IdentityErrors.CannotApprove);
             }
             // R11 A14: whether the person may approve is checked before the PIN, with the same answer as a wrong PIN, so it never tells a right PIN apart.
@@ -57,7 +58,8 @@ internal static class GrantSupervisorApproval
             var pin = permissions.Contains(c.Permission) ? supervisor.TryPin(c.Pin, now, pepper.Value) : PinResult.Incorrect;
             if (pin != PinResult.Correct)
             {
-                attempts.Failed(key, now);
+                limiter.Fail(AttemptLimiter.PinKey(deviceId));
+                limiter.Fail(key);
                 await audit.RecordAsync("identity.pin-failed", "User", supervisor.Id,
                     new { supervisor.Code, c.Permission, Result = pin, Requester = me.UserId, Device = deviceId }, ct);
                 return new Response(null, null, null, pin == PinResult.Locked ? IdentityErrors.UserLocked : IdentityErrors.CannotApprove);

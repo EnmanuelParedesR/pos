@@ -139,6 +139,8 @@
     protected override async Task OnInitializedAsync()
     {
         await Session.LoadAsync();
+        await Session.RenewCertificateIfDueAsync(async csr =>
+            (await Api.PostAsync<RenewedCertificate>("/api/identity/devices/current/certificate", new { CertificateRequest = csr })).Value?.Certificate, DateTime.UtcNow);
         await Peripherals.LoadAsync();
         Session.Changed += OnSessionChanged;
         Peripherals.Changed += OnDevicesChanged;

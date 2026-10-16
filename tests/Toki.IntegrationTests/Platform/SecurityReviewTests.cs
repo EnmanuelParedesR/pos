@@ -129,11 +129,11 @@ public sealed class SecurityReviewTests(TokiApp app) : IClassFixture<TokiApp>
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await admin.PutAsJsonAsync("/api/backups/passphrase", new { Passphrase = Phrase })).StatusCode.ShouldBe(HttpStatusCode.NoContent); // the owner may
 
-        // A copy to another computer only with an Administrador; the audit keeps before and after.
-        var network = new { CopyTo = @"\\otra-pc\respaldos", Time = "23:30", Keep = 14, Automatic = true };
-        (await (await manager.PutAsJsonAsync("/api/backups/settings", network)).ErrorCode()).ShouldBe("Backup.NetworkCopyAdministratorOnly");
-        (await admin.PutAsJsonAsync("/api/backups/settings", network)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await manager.PutAsJsonAsync("/api/backups/settings", network with { Keep = 10 })).StatusCode.ShouldBe(HttpStatusCode.NoContent); // already approved
+        // A copy to another computer only when an administrator listed the folder in appsettings (R11 C14); the audit keeps before and after.
+        (await (await manager.PutAsJsonAsync("/api/backups/settings", new { CopyTo = @"\\otra-pc\respaldos", Time = "23:30", Keep = 14, Automatic = true })).ErrorCode())
+            .ShouldBe("Backup.CopyNotAllowed");
+        (await manager.PutAsJsonAsync("/api/backups/settings", new { CopyTo = "", Time = "23:30", Keep = 14, Automatic = true })).EnsureSuccessStatusCode();
+        (await manager.PutAsJsonAsync("/api/backups/settings", new { CopyTo = "", Time = "23:30", Keep = 10, Automatic = true })).EnsureSuccessStatusCode();
         var today = Toki.SharedKernel.BusinessDay.Of(app.Clock.GetUtcNow().UtcDateTime);
         var audit = await admin.GetFromJsonAsync<JsonElement>($"/api/audit?from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}&action=settings.backup-schedule");
         var data = JsonDocument.Parse(audit[0].GetProperty("data").GetString()!).RootElement;

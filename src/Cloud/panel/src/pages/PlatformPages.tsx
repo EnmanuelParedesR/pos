@@ -20,6 +20,7 @@ import {
 import { ago, dateTime, dayName, isStale, money } from "../format";
 import { BarChart, BarList, Card, ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton, SkeletonRows, Stat } from "../ui";
 import { PlatformUsageCard } from "./UsageCard";
+import { PlatformBillingCard } from "./BillingPage";
 
 /** Plataforma (TK-189 / TK-190): Toki staff only. Same Escuadra Admin pieces as the owner's panel. */
 
@@ -427,6 +428,7 @@ export function PlatformTenantPage() {
           </section>
 
           <PlatformUsageCard tenantId={t.id} />
+          <PlatformBillingCard tenantId={t.id} />
 
           {/* TK-217 */}
           <Card title="Miembros del panel">

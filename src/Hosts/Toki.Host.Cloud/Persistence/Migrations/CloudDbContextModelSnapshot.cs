@@ -235,6 +235,113 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("AiUsage", "cloud");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Billing.BillingEvent", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("OccurredUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ReceivedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId");
+
+                    b.ToTable("BillingEvents", "cloud");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Billing.PaddleProduct", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("PricesJson")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("SyncedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TokiJson")
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PaddleProducts", "cloud");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Billing.TenantSubscription", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Interval")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("LastEventUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ManualNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("ManualUntilUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("NextBilledUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PaddleCustomerId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PaddleSubscriptionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("PaidThroughUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PastDueSinceUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId");
+
+                    b.HasIndex("PaddleSubscriptionId");
+
+                    b.ToTable("TenantSubscriptions", "cloud");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Catalog.ReplicaCatalogItem", b =>
                 {
                     b.Property<Guid>("TenantId")

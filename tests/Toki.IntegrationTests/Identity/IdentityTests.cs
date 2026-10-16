@@ -82,6 +82,45 @@ public sealed class IdentityTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task R11_C12_one_pairing_code_at_a_time_and_few_wrong_codes()
+    {
+        await using var store = new TokiApp();
+        var admin = await store.AdminAsync();
+        async Task<string> NewCode() => (await (await store.Client(admin).PostAsJsonAsync("/api/identity/devices/pairing-codes", new { DeviceName = "Caja" }))
+            .Json()).GetProperty("code").GetString()!;
+        async Task<string?> Pair(string code) => await (await store.Anonymous().PostAsJsonAsync("/api/identity/devices/pair", new { Code = code })).ErrorCode();
+
+        var first = await NewCode();
+        var second = await NewCode();
+        (await Pair(first)).ShouldBe("Identity.InvalidPairingCode"); // a new code ends the one before
+        for (var i = 0; i < 4; i++) (await Pair("00000000")).ShouldBe("Identity.InvalidPairingCode");
+        (await Pair(second)).ShouldBe("Identity.TooManyPairingAttempts"); // five wrong tries end the open code
+
+        await NewCode(); // the owner makes another: tries start again for the code, not for this address
+        for (var i = 0; i < 5; i++) (await Pair("00000000")).ShouldBe("Identity.InvalidPairingCode");
+        await NewCode();
+        (await Pair(await NewCode())).ShouldBe("Identity.TooManyPairingAttempts"); // ten from one address: it waits
+        store.Clock.Advance(TimeSpan.FromMinutes(16));
+        (await store.Anonymous().PostAsJsonAsync("/api/identity/devices/pair", new { Code = await NewCode() })).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task R11_C12_a_register_that_tries_many_PINs_waits_whoever_it_tries()
+    {
+        await using var store = new TokiApp();
+        var admin = await store.AdminAsync();
+        for (var i = 0; i < 10; i++)
+            (await (await store.Anonymous(admin.Device).PostAsJsonAsync("/api/identity/sessions", new { Code = $"nadie{i}", Pin = "0000" })).ErrorCode())
+                .ShouldBe("Identity.InvalidCredentials");
+
+        var locked = await store.Anonymous(admin.Device).PostAsJsonAsync("/api/identity/sessions", new { Code = "admin", Pin = TokiApp.AdminPin });
+        (await locked.ErrorCode()).ShouldBe("Identity.DeviceLocked"); // even the right PIN: no hint of which one it was
+        store.Clock.Advance(TimeSpan.FromMinutes(16));
+        (await store.Anonymous(admin.Device).PostAsJsonAsync("/api/identity/sessions", new { Code = "admin", Pin = TokiApp.AdminPin }))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task The_cashier_cannot_manage_users()
     {
         var cashier = await app.UserAsync(Roles.Cashier);

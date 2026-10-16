@@ -60,7 +60,7 @@
                     <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="Cart.ManualRnc" @bind:after="LookupManualAsync" /></label>
                     <label class="esc-field"><span>Nombre o razón social</span><input class="esc-input" maxlength="150" @bind="Cart.ManualName" /></label>
                 </div>
-                @if (_manualHint is not null) { <div class="esc-muted">@_manualHint</div> }
+                @if (_manualStatus is not null || _manualHint is not null) { <div class="esc-row" style="gap:8px;align-items:center"><TaxpayerBadge Status="@_manualStatus" /><span class="esc-muted">@_manualHint</span></div> }
             }
 
             <details>
@@ -71,7 +71,7 @@
                         <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="_newTaxId" @bind:after="LookupNewAsync" /></label>
                         <label class="esc-field"><span>Teléfono</span><input class="esc-input" inputmode="tel" maxlength="30" @bind="_newPhone" /></label>
                     </div>
-                    @if (_newHint is not null) { <div class="esc-muted">@_newHint</div> }
+                    @if (_newStatus is not null || _newHint is not null) { <div class="esc-row" style="gap:8px;align-items:center"><TaxpayerBadge Status="@_newStatus" /><span class="esc-muted">@_newHint</span></div> }
                     <div><Button Type="submit">Crear y usar</Button></div>
                 </form>
             </details>
@@ -89,18 +89,18 @@
 @code {
     [Parameter] public EventCallback OnClose { get; set; }
 
-    private string? _search, _error, _newName, _newTaxId, _newPhone, _newHint, _newFilled, _manualHint, _manualFilled;
+    private string? _search, _error, _newName, _newTaxId, _newPhone, _newHint, _newFilled, _manualHint, _manualFilled, _newStatus, _manualStatus;
 
     private async Task LookupNewAsync()
     {
-        var (name, hint) = await TaxpayerLookup.FindAsync(Api, _newTaxId);
-        (_newName, _newFilled, _newHint) = (TaxpayerLookup.Fill(_newName, _newFilled, name), name ?? _newFilled, hint);
+        var (name, hint, status) = await TaxpayerLookup.FindAsync(Api, _newTaxId);
+        (_newName, _newFilled, _newHint, _newStatus) = (TaxpayerLookup.Fill(_newName, _newFilled, name), name ?? _newFilled, hint, status);
     }
 
     private async Task LookupManualAsync()
     {
-        var (name, hint) = await TaxpayerLookup.FindAsync(Api, Cart.ManualRnc);
-        (Cart.ManualName, _manualFilled, _manualHint) = (TaxpayerLookup.Fill(Cart.ManualName, _manualFilled, name), name ?? _manualFilled, hint);
+        var (name, hint, status) = await TaxpayerLookup.FindAsync(Api, Cart.ManualRnc);
+        (Cart.ManualName, _manualFilled, _manualHint, _manualStatus) = (TaxpayerLookup.Fill(Cart.ManualName, _manualFilled, name), name ?? _manualFilled, hint, status);
     }
     private List<CustomerSummary>? _results;
     private ElementReference _searchBox;

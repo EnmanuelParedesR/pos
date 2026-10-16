@@ -24,7 +24,8 @@ public sealed record PurchaseSummary(Guid Id, long Number, string Supplier, stri
 public sealed record PurchaseLineInput(Guid ProductId, Guid? PresentationId, decimal Quantity, decimal UnitCost, ItbisRate? ItbisRate);
 /// <param name="Id">Generated here on the first save, so a retry returns the same draft.</param>
 public sealed record SavePurchase(Guid SupplierId, string Ncf, DateOnly InvoiceDate, PaymentTerms Terms, IReadOnlyList<PurchaseLineInput> Lines,
-    Guid? WarehouseId, int? CreditDays, string? Notes, decimal? InvoiceItbis, decimal? InvoiceTotal, Guid? Id, SupplierPaymentMethod? Method);
+    Guid? WarehouseId, int? CreditDays, string? Notes, decimal? InvoiceItbis, decimal? InvoiceTotal, Guid? Id, SupplierPaymentMethod? Method,
+    string? NcfOverrideReason = null);
 public sealed record PurchaseSaved(Guid Id, decimal Subtotal, decimal Itbis, decimal Total);
 public sealed record PurchaseDetailLine(Guid ProductId, Guid? PresentationId, string Description, decimal Quantity, decimal Factor, decimal UnitCost, ItbisRate ItbisRate,
     decimal Subtotal, decimal Itbis);
@@ -35,7 +36,7 @@ public sealed record PurchaseDetail(Guid Id, long Number, Guid SupplierId, strin
 public sealed record Expense(Guid Id, Guid SupplierId, string SupplierName, string? SupplierRnc, string Ncf, DateOnly Date, string Description, ExpenseType Type,
     PaymentTerms Terms, SupplierPaymentMethod? Method, DateOnly? DueDate, decimal Subtotal, decimal Itbis, decimal Total, bool IsVoided, string? VoidReason);
 public sealed record RecordExpense(Guid SupplierId, string Ncf, DateOnly Date, string Description, ExpenseType Type, decimal Subtotal, decimal Itbis,
-    PaymentTerms Terms, int? CreditDays, Guid? Id, SupplierPaymentMethod? Method);
+    PaymentTerms Terms, int? CreditDays, Guid? Id, SupplierPaymentMethod? Method, string? NcfOverrideReason = null);
 public sealed record ExpenseRecorded(Guid Id, decimal Total);
 
 /// <param name="SupplierPaymentId">Generated here, so a retry returns the saved payment.</param>

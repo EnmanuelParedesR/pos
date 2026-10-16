@@ -47,6 +47,10 @@ namespace Toki.Identity.Persistence.Migrations
                     b.Property<DateTime?>("PeripheralsReportedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("PreviousCertificateThumbprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<int?>("PrinterWidth")
                         .HasColumnType("int");
 
