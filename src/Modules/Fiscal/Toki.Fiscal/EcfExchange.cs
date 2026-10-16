@@ -58,9 +58,11 @@ internal sealed class ReceivedDocument
     public decimal Itbis { get; set; }
     public byte[] XmlGzip { get; set; } = [];
     public DateTime ReceivedUtc { get; set; }
-    /// <summary>Approved or Rejected (commercial approval, optional), as the cloud signed it.</summary>
+    /// <summary>Approved or Rejected (commercial approval, optional), signed here (TK-246).</summary>
     public string? Approval { get; set; }
     public string? ApprovalReason { get; set; }
+    /// <summary>The signed ACECF (gzip): sent again, as is, to whoever did not take it yet.</summary>
+    public byte[]? ApprovalXmlGzip { get; set; }
     public DateTime? ApprovalUtc { get; set; }
     public DateTime? ApprovalDeliveredUtc { get; set; }
     public DateTime? ApprovalDgiiUtc { get; set; }
@@ -105,6 +107,9 @@ internal static class EcfExchange
         services.AddScoped<ISupplierEcfs, SupplierEcfs>(); // TK-240: Compras reads the received e-CF
         services.AddHttpClient(EcfDeliveryQueue.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(30));
         services.AddHostedService<EcfExchangeWorker>();
+        services.AddScoped<Features.CommercialApprovals>(); // TK-246: signed and sent from the store
+        services.AddScoped<RemoteSigning>();
+        services.AddHostedService<RemoteSigningWorker>();
     }
 }
 
@@ -155,7 +160,8 @@ internal sealed class EcfDeliveryQueue(FiscalDbContext db, IEcfProvider provider
                 else
                 {
                     var xml = EcfSubmissionQueue.Unzip(await db.Documents.Where(x => x.Id == d.DocumentId).Select(x => x.SignedXml).SingleAsync(ct));
-                    var ack = await PostAsync(reception, entry.Value.Authentication, $"{issuerRnc}{d.ENcf}.xml", xml, ct);
+                    var ack = await TaxpayerReceiver.PostAsync(http.CreateClient(HttpClientName), signer, reception, entry.Value.Authentication, "recepcion/api/ecf",
+                        $"{issuerRnc}{d.ENcf}.xml", xml, ct);
                     var (state, reason) = ReadAck(ack, d.ENcf);
                     d.AckXml = EcfSubmissionQueue.Zip(ack);
                     (d.Status, d.Message, d.NextAttemptUtc) = state == 0 || reason == 3
@@ -184,30 +190,6 @@ internal sealed class EcfDeliveryQueue(FiscalDbContext db, IEcfProvider provider
         var entry = await dgii.DirectoryAsync(rnc, ct);
         directory.Entries[rnc] = (entry, clock.GetUtcNow());
         return entry;
-    }
-
-    /// <summary>Same exchange the DGII uses with a receiver: seed → signed seed → token, then the e-CF as multipart field <c>xml</c>. Returns the ARECF.</summary>
-    private async Task<string> PostAsync(string reception, string? authentication, string fileName, string xml, CancellationToken ct)
-    {
-        var client = http.CreateClient(HttpClientName);
-        using var request = Upload(ServiceUrl(reception, "recepcion/api/ecf"), fileName, xml);
-        if (!string.IsNullOrWhiteSpace(authentication))
-        {
-            using var seed = await client.GetAsync(ServiceUrl(authentication, "autenticacion/api/semilla"), ct);
-            seed.EnsureSuccessStatusCode();
-            var seedXml = XDocument.Parse(await seed.Content.ReadAsStringAsync(ct));
-            seedXml.Declaration = null;
-            using var validate = Upload(ServiceUrl(authentication, "autenticacion/api/validacioncertificado"), "semilla.xml", signer.Sign(seedXml).SignedXml);
-            using var token = await client.SendAsync(validate, ct);
-            token.EnsureSuccessStatusCode();
-            var json = await token.Content.ReadFromJsonAsync<JsonElement>(ct);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer",
-                json.TryGetProperty("token", out var t) ? t.GetString() : throw new HttpRequestException("El receptor no devolvió el token."));
-        }
-        using var response = await client.SendAsync(request, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"El receptor del comprador respondió {(int)response.StatusCode}.");
-        return body;
     }
 
     /// <summary>The ARECF's Estado (0 received, 1 not) and reason. One that is not a signed ARECF for this e-NCF is a failure (retried).</summary>
@@ -247,6 +229,38 @@ internal sealed class EcfDeliveryQueue(FiscalDbContext db, IEcfProvider provider
         4 => "el RNC del comprador no corresponde",
         _ => "sin motivo",
     };
+
+}
+
+/// <summary>Another taxpayer's receiver services (§2.6), as the DGII uses them: seed → signed seed → token, then the document as multipart field
+/// <c>xml</c>. The 31 delivery (TK-153) and the commercial approval (TK-154, sent from the store since TK-246) go this way. The seed is signed here,
+/// with the store's certificate: never in the cloud.</summary>
+internal static class TaxpayerReceiver
+{
+    /// <summary>Posts to <paramref name="service"/> of the receiver at <paramref name="url"/>, authenticating first when it publishes
+    /// <paramref name="authentication"/>. Returns the answer's body; throws when it refuses.</summary>
+    public static async Task<string> PostAsync(HttpClient client, IEcfSigner signer, string url, string? authentication, string service, string fileName,
+        string xml, CancellationToken ct)
+    {
+        using var request = Upload(ServiceUrl(url, service), fileName, xml);
+        if (!string.IsNullOrWhiteSpace(authentication))
+        {
+            using var seed = await client.GetAsync(ServiceUrl(authentication, "autenticacion/api/semilla"), ct);
+            seed.EnsureSuccessStatusCode();
+            var seedXml = XDocument.Parse(await seed.Content.ReadAsStringAsync(ct));
+            seedXml.Declaration = null;
+            using var validate = Upload(ServiceUrl(authentication, "autenticacion/api/validacioncertificado"), "semilla.xml", signer.Sign(seedXml).SignedXml);
+            using var token = await client.SendAsync(validate, ct);
+            token.EnsureSuccessStatusCode();
+            var json = await token.Content.ReadFromJsonAsync<JsonElement>(ct);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer",
+                json.TryGetProperty("token", out var t) ? t.GetString() : throw new HttpRequestException("El receptor no devolvió el token."));
+        }
+        using var response = await client.SendAsync(request, ct);
+        var body = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"El receptor respondió {(int)response.StatusCode}.");
+        return body;
+    }
 
     /// <summary>The directory may list a base URL or the whole service URL: either way the service goes after <c>/fe/</c> (§11, question 31).</summary>
     internal static string ServiceUrl(string url, string service)

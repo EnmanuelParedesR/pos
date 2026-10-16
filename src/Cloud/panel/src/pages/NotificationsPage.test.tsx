@@ -22,7 +22,7 @@ const prefs: AlertPreferences = {
 const received: ReceivedEcf = {
   id: 7, environment: "ecf", issuerRnc: "131245678", issuerName: "Distribuidora del Cibao", eNcf: "E310000000007", type: 31, issuedOn: "2026-10-14",
   total: 1180, itbis: 180, receivedUtc: "2026-10-15T12:00:00Z", approval: null, approvalReason: null, approvalUtc: null, approvalDeliveredUtc: null,
-  approvalDgiiUtc: null, approvalMessage: null,
+  approvalDgiiUtc: null, approvalMessage: null, acknowledgedUtc: null,
 };
 
 function renderApp(me: Me | null, path: string) {
@@ -67,23 +67,19 @@ it("TK-222: the e-mail link unsubscribes without a session", async () => {
   expect(bodies(fetch, "POST")).toContainEqual(["/api/notifications/unsubscribe", JSON.stringify({ token: "good" })]);
 });
 
-it("TK-154: an owner rejects a received e-CF with a reason", async () => {
+it("TK-246: the panel shows a received e-CF; its approval is decided and signed at the store", async () => {
   const fetch = renderApp(owner, "/received");
 
   fireEvent.click(await screen.findByText("Distribuidora del Cibao"));
-  fireEvent.click(screen.getByRole("button", { name: "Rechazar" }));
-  fireEvent.change(screen.getByLabelText("Motivo del rechazo"), { target: { value: "Precio distinto al pedido" } });
-  fireEvent.click(screen.getByRole("button", { name: "Rechazar comprobante" }));
-
-  await vi.waitFor(() =>
-    expect(bodies(fetch, "POST")).toContainEqual(["/api/panel/fe/received/7/approval", JSON.stringify({ approve: false, reason: "Precio distinto al pedido" })]),
-  );
+  expect(screen.getByText(/Se aprueba o rechaza desde la PC principal de la tienda/)).toBeTruthy();
+  expect(screen.getByText("Acuse de recibo pendiente")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Aprobar" })).toBeNull();
+  expect(bodies(fetch, "POST").filter(([url]) => String(url).endsWith("/approval"))).toEqual([]);
 });
 
-it("TK-154: a read-only member sees received e-CF but cannot approve them", async () => {
+it("TK-154: a read-only member sees received e-CF", async () => {
   renderApp(readOnly, "/received");
 
   fireEvent.click(await screen.findByText("Distribuidora del Cibao"));
-  expect(screen.getByText("Solo un dueño puede aprobar o rechazar este comprobante.")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Aprobar" })).toBeNull();
 });

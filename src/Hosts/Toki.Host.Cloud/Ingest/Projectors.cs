@@ -121,6 +121,17 @@ internal static class Projectors
                 (c.TotalSteps, done.Count, Enumerable.Range(0, c.TotalSteps).FirstOrDefault(s => !done.Contains(s), c.TotalSteps), done.Contains(c.TotalSteps - 1));
             (row.StepSinceUtc, row.ChangedUtc) = (c.LastDoneUtc ?? e.OccurredUtc, e.OccurredUtc);
         },
+        // TK-246: the store's commercial approval of a received e-CF. The first decision stays; what reached the supplier and the DGII only grows.
+        [Name<CommercialApprovalRecordedV1>()] = async (db, e, ct) =>
+        {
+            var a = Read<CommercialApprovalRecordedV1>(e);
+            var row = await db.FeReceived.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.Id == a.CloudId, ct);
+            if (row is null) return;
+            if (row.ApprovalXmlGzip is null)
+                (row.Approval, row.ApprovalReason, row.ApprovalUtc, row.ApprovalXmlGzip) = (a.Approval, a.Reason, a.ApprovalUtc, a.XmlGzip);
+            else if (row.Approval != a.Approval) return;
+            (row.ApprovalDeliveredUtc, row.ApprovalDgiiUtc, row.ApprovalMessage) = (row.ApprovalDeliveredUtc ?? a.DeliveredUtc, row.ApprovalDgiiUtc ?? a.DgiiUtc, a.Message);
+        },
         [Name<UserProfileChangedV1>()] = async (db, e, ct) =>
         {
             var u = Read<UserProfileChangedV1>(e);

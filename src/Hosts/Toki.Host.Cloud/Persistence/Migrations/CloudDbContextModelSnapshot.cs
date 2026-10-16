@@ -453,6 +453,11 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasMaxLength(11)
                         .HasColumnType("nvarchar(11)");
 
+                    b.Property<string>("SigningMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("Subject")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -484,6 +489,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasColumnType("bigint");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime?>("AcknowledgedUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Approval")
                         .HasMaxLength(10)
@@ -568,12 +576,41 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AcknowledgedUtc");
+
                     b.HasIndex("TenantId", "Id");
 
                     b.HasIndex("TenantId", "Environment", "IssuerRnc", "ENcf", "Sha256")
                         .IsUnique();
 
                     b.ToTable("FeReceived", "cloud");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Fe.FeReceiverOutage", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime>("FromUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ToUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "NodeId", "ToUtc");
+
+                    b.ToTable("FeReceiverOutages", "cloud");
                 });
 
             modelBuilder.Entity("Toki.Host.Cloud.Fe.FeSignature", b =>

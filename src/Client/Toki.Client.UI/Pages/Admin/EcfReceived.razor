@@ -3,7 +3,8 @@
 @inject Session Session
 
 @* TK-154: the e-CF suppliers sent to the business (received and acknowledged by Toki's cloud, TK-152), to record them as purchases and, optionally,
-   approve or reject them commercially. TK-151: the consent that lets the cloud answer for the business with a copy of its certificate. *@
+   approve or reject them commercially (signed and sent from this PC). TK-151/TK-246: the consent that lets the cloud receive for the business,
+   with this PC signing each acknowledgement (default) or, while the cloud offers it, a copy of the certificate in the cloud. *@
 <Admin Title="Comprobantes recibidos" Subtitle="Las facturas electrónicas que le envían sus suplidores. Regístrelas como compra para el 606.">
     <ChildContent>
         <SectionTabs Label="Compras" Tabs="SectionTabs.Purchasing(Session)" />
@@ -17,17 +18,24 @@
             <form class="esc-card esc-setting" @onsubmit="ConsentAsync" novalidate>
                 <div class="esc-setting__about">
                     <h2>Receptor en la nube</h2>
-                    <p>La DGII exige que todo emisor electrónico reciba los comprobantes de sus suplidores las 24 horas. La nube de Toki lo hace por usted y firma cada acuse de recibo con una copia de su certificado.</p>
+                    <p>La DGII exige que todo emisor electrónico reciba los comprobantes de sus suplidores las 24 horas. La nube de Toki los recibe por usted; cada acuse de recibo lo firma esta PC con su certificado.</p>
                 </div>
                 <div class="esc-setting__body">
-                    @if (_receiver is { Active: true } r)
+                    @if (_receiver is { Active: true } r && !_changing)
                     {
                         <dl class="esc-dl">
                             <dt>RNC</dt><dd>@r.Rnc</dd>
+                            <dt>Firma</dt><dd>@(r.SigningMode == CloudCustody ? "Copia del certificado en la nube" : "En esta PC (el certificado no sale de la tienda)")</dd>
                             <dt>Certificado</dt><dd>@r.Subject</dd>
                             <dt>Vence</dt><dd>@(r.NotAfterUtc is { } until ? Format.ShortDate(until) : "")</dd>
                             <dt>Autorizado por</dt><dd>@r.OwnerName (dueño) y @r.HolderName (titular), el @(r.ConsentedUtc is { } at ? Format.ShortDate(at) : "")</dd>
                         </dl>
+                        @if (r.SigningMode != CloudCustody)
+                        {
+                            <Notice Kind="Notice.Kinds.Warning" Title="Mantenga esta PC encendida y con internet">
+                                Si está apagada, la nube guarda lo que llegue y le pide al suplidor que lo envíe otra vez; el acuse se firma cuando la PC vuelve.
+                            </Notice>
+                        }
                         <p class="esc-muted">Registre estas direcciones en la DGII (postulación y "Mantenimiento Directorio FE"):</p>
                         @foreach (var u in r.Urls ?? [])
                         {
@@ -37,24 +45,44 @@
                             </dl>
                         }
                         <div class="esc-form-actions">
+                            <Button Disabled="_sending" OnClick="() => _changing = true">Cambiar la forma de firmar</Button>
                             <Button Variant="Button.Variants.Danger" Disabled="_sending" OnClick="RevokeAsync">@(_confirmingRevoke ? "¿Retirar? Toque otra vez" : "Retirar el permiso")</Button>
                         </div>
                     }
                     else
                     {
-                        <Notice Kind="Notice.Kinds.Info" Title="Lo que usted autoriza">
-                            Toki guarda en la nube una copia <strong>no exportable</strong> de su certificado digital. Con ella <strong>solo</strong> firma acuses de recibo,
-                            las aprobaciones comerciales que usted pida y las semillas de autenticación; <strong>nunca</strong> facturas, notas ni anulaciones.
-                            Cada firma queda registrada y la puede ver en el panel. Puede retirar el permiso cuando quiera: la llave se borra.
-                            Ni el archivo ni la contraseña se guardan.
-                        </Notice>
+                        <fieldset class="esc-col" style="gap:6px;border:0;padding:0">
+                            <legend>¿Quién firma los acuses de recibo?</legend>
+                            <label class="esc-check"><input type="radio" name="mode" checked="@(Mode != CloudCustody)" @onchange="() => _mode = StoreSigned" /> Esta PC, con el certificado instalado (recomendado)</label>
+                            <label class="esc-check"><input type="radio" name="mode" checked="@(Mode == CloudCustody)" disabled="@(_receiver?.CloudCustodyAvailable != true)" @onchange="() => _mode = CloudCustody" />
+                                Una copia del certificado en la nube @(_receiver?.CloudCustodyAvailable == true ? "" : "(próximamente)")</label>
+                        </fieldset>
+                        @if (Mode == CloudCustody)
+                        {
+                            <Notice Kind="Notice.Kinds.Info" Title="Lo que usted autoriza">
+                                Toki guarda en la nube una copia <strong>no exportable</strong> de su certificado digital. Con ella <strong>solo</strong> firma acuses de recibo
+                                y aprobaciones comerciales; <strong>nunca</strong> facturas, notas, anulaciones ni semillas de la DGII. Cada firma queda registrada y la puede
+                                ver en el panel. Puede retirar el permiso cuando quiera: la llave se borra (Azure la puede recuperar durante 30 días). Ni el archivo ni la
+                                contraseña se guardan.
+                            </Notice>
+                            <div class="esc-form-grid">
+                                <Field Label="Certificado (.p12 o .pfx)" Error="@Err("file")">
+                                    <Microsoft.AspNetCore.Components.Forms.InputFile class="esc-input" accept=".p12,.pfx" OnChange="PickAsync" />
+                                </Field>
+                                <Field Label="Contraseña del certificado">
+                                    <input class="esc-input" type="password" autocomplete="off" maxlength="200" @bind="_password" />
+                                </Field>
+                            </div>
+                        }
+                        else
+                        {
+                            <Notice Kind="Notice.Kinds.Info" Title="Lo que usted autoriza">
+                                La nube recibe los comprobantes de sus suplidores y le pide a esta PC que firme <strong>solo</strong> el acuse de recibo de cada uno, con el
+                                certificado instalado aquí: el certificado <strong>no sale</strong> de la tienda. Esta PC firma una prueba de que el RNC es suyo. Las
+                                aprobaciones comerciales las firma y las envía esta PC. Si la PC está apagada, el suplidor lo vuelve a intentar.
+                            </Notice>
+                        }
                         <div class="esc-form-grid">
-                            <Field Label="Certificado (.p12 o .pfx)" Error="@Err("file")">
-                                <Microsoft.AspNetCore.Components.Forms.InputFile class="esc-input" accept=".p12,.pfx" OnChange="PickAsync" />
-                            </Field>
-                            <Field Label="Contraseña del certificado">
-                                <input class="esc-input" type="password" autocomplete="off" maxlength="200" @bind="_password" />
-                            </Field>
                             <Field Label="Nombre del dueño" Error="@Err("owner")">
                                 <input class="esc-input" maxlength="150" @bind="_owner" />
                             </Field>
@@ -64,7 +92,10 @@
                         </div>
                         <label class="esc-check"><input type="checkbox" @bind="_accepted" /> El dueño y el titular leímos y aceptamos lo anterior.</label>
                         @if (Err("accepted") is { } e) { <p class="esc-field__error">@e</p> }
-                        <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Activar el receptor</Button></div>
+                        <div class="esc-form-actions">
+                            <Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Activar el receptor</Button>
+                            @if (_changing) { <Button Disabled="_sending" OnClick="() => _changing = false">Cancelar</Button> }
+                        </div>
                     }
                 </div>
             </form>
@@ -137,7 +168,12 @@
     private string? _message, _password, _owner, _holder, _reason;
     private Notice.Kinds _messageKind;
     private byte[]? _file;
-    private bool _accepted, _sending, _confirmingRevoke;
+    private bool _accepted, _sending, _confirmingRevoke, _changing;
+    private const string StoreSigned = "StoreSigned", CloudCustody = "CloudCustody";
+    private string? _mode;
+
+    /// <summary>TK-246: what the owner picked, else the cloud's default; CloudCustody only while the cloud offers it.</summary>
+    private string Mode => (_mode ?? _receiver?.DefaultSigningMode) == CloudCustody && _receiver?.CloudCustodyAvailable == true ? CloudCustody : StoreSigned;
     private Guid? _rejecting;
     private readonly Dictionary<string, string> _errors = [];
 
@@ -170,20 +206,25 @@
         catch (IOException) { (_file, _errors["file"]) = (null, "Ese archivo es demasiado grande para ser un certificado."); }
     }
 
-    /// <summary>The password goes once with the file to the cloud (which imports it non-exportable) and is forgotten here whatever the answer.</summary>
+    /// <summary>StoreSigned: this PC signs the cloud's challenge. CloudCustody: the password goes once with the file to the cloud (which imports it
+    /// non-exportable) and is forgotten here whatever the answer.</summary>
     private async Task ConsentAsync()
     {
         _errors.Clear();
-        if (_file is null) _errors["file"] = "Elija el archivo .p12 o .pfx del certificado.";
+        var mode = Mode;
+        if (mode == CloudCustody && _file is null) _errors["file"] = "Elija el archivo .p12 o .pfx del certificado.";
         if (string.IsNullOrWhiteSpace(_owner)) _errors["owner"] = "Escriba el nombre del dueño.";
         if (string.IsNullOrWhiteSpace(_holder)) _errors["holder"] = "Escriba el nombre del titular del certificado.";
-        if (!_accepted) _errors["accepted"] = "Sin la aceptación del dueño y del titular no se guarda la copia.";
+        if (!_accepted) _errors["accepted"] = "Sin la aceptación del dueño y del titular no se activa el receptor.";
         if (_errors.Count > 0) return;
         _sending = true;
-        var r = await Api.PostAsync<EcfReceiverStatus>("/api/fiscal/receiver/consent",
-            new { File = Convert.ToBase64String(_file!), Password = _password, OwnerName = _owner, HolderName = _holder, Accepted = _accepted });
+        var r = await Api.PostAsync<EcfReceiverStatus>("/api/fiscal/receiver/consent", new
+        {
+            Mode = mode, File = mode == CloudCustody ? Convert.ToBase64String(_file!) : null, Password = mode == CloudCustody ? _password : null,
+            OwnerName = _owner, HolderName = _holder, Accepted = _accepted,
+        });
         (_sending, _password) = (false, null);
-        if (r.Ok) (_file, _accepted) = (null, false);
+        if (r.Ok) (_file, _accepted, _changing, _mode) = (null, false, false, null);
         await LoadAsync();
         Show(r.Problem, "El receptor está activo. Registre las direcciones en la DGII.");
     }
@@ -195,12 +236,12 @@
         var r = await Api.PostAsync<EcfReceiverStatus>("/api/fiscal/receiver/revoke");
         _sending = false;
         await LoadAsync();
-        Show(r.Problem, "Permiso retirado: la llave se borró y la nube ya no recibe comprobantes por usted.");
+        Show(r.Problem, "Permiso retirado: la nube ya no recibe comprobantes por usted.");
     }
 
     private void StartReject(ReceivedEcf d) => (_rejecting, _reason, _message) = (d.Id, d.ApprovalReason, null);
 
-    /// <summary>Signed in the cloud and sent to the supplier and the DGII; pressing again only retries what did not go.</summary>
+    /// <summary>TK-246: signed here and sent from here to the supplier and the DGII; pressing again only retries what did not go.</summary>
     private async Task DecideAsync(ReceivedEcf d, bool approve)
     {
         _sending = true;

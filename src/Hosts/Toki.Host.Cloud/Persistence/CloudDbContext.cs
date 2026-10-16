@@ -52,6 +52,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Fe.FeSignature> FeSignatures => Set<Fe.FeSignature>();
     public DbSet<Fe.FeReceivedDocument> FeReceived => Set<Fe.FeReceivedDocument>();
     public DbSet<Fe.FeApprovalReceived> FeApprovalsReceived => Set<Fe.FeApprovalReceived>();
+    public DbSet<Fe.FeReceiverOutage> FeReceiverOutages => Set<Fe.FeReceiverOutage>();
     public DbSet<ReplicaCertification> Certifications => Set<ReplicaCertification>();
     public DbSet<Alerts.AlertPreference> AlertPreferences => Set<Alerts.AlertPreference>();
     public DbSet<Alerts.SentAlert> SentAlerts => Set<Alerts.SentAlert>();

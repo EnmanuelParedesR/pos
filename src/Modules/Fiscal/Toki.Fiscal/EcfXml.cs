@@ -67,6 +67,9 @@ internal static class EcfXml
     public const string RfceSchema = "RFCE 32 v.1.0.xsd";
     public const string AnecfSchema = "ANECF v.1.0.xsd";
     public const string SeedSchema = "Semilla v.1.0.xsd";
+    /// <summary>TK-246: the receiver's acknowledgement and the commercial approval, signed at the store. Valid unsigned as well (no placeholder).</summary>
+    public const string ArecfSchema = "ARECF v1.0.xsd";
+    public const string AcecfSchema = "ACECF v.1.0.xsd";
 
     /// <summary>XSD errors of a signed e-CF (empty when valid).</summary>
     public static IReadOnlyList<string> Validate(XDocument xml, EcfType type) => Validate(xml, SchemaOf(type));

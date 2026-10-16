@@ -1,11 +1,29 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Toki.Host.Cloud.Persistence;
 
 namespace Toki.Host.Cloud.Fe;
 
-/// <summary>TK-151: the owner's consent and the copy of the store's e-CF certificate in Key Vault (docs/ecf-propio.md §10.3, option C).
-/// One active row per tenant (a new consent revokes the previous one) and per RNC across tenants. Neither the .p12 nor its password is kept:
-/// only where the non-exportable key lives (<see cref="KeyName"/>) and what the owner agreed to.</summary>
+/// <summary>TK-246: who signs what the receiver answers, chosen per tenant when the receiver is activated.</summary>
+public static class FeSigningModes
+{
+    /// <summary>No certificate in the cloud: the store's main PC signs each acknowledgement over the node channel, and sends its own approvals.</summary>
+    public const string StoreSigned = "StoreSigned";
+    /// <summary>TK-151: a non-exportable copy of the certificate in Key Vault, with the owner's consent; the cloud signs and sends.</summary>
+    public const string CloudCustody = "CloudCustody";
+
+    public static bool IsValid(string? mode) => mode is StoreSigned or CloudCustody;
+
+    /// <summary><c>Fe:DefaultSigningMode</c> (StoreSigned): what the activation screen offers first.</summary>
+    public static string Default(IConfiguration config) => config["Fe:DefaultSigningMode"] is { } mode
+        ? IsValid(mode) ? mode : throw new InvalidOperationException($"Fe:DefaultSigningMode '{mode}': use StoreSigned or CloudCustody.")
+        : StoreSigned;
+}
+
+/// <summary>The tenant's active receiver: its RNC, the owner's consent and how it signs (<see cref="SigningMode"/>, TK-246). In
+/// <see cref="FeSigningModes.CloudCustody"/> (TK-151, docs/ecf-propio.md §10.3, option C) a copy of the store's certificate lives in Key Vault
+/// (<see cref="KeyName"/>); in <see cref="FeSigningModes.StoreSigned"/> nothing of the certificate but its public part (subject, thumbprint, expiry,
+/// from the signed proof of the RNC) is here. One active row per tenant (a new activation revokes the previous one) and per RNC across tenants.
+/// Neither a .p12 nor its password is ever kept.</summary>
 public sealed class FeCertificate
 {
     public Guid Id { get; set; }
@@ -15,7 +33,9 @@ public sealed class FeCertificate
     public string Subject { get; set; } = "";
     public string Thumbprint { get; set; } = "";
     public DateTime NotAfterUtc { get; set; }
-    /// <summary>The certificate's name in the vault (one per consent: a soft-deleted name cannot be reused).</summary>
+    /// <summary>StoreSigned or CloudCustody (<see cref="FeSigningModes"/>).</summary>
+    public string SigningMode { get; set; } = FeSigningModes.CloudCustody;
+    /// <summary>The certificate's name in the vault (one per consent: a soft-deleted name cannot be reused). Empty when the store signs.</summary>
     public string KeyName { get; set; } = "";
     /// <summary>Who consented, as typed on the consent screen: the owner and the certificate holder.</summary>
     public string OwnerName { get; set; } = "";
@@ -29,7 +49,8 @@ public sealed class FeCertificate
     public string? RevokedBy { get; set; }
 }
 
-/// <summary>Every signature made with a tenant's certificate in the cloud (TK-151): when, what kind of document and its SHA-256. Shown in the panel.
+/// <summary>Every signature made for the tenant's receiver, in the vault (TK-151) or by the store on request (TK-246): when, what kind of document
+/// and its SHA-256. Shown in the panel.
 /// The signed ARECF itself is kept here too (10 years, docs/ecf-propio.md §9).</summary>
 public sealed class FeSignature
 {
@@ -68,7 +89,10 @@ public sealed class FeReceivedDocument
     /// for the owner to check with the supplier (or the DGII), not for the first one to arrive.</summary>
     public bool Conflict { get; set; }
     public DateTime ReceivedUtc { get; set; }
-    /// <summary>Commercial approval the owner gave (TK-154): Approved or Rejected; null while none.</summary>
+    /// <summary>TK-246: when its signed ARECF was made. Null while pending: it arrived with the store off (the supplier got a 503) and is
+    /// acknowledged when the store is back (<see cref="FeLateAcknowledger"/>); the late ARECF is kept, not sent (§11, question 44).</summary>
+    public DateTime? AcknowledgedUtc { get; set; }
+    /// <summary>Commercial approval the owner gave at the store (TK-154, TK-246): Approved or Rejected; null while none.</summary>
     public string? Approval { get; set; }
     public string? ApprovalReason { get; set; }
     public byte[]? ApprovalXmlGzip { get; set; }
@@ -93,6 +117,17 @@ public sealed class FeApprovalReceived
     public DateTime ReceivedUtc { get; set; }
 }
 
+/// <summary>TK-246: a stretch the receiver could not sign because the store's main PC (StoreSigned) was off or did not answer. Opened at the first
+/// request it missed, closed at its next poll. The panel shows the hours per PC.</summary>
+public sealed class FeReceiverOutage
+{
+    public long Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid NodeId { get; set; }
+    public DateTime FromUtc { get; set; }
+    public DateTime? ToUtc { get; set; }
+}
+
 internal static class FeModel
 {
     /// <remarks>Documents (gzip) have no max length: varbinary(max) on SQL Server, a supplier's e-CF can pass 8 KB compressed.</remarks>
@@ -105,6 +140,7 @@ internal static class FeModel
             e.Property(c => c.Subject).HasMaxLength(500);
             e.Property(c => c.Thumbprint).HasMaxLength(64);
             e.Property(c => c.KeyName).HasMaxLength(127);
+            e.Property(c => c.SigningMode).HasMaxLength(20); // the migration marks the rows from before TK-246 CloudCustody
             e.Property(c => c.OwnerName).HasMaxLength(150);
             e.Property(c => c.HolderName).HasMaxLength(150);
             e.Property(c => c.ConsentVersion).HasMaxLength(20);
@@ -135,6 +171,12 @@ internal static class FeModel
             // R9 #5: per environment, a TesteCF document never makes the eCF one a duplicate.
             e.HasIndex(d => new { d.TenantId, d.Environment, d.IssuerRnc, d.ENcf, d.Sha256 }).IsUnique();
             e.HasIndex(d => new { d.TenantId, d.Id });
+            e.HasIndex(d => d.AcknowledgedUtc);
+        });
+        builder.Entity<FeReceiverOutage>(e =>
+        {
+            e.ToTable("FeReceiverOutages");
+            e.HasIndex(o => new { o.TenantId, o.NodeId, o.ToUtc });
         });
         builder.Entity<FeApprovalReceived>(e =>
         {

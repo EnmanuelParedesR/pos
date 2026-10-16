@@ -101,6 +101,8 @@ public sealed class FakeDgii : HttpMessageHandler
             return To("/recepcionfc/api/recepcion/ecf").Any(r => EncfOf(r.Xml!) == Query("ENCF")) ? Final(Query("ENCF"), null) : Json(new { codigo = 0, estado = "No encontrado" });
         if (path.EndsWith("/anulacionrangos/api/operaciones/anularrango", StringComparison.Ordinal))
             return Json(new { rnc = XDocument.Parse(xml!).Descendants("RncEmisor").Single().Value, codigo = 1, nombre = "Aceptado", mensajes = Array.Empty<string>() });
+        if (path.EndsWith("/aprobacioncomercial/api/aprobacioncomercial", StringComparison.Ordinal))
+            return Json(new { mensaje = Array.Empty<string>(), estado = "Recibido", codigo = 1 }); // TK-246: the store's copy of an ACECF
         if (path.EndsWith("/consultadirectorio/api/consultas/obtenerdirectorioporrnc", StringComparison.Ordinal))
             return Directory.TryGetValue(Query("RNC"), out var receiver)
                 ? Json(new[] { new { nombre = "Comprador", rnc = Query("RNC"), urlRecepcion = receiver + "/fe/recepcion/api/ecf", urlAceptacion = receiver + "/fe/aprobacioncomercial/api/ecf", urlOpcional = receiver + "/fe/autenticacion" } })

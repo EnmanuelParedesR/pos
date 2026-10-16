@@ -2,16 +2,16 @@ import { Fragment, useState } from "react";
 import { api, ApiError, useApi, type ReceivedEcf } from "../api";
 import { usePanel } from "../App";
 import { dateTime, dayName, money } from "../format";
-import { EmptyState, Icon, LoadError, Notice, PageHead, SkeletonRows } from "../ui";
+import { EmptyState, LoadError, Notice, PageHead, SkeletonRows } from "../ui";
 import { ReceiverPanel } from "./ReceiverPanel";
 
 const environmentNames: Record<string, string> = { ecf: "Producción", certecf: "Certificación", testecf: "Pruebas" };
 
-/** "Recibidos" (TK-154): the e-CF suppliers sent to the business, with their commercial approval. Only an Owner approves or rejects;
- * the cloud signs the approval and sends it to the supplier and to the DGII. */
+/** "Recibidos" (TK-154): the e-CF suppliers sent to the business, with their commercial approval. TK-246: the approval is decided, signed and
+ * sent at the store; the panel shows it. */
 export function ReceivedPage() {
   const { canEdit } = usePanel();
-  const { data, error, loading, reload } = useApi<ReceivedEcf[]>("/api/panel/fe/received");
+  const { data, error, loading } = useApi<ReceivedEcf[]>("/api/panel/fe/received");
   const [open, setOpen] = useState<number | null>(null);
 
   return (
@@ -52,7 +52,7 @@ export function ReceivedPage() {
                 {open === d.id && (
                   <tr>
                     <td colSpan={5}>
-                      <Detail doc={d} canEdit={canEdit} onChange={reload} />
+                      <Detail doc={d} />
                     </td>
                   </tr>
                 )}
@@ -76,29 +76,11 @@ function ApprovalPill({ approval }: { approval: ReceivedEcf["approval"] }) {
   return <span className="esc-pill esc-pill--warning">Pendiente</span>;
 }
 
-function Detail({ doc, canEdit, onChange }: { doc: ReceivedEcf; canEdit: boolean; onChange: () => void }) {
-  const [reason, setReason] = useState("");
-  const [rejecting, setRejecting] = useState(false);
-  const [busy, setBusy] = useState(false);
+function Detail({ doc }: { doc: ReceivedEcf }) {
   const [error, setError] = useState<ApiError | null>(null);
   const [xml, setXml] = useState<string | null>(null);
 
-  const decide = async (approve: boolean, why = reason.trim()) => {
-    setBusy(true);
-    setError(null);
-    try {
-      await api(`/api/panel/fe/received/${doc.id}/approval`, "POST", approve ? { approve } : { approve, reason: why });
-      onChange();
-    } catch (err) {
-      setError(err as ApiError);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const showXml = () => api<{ xml: string }>(`/api/panel/fe/received/${doc.id}/xml`).then((r) => setXml(r.xml), (err) => setError(err as ApiError));
-  // A decision already signed is sent again only where it did not arrive (the supplier or the DGII).
-  const pending = doc.approval !== null && (doc.approvalDeliveredUtc === null || doc.approvalDgiiUtc === null);
 
   return (
     <div className="esc-col" style={{ gap: 12 }}>
@@ -136,40 +118,13 @@ function Detail({ doc, canEdit, onChange }: { doc: ReceivedEcf; canEdit: boolean
       {doc.approvalMessage && <Notice kind="warning" title={doc.approvalMessage} />}
       {error && <Notice kind={error.offline ? "warning" : "error"} title={error.detail} />}
 
-      {canEdit && doc.approval === null && !rejecting && (
-        <div className="esc-form-actions">
-          <button type="button" className="esc-button esc-button--primary" disabled={busy} onClick={() => void decide(true)}>
-            <Icon name="check" size={18} /> Aprobar
-          </button>
-          <button type="button" className="esc-button" disabled={busy} onClick={() => setRejecting(true)}>
-            Rechazar
-          </button>
-        </div>
+      {doc.acknowledgedUtc === null && (
+        <Notice kind="warning" title="Acuse de recibo pendiente">
+          Llegó con la PC de la tienda apagada. El acuse se firma cuando la PC vuelve a conectarse.
+        </Notice>
       )}
-      {canEdit && doc.approval === null && rejecting && (
-        <div className="esc-col" style={{ gap: 8 }}>
-          <label className="esc-field">
-            <span>Motivo del rechazo</span>
-            <input className="esc-input" maxLength={250} value={reason} onChange={(e) => setReason(e.target.value)} />
-          </label>
-          <div className="esc-form-actions">
-            <button type="button" className="esc-button esc-button--danger" disabled={busy || reason.trim() === ""} onClick={() => void decide(false)}>
-              Rechazar comprobante
-            </button>
-            <button type="button" className="esc-button" disabled={busy} onClick={() => setRejecting(false)}>
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
-      {canEdit && pending && (
-        <div className="esc-form-actions">
-          <button type="button" className="esc-button" disabled={busy} onClick={() => void decide(doc.approval === "Approved", doc.approvalReason ?? "")}>
-            Reintentar el envío
-          </button>
-        </div>
-      )}
-      {!canEdit && doc.approval === null && <p className="esc-muted">Solo un dueño puede aprobar o rechazar este comprobante.</p>}
+      {/* TK-246: the approval is signed with the store's certificate and sent from the store. */}
+      {doc.approval === null && <p className="esc-muted">Se aprueba o rechaza desde la PC principal de la tienda (Compras → Recibidos).</p>}
 
       {xml === null ? (
         <div>

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -53,8 +53,9 @@ public sealed class FakeBuyerReceiver : HttpMessageHandler
             return xml!.Contains("<SignatureValue>", StringComparison.Ordinal)
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { token = "buyer-token", expira = "2099-01-01T00:00:00Z" }) }
                 : new HttpResponseMessage(HttpStatusCode.Unauthorized);
-        if (path != "/fe/recepcion/api/ecf") return new HttpResponseMessage(HttpStatusCode.NotFound);
+        if (path is not ("/fe/recepcion/api/ecf" or "/fe/aprobacioncomercial/api/ecf")) return new HttpResponseMessage(HttpStatusCode.NotFound);
         if (request.Headers.Authorization?.ToString() != "Bearer buyer-token") return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        if (path == "/fe/aprobacioncomercial/api/ecf") return new HttpResponseMessage(HttpStatusCode.OK); // TK-246: an ACECF from the store
 
         var ecf = XDocument.Parse(xml!);
         string Value(string name) => ecf.Descendants(name).First().Value;
@@ -137,21 +138,26 @@ public sealed class EcfExchangeTests(ExchangeTokiApp app) : IClassFixture<Exchan
         app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Set<EcfDelivery>().AsNoTracking().ToListAsync());
 }
 
-/// <summary>TK-154 and TK-151 at the store, on its own app: the delivery test moves the clock past the admin's session.</summary>
+
+/// <summary>TK-154 and TK-246 at the store, on its own app: the delivery test moves the clock past the admin's session. Received e-CF come down from
+/// the cloud; the receiver is activated with the store's signed proof (or, CloudCustody, the .p12); the commercial approval is signed here and sent from
+/// here to the supplier and the DGII.</summary>
 public sealed class ReceivedDocumentsTests(ExchangeTokiApp app) : IClassFixture<ExchangeTokiApp>
 {
+    private const string Supplier = "101672919";
+
     [Fact]
-    public async Task Received_e_CF_come_down_from_the_cloud_and_the_approval_and_the_consent_go_through_it()
+    public async Task Received_e_CF_come_down_the_receiver_is_activated_with_a_signed_proof_and_the_approval_is_signed_and_sent_from_the_store()
     {
         var admin = await app.SetUpAsync();
         var item = new
         {
-            id = 7L, environment = "testecf", issuerRnc = "101672919", issuerName = "Distribuidora del Cibao SRL", eNcf = "E310000000005", type = 31,
+            id = 7L, environment = "testecf", issuerRnc = Supplier, issuerName = "Distribuidora del Cibao SRL", eNcf = "E310000000005", type = 31,
             issuedOn = "2026-10-15", total = 1180m, itbis = 180m, receivedUtc = DateTime.UtcNow, xmlGzip = Convert.ToBase64String(EcfSubmissionQueue.Zip("<ECF/>")),
             approval = (string?)null, approvalReason = (string?)null, approvalUtc = (DateTime?)null, approvalDeliveredUtc = (DateTime?)null,
             approvalDgiiUtc = (DateTime?)null, approvalMessage = (string?)null,
         };
-        var consent = new { file = "cGZ4", password = "secreta", ownerName = "Ana Pérez", holderName = "Ana Pérez", accepted = true };
+        var consent = new { mode = "StoreSigned", file = (string?)null, password = (string?)null, ownerName = "Ana Pérez", holderName = "Ana Pérez", accepted = true };
 
         // Not connected to the cloud: nothing to pull, and the receiver says why.
         (await PullAsync()).ShouldBe(0);
@@ -164,10 +170,9 @@ public sealed class ReceivedDocumentsTests(ExchangeTokiApp app) : IClassFixture<
             return path switch
             {
                 ReceivedDocumentsPuller.PullPath => Json(new { items = body.GetProperty("after").GetInt64() < 7 ? new[] { item } : [] }),
-                "/fiscal/v1/received/7/approval" => Json(item with { approval = "Rejected", approvalReason = body.GetProperty("reason").GetString(), approvalUtc = (DateTime?)DateTime.UtcNow }),
-                "/fiscal/v1/receiver/certificate" when body.GetProperty("holderName").GetString() == "" =>
-                    new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = JsonContent.Create(new { code = "Fe.ConsentRequired", detail = "Falta el consentimiento." }) },
-                "/fiscal/v1/receiver/certificate" or "/fiscal/v1/receiver/status" => Json(new { active = true, rnc = DgiiStore.Rnc, subject = "CN=Ana Pérez" }),
+                "/fiscal/v1/receiver/challenge" => Json(new { challenge = "reto-de-la-nube" }),
+                "/fiscal/v1/receiver/activate" or "/fiscal/v1/receiver/certificate" or "/fiscal/v1/receiver/status" =>
+                    Json(new { active = true, rnc = DgiiStore.Rnc, subject = "CN=Firmante de Prueba", signingMode = path.EndsWith("certificate", StringComparison.Ordinal) ? "CloudCustody" : "StoreSigned" }),
                 _ => null,
             };
         };
@@ -178,23 +183,125 @@ public sealed class ReceivedDocumentsTests(ExchangeTokiApp app) : IClassFixture<
         (received.GetProperty("eNcf").GetString(), received.GetProperty("total").GetDecimal(), received.GetProperty("issuedOn").GetString())
             .ShouldBe(("E310000000005", 1180m, "2026-10-15"));
 
-        var id = received.GetProperty("id").GetGuid();
-        var approval = await admin.PostAsJsonAsync($"/api/fiscal/received/{id}/approval", new { approve = false, reason = "Mercancía dañada" });
-        approval.StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await approval.Json()).GetProperty("approval").GetString().ShouldBe("Rejected");
-        app.Cloud.To("/fiscal/v1/received/7/approval").Single().Body.GetProperty("reason").GetString().ShouldBe("Mercancía dañada");
-        (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/received"))[0].GetProperty("approvalReason").GetString().ShouldBe("Mercancía dañada");
-
-        // The consent goes with the business RNC and the text version; a refusal of the cloud keeps its code.
+        // StoreSigned (default): the cloud's challenge and the RNC, signed here; no certificate and no password go.
         (await admin.PostAsJsonAsync("/api/fiscal/receiver/consent", consent)).StatusCode.ShouldBe(HttpStatusCode.OK);
-        var sent = app.Cloud.To("/fiscal/v1/receiver/certificate").Last().Body;
-        (sent.GetProperty("rnc").GetString(), sent.GetProperty("consentVersion").GetString(), sent.GetProperty("password").GetString())
+        var activation = app.Cloud.To("/fiscal/v1/receiver/activate").Single().Body;
+        activation.GetProperty("consentVersion").GetString().ShouldBe(Toki.Fiscal.Features.ReceiverCloud.StoreSignedConsentVersion);
+        activation.TryGetProperty("password", out _).ShouldBeFalse();
+        var proof = XDocument.Parse(activation.GetProperty("proof").GetString()!);
+        (proof.Root!.Name.LocalName, proof.Root.Element("RNC")!.Value, proof.Root.Element("Reto")!.Value).ShouldBe(("ActivacionReceptor", DgiiStore.Rnc, "reto-de-la-nube"));
+        SignatureIsValid(proof.ToString(SaveOptions.DisableFormatting)).ShouldBeTrue();
+        // CloudCustody: the .p12 goes once with its password and the TK-151 consent text.
+        (await admin.PostAsJsonAsync("/api/fiscal/receiver/consent", consent with { mode = "CloudCustody", file = "cGZ4", password = "secreta" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var custody = app.Cloud.To("/fiscal/v1/receiver/certificate").Single().Body;
+        (custody.GetProperty("rnc").GetString(), custody.GetProperty("consentVersion").GetString(), custody.GetProperty("password").GetString())
             .ShouldBe((DgiiStore.Rnc, Toki.Fiscal.Features.ReceiverCloud.ConsentVersion, "secreta"));
-        (await (await admin.PostAsJsonAsync("/api/fiscal/receiver/consent", consent with { holderName = "" })).ErrorCode()).ShouldBe("Fe.ConsentRequired");
-        (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/receiver")).GetProperty("active").GetBoolean().ShouldBeTrue();
+        (await app.InScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Persistence.InfraDbContext>().AuditRecords.CountAsync(a => a.Action == "fiscal.receiver-consent")))
+            .ShouldBe(2);
+
+        // The approval: signed here, to the supplier's approval URL (its seed signed here too) and the DGII's copy; nothing goes through the cloud.
+        app.Dgii.Directory[Supplier] = FakeBuyerReceiver.Url;
+        var id = received.GetProperty("id").GetGuid();
+        (await (await admin.PostAsJsonAsync($"/api/fiscal/received/{id}/approval", new { approve = false })).ErrorCode()).ShouldBe("Fiscal.ApprovalReasonRequired");
+        var approval = await admin.PostAsJsonAsync($"/api/fiscal/received/{id}/approval", new { approve = false, reason = "Mercancía dañada" });
+        approval.StatusCode.ShouldBe(HttpStatusCode.OK, await approval.Content.ReadAsStringAsync());
+        var answer = await approval.Json();
+        (answer.GetProperty("approval").GetString(), answer.GetProperty("approvalReason").GetString()).ShouldBe(("Rejected", "Mercancía dañada"));
+        answer.GetProperty("approvalDeliveredUtc").ValueKind.ShouldBe(JsonValueKind.String);
+        answer.GetProperty("approvalDgiiUtc").ValueKind.ShouldBe(JsonValueKind.String);
+
+        var toSupplier = app.Buyer.Requests.Single(r => r.Path == "/fe/aprobacioncomercial/api/ecf");
+        toSupplier.Authorization.ShouldBe("Bearer buyer-token");
+        toSupplier.FileName.ShouldBe($"{DgiiStore.Rnc}E310000000005.xml");
+        var toDgii = app.Dgii.To("/aprobacioncomercial/api/aprobacioncomercial").ShouldHaveSingleItem();
+        toDgii.Xml.ShouldBe(toSupplier.Xml);
+        var acecf = XDocument.Parse(toSupplier.Xml!);
+        EcfXml.Validate(acecf, EcfXml.AcecfSchema).ShouldBeEmpty();
+        SignatureIsValid(toSupplier.Xml!).ShouldBeTrue();
+        acecf.Descendants("Estado").Single().Value.ShouldBe("2");
+        acecf.Descendants("RNCComprador").Single().Value.ShouldBe(DgiiStore.Rnc);
+        app.Cloud.Requests.ShouldNotContain(r => r.Path.Contains("approval", StringComparison.Ordinal));
+        // The cloud learns of it through the outbox.
+        (await app.InScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Persistence.InfraDbContext>().Outbox
+            .CountAsync(m => m.Type == typeof(Toki.Fiscal.Contracts.CommercialApprovalRecordedV1).FullName))).ShouldBe(1);
+
+        // The decision cannot change; pressing again sends nothing that already went.
+        (await (await admin.PostAsJsonAsync($"/api/fiscal/received/{id}/approval", new { approve = true })).ErrorCode()).ShouldBe("Fiscal.ApprovalAlreadySigned");
+        (await admin.PostAsJsonAsync($"/api/fiscal/received/{id}/approval", new { approve = false, reason = "otra vez" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        app.Buyer.Requests.Count(r => r.Path == "/fe/aprobacioncomercial/api/ecf").ShouldBe(1);
+        app.Dgii.To("/aprobacioncomercial/api/aprobacioncomercial").Count().ShouldBe(1);
+        (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/received"))[0].GetProperty("approvalReason").GetString().ShouldBe("Mercancía dañada");
     }
 
     private Task<int> PullAsync() => app.InScopeAsync(sp => sp.GetRequiredService<ReceivedDocumentsPuller>().PullAsync(CancellationToken.None));
+
+    private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
+
+    internal static bool SignatureIsValid(string xml)
+    {
+        var doc = new System.Xml.XmlDocument { PreserveWhitespace = true };
+        doc.LoadXml(xml);
+        var signed = new System.Security.Cryptography.Xml.SignedXml(doc);
+        signed.LoadXml((System.Xml.XmlElement)doc.GetElementsByTagName("Signature", System.Security.Cryptography.Xml.SignedXml.XmlDsigNamespaceUrl)[0]!);
+        var certificate = signed.KeyInfo.OfType<System.Security.Cryptography.Xml.KeyInfoX509Data>().SelectMany(d => d.Certificates!.OfType<X509Certificate2>()).First();
+        return signed.CheckSignature(certificate, verifySignatureOnly: true);
+    }
+}
+
+/// <summary>TK-246: the store signs for its cloud receiver on request (StoreSigned): only acknowledgements of this business, each one audited.</summary>
+public sealed class RemoteSigningTests(ExchangeTokiApp app) : IClassFixture<ExchangeTokiApp>
+{
+    [Fact]
+    public async Task The_store_signs_only_this_business_acknowledgements_on_the_clouds_request_refuses_anything_else_and_audits_each_one()
+    {
+        await app.SetUpAsync();
+        (await PollAsync()).ShouldBe(RemoteSigning.Idle); // not connected: nothing to ask
+        await app.ConnectAsync();
+
+        string Arecf(string buyer, int estado) => new XDocument(new XElement("ARECF", new XElement("DetalleAcusedeRecibo", new XElement("Version", "1.0"),
+            new XElement("RNCEmisor", "101672919"), new XElement("RNCComprador", buyer), new XElement("eNCF", "E310000000011"), new XElement("Estado", estado),
+            estado == 0 ? null : new XElement("CodigoMotivoNoRecibido", 4), new XElement("FechaHoraAcuseRecibo", "15-10-2026 11:00:00")))).ToString(SaveOptions.DisableFormatting);
+        var requests = new Queue<(Guid Id, string Xml)>([
+            (Guid.NewGuid(), Arecf(DgiiStore.Rnc, 0)),
+            (Guid.NewGuid(), Arecf("130000001", 1)), // a refusal names the RNC the e-CF was for
+            (Guid.NewGuid(), Arecf("130000001", 0)), // a receipt for another business
+            (Guid.NewGuid(), "<SemillaModel><valor>semilla-de-la-dgii</valor><fecha>2026-10-15T11:00:00</fecha></SemillaModel>"),
+            (Guid.NewGuid(), "<ACECF><DetalleAprobacionComercial/></ACECF>"),
+            (Guid.NewGuid(), "<ECF/>"),
+            (Guid.NewGuid(), "no es xml"),
+        ]);
+        var asked = requests.ToList();
+        app.Cloud.Respond = path => path switch
+        {
+            RemoteSigning.NextPath => requests.TryDequeue(out var r) ? Json(new { id = r.Id, xml = r.Xml }) : new HttpResponseMessage(HttpStatusCode.NoContent),
+            _ when path.StartsWith("/fiscal/v1/receiver/sign-requests/", StringComparison.Ordinal) => new HttpResponseMessage(HttpStatusCode.NoContent),
+            _ => null,
+        };
+
+        for (var i = 0; i < asked.Count; i++) (await PollAsync()).ShouldBe(TimeSpan.Zero);
+        (await PollAsync()).ShouldBe(TimeSpan.Zero); // nothing came (204): poll again at once
+
+        var answers = asked.Select(a => app.Cloud.To($"/fiscal/v1/receiver/sign-requests/{a.Id}").Single().Body).ToList();
+        string? Signed(int i) => answers[i].GetProperty("signedXml").GetString();
+        ReceivedDocumentsTests.SignatureIsValid(Signed(0)!).ShouldBeTrue();
+        XDocument.Parse(Signed(0)!).Root!.Name.LocalName.ShouldBe("ARECF");
+        Signed(1).ShouldNotBeNull();
+        foreach (var refused in new[] { 2, 3, 4, 5, 6 })
+        {
+            Signed(refused).ShouldBeNull();
+            answers[refused].GetProperty("refused").GetString().ShouldNotBeNullOrEmpty();
+        }
+        answers[3].GetProperty("refused").GetString()!.ShouldContain("SemillaModel");
+        app.Cloud.To(RemoteSigning.NextPath).ShouldAllBe(r => r.Authorization!.StartsWith("Node ", StringComparison.Ordinal) && app.Cloud.SignedByNode(r));
+
+        var audit = await app.InScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Persistence.InfraDbContext>().AuditRecords
+            .Where(a => a.ResourceType == "RemoteSignature").Select(a => a.Action).ToListAsync());
+        audit.Count(a => a == "fiscal.remote-sign").ShouldBe(2);
+        audit.Count(a => a == "fiscal.remote-sign-refused").ShouldBe(5);
+        (await app.VerifyAuditAsync()).ShouldBeNull();
+    }
+
+    private Task<TimeSpan> PollAsync() => app.InScopeAsync(sp => sp.GetRequiredService<RemoteSigning>().PollOnceAsync(CancellationToken.None));
 
     private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
 }
