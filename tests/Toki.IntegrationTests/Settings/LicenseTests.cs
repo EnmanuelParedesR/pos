@@ -34,6 +34,8 @@ public sealed class LicenseTests(TokiApp app) : IClassFixture<TokiApp>
         var admin = app.Client(await app.AdminAsync());
         async Task<HttpResponseMessage> Pair()
         {
+            // Registers pair seconds apart in a store; at one fake instant SQL Server would order them by Guid, not by time.
+            app.Clock.Advance(TimeSpan.FromSeconds(1));
             var code = (await (await admin.PostAsJsonAsync("/api/identity/devices/pairing-codes", new { DeviceName = "Caja" })).Json()).GetProperty("code").GetString();
             return await app.Anonymous().PostAsJsonAsync("/api/identity/devices/pair", new { Code = code });
         }
