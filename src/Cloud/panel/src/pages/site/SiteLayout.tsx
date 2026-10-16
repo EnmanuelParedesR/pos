@@ -16,7 +16,7 @@ function useHead(page: SitePage, pathname: string) {
       el.setAttribute(attr, value);
     };
     set('meta[name="description"]', () => Object.assign(document.createElement("meta"), { name: "description" }), "content", page.description);
-    if (site.url) set('link[rel="canonical"]', () => Object.assign(document.createElement("link"), { rel: "canonical" }), "href", site.url + pathname);
+    if (page !== notFound) set('link[rel="canonical"]', () => Object.assign(document.createElement("link"), { rel: "canonical" }), "href", site.url + pathname);
   }, [page, pathname]);
 }
 

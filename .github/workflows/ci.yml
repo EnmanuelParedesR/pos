@@ -48,6 +48,30 @@ jobs:
       - run: npm run check
       - run: npm run build
 
+  lighthouse:
+    # TK-261: the public pages, as a phone sees them: SEO 100 and accessibility ≥ 0.95 fail the build; performance and LCP warn (lighthouserc.json).
+    name: Sitio (Lighthouse)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Cloud/panel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: src/Cloud/panel/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - run: npx --yes @lhci/cli@0.15.1 autorun
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse
+          path: src/Cloud/panel/.lighthouseci
+          if-no-files-found: ignore
+
   ui:
     name: Pruebas de interfaz (Playwright)
     runs-on: ubuntu-latest

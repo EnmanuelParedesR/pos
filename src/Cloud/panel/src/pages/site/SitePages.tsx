@@ -43,6 +43,7 @@ function Home() {
         art={<ProductArt />}
       />
       <Section className="counter">
+        <h2 className="esc-visually-hidden">Lo principal</h2>
         <IconTiles
           items={[
             ["offline", "Sin internet, sigue vendiendo"],
@@ -82,6 +83,7 @@ function Butcher() {
     <>
       <Hero eyebrow="Carnicería" title="Cada libra cobrada, cada caja cuadrada." sub="Lee la etiqueta de la balanza, cobra y factura, aunque se caiga el internet." cta={both} art={<BusinessArt kind="butcher" />} />
       <Section className="counter">
+        <h2 className="esc-visually-hidden">Lo que hace por su carnicería</h2>
         <IconTiles
           items={[
             ["tag", "Etiquetas de peso", "EAN-13 con peso o precio. Avisa si se escanea dos veces."],
@@ -116,6 +118,7 @@ function Grocery() {
     <>
       <Hero eyebrow="Colmado" title="El fiado claro y la caja al día." sub="Venta rápida, fiado sin cuaderno y el e-CF de cada venta." cta={both} art={<BusinessArt kind="grocery" />} />
       <Section className="counter">
+        <h2 className="esc-visually-hidden">Lo que hace por su colmado</h2>
         <IconTiles
           items={[
             ["bolt", "Venta rápida", "Escáner siempre listo y el total grande. Por libra también."],
@@ -150,6 +153,7 @@ function Deli() {
     <>
       <Hero eyebrow="Deli" title="Del picadero a la factura, sin enredos." sub="Por libra y por unidad en la misma factura, y los encargos con su abono." cta={both} art={<BusinessArt kind="deli" />} />
       <Section className="counter">
+        <h2 className="esc-visually-hidden">Lo que hace por su deli</h2>
         <IconTiles
           items={[
             ["scale", "Por libra y por unidad", "La factura dice \"0.750 lb\" o \"3 unidades\"."],
@@ -181,6 +185,7 @@ function Ecf() {
         <p className="muted">La DGII dio una prórroga de seis meses en mayo de 2026. Confirme su clasificación y su fecha en la Oficina Virtual de la DGII o con su contador.</p>
       </Hero>
       <Section className="counter">
+        <h2 className="esc-visually-hidden">Lo básico del e-CF</h2>
         <IconTiles
           cols={3}
           items={[
@@ -548,7 +553,7 @@ function WhatsNew() {
 export const notFound: SitePage = {
   path: "*",
   title: "Página no encontrada · Abastalia",
-  description: "La página que buscas no existe.",
+  description: "La página que busca no existe. Vuelva al inicio de Abastalia, el punto de venta con e-CF para carnicerías, colmados y delis en República Dominicana.",
   element: (
     <Hero
       title="No encontramos esa página."
@@ -567,14 +572,14 @@ export const sitePages: SitePage[] = [
   {
     path: "/",
     nav: "Inicio",
-    title: "Abastalia · Punto de venta para carnicerías, colmados y delis",
+    title: "Abastalia: punto de venta para carnicerías, colmados y delis",
     description: "Abastalia vende por libra, cuadra la caja, lleva el fiado y emite e-CF, aunque se vaya el internet. Hecho para el comercio de alimentos en República Dominicana.",
     element: <Home />,
   },
   {
     path: "/carniceria",
     nav: "Carnicería",
-    title: "Abastalia para carnicerías · Balanza, libras y e-CF sin internet",
+    title: "Abastalia para carnicerías · Por libra y e-CF sin internet",
     description: "Punto de venta para carnicerías: venta por libra con etiquetas de balanza, encargos con abono, cuadre de caja y e-CF aunque se vaya el internet.",
     element: <Butcher />,
   },
@@ -596,13 +601,13 @@ export const sitePages: SitePage[] = [
     path: "/e-cf",
     nav: "e-CF",
     title: "¿Ya le toca el e-CF? · Plazo del 15 de noviembre de 2026",
-    description: "Guía corta sobre la facturación electrónica (e-CF) en República Dominicana: a quién le toca el 15 de noviembre de 2026, qué necesita y cómo Abastalia factura sin internet.",
+    description: "Guía corta del e-CF en República Dominicana: a quién le toca el 15 de noviembre de 2026, qué necesita y cómo Abastalia factura aunque se vaya el internet.",
     element: <Ecf />,
   },
   {
     path: "/certificacion",
     nav: "Certifíquese",
-    title: "Certifíquese con Abastalia · Facturación electrónica ante la DGII",
+    title: "Certifíquese con Abastalia · e-CF ante la DGII",
     description: "Qué necesita para certificarse como emisor electrónico, las etapas ante la DGII, quién hace qué y qué pasa si ya emite e-CF con otro programa.",
     element: <Certification />,
   },
@@ -610,14 +615,14 @@ export const sitePages: SitePage[] = [
     path: "/descargar",
     nav: "Descargar",
     title: "Descargar Abastalia · Instalador para Windows",
-    description: "Descarga el instalador de Abastalia para Windows 10 y 11: PC principal con servidor y base de datos, o caja. Requisitos y pasos para instalar.",
+    description: "Descargue el instalador de Abastalia para Windows 10 y 11: PC principal con servidor y base de datos, o caja. Requisitos y pasos para instalar.",
     element: <Download />,
   },
   {
     path: "/precios",
     nav: "Precios",
     title: "Precios de Abastalia · Planes por tamaño de tienda",
-    description: "Planes de Abastalia según el número de cajas y sucursales. Lo básico está en todos: balanza, e-CF sin cupo, inventario, cuadre ciego, fiado, 606/607/608 y respaldo.",
+    description: "Planes de Abastalia según sus cajas y sucursales. Lo básico está en todos: balanza, e-CF sin cupo, inventario, cuadre ciego, fiado, 606/607/608 y respaldo.",
     element: <Pricing />,
   },
   {
