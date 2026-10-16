@@ -374,6 +374,29 @@ public sealed class InviteSecurityTests(CloudApp app) : IClassFixture<CloudApp>
     }
 
     [Fact]
+    public async Task TK231_an_existing_account_that_accepts_an_emailed_invite_gets_its_email_confirmed()
+    {
+        await using var mailing = new MailingCloudApp();
+        var owner = await mailing.OwnerAsync();
+        var member = await mailing.OwnerAsync(); // signed up before TK-230: never confirmed
+        (await owner.Client.PostAsJsonAsync("/api/members/invites", new { email = member.Email, role = "ReadOnly" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = mailing.Mail.Sent.Single(m => m.To == member.Email && m.Subject.StartsWith("Le invitaron", StringComparison.Ordinal)).Body;
+
+        (await member.Client.PostAsJsonAsync("/api/invites/accept", new { token = body[(body.IndexOf('#') + 1)..] })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await member.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("emailConfirmed").GetBoolean().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_copied_invite_link_does_not_confirm_the_email_of_the_account_that_accepts_it()
+    {
+        var owner = await app.OwnerAsync();
+        var member = await app.OwnerAsync();
+        var link = (await (await owner.Client.PostAsJsonAsync("/api/members/invites", new { email = member.Email, role = "ReadOnly" })).Json()).GetProperty("link").GetString()!;
+        (await member.Client.PostAsJsonAsync("/api/invites/accept", new { token = link[(link.IndexOf('#') + 1)..] })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await member.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("emailConfirmed").GetBoolean().ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task R9_21_a_confirmed_account_is_never_taken_over_by_an_invite()
     {
         await using var mailing = new MailingCloudApp();

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.WebUtilities;
 using Shouldly;
 
@@ -59,5 +61,49 @@ public sealed class PasswordResetTests(MailingCloudApp app) : IClassFixture<Mail
         (unknown.StatusCode, await unknown.Content.ReadAsStringAsync()).ShouldBe((unconfirmed.StatusCode, await unconfirmed.Content.ReadAsStringAsync()));
         unknown.StatusCode.ShouldBe(HttpStatusCode.OK);
         app.Mail.Sent.Count.ShouldBe(sent);
+    }
+
+    private static async Task<bool> EmailConfirmed(Owner who) =>
+        (await who.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("emailConfirmed").GetBoolean();
+
+    [Fact]
+    public async Task TK231_me_says_whether_the_email_is_confirmed_and_the_resent_link_confirms_it()
+    {
+        var owner = await app.OwnerAsync();
+        (await EmailConfirmed(owner)).ShouldBeFalse();
+
+        (await owner.Client.PostAsJsonAsync("/api/auth/resendConfirmationEmail", new { email = owner.Email })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        app.Mail.Sent.Count(m => m.To == owner.Email && m.Subject == "Confirme su correo de Toki").ShouldBe(2); // sign-up and the resend
+        var confirm = LinkValues(owner.Email, "/app/confirmar");
+        (await app.CreateClient().GetAsync($"/api/auth/confirmEmail?userId={Uri.EscapeDataString(confirm["userId"])}&code={Uri.EscapeDataString(confirm["code"])}"))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await EmailConfirmed(owner)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task TK231_resend_answers_the_same_for_an_unknown_email()
+    {
+        var owner = await app.OwnerAsync();
+        var client = app.CreateClient();
+        var unknownEmail = $"nadie{Guid.NewGuid():N}@example.com";
+
+        var unknown = await client.PostAsJsonAsync("/api/auth/resendConfirmationEmail", new { email = unknownEmail });
+        var known = await client.PostAsJsonAsync("/api/auth/resendConfirmationEmail", new { email = owner.Email });
+
+        (unknown.StatusCode, await unknown.Content.ReadAsStringAsync()).ShouldBe((known.StatusCode, await known.Content.ReadAsStringAsync()));
+        unknown.StatusCode.ShouldBe(HttpStatusCode.OK);
+        app.Mail.Sent.ShouldNotContain(m => m.To == unknownEmail);
+    }
+
+    [Fact]
+    public async Task TK231_resend_is_throttled_per_address_of_origin()
+    {
+        await using var strict = app.WithWebHostBuilder(b => b.UseSetting("Auth:ResendConfirmationPerMinute", "2"));
+        var client = strict.CreateClient();
+        var email = $"nadie{Guid.NewGuid():N}@example.com";
+        for (var i = 0; i < 2; i++)
+            (await client.PostAsJsonAsync("/api/auth/resendConfirmationEmail", new { email })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.PostAsJsonAsync("/api/auth/resendConfirmationEmail", new { email })).StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+        (await client.PostAsJsonAsync("/api/auth/forgotPassword", new { email })).StatusCode.ShouldBe(HttpStatusCode.OK); // only the resend
     }
 }

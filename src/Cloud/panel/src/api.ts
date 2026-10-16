@@ -173,6 +173,12 @@ export async function confirmEmail(userId: string, code: string) {
   if (!response.ok) throw new ApiError(response.status, "Auth.ConfirmFailed", "El enlace no es válido o ya se usó. Si ya confirmó su correo, no tiene que hacer nada más.");
 }
 
+/** TK-231: a new confirmation e-mail. Always 200 whether or not the account exists or needs it (no enumeration); 429 when asked too often. */
+export async function resendConfirmation(email: string) {
+  const response = await send("/api/auth/resendConfirmationEmail", "POST", { email }, false);
+  if (!response.ok) throw await toError(response);
+}
+
 /** TK-217: a new account for the invited e-mail, already a member of the inviting business (no business of its own). */
 export async function registerByInvite(token: string, email: string, password: string) {
   // R8 #12: the token goes in the body, never in a URL.
@@ -213,7 +219,8 @@ export type MemberRole = "Owner" | "ReadOnly";
 export const roleNames: Record<MemberRole, string> = { Owner: "Dueño", ReadOnly: "Solo lectura" };
 export interface MyTenant { tenantId: string; name: string; role: MemberRole }
 /** `canViewCosts` (TK-201): Owners always; a Solo lectura member only when an Owner allowed it. Without it profit comes back null. */
-export interface Me { email: string | null; tenantId: string; tenantName: string; isPlatformAdmin?: boolean; role: MemberRole; tenants: MyTenant[]; canViewCosts?: boolean }
+/** `emailConfirmed` (TK-231): false = no reset e-mail reaches it; the panel offers to resend the confirmation. */
+export interface Me { email: string | null; tenantId: string; tenantName: string; isPlatformAdmin?: boolean; role: MemberRole; tenants: MyTenant[]; canViewCosts?: boolean; emailConfirmed?: boolean }
 export interface Member { userId: string; email: string | null; role: MemberRole; joinedUtc: string; canViewCosts?: boolean }
 export interface Invite { id: string; email: string; role: MemberRole; invitedBy: string; createdUtc: string; expiresUtc: string }
 export interface Members { members: Member[]; invites: Invite[] }

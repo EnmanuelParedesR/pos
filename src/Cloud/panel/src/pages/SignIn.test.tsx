@@ -107,6 +107,9 @@ it("TK-230: ¿La olvidó? asks for the reset e-mail and answers the same whether
   const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
   expect(url).toMatch(/\/api\/auth\/forgotPassword$/);
   expect(init.body).toBe(JSON.stringify({ email: "nadie@example.com" }));
+  // TK-231: an unconfirmed address gets nothing; the page says where to ask.
+  const note = screen.getByText(/puede que su cuenta no tenga el correo confirmado/);
+  expect(within(note).getByRole("link", { name: /Escríbanos/ })).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "← Volver a Entrar" }));
   expect(tab("Entrar").getAttribute("aria-selected")).toBe("true");
