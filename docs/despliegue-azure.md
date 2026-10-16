@@ -20,24 +20,24 @@ R11 (TK-253): la API entra a Azure OpenAI con su identidad administrada (rol "Co
 
 ## Lo que está desplegado hoy (TK-139, 2026-10-15)
 
-**Redespliegue del 16/10/2026** (main `ac83666`): infraestructura con la cuenta de almacenamiento del archivo frío (stabastaliaprodjhzq7n, retención inmutable sin bloquear), los roles de Key Vault del receptor y la protección contra purga del Key Vault (irreversible); API con todas las migraciones hasta TK-231 y las raíces de INDOTEL; sitio y panel en la Static Web App (/ sitio, /app panel). /health/ready responde Healthy.
+**Redespliegue del 16/10/2026** (main `ac83666`): infraestructura con la cuenta de almacenamiento del archivo frío (stabastaliaprod5qsy5n, retención inmutable sin bloquear), los roles de Key Vault del receptor y la protección contra purga del Key Vault (irreversible); API con todas las migraciones hasta TK-231 y las raíces de INDOTEL; sitio y panel en la Static Web App (/ sitio, /app panel). /health/ready responde Healthy.
 
 Suscripción **Visual Studio Enterprise Subscription – MPN** (`fc0b2ba5-daf7-43fd-a6a2-7dc6f60b8dff`, tenant `8d025706-…`), grupo **`rg-abastalia-prod`**.
 
 | Recurso | Nombre | Región | SKU |
 |---|---|---|---|
-| API (Web App Linux, .NET 10) | `app-abastalia-prod-jhzq7n` → https://app-abastalia-prod-jhzq7n.azurewebsites.net | eastus2 | Plan `asp-abastalia-prod` B1 |
+| API (Web App Linux, .NET 10) | `app-abastalia-prod-5qsy5n` → https://app-abastalia-prod-5qsy5n.azurewebsites.net | eastus2 | Plan `asp-abastalia-prod` B1 |
 | Panel (Static Web App) | `stapp-abastalia-prod` → https://black-coast-0594b990f.5.azurestaticapps.net | eastus2 | Free |
-| Azure SQL | servidor `sql-abastalia-prod-e7csjd`, base `abastalia` | **centralus** | GP_S_Gen5, 1 vCore, mínimo 0.5, pausa a los 60 min, 32 GB máx., respaldo local |
-| Azure OpenAI | `oai-abastalia-prod-jhzq7n`, despliegue `chat` = `gpt-5-nano` (`2025-08-07`) | eastus2 | S0, GlobalStandard, 10K tokens/min |
-| Key Vault | `kv-abastalia-prod-jhzq7n` (secreto `AzureOpenAI--ApiKey`) | eastus2 | Standard, RBAC |
+| Azure SQL | servidor `sql-abastalia-prod-eigklc`, base `abastalia` | **centralus** | GP_S_Gen5, 1 vCore, mínimo 0.5, pausa a los 60 min, 32 GB máx., respaldo local |
+| Azure OpenAI | `oai-abastalia-prod-5qsy5n`, despliegue `chat` = `gpt-5-nano` (`2025-08-07`) | eastus2 | S0, GlobalStandard, 10K tokens/min |
+| Key Vault | `kv-abastalia-prod-5qsy5n` (secreto `AzureOpenAI--ApiKey`) | eastus2 | Standard, RBAC |
 | Log Analytics / Application Insights | `log-abastalia-prod` / `appi-abastalia-prod` | eastus2 | Por GB, 30 días |
 
 - **SQL en centralus:** eastus2 y eastus respondieron *"Provisioning is restricted in this region"* para servidores SQL nuevos en esta suscripción. centralus es la región disponible más cercana (parámetro `sqlLocation`). La latencia extra es de unos pocos milisegundos.
 - **Firewall de SQL:** solo `AllowAzureServices`. Para conectarse desde una PC se agrega una regla temporal con su IP y se borra al terminar.
-- **Acceso de la API a SQL:** usuario contenido `[app-abastalia-prod-jhzq7n]` (identidad administrada) con `db_owner`. Ya está creado. No hay inicios de sesión de SQL (solo Entra).
+- **Acceso de la API a SQL:** usuario contenido `[app-abastalia-prod-5qsy5n]` (identidad administrada) con `db_owner`. Ya está creado. No hay inicios de sesión de SQL (solo Entra).
 - **Migraciones:** las aplica la API al arrancar (`CreateCloudDatabaseOnStartup`). No hay paso aparte.
-- **Logs del contenedor:** están activados en el sistema de archivos (`az webapp log config --docker-container-logging filesystem`). Se leen con `az webapp log tail -g rg-abastalia-prod -n app-abastalia-prod-jhzq7n`.
+- **Logs del contenedor:** están activados en el sistema de archivos (`az webapp log config --docker-container-logging filesystem`). Se leen con `az webapp log tail -g rg-abastalia-prod -n app-abastalia-prod-5qsy5n`.
 
 ### Modelo del asistente: por qué `gpt-5-nano`
 
@@ -87,7 +87,7 @@ La tienda sube cada e-CF firmado (XML, RFCE y respuesta de la DGII) a `POST /fis
 
 ### Conectar una tienda local a esta nube
 
-En la caja, el ajuste `Cloud:Url` (en `appsettings.json` del host local o con la variable `Cloud__Url`) tiene que ser `https://app-abastalia-prod-jhzq7n.azurewebsites.net`; el instalador ya lo trae (`deploy/installer/store-settings.ps1`, TK-251). Después, en **Configuración → Nube**, se pega el código de conexión que da el panel. Los valores por defecto del repositorio no cambian.
+En la caja, el ajuste `Cloud:Url` (en `appsettings.json` del host local o con la variable `Cloud__Url`) tiene que ser `https://app-abastalia-prod-5qsy5n.azurewebsites.net`; el instalador ya lo trae (`deploy/installer/store-settings.ps1`, TK-251). Después, en **Configuración → Nube**, se pega el código de conexión que da el panel. Los valores por defecto del repositorio no cambian.
 
 ## Antes de desplegar
 
@@ -149,7 +149,7 @@ El panel (`src/Cloud/panel`, React + Vite) es un sitio estático: se compila con
 ```
 cd src/Cloud/panel
 npm ci
-$env:VITE_API_URL = "https://app-abastalia-prod-jhzq7n.azurewebsites.net"
+$env:VITE_API_URL = "https://app-abastalia-prod-5qsy5n.azurewebsites.net"
 npm run build
 $env:SWA_CLI_DEPLOYMENT_TOKEN = az staticwebapp secrets list -n stapp-abastalia-prod -g rg-abastalia-prod --query properties.apiKey -o tsv
 npx @azure/static-web-apps-cli deploy dist --env production
@@ -182,19 +182,19 @@ Las rutas viven en `src/App.tsx`; los textos del sitio en `src/pages/site/SitePa
 ```
 dotnet publish src/Hosts/Abastalia.Host.Cloud -c Release -o publish/cloud
 Compress-Archive publish/cloud/* publish/cloud.zip -Force
-az webapp deploy -g rg-abastalia-prod -n app-abastalia-prod-jhzq7n --src-path publish/cloud.zip --type zip
+az webapp deploy -g rg-abastalia-prod -n app-abastalia-prod-5qsy5n --src-path publish/cloud.zip --type zip
 ```
 
 Las migraciones nuevas se aplican solas al arrancar. Después, revisar `/health/ready`. Si cambia la infraestructura, se vuelve a correr el `az deployment group create` de arriba: es idempotente.
 
-Las configuraciones de la Web App están en un recurso aparte (`apiSettings`) que se aplica después del rol de Key Vault: App Service resuelve las referencias `@Microsoft.KeyVault(...)` una vez y guarda el "acceso denegado" hasta un día. Si el asistente responde 503 `Assistant.Unavailable` justo después de crear todo, revisar `az rest --method get --url "https://management.azure.com/subscriptions/<suscripción>/resourceGroups/rg-abastalia-prod/providers/Microsoft.Web/sites/app-abastalia-prod-jhzq7n/config/configreferences/appsettings?api-version=2022-03-01"` (tiene que decir `Resolved`) y reiniciar la Web App.
+Las configuraciones de la Web App están en un recurso aparte (`apiSettings`) que se aplica después del rol de Key Vault: App Service resuelve las referencias `@Microsoft.KeyVault(...)` una vez y guarda el "acceso denegado" hasta un día. Si el asistente responde 503 `Assistant.Unavailable` justo después de crear todo, revisar `az rest --method get --url "https://management.azure.com/subscriptions/<suscripción>/resourceGroups/rg-abastalia-prod/providers/Microsoft.Web/sites/app-abastalia-prod-5qsy5n/config/configreferences/appsettings?api-version=2022-03-01"` (tiene que decir `Resolved`) y reiniciar la Web App.
 
 ## Borrar todo
 
 ```
 az group delete -n rg-abastalia-prod --yes
-az keyvault purge -n kv-abastalia-prod-jhzq7n          # el Key Vault queda 30 días en borrado temporal
-az cognitiveservices account purge -g rg-abastalia-prod -n oai-abastalia-prod-jhzq7n -l eastus2
+az keyvault purge -n kv-abastalia-prod-5qsy5n          # el Key Vault queda 30 días en borrado temporal
+az cognitiveservices account purge -g rg-abastalia-prod -n oai-abastalia-prod-5qsy5n -l eastus2
 ```
 
 Borra la base con todos los datos de las tiendas: no tiene vuelta atrás.
@@ -224,11 +224,11 @@ Lo que hay en `rg-abastalia-prod` (creado con az el 2026-10-16, TK-241):
 
 | Recurso | Qué es |
 |---|---|
-| `ecs-abastalia-prod` (Email Communication Service, datos en Estados Unidos) | Con el dominio administrado de Azure `AzureManagedDomain` = `b5097b41-7b79-41ea-92e5-b99f21c07125.azurecomm.net` (gratis, sin DNS propio; seguimiento de lectura apagado). Remitente `DoNotReply`, nombre visible "Abastalia". |
-| `acs-abastalia-prod` (Communication Services, datos en Estados Unidos) | Enlazado a ese dominio. Endpoint `https://acs-abastalia-prod.unitedstates.communication.azure.com`. La identidad administrada de `app-abastalia-prod-jhzq7n` tiene "Communication and Email Service Owner" sobre él. |
+| `ecs-abastalia-prod` (Email Communication Service, datos en Estados Unidos) | Con el dominio administrado de Azure `AzureManagedDomain` = `03a51e41-8b38-4672-bdb5-8ae7432a35f7.azurecomm.net` (gratis, sin DNS propio; seguimiento de lectura apagado). Remitente `DoNotReply`, nombre visible "Abastalia". |
+| `acs-abastalia-prod` (Communication Services, datos en Estados Unidos) | Enlazado a ese dominio. Endpoint `https://acs-abastalia-prod.unitedstates.communication.azure.com`. La identidad administrada de `app-abastalia-prod-5qsy5n` tiene "Communication and Email Service Owner" sobre él. |
 
 Configuración de la Web App: `Email__Provider=AzureCommunicationServices`, `Email__Endpoint=https://acs-abastalia-prod.unitedstates.communication.azure.com`,
-`Email__Sender=DoNotReply@b5097b41-7b79-41ea-92e5-b99f21c07125.azurecomm.net`. Los mismos valores están en `main.parameters.json`
+`Email__Sender=DoNotReply@03a51e41-8b38-4672-bdb5-8ae7432a35f7.azurecomm.net`. Los mismos valores están en `main.parameters.json`
 (`emailEndpoint`, `emailSender`, `emailResourceName`); con `emailResourceName` el Bicep también da el rol a la API.
 
 Cómo se creó (por si hay que repetirlo en otro grupo; en PowerShell, porque Git Bash cambia las rutas `/subscriptions/...`):
@@ -243,7 +243,7 @@ az communication create -n acs-abastalia-prod -g rg-abastalia-prod --location gl
 az communication email domain sender-username update --email-service-name ecs-abastalia-prod -g rg-abastalia-prod --domain-name AzureManagedDomain -n donotreply --display-name Abastalia
 az role assignment create --assignee-object-id <apiPrincipalId> --assignee-principal-type ServicePrincipal `
   --role "Communication and Email Service Owner" --scope $(az communication show -n acs-abastalia-prod -g rg-abastalia-prod --query id -o tsv)
-az webapp config appsettings set -n app-abastalia-prod-jhzq7n -g rg-abastalia-prod --settings Email__Provider=AzureCommunicationServices `
+az webapp config appsettings set -n app-abastalia-prod-5qsy5n -g rg-abastalia-prod --settings Email__Provider=AzureCommunicationServices `
   Email__Endpoint=https://acs-abastalia-prod.unitedstates.communication.azure.com Email__Sender=DoNotReply@<dominio>.azurecomm.net
 ```
 
@@ -272,7 +272,7 @@ próximo `az deployment group create`.
 ### Certificados e-CF en Key Vault: prueba real (TK-151, 2026-10-16)
 
 Con el código de la nube (`KeyVaultFeVault`, el mismo archivo enlazado en un programa de prueba) y la sesión de az del dueño, contra
-`kv-abastalia-prod-jhzq7n`, con un .p12 autofirmado de usar y tirar: importar como no exportable (política `exportable=False`, RSA) ✅, firmar RS256 un
+`kv-abastalia-prod-5qsy5n`, con un .p12 autofirmado de usar y tirar: importar como no exportable (política `exportable=False`, RSA) ✅, firmar RS256 un
 SHA-256 con la llave del vault y verificarla con el certificado ✅, borrar ✅ (después da 404 y la llave ya no firma). El certificado
 `tk151-test-20261016042431` quedó en borrado suave hasta el 2026-11-15 (la protección contra purga no deja borrarlo antes). Para la prueba se le
 dieron al usuario "Key Vault Certificates Officer" y "Key Vault Crypto User" en el vault y se quitaron al terminar.

@@ -35,7 +35,7 @@ public sealed class StoreSettingsScriptTests : IDisposable
         var api = new Uri(appJson.RootElement.GetProperty("Api").GetProperty("Url").GetString()!);
         var listens = new Uri(production.RootElement.GetProperty("Kestrel").GetProperty("Endpoints").GetProperty("Https").GetProperty("Url").GetString()!);
         (api.Scheme, api.Host, api.Port).ShouldBe(("https", "localhost", listens.Port)); // what the installed server listens on
-        serverJson.RootElement.GetProperty("Cloud").GetProperty("Url").GetString().ShouldBe("https://app-abastalia-prod-jhzq7n.azurewebsites.net");
+        serverJson.RootElement.GetProperty("Cloud").GetProperty("Url").GetString().ShouldBe("https://app-abastalia-prod-5qsy5n.azurewebsites.net");
         foreach (var json in new[] { appJson, serverJson })
         {
             json.RootElement.GetProperty("Updates").GetProperty("Channel").GetString().ShouldBe("pilot");

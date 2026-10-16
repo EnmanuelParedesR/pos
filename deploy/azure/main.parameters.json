@@ -14,7 +14,7 @@
     "openAiDeploymentSku": { "value": "GlobalStandard" },
     "openAiCapacity": { "value": 10 },
     "emailEndpoint": { "value": "https://acs-abastalia-prod.unitedstates.communication.azure.com" },
-    "emailSender": { "value": "DoNotReply@b5097b41-7b79-41ea-92e5-b99f21c07125.azurecomm.net" },
+    "emailSender": { "value": "DoNotReply@03a51e41-8b38-4672-bdb5-8ae7432a35f7.azurecomm.net" },
     "emailResourceName": { "value": "acs-abastalia-prod" },
     "alertEmail": { "value": "" },
     "paddleEnvironment": { "value": "" },

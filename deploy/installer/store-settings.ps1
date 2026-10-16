@@ -10,7 +10,7 @@
   - The server's database is the dedicated .\ABASTALIA instance (appsettings.json; R11 C1).
   The repo's appsettings keep the development values (http://localhost:5000, no cloud).
 #>
-$ProductionCloudUrl = 'https://app-abastalia-prod-jhzq7n.azurewebsites.net'
+$ProductionCloudUrl = 'https://app-abastalia-prod-5qsy5n.azurewebsites.net'
 $InstalledApiUrl = 'https://localhost:5443'
 
 # Sets "Section:Key" values in a JSON file, creating the sections that are missing and keeping everything else.
