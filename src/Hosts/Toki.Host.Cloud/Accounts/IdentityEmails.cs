@@ -10,6 +10,9 @@ namespace Toki.Host.Cloud.Accounts;
 /// Identity sends a reset code only to a confirmed address and answers forgotPassword the same either way (no account enumeration).</summary>
 internal sealed class IdentityEmails(IEmailSender email, IConfiguration config) : IEmailSender<CloudUser>
 {
+    /// <summary>TK-231: POST /api/auth/resendConfirmationEmail, per IP (Program.cs).</summary>
+    public const string ResendRateLimit = "auth-resend-confirmation";
+
     /// <summary>Identity's link points to its own GET /api/auth/confirmEmail (HTML-encoded); the panel page calls it with the same values.</summary>
     public Task SendConfirmationLinkAsync(CloudUser user, string to, string confirmationLink)
     {

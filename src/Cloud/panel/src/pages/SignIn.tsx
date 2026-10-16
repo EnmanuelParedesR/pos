@@ -2,6 +2,7 @@ import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ApiError, forgotPassword, identityMessages, isDuplicateEmail, register, signIn } from "../api";
 import { Notice } from "../ui";
 import { AuthFrame, PasswordChecklist, PasswordField } from "./AuthFrame";
+import { contactHref, site } from "./site/config";
 
 type Mode = "in" | "create";
 const tabs: [Mode, string][] = [
@@ -113,6 +114,10 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
               </button>
             </>
           )}
+          <p className="auth-note">
+            Si no le llega el correo, puede que su cuenta no tenga el correo confirmado.{" "}
+            <a href={contactHref}>{site.whatsapp ? "Escríbanos por WhatsApp" : "Escríbanos"}</a> y le ayudamos.
+          </p>
           <button type="button" className="auth-link auth-link--block" onClick={() => (setForgot(false), setResetSent(false), setError(null))}>
             ← Volver a Entrar
           </button>

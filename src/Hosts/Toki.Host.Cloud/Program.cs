@@ -3,6 +3,7 @@ using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Serilog;
@@ -55,6 +56,8 @@ builder.Services.AddTransient<IEmailSender<CloudUser>, IdentityEmails>(); // TK-
 var registerPerMinute = config.GetValue("Nodes:RegisterPerMinute", 10);
 // R8 #17: the public catalog needs no account either; a customer opens it a few times, a scraper many.
 var catalogPerMinute = config.GetValue("Catalog:RequestsPerMinute", 60);
+// TK-231: each resend is an e-mail to any address; a person needs one or two.
+var resendPerMinute = config.GetValue("Auth:ResendConfirmationPerMinute", 3);
 var invoicesPerNodeMinute = config.GetValue("Ai:SupplierInvoicesPerMinutePerNode", 10);
 // The e-CF receiver's limits (R9 #2) are the global limiter, set by AddFe.
 builder.Services.AddRateLimiter(o =>
@@ -66,6 +69,8 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = registerPerMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(PublicCatalogEndpoints.RateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = catalogPerMinute, Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy(IdentityEmails.ResendRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = resendPerMinute, Window = TimeSpan.FromMinutes(1) }));
 });
 
 builder.Services.AddSingleton<InboxSignal>();
@@ -119,7 +124,11 @@ if (app.Environment.IsDevelopment())
 app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
 app.MapHealthChecks("/health/ready").AllowAnonymous();
 
-app.MapGroup("/api/auth").MapIdentityApi<CloudUser>();
+app.MapGroup("/api/auth").MapIdentityApi<CloudUser>().Add(e =>
+{
+    if (e is RouteEndpointBuilder { RoutePattern.RawText: { } route } && route.EndsWith("/resendConfirmationEmail", StringComparison.Ordinal))
+        e.Metadata.Add(new EnableRateLimitingAttribute(IdentityEmails.ResendRateLimit));
+});
 app.MapStores();
 app.MapMembers();
 app.MapNodes();

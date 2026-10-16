@@ -114,8 +114,9 @@ public sealed record MyTenant(Guid TenantId, string Name, MemberRole Role);
 /// <param name="Role">In the current tenant (TK-217): the panel hides what a ReadOnly member cannot do (the API refuses it anyway).</param>
 /// <param name="Tenants">Every tenant the user belongs to; with more than one the panel lets them switch.</param>
 /// <param name="CanViewCosts">TK-201: cost and profit are shown (the API leaves them null otherwise).</param>
+/// <param name="EmailConfirmed">TK-231: false = no reset e-mail reaches it; the panel offers to resend the confirmation.</param>
 public sealed record MeResponse(string? Email, Guid TenantId, string TenantName, bool IsPlatformAdmin, MemberRole Role, IReadOnlyList<MyTenant> Tenants,
-    bool CanViewCosts);
+    bool CanViewCosts, bool EmailConfirmed);
 public sealed record SwitchTenantRequest(Guid TenantId);
 
 internal static class StoreEndpoints
@@ -135,7 +136,8 @@ internal static class StoreEndpoints
                 .ToListAsync(ct);
             var current = tenants.Single(t => t.TenantId == tenantId); // the panel policy already checked the membership
             return Results.Ok(new MeResponse(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, tenantId, current.Name, user.IsPlatformAdmin(), current.Role,
-                [.. tenants.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)], await PanelAccess.CanViewCostsAsync(user, db, ct)));
+                [.. tenants.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)], await PanelAccess.CanViewCostsAsync(user, db, ct),
+                await db.Users.Where(u => u.Id == userId).Select(u => u.EmailConfirmed).SingleAsync(ct)));
         });
 
         // TK-217: the panel then renews its token (POST /api/auth/refresh), which takes the new tenant.

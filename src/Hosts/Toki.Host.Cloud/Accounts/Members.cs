@@ -209,6 +209,7 @@ internal static class MemberEndpoints
             db.TenantMembers.Add(new TenantMember { TenantId = invite.TenantId, UserId = account.Id, Role = invite.Role, JoinedUtc = now });
             invite.AcceptedUtc = now;
             account.TenantId = invite.TenantId;
+            account.EmailConfirmed |= !invite.LinkShown; // TK-231: the link reached that inbox by e-mail (R8 #1)
             try
             {
                 await db.SaveChangesAsync(ct);

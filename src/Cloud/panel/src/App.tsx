@@ -3,6 +3,7 @@ import { Navigate, NavLink, Outlet, Route, Routes, useLocation, useNavigate, use
 import { api, hasSession, renewSession, setOnSignedOut, signOut, useApi, roleNames, type Me, type Store } from "./api";
 import { Icon, Logo, ThemeToggle, type IconName } from "./ui";
 import { SignIn } from "./pages/SignIn";
+import { ConfirmEmailBanner } from "./pages/ConfirmEmailBanner";
 import { SummaryPage } from "./pages/SummaryPage";
 import { SalesPage } from "./pages/SalesPage";
 import { ShiftsPage } from "./pages/ShiftsPage";
@@ -226,6 +227,7 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
 
       <main className="esc-main">
         <div className="esc-page">
+          <ConfirmEmailBanner me={me} />
           {pathname !== "/app/assistant" && !onPlatform && <AskBar />}
           <Outlet context={context} />
         </div>
