@@ -74,6 +74,9 @@ internal static class AccompanimentModel
             e.Property(r => r.Notes).HasMaxLength(2000);
             e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(r => new { r.TenantId, r.StoreId });
+            // R10 #12: one open request per store, even with two taps at once.
+            e.HasIndex(r => new { r.TenantId, r.StoreId }, "IX_AccompanimentRequests_OneOpen").IsUnique()
+                .HasFilter("[Status] <> 'Certified' AND [Status] <> 'Cancelled'");
             e.Ignore(r => r.Open);
         });
 }
@@ -110,7 +113,13 @@ internal static class AccompanimentEndpoints
                 Status = AccompanimentStatus.New, CreatedUtc = now, ChangedUtc = now,
             };
             db.AccompanimentRequests.Add(request);
-            await db.SaveChangesAsync(ct);
+            try { await db.SaveChangesAsync(ct); }
+            catch (DbUpdateException)
+            {
+                db.Entry(request).State = EntityState.Detached;
+                if (await LatestAsync(db, node, ct) is not { Open: true } other) throw;
+                return Results.Ok(new AccompanimentState(ForStore(other))); // the other tap won
+            }
             await NotifyStaffAsync(db, email, config, log, request, ct);
             return Results.Ok(new AccompanimentState(ForStore(request)));
         });
@@ -136,9 +145,14 @@ internal static class AccompanimentEndpoints
             var r = await db.AccompanimentRequests.SingleOrDefaultAsync(x => x.Id == id, ct);
             if (r is null) return EndpointExtensions.Problem(Error.NotFound("Accompaniment.NotFound", "No encontramos esa solicitud."));
 
+            // R10 #12: a date left out keeps the one scheduled; a new one must be ahead, and session 2 after session 1.
+            var now = clock.GetUtcNow().UtcDateTime;
             var (newSession1, newSession2) = (u.Session1Utc is { } s1 && s1 != r.Session1Utc, u.Session2Utc is { } s2 && s2 != r.Session2Utc);
+            var (session1, session2) = (u.Session1Utc ?? r.Session1Utc, u.Session2Utc ?? r.Session2Utc);
+            if ((newSession1 && session1 <= now) || (newSession2 && session2 <= now) || (session2 is not null && (session1 is null || session2 <= session1)))
+                return EndpointExtensions.Problem(Error.Validation("Accompaniment.InvalidDates", "Las citas van en el futuro, y la segunda después de la primera."));
             (r.Status, r.Session1Utc, r.Session2Utc, r.Notes, r.ChangedUtc) =
-                (u.Status.Value, u.Session1Utc, u.Session2Utc, string.IsNullOrWhiteSpace(u.Notes) ? null : u.Notes.Trim(), clock.GetUtcNow().UtcDateTime);
+                (u.Status.Value, session1, session2, string.IsNullOrWhiteSpace(u.Notes) ? null : u.Notes.Trim(), now);
             await db.SaveChangesAsync(ct);
             if (newSession1) await NotifyOwnersAsync(db, email, log, r, 1, r.Session1Utc!.Value, ct);
             if (newSession2) await NotifyOwnersAsync(db, email, log, r, 2, r.Session2Utc!.Value, ct);

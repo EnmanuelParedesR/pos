@@ -19,7 +19,7 @@
                 <dt>Carpeta en esta PC</dt><dd class="esc-muted">@i.Folder</dd>
             </dl>
             <div class="esc-form-grid">
-                <Field Label="Copiar también a" Wide="true" Error="@_errors.GetValueOrDefault("CopyTo")" Hint="Una memoria USB o una carpeta compartida, por ejemplo E:\Respaldos. Vacío: sin copia.">
+                <Field Label="Copiar también a" Wide="true" Error="@_errors.GetValueOrDefault("CopyTo")" Hint="Una memoria USB u otra PC, por ejemplo E:\Respaldos o \\servidor\respaldos. Una carpeta compartida debe dejar escribir a la cuenta del servicio de Toki y solo la deben abrir quienes cuidan los respaldos. Vacío: sin copia.">
                     <input class="esc-input" maxlength="260" @bind="_copyTo" />
                 </Field>
                 <Field Label="Hora" Error="@_errors.GetValueOrDefault("Time")">

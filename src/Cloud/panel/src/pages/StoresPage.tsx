@@ -123,6 +123,8 @@ function StoreCard({ store: s, canEdit, onPoll, onConnected }: { store: StoreSyn
                 <Icon name="register" size={16} />
               </span>
               <span style={{ flex: "1 1 auto", fontWeight: 600 }}>{n.name}</span>
+              {/* R10 #5: still on the shared secret from before TK-241; it moves to its own key on its next upload. */}
+              {n.usesSecret && <span className="esc-muted" title="Pasa a su propia llave al subir datos con Toki actualizado.">Con clave compartida</span>}
               <SyncPill utc={n.lastSyncUtc} />
               {/* TK-241: a replaced or lost PC stops sending; to use it again, connect it with a new code. */}
               {canEdit && (

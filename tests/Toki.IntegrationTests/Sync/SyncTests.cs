@@ -103,14 +103,21 @@ public sealed class SyncConnectTests(TokiApp app) : IClassFixture<TokiApp>
         (await app.StatusAsync()).GetProperty("connected").GetBoolean().ShouldBeFalse();
         (await app.InScopeAsync(sp => sp.GetRequiredService<SyncDbContext>().Connections.CountAsync())).ShouldBe(0);
 
-        // A cloud from before TK-241 answers a secret: that is the credential then. Without internet the store still disconnects.
+        // A cloud from before TK-241 answers a secret: that is the credential then.
         app.Cloud.IssueSecret = true;
         (await admin.PostAsJsonAsync("/api/sync/connect", new { Code = FakeCloud.ValidCode })).StatusCode.ShouldBe(HttpStatusCode.OK);
         row = await app.InScopeAsync(sp => sp.GetRequiredService<SyncDbContext>().Connections.AsNoTracking().SingleAsync());
         (await UnprotectAsync(row.NodeSecret)).ShouldBe(FakeCloud.NodeSecret);
+        // R10 #5: the next upload moves it to its own key: the rekey goes with the secret, the upload already signed (body included, R10 #7).
+        (await app.UploadAsync()).Error.ShouldBeNull();
+        app.Cloud.To(CloudClient.RekeyPath).Single().Authorization.ShouldBe($"Node {app.Cloud.NodeId}.{FakeCloud.NodeSecret}");
+        row = await app.InScopeAsync(sp => sp.GetRequiredService<SyncDbContext>().Connections.AsNoTracking().SingleAsync());
+        (await UnprotectAsync(row.NodeSecret)).ShouldStartWith("ecdsa:");
+        app.Cloud.SignedByNode(app.Cloud.To(CloudUploader.IngestPath).Last()).ShouldBeTrue();
+        // Without internet the store still disconnects.
         app.Cloud.Respond = _ => throw new HttpRequestException("sin internet");
         (await admin.PostAsync("/api/sync/disconnect", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        app.Cloud.To("/api/nodes/revoke").Last().Authorization.ShouldBe($"Node {app.Cloud.NodeId}.{FakeCloud.NodeSecret}");
+        app.Cloud.SignedByNode(app.Cloud.To("/api/nodes/revoke").Last()).ShouldBeTrue();
         (await app.InScopeAsync(sp => sp.GetRequiredService<SyncDbContext>().Connections.CountAsync())).ShouldBe(0);
         (app.Cloud.Respond, app.Cloud.IssueSecret) = (null, false);
         (await app.VerifyAuditAsync()).ShouldBeNull();

@@ -457,10 +457,23 @@ internal static class BackupSettings
         }
     }
 
-    internal sealed class Handler(SettingsDbContext db, BackupStatus status, IAuditLog audit) : ICommandHandler<Command, Ok>
+    public static readonly Error CopyInsideData = Error.Validation("Backup.CopyInsideData",
+        "La copia tiene que ir fuera de esta PC o a otro disco: no a la carpeta de respaldos ni a la de datos de Toki.");
+
+    /// <summary>R10 #10: a copy inside the backup folder (or Toki's data folder) is no copy at all, and would be listed and pruned as a backup.</summary>
+    public static bool InsideData(string copyTo, string backupFolder)
+    {
+        static string Full(string p) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(p));
+        var copy = Full(copyTo);
+        return new[] { backupFolder, Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki") }.Select(Full)
+            .Any(f => copy.Equals(f, StringComparison.OrdinalIgnoreCase) || copy.StartsWith(f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+    }
+
+    internal sealed class Handler(SettingsDbContext db, BackupStatus status, Backups backups, IAuditLog audit) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
+            if (c.CopyTo is { } copy && !string.IsNullOrWhiteSpace(copy) && InsideData(copy.Trim(), backups.Folder)) return CopyInsideData;
             var b = await db.Business.SingleAsync(ct);
             b.BackupCopyTo = c.CopyTo?.Trim() ?? "";
             b.BackupTime = TimeOnly.ParseExact(c.Time, "HH:mm").ToTimeSpan();

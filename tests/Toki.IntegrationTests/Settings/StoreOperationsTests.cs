@@ -53,8 +53,20 @@ public sealed class StoreOperationsTests(TokiApp app) : IClassFixture<TokiApp>
         (await admin.PutAsJsonAsync($"/api/fiscal/certification/steps/{FiscalModeChecks.VerifiedStep}", new { Done = true })).EnsureSuccessStatusCode();
         Blockers(await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/mode"), "eCF").ShouldBeEmpty();
 
+        // R10 #3: production with e-CF issued does not go back with one click; only with support's flag.
+        (await admin.PutAsJsonAsync("/api/fiscal/mode", new { Environment = "eCF", Confirm = true })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var issued = await app.PendingAsync("E320000000001", app.Clock.GetUtcNow().UtcDateTime.AddHours(72), environment: FiscalEnvironment.eCF);
+        await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Documents.Where(d => d.Id == issued)
+            .ExecuteUpdateAsync(d => d.SetProperty(x => x.Status, SubmissionStatus.Accepted).SetProperty(x => x.ArchivedUtc, DateTime.UtcNow)));
+        var refused = await admin.PutAsJsonAsync("/api/fiscal/mode", new { Environment = "TesteCF", Confirm = true });
+        (refused.StatusCode, await refused.ErrorCode()).ShouldBe((HttpStatusCode.Conflict, "Fiscal.ModeBlocked"));
+        Blockers(await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/mode"), "Simulated").ShouldContain(b => b.Contains("soporte"));
+        using var support = app.WithWebHostBuilder(b => b.UseSetting("Fiscal:AllowLeavingProduction", "true"));
+        var supportAdmin = support.CreateClient();
+        foreach (var h in admin.DefaultRequestHeaders) supportAdmin.DefaultRequestHeaders.Add(h.Key, h.Value);
+
         // Back to Simulated: the saved choice is read again after a restart.
-        (await admin.PutAsJsonAsync("/api/fiscal/mode", new { Environment = "Simulated", Confirm = true })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await supportAdmin.PutAsJsonAsync("/api/fiscal/mode", new { Environment = "Simulated", Confirm = true })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         using var restarted = app.WithWebHostBuilder(_ => { });
         restarted.Services.GetRequiredService<FiscalMode>().Environment.ShouldBe(FiscalEnvironment.Simulated);
     }
@@ -71,6 +83,9 @@ public sealed class StoreOperationsTests(TokiApp app) : IClassFixture<TokiApp>
 
         (await admin.PutAsJsonAsync("/api/backups/settings", new { CopyTo = "relativa", Time = "25:00", Keep = 0, Automatic = false }))
             .StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        // R10 #10: not into the backup folder itself.
+        (await (await admin.PutAsJsonAsync("/api/backups/settings", new { CopyTo = Path.Combine(settings.GetProperty("folder").GetString()!, "copia"), Time = "21:15", Keep = 5, Automatic = false }))
+            .ErrorCode()).ShouldBe("Backup.CopyInsideData");
         var copy = Path.Combine(Path.GetTempPath(), $"toki_copy_{Guid.NewGuid():N}");
         (await admin.PutAsJsonAsync("/api/backups/settings", new { CopyTo = copy, Time = "21:15", Keep = 5, Automatic = false }))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);

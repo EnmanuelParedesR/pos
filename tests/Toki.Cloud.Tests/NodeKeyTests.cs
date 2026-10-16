@@ -29,17 +29,18 @@ public sealed class NodeKeyTests(CloudApp app) : IClassFixture<CloudApp>
         return (json.GetProperty("nodeId").GetGuid(), store, key, owner);
     }
 
-    private static string Sign(ECDsa key, Guid nodeId, DateTimeOffset at, string path, string? nonce = null)
+    private static string Sign(ECDsa key, Guid nodeId, DateTimeOffset at, string path, string? nonce = null, string body = "")
     {
         var seconds = at.ToUnixTimeSeconds();
         nonce ??= NodeSignature.Base64Url(RandomNumberGenerator.GetBytes(16));
-        var signature = key.SignData(Encoding.UTF8.GetBytes(NodeSignature.Payload(nodeId, seconds, nonce, "POST", path)), HashAlgorithmName.SHA256);
+        var signature = key.SignData(Encoding.UTF8.GetBytes(NodeSignature.Payload(nodeId, seconds, nonce, "POST", path, NodeSignature.BodyHash(Encoding.UTF8.GetBytes(body)))),
+            HashAlgorithmName.SHA256);
         return $"{nodeId}.{seconds}.{nonce}.{NodeSignature.Base64Url(signature)}";
     }
 
-    private static Task<HttpResponseMessage> PostAsync(HttpClient client, string path, string credentials)
+    private static Task<HttpResponseMessage> PostAsync(HttpClient client, string path, string credentials, string body = "")
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = new StringContent("") };
+        var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = new StringContent(body) };
         request.Headers.Authorization = new AuthenticationHeaderValue("Node", credentials);
         return client.SendAsync(request);
     }
@@ -62,6 +63,41 @@ public sealed class NodeKeyTests(CloudApp app) : IClassFixture<CloudApp>
         (await PostAsync(client, StatusPath, Sign(other, nodeId, now, StatusPath))).StatusCode.ShouldBe(HttpStatusCode.Unauthorized); // another key
         // A key node has no secret: the old header format gets nothing.
         (await PostAsync(client, StatusPath, $"{nodeId}.{NodeSignature.Base64Url(RandomNumberGenerator.GetBytes(32))}")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task The_body_is_signed_too()
+    {
+        var (nodeId, _, key, _) = await RegisterAsync();
+        var client = app.CreateClient();
+        var now = app.Clock.GetUtcNow();
+        (await PostAsync(client, StatusPath, Sign(key, nodeId, now, StatusPath, body: "{}"), "{}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await PostAsync(client, StatusPath, Sign(key, nodeId, now, StatusPath, body: "{}"), "{\"x\":1}")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task A_node_on_the_shared_secret_moves_to_its_own_key_and_the_secret_ends_at_its_first_signed_call()
+    {
+        var owner = await app.OwnerAsync();
+        var legacy = await app.StoreWithNodeAsync(owner);
+        bool UsesSecret(System.Text.Json.JsonElement stores) => stores.EnumerateArray().Single(s => s.GetProperty("storeId").GetGuid() == legacy.StoreId)
+            .GetProperty("nodes")[0].GetProperty("usesSecret").GetBoolean();
+        UsesSecret(await owner.Client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/panel/sync-status")).ShouldBeTrue();
+
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        (await legacy.Client.PostAsJsonAsync("/api/nodes/rekey", new { publicKey = "no" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await legacy.Client.PostAsJsonAsync("/api/nodes/rekey", new { publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await legacy.Client.PostAsync(StatusPath, null)).StatusCode.ShouldBe(HttpStatusCode.OK); // an answer lost on the way does not lock the store out
+
+        var client = app.CreateClient();
+        (await PostAsync(client, StatusPath, Sign(key, legacy.NodeId, app.Clock.GetUtcNow(), StatusPath))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await legacy.Client.PostAsync(StatusPath, null)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        UsesSecret(await owner.Client.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/panel/sync-status")).ShouldBeFalse();
+        var body = $$"""{"publicKey":"{{Convert.ToBase64String(key.ExportSubjectPublicKeyInfo())}}"}""";
+        var again = new HttpRequestMessage(HttpMethod.Post, "/api/nodes/rekey") { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+        again.Headers.Authorization = new AuthenticationHeaderValue("Node", Sign(key, legacy.NodeId, app.Clock.GetUtcNow(), "/api/nodes/rekey", body: body));
+        (await client.SendAsync(again)).StatusCode.ShouldBe(HttpStatusCode.Conflict); // only a secret sign-in rekeys
     }
 
     [Fact]

@@ -18,16 +18,11 @@ internal static class PrepareService
         var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki");
         var folder = Directory.CreateDirectory(data);
         foreach (var sub in new[] { "logs", "backups", "keys" }) folder.CreateSubdirectory(sub);
-        folder.SetAccessControl(Allow(folder.GetAccessControl(), identity, FileSystemRights.Modify));
-        // keys holds the store CA and the e-CF key material, protected with machine DPAPI that any local user could open:
-        // only the service, SYSTEM and administrators may enter it (TK-242), not the Users read that C:\ProgramData hands down.
-        var keys = new DirectoryInfo(Path.Combine(data, "keys"));
-        var closed = new DirectorySecurity();
-        closed.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
-        Allow(closed, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl);
-        Allow(closed, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl);
-        Allow(closed, identity, FileSystemRights.Modify);
-        keys.SetAccessControl(closed);
+        // The whole folder is closed (R10 #1, #6): the plain .bak, the logs and update.json (which the SYSTEM update task reads) only for
+        // the service, SYSTEM and administrators, not the Users read/write that C:\ProgramData hands down. keys (the store CA and the e-CF key
+        // material, protected with machine DPAPI that any local user could open) gets the same closed ACL of its own (TK-242).
+        folder.SetAccessControl(Closed(identity));
+        new DirectoryInfo(Path.Combine(data, "keys")).SetAccessControl(Closed(identity));
         Console.WriteLine($"Carpeta de datos: {data}");
 
         // Connect as the administrator running the installer, to the server only (the database does not exist yet).
@@ -50,6 +45,16 @@ internal static class PrepareService
         var work = folder.CreateSubdirectory(Path.Combine("backups", "work"));
         work.SetAccessControl(Allow(work.GetAccessControl(), new NTAccount(sqlAccount), FileSystemRights.Modify));
         Console.WriteLine($"SQL Server ({sqlAccount}) puede escribir respaldos en {work.FullName}");
+    }
+
+    private static DirectorySecurity Closed(IdentityReference service)
+    {
+        var closed = new DirectorySecurity();
+        closed.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        Allow(closed, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl);
+        Allow(closed, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl);
+        Allow(closed, service, FileSystemRights.Modify);
+        return closed;
     }
 
     private static T Allow<T>(T security, IdentityReference account, FileSystemRights rights) where T : FileSystemSecurity

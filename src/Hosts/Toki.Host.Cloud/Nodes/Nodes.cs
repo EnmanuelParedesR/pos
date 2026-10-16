@@ -30,6 +30,8 @@ public static class CloudAuth
 public sealed record RegisterNodeRequest(string? Code, string? NodeName, string? PublicKey = null);
 /// <param name="NodeSecret">Only for a node that sent no public key (before TK-241, and only while the migration window is open).</param>
 public sealed record RegisterNodeResponse(Guid TenantId, Guid StoreId, Guid NodeId, string? NodeSecret);
+/// <param name="PublicKey">R10 #5: the key a node from before TK-241 moves to (SubjectPublicKeyInfo, Base64).</param>
+public sealed record RekeyNodeRequest(string? PublicKey);
 
 internal static class NodeEndpoints
 {
@@ -64,6 +66,19 @@ internal static class NodeEndpoints
             return Results.Ok(new RegisterNodeResponse(node.TenantId, node.StoreId, node.Id, secret));
         }).AllowAnonymous().RequireRateLimiting(CloudAuth.RegisterNodeRateLimit);
 
+        // R10 #5: the way out of the shared secret. A node signed in with its secret hands its new public key; the secret stops working at the
+        // node's first signed call (NodeAuthenticationHandler), so an answer lost on the way never locks the store out. Calling it again replaces the key.
+        app.MapPost("/api/nodes/rekey", async (RekeyNodeRequest request, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
+        {
+            if (user.FindFirstValue(NodeAuthenticationHandler.CredentialClaim) != NodeAuthenticationHandler.SecretCredential)
+                return EndpointExtensions.Problem(Error.Conflict("Nodes.AlreadyKeyed", "Esta caja ya firma con su llave."));
+            if (NodeSignature.PublicKey(request.PublicKey) is not { } publicKey)
+                return EndpointExtensions.Problem(Error.Validation("Nodes.InvalidKey", "La llave pública no es válida."));
+            var nodeId = NodeIdentity.From(user).NodeId;
+            await db.Nodes.Where(n => n.Id == nodeId).ExecuteUpdateAsync(s => s.SetProperty(n => n.PublicKey, publicKey), ct);
+            return Results.NoContent();
+        }).RequireAuthorization(CloudAuth.NodePolicy);
+
         // TK-241: the store disconnected; its credentials stop working here too.
         app.MapPost("/api/nodes/revoke", async (ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
@@ -88,15 +103,18 @@ internal static class NodeEndpoints
 }
 
 /// <summary>TK-241: <c>Authorization: Node &lt;nodeId&gt;.&lt;unixSeconds&gt;.&lt;nonce&gt;.&lt;signature&gt;</c>, the signature (ECDSA P-256, SHA-256,
-/// IEEE P1363, Base64Url) over <c>nodeId.unixSeconds.nonce.METHOD /path?query</c> with the node's private key. Valid for
+/// IEEE P1363, Base64Url) over <c>nodeId.unixSeconds.nonce.METHOD /path?query bodyHash</c> with the node's private key, bodyHash being
+/// Base64Url(SHA-256(body)) (of nothing for an empty body, R10 #7). Valid for
 /// <see cref="Window"/> either side of the cloud's clock and once only (the nonce). The store signs the same text (Toki.Sync CloudClient).</summary>
 public static class NodeSignature
 {
     /// <summary>Wide on purpose: shop PCs' clocks drift; the store also corrects by the cloud's Date header.</summary>
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
 
-    public static string Payload(Guid nodeId, long unixSeconds, string nonce, string method, string pathAndQuery) =>
-        $"{nodeId}.{unixSeconds}.{nonce}.{method.ToUpperInvariant()} {pathAndQuery}";
+    public static string Payload(Guid nodeId, long unixSeconds, string nonce, string method, string pathAndQuery, string bodyHash) =>
+        $"{nodeId}.{unixSeconds}.{nonce}.{method.ToUpperInvariant()} {pathAndQuery} {bodyHash}";
+
+    public static string BodyHash(ReadOnlySpan<byte> body) => Base64Url(SHA256.HashData(body));
 
     /// <summary>The SubjectPublicKeyInfo of a P-256 key, or null.</summary>
     public static byte[]? PublicKey(string? base64)
@@ -153,6 +171,10 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
     TimeProvider clock, NodeNonces nonces, IConfiguration config)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
+    /// <summary>How the node signed in: <see cref="SecretCredential"/> or "key". Only a secret sign-in may rekey (R10 #5).</summary>
+    public const string CredentialClaim = "node_credential";
+    public const string SecretCredential = "secret";
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var header = Request.Headers.Authorization.ToString();
@@ -162,7 +184,7 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
         if (parts.Length is not (2 or 4) || !Guid.TryParse(parts[0], out var nodeId)) return AuthenticateResult.Fail("Malformed node credentials.");
 
         var node = await db.Nodes.AsNoTracking().SingleOrDefaultAsync(n => n.Id == nodeId, Context.RequestAborted);
-        if (node is null || !(parts.Length == 2 ? SecretMatches(node, parts[1]) : SignatureMatches(node, parts))) return AuthenticateResult.Fail("Invalid node credentials.");
+        if (node is null || !(parts.Length == 2 ? SecretMatches(node, parts[1]) : await SignatureMatchesAsync(node, parts))) return AuthenticateResult.Fail("Invalid node credentials.");
         // TK-189: revoked or disabled. The node keeps its events and retries; nothing is lost.
         if (node.RevokedUtc is not null) return AuthenticateResult.Fail("Revoked node.");
         if (await db.Tenants.AnyAsync(t => t.Id == node.TenantId && t.DisabledUtc != null, Context.RequestAborted)) return AuthenticateResult.Fail("Disabled tenant.");
@@ -172,7 +194,11 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
             new Claim(TenantClaims.TenantId, node.TenantId.ToString()),
             new Claim(TenantClaims.StoreId, node.StoreId.ToString()),
             new Claim(TenantClaims.NodeId, node.Id.ToString()),
+            new Claim(CredentialClaim, parts.Length == 2 ? SecretCredential : "key"),
         ], CloudAuth.NodeScheme);
+        // R10 #5: the first signed call of a node that moved off its secret ends the secret.
+        if (parts.Length == 4 && node.SecretHash.Length > 0)
+            await db.Nodes.Where(n => n.Id == node.Id).ExecuteUpdateAsync(s => s.SetProperty(n => n.SecretHash, Array.Empty<byte>()), Context.RequestAborted);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), CloudAuth.NodeScheme));
     }
 
@@ -180,13 +206,17 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
         config.GetValue(CloudAuth.AcceptSharedSecretSetting, true) && node.SecretHash.Length > 0
         && CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(secret)), node.SecretHash);
 
-    private bool SignatureMatches(Node node, string[] parts)
+    private async Task<bool> SignatureMatchesAsync(Node node, string[] parts)
     {
         var (nonce, signature) = (parts[2], parts[3]);
         if (node.PublicKey is null || !long.TryParse(parts[1], out var seconds) || nonce.Length is < 16 or > 64) return false;
         var now = clock.GetUtcNow();
         if ((now - DateTimeOffset.FromUnixTimeSeconds(Math.Clamp(seconds, 0, 253_402_300_799))).Duration() > NodeSignature.Window) return false;
-        var payload = NodeSignature.Payload(node.Id, seconds, nonce, Request.Method, $"{Request.Path}{Request.QueryString}");
+        // R10 #7: the body is signed too. Buffered so the endpoint still reads it.
+        Request.EnableBuffering();
+        var bodyHash = NodeSignature.Base64Url(await SHA256.HashDataAsync(Request.Body, Context.RequestAborted));
+        Request.Body.Position = 0;
+        var payload = NodeSignature.Payload(node.Id, seconds, nonce, Request.Method, $"{Request.Path}{Request.QueryString}", bodyHash);
         return NodeSignature.Verify(node.PublicKey, payload, signature) && nonces.TryUse($"{node.Id}.{nonce}", now.UtcDateTime);
     }
 }

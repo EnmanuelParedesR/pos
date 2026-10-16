@@ -86,11 +86,12 @@ internal static class VoidDocument
             if (await db.Documents.AnyAsync(x => x.ModifiedENcf == d.ENcf && x.Status != SubmissionStatus.Voided, ct)) return FiscalErrors.HasNotes;
             var business = await settings.GetBusinessProfileAsync(ct);
             if (!Rnc.IsValid(business.Rnc)) return FiscalErrors.MissingIssuerRnc;
-            if (d.Attempts > 0 && !provider.IsSimulated)
+            var dgii = provider.For(d.Environment); // R10 #2: asks the environment the document was signed for
+            if (d.Attempts > 0 && !dgii.IsSimulated)
             {
                 try
                 {
-                    if (await provider.FindAsync(business.Rnc!, d.ENcf, d.SecurityCode, d.Channel, ct) is not null) return FiscalErrors.AlreadySent;
+                    if (await dgii.FindAsync(business.Rnc!, d.ENcf, d.SecurityCode, d.Channel, ct) is not null) return FiscalErrors.AlreadySent;
                 }
                 catch (Exception) when (!ct.IsCancellationRequested)
                 {

@@ -63,7 +63,7 @@ public sealed class AccompanimentTests(MailingCloudApp app) : IClassFixture<Mail
         (row.GetProperty("storeName").GetString(), row.GetProperty("tenantName").GetString(), row.GetProperty("status").GetString())
             .ShouldBe(("Carnicería Agenda", owner.Email, "New"));
 
-        var session1 = new DateTime(2026, 10, 20, 14, 0, 0, DateTimeKind.Utc); // 10:00 AM at the store
+        var session1 = app.Clock.GetUtcNow().UtcDateTime.Date.AddDays(4).AddHours(14); // 10:00 AM at the store
         var audited = await app.InDbAsync(db => db.PlatformAudit.CountAsync());
         var updated = await staff.Client.PutAsJsonAsync($"/api/platform/accompaniment/{id}", new { status = "Scheduled", session1Utc = session1, notes = "Llamar antes" });
         updated.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -72,7 +72,7 @@ public sealed class AccompanimentTests(MailingCloudApp app) : IClassFixture<Mail
             .ShouldContain(a => a.Method == "PUT" && a.Path == $"/api/platform/accompaniment/{id}" && a.Email == CloudApp.StaffEmail);
 
         var first = MailTo(owner.Email).Where(m => m.Subject.Contains("cita 1")).ShouldHaveSingleItem();
-        first.Body.ShouldContain("20/10/2026 a las 10:00 AM");
+        first.Body.ShouldContain($"{session1:dd/MM/yyyy} a las 10:00 AM");
         first.Body.ShouldContain("Toki nunca le pedirá esa clave");
         foreach (var item in AccompanimentChecklist.Items) first.Body.ShouldContain(item);
 
@@ -91,8 +91,16 @@ public sealed class AccompanimentTests(MailingCloudApp app) : IClassFixture<Mail
         second.Body.ShouldContain("declaración jurada");
         second.Body.ShouldNotContain(AccompanimentChecklist.Items[0]);
 
+        // R10 #12: a date in the past, or session 2 before session 1, is refused; a PUT without dates keeps them.
+        var past = app.Clock.GetUtcNow().UtcDateTime.AddDays(-1);
+        (await (await staff.Client.PutAsJsonAsync($"/api/platform/accompaniment/{id}", new { status = "Scheduled", session1Utc = past })).ErrorCode())
+            .ShouldBe("Accompaniment.InvalidDates");
+        (await (await staff.Client.PutAsJsonAsync($"/api/platform/accompaniment/{id}", new { status = "Scheduled", session2Utc = session1.AddHours(-1) })).ErrorCode())
+            .ShouldBe("Accompaniment.InvalidDates");
+
         // Closed: the store may ask again; a bad status or an unknown id is refused.
-        (await staff.Client.PutAsJsonAsync($"/api/platform/accompaniment/{id}", new { status = "Cancelled" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var cancelled = await (await staff.Client.PutAsJsonAsync($"/api/platform/accompaniment/{id}", new { status = "Cancelled" })).Json();
+        (cancelled.GetProperty("session1Utc").GetDateTime(), cancelled.GetProperty("session2Utc").GetDateTime()).ShouldBe((session1, session2));
         (await staff.Client.PutAsJsonAsync($"/api/platform/accompaniment/{id}", new { status = (string?)null })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await staff.Client.PutAsJsonAsync($"/api/platform/accompaniment/{Guid.NewGuid()}", new { status = "New" })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
         var renewed = await (await store.Client.PostAsJsonAsync("/fiscal/v1/accompaniment", new { contactName = "Luis", phone = "8095557777" })).Json();

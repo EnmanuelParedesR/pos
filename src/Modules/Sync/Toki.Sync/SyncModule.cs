@@ -110,23 +110,55 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
             throw new InvalidOperationException("La clave de la nube no se puede leer en esta PC: desconecte la tienda y conéctela con un código nuevo.", e);
         }
         using var request = new HttpRequestMessage(HttpMethod.Post, connection.CloudUrl + path) { Content = content };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Node", secret.StartsWith(KeyPrefix, StringComparison.Ordinal)
-            ? Sign(connection.NodeId, Convert.FromBase64String(secret[KeyPrefix.Length..]), "POST", path)
-            : $"{connection.NodeId}.{secret}");
+        if (secret.StartsWith(KeyPrefix, StringComparison.Ordinal))
+        {
+            await content.LoadIntoBufferAsync(ct); // the bytes signed are the bytes sent
+            var body = await content.ReadAsByteArrayAsync(ct);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Node", Sign(connection.NodeId, Convert.FromBase64String(secret[KeyPrefix.Length..]), "POST", path, body));
+        }
+        else request.Headers.Authorization = new AuthenticationHeaderValue("Node", $"{connection.NodeId}.{secret}");
         var response = await http.CreateClient(HttpClientName).SendAsync(request, ct);
         if (response.Headers.Date is { } cloudNow) _skew = cloudNow - clock.GetUtcNow();
         return response;
     }
 
-    /// <summary>TK-241 (ADR-0008): <c>nodeId.unixSeconds.nonce.signature</c>, the signature over <c>nodeId.unixSeconds.nonce.METHOD /path</c>
-    /// (ECDSA P-256, SHA-256). Same text as the cloud's NodeSignature.</summary>
-    internal string Sign(Guid nodeId, byte[] pkcs8, string method, string path)
+    /// <summary>R10 #5: a connection from before TK-241 (shared secret) moves to its own key: the cloud keeps the public half (the secret
+    /// stops working at the first signed call), then the store keeps the private half. Returns the connection to use; on any failure the old
+    /// one (an older cloud without the endpoint, no internet), and the next pass tries again.</summary>
+    public async Task<CloudConnection> RekeyIfNeededAsync(CloudConnection connection, CancellationToken ct)
+    {
+        string secret;
+        try { secret = Protector.Unprotect(connection.NodeSecret); }
+        catch (CryptographicException) { return connection; } // SendAsync reports it
+        if (secret.StartsWith(KeyPrefix, StringComparison.Ordinal)) return connection;
+
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        try
+        {
+            using var response = await SendAsync(connection, RekeyPath, JsonContent.Create(new { publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }), ct);
+            if (!response.IsSuccessStatusCode) return connection;
+        }
+        catch (HttpRequestException) { return connection; }
+        catch (TaskCanceledException) when (!ct.IsCancellationRequested) { return connection; }
+
+        var credential = Protect(KeyPrefix + Convert.ToBase64String(key.ExportPkcs8PrivateKey()));
+        await db.Connections.Where(c => c.Id == connection.Id && c.NodeId == connection.NodeId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.NodeSecret, credential), ct);
+        connection.NodeSecret = credential;
+        return connection;
+    }
+
+    public const string RekeyPath = "/api/nodes/rekey";
+
+    /// <summary>TK-241 (ADR-0008): <c>nodeId.unixSeconds.nonce.signature</c>, the signature over <c>nodeId.unixSeconds.nonce.METHOD /path bodyHash</c>
+    /// (ECDSA P-256, SHA-256), bodyHash = Base64Url(SHA-256(body)) (R10 #7). Same text as the cloud's NodeSignature.</summary>
+    internal string Sign(Guid nodeId, byte[] pkcs8, string method, string path, byte[] body)
     {
         using var key = ECDsa.Create();
         key.ImportPkcs8PrivateKey(pkcs8, out _);
         var seconds = (clock.GetUtcNow() + _skew).ToUnixTimeSeconds();
         var nonce = Base64Url(RandomNumberGenerator.GetBytes(16));
-        var signature = key.SignData(Encoding.UTF8.GetBytes($"{nodeId}.{seconds}.{nonce}.{method} {path}"), HashAlgorithmName.SHA256);
+        var signature = key.SignData(Encoding.UTF8.GetBytes($"{nodeId}.{seconds}.{nonce}.{method} {path} {Base64Url(SHA256.HashData(body))}"), HashAlgorithmName.SHA256);
         return $"{nodeId}.{seconds}.{nonce}.{Base64Url(signature)}";
     }
 

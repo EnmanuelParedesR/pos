@@ -35,7 +35,8 @@ public sealed record CashierSales(Guid CashierId, int Count, decimal Total, int 
 public sealed record CustomerDebt(Guid CustomerId, Guid StoreId, decimal Debt, string? CustomerName = null);
 /// <param name="Total">What all customers owe on credit (fiado) right now.</param>
 public sealed record Receivables(decimal Total, int CustomerCount, IReadOnlyList<CustomerDebt> TopDebtors);
-public sealed record NodeStatus(Guid NodeId, string Name, DateTime? LastEventUtc, DateTime? LastSyncUtc);
+/// <param name="UsesSecret">R10 #5: still signs in with the shared secret from before TK-241 (it moves to its own key on its next upload).</param>
+public sealed record NodeStatus(Guid NodeId, string Name, DateTime? LastEventUtc, DateTime? LastSyncUtc, bool UsesSecret);
 public sealed record StoreSyncStatus(Guid StoreId, string StoreName, DateTime? LastEventUtc, DateTime? LastSyncUtc, int PendingEvents, int FailedEvents, IReadOnlyList<NodeStatus> Nodes);
 
 /// <summary>Read-only queries over the replica for the panel and the assistant. Every query filters by the tenant first.
@@ -210,7 +211,7 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
             var own = nodes.Where(n => n.StoreId == s.Id).OrderBy(n => n.CreatedUtc).ToList();
             return new StoreSyncStatus(s.Id, s.Name, own.Max(n => n.LastEventUtc), own.Max(n => n.LastSyncUtc),
                 waiting.Where(w => w.StoreId == s.Id && !w.Failed).Sum(w => w.Count), waiting.Where(w => w.StoreId == s.Id && w.Failed).Sum(w => w.Count),
-                [.. own.Select(n => new NodeStatus(n.Id, n.Name, n.LastEventUtc, n.LastSyncUtc))]);
+                [.. own.Select(n => new NodeStatus(n.Id, n.Name, n.LastEventUtc, n.LastSyncUtc, n.SecretHash.Length > 0))]);
         })];
     }
 

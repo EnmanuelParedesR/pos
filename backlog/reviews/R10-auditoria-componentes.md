@@ -27,4 +27,17 @@ Comprobado sin problema: la firma del nodo cubre `nodeId.segundos.nonce.MÉTODO 
 
 ## Estado de las correcciones
 
-TK-244.
+TK-244 (issue #214):
+
+1. ✅ `update-service.ps1` exige `Version` `x.y.z`, que `SetupUrl` sea exactamente `<FeedUrl instalado>/TokiSetup-<versión>.exe` (el `FeedUrl` sale del `appsettings.json` instalado, no de `update.json`), y la firma de un certificado de `Updates:SignerThumbprints` o el SHA-256 que el servicio bajó del feed por HTTPS (`TokiSetup-<versión>.exe.sha256`, lo genera `build.ps1`). Sin `-AllowUnsigned`. Descarga a `ProgramData\Toki\updates` (solo SYSTEM, recreada cada vez). `update.json` queda protegido por 6. Pruebas: `UpdateServiceScriptTests` (marcador con `Sha256`, el script rechaza versión, URL y falta de verificación).
+2. ✅ La cola y las anulaciones usan `provider.For(d.Environment)`; `Simulated` va al proveedor simulado y nunca sale. Prueba: `EcfSubmissionEnvironmentTests`.
+3. ✅ Salir de producción con `eCF` emitidos responde 409 (`Fiscal.ModeBlocked`) salvo con `Fiscal:AllowLeavingProduction=true`. Prueba en `StoreOperationsTests`.
+4. ✅ `CheckedUtc` con `[DateTimeOffset]::Parse(...).UtcDateTime`; verificación por SHA-256 (1); errores al registro de eventos (Aplicación, origen `Toki`).
+5. ✅ `POST /api/nodes/rekey { publicKey }` (solo con el secreto) guarda la llave; el secreto se borra en la primera llamada firmada del nodo, así una respuesta perdida no deja la tienda fuera. El `CloudUploader` lo llama mientras la credencial no sea de llave. "Tiendas" marca "Con clave compartida". `Nodes:AcceptSharedSecret: true` explícito. Pruebas: `NodeKeyTests`, `SyncTests`.
+6. ✅ `prepare-service` pone ACL protegida en todo `ProgramData\Toki` (SYSTEM y Administradores control total, el servicio modificar); la cuenta de SQL solo en `backups\work`; `keys` igual que antes.
+7. ✅ El texto firmado termina en `Base64Url(SHA-256(cuerpo))` en los dos lados (los nonces en memoria siguen como `shortcut:`).
+8. ⏸️ Pendiente (instalador, sin cambio).
+9. ⏸️ Pendiente.
+10. ✅ `CopyTo` dentro de la carpeta de respaldos o de `ProgramData\Toki` responde `Backup.CopyInsideData`; la pantalla explica los permisos de una carpeta compartida.
+11. ⏸️ Pendiente.
+12. ✅ El `PUT` solo cambia las fechas que trae, exige citas futuras y la segunda después de la primera, e índice único filtrado de una solicitud abierta por tienda (migración `AccompanimentOneOpen`; dos toques a la vez devuelven la misma).

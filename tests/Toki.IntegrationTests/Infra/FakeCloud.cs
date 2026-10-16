@@ -42,6 +42,7 @@ public sealed class FakeCloud : HttpMessageHandler
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         var bytes = request.Content is null ? [] : await request.Content.ReadAsByteArrayAsync(cancellationToken);
+        var raw = bytes;
         var gzip = request.Content?.Headers.ContentEncoding.Contains("gzip") == true;
         if (gzip)
         {
@@ -51,7 +52,7 @@ public sealed class FakeCloud : HttpMessageHandler
         }
         var body = bytes.Length == 0 ? default : JsonDocument.Parse(bytes).RootElement.Clone();
         var path = request.RequestUri!.AbsolutePath;
-        lock (Requests) Requests.Add(new Received(request.RequestUri.GetLeftPart(UriPartial.Authority), path, request.Headers.Authorization?.ToString(), gzip, body));
+        lock (Requests) Requests.Add(new Received(request.RequestUri.GetLeftPart(UriPartial.Authority), path, request.Headers.Authorization?.ToString(), gzip, body, raw));
 
         if (Respond?.Invoke(path) is { } custom) return custom;
         return path switch
@@ -59,6 +60,7 @@ public sealed class FakeCloud : HttpMessageHandler
             "/api/nodes/register" when body.GetProperty("code").GetString() == ValidCode && Register(body) =>
                 Json(new { tenantId = TenantId, storeId = StoreId, nodeId = NodeId, nodeSecret = IssueSecret ? NodeSecret : null }),
             "/api/nodes/revoke" => new HttpResponseMessage(HttpStatusCode.NoContent),
+            "/api/nodes/rekey" when Register(body) => new HttpResponseMessage(HttpStatusCode.NoContent),
             "/ingest/v1/events" =>
                 Json(new { accepted = body.GetProperty("events").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).Where(Accept).ToList() }),
             "/fiscal/v1/archive" => new HttpResponseMessage(HttpStatusCode.OK),
@@ -82,8 +84,10 @@ public sealed class FakeCloud : HttpMessageHandler
         key.ImportSubjectPublicKeyInfo(NodePublicKey, out _);
         signature = signature.Replace('-', '+').Replace('_', '/');
         var bytes = Convert.FromBase64String(signature.PadRight(signature.Length + (4 - signature.Length % 4) % 4, '='));
-        return key.VerifyData(Encoding.UTF8.GetBytes($"{node}.{seconds}.{nonce}.POST {r.Path}"), bytes, HashAlgorithmName.SHA256);
+        var bodyHash = Convert.ToBase64String(SHA256.HashData(r.Raw)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        return key.VerifyData(Encoding.UTF8.GetBytes($"{node}.{seconds}.{nonce}.POST {r.Path} {bodyHash}"), bytes, HashAlgorithmName.SHA256);
     }
 
-    public sealed record Received(string Origin, string Path, string? Authorization, bool Gzip, JsonElement Body);
+    /// <param name="Raw">The body as sent (before inflating), which the node signature covers (R10 #7).</param>
+    public sealed record Received(string Origin, string Path, string? Authorization, bool Gzip, JsonElement Body, byte[] Raw);
 }

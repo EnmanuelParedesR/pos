@@ -20,7 +20,7 @@ const store = (nodes: number): StoreSyncStatus[] => [
     lastSyncUtc: nodes ? new Date().toISOString() : null,
     pendingEvents: 0,
     failedEvents: 0,
-    nodes: Array.from({ length: nodes }, (_, i) => ({ nodeId: `n${i}`, name: `Caja ${i + 1}`, lastEventUtc: null, lastSyncUtc: new Date().toISOString() })),
+    nodes: Array.from({ length: nodes }, (_, i) => ({ nodeId: `n${i}`, name: `Caja ${i + 1}`, lastEventUtc: null, lastSyncUtc: new Date().toISOString(), usesSecret: false })),
   },
 ];
 

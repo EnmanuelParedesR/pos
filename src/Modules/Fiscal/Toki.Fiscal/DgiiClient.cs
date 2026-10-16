@@ -33,11 +33,19 @@ internal interface IEcfProvider
     Task<DgiiAnswer?> FindAsync(string issuerRnc, string encf, string securityCode, EcfChannel channel, CancellationToken ct);
     /// <summary>An ANECF (e-NCF void).</summary>
     Task<DgiiAnswer> VoidAsync(string issuerRnc, string signedAnecf, CancellationToken ct);
+
+    /// <summary>R10 #2: the receiver of a document signed for <paramref name="environment"/>, whatever the store's environment is now.
+    /// Simulated documents never leave the store; a fixed provider refuses (and the queue retries) a document of another environment.</summary>
+    IEcfProvider For(FiscalEnvironment environment) =>
+        environment == Environment ? this
+        : environment == FiscalEnvironment.Simulated ? SimulatedEcfProvider.Instance
+        : throw new InvalidOperationException($"Este proveedor envía a {Environment}, no a {environment}.");
 }
 
 /// <summary>Stand-in while the store is not certified (<c>Fiscal:Provider</c> = <c>Simulated</c>). Nothing reaches the DGII, so nothing is accepted.</summary>
 internal sealed class SimulatedEcfProvider : IEcfProvider
 {
+    public static readonly SimulatedEcfProvider Instance = new();
     private static readonly Task<DgiiAnswer> Simulated = Task.FromResult(new DgiiAnswer(DgiiState.Simulated));
 
     public bool IsSimulated => true;

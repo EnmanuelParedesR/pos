@@ -16,6 +16,9 @@ internal sealed class UpdateSettings
     public TimeOnly OpensAt { get; set; } = new(7, 0);
     public TimeOnly ClosesAt { get; set; } = new(22, 0);
     public int CheckEveryMinutes { get; set; } = 30;
+    /// <summary>Read by update-service.ps1, not by the service: thumbprints of Toki's Authenticode certificate. Empty until it exists;
+    /// meanwhile the setup must match the SHA-256 published in the feed (TokiSetup-{version}.exe.sha256, R10 #1).</summary>
+    public string[] SignerThumbprints { get; set; } = [];
 }
 
 internal static class UpdateWindow
@@ -35,8 +38,19 @@ internal static class UpdateWindow
             : null;
 }
 
-/// <summary>What the scripted update (deploy/installer/update-service.ps1) reads: whether there is a newer server and whether it may restart now.</summary>
-internal sealed record UpdateMarker(string Version, string SetupUrl, bool CanApplyNow, DateTime CheckedUtc);
+/// <summary>What the scripted update (deploy/installer/update-service.ps1) reads: whether there is a newer server, whether it may restart now,
+/// and the setup's SHA-256 as the feed publishes it (fetched over HTTPS).</summary>
+internal sealed record UpdateMarker(string Version, string SetupUrl, string Sha256, bool CanApplyNow, DateTime CheckedUtc)
+{
+    public static UpdateMarker Create(string feed, string version, string sha256File, bool canApplyNow, DateTime checkedUtc)
+    {
+        var hash = sha256File.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+        if (hash.Length != 64 || !hash.All(char.IsAsciiHexDigit)) throw new InvalidOperationException($"TokiSetup-{version}.exe.sha256 no trae un SHA-256.");
+        return new(version, $"{feed}/TokiSetup-{version}.exe", hash.ToUpperInvariant(), canApplyNow, checkedUtc);
+    }
+
+    public string ToJson() => JsonSerializer.Serialize(this);
+}
 
 /// <summary>TK-242: the store server cannot update itself in place (it is a Windows service, Velopack only updates per-user apps).
 /// It checks the feed, logs "Hay una actualización" and writes C:\ProgramData\Toki\update.json; a scheduled task applies it when allowed.</summary>
@@ -66,6 +80,8 @@ internal sealed class ServerUpdateCheck(IHttpClientFactory http, IServiceScopeFa
     private async Task CheckAsync(UpdateSettings s, CancellationToken ct)
     {
         var feed = s.FeedUrl.TrimEnd('/');
+        if (!feed.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Updates:FeedUrl tiene que ser https.");
         using var response = await http.CreateClient().GetAsync($"{feed}/releases.{s.Channel}.json", ct);
         response.EnsureSuccessStatusCode();
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(ct), cancellationToken: ct);
@@ -84,6 +100,7 @@ internal sealed class ServerUpdateCheck(IHttpClientFactory http, IServiceScopeFa
         var version = newest.ToString(3);
         log.LogWarning("Hay una actualización de Toki: {Version} (esta PC tiene {Current}). {When}", version, current.ToString(3),
             canApply ? "Se instala en la próxima revisión." : "Se instala cuando no haya turnos abiertos o fuera del horario.");
-        await File.WriteAllTextAsync(MarkerPath, JsonSerializer.Serialize(new UpdateMarker(version, $"{feed}/TokiSetup-{version}.exe", canApply, clock.GetUtcNow().UtcDateTime)), ct);
+        var sha256 = await http.CreateClient().GetStringAsync($"{feed}/TokiSetup-{version}.exe.sha256", ct);
+        await File.WriteAllTextAsync(MarkerPath, UpdateMarker.Create(feed, version, sha256, canApply, clock.GetUtcNow().UtcDateTime).ToJson(), ct);
     }
 }

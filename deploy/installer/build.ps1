@@ -8,7 +8,8 @@
     - vpk, Velopack's CLI:  dotnet tool install -g vpk
     - Inno Setup 6 (ISCC.exe), https://jrsoftware.org/isinfo.php
   Without vpk or ISCC it publishes what it can and says what is missing.
-  Output: artifacts\installer\TokiSetup-<version>.exe, and artifacts\releases\ (the Velopack feed: releases.<channel>.json + packages).
+  Output: artifacts\installer\TokiSetup-<version>.exe, and artifacts\releases\ (the Velopack feed: releases.<channel>.json + packages,
+  plus the setup and its TokiSetup-<version>.exe.sha256). The feed must be https.
   Release feed: upload artifacts\releases\* and the setup to the feed URL (GitHub Release or an Azure Blob container); stores read it
   through "Updates": { "FeedUrl" } in both appsettings.
   Signing: set TOKI_SIGNTOOL to the signtool command (see toki.iss) once the Authenticode certificate exists.
@@ -31,7 +32,9 @@ function Publish($project, $out) {
     # The feed and the channel go into the published settings; empty FeedUrl = no update checks.
     $settings = Join-Path $out 'appsettings.json'
     $json = Get-Content $settings -Raw | ConvertFrom-Json
-    $json | Add-Member -Force -NotePropertyName Updates -NotePropertyValue ([pscustomobject]@{ FeedUrl = $FeedUrl; Channel = $Channel })
+    if (-not $json.Updates) { $json | Add-Member -NotePropertyName Updates -NotePropertyValue ([pscustomobject]@{}) }
+    $json.Updates | Add-Member -Force -NotePropertyName FeedUrl -NotePropertyValue $FeedUrl
+    $json.Updates | Add-Member -Force -NotePropertyName Channel -NotePropertyValue $Channel
     $json | ConvertTo-Json -Depth 20 | Set-Content $settings -Encoding utf8
 }
 Publish 'src\Hosts\Toki.Host.Local' (Join-Path $publish 'server')

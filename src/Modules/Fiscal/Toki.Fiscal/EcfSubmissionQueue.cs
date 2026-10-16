@@ -47,7 +47,9 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
             if (d.Status == SubmissionStatus.Pending && !await ClaimAsync(d, now, ct)) continue;
             try
             {
-                var answer = d.Status == SubmissionStatus.Sent ? await provider.GetResultAsync(d.TrackId!, ct) : await SendAsync(d, rnc, mayHaveArrived, ct);
+                // R10 #2: the client of the document's own environment (a change of environment never redirects it); Simulated never leaves.
+                var dgii = provider.For(d.Environment);
+                var answer = d.Status == SubmissionStatus.Sent ? await dgii.GetResultAsync(d.TrackId!, ct) : await SendAsync(dgii, d, rnc, mayHaveArrived, ct);
                 Apply(d, answer, now);
             }
             // An HTTP timeout is a TaskCanceledException too: only our own shutdown token ends the pass.
@@ -64,7 +66,7 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
         {
             try
             {
-                var answer = await provider.VoidAsync(rnc, Unzip(v.SignedXml), ct);
+                var answer = await provider.For(v.Environment).VoidAsync(rnc, Unzip(v.SignedXml), ct);
                 (v.Status, v.Message, v.ResultUtc, v.NextAttemptUtc) = (Final(answer.State), answer.Messages, now, null);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
@@ -92,12 +94,12 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
     }
 
     /// <param name="mayHaveArrived">A previous try failed (a timeout after delivery) or was cut by a crash: ask the DGII before sending.</param>
-    private async Task<DgiiAnswer> SendAsync(FiscalDocument d, string rnc, bool mayHaveArrived, CancellationToken ct)
+    private static async Task<DgiiAnswer> SendAsync(IEcfProvider dgii, FiscalDocument d, string rnc, bool mayHaveArrived, CancellationToken ct)
     {
-        if (mayHaveArrived && await provider.FindAsync(rnc, d.ENcf, d.SecurityCode, d.Channel, ct) is { } known) return known;
+        if (mayHaveArrived && await dgii.FindAsync(rnc, d.ENcf, d.SecurityCode, d.Channel, ct) is { } known) return known;
         return d.Channel == EcfChannel.Rfce
-            ? await provider.SendRfceAsync(rnc, d.ENcf, Unzip(d.RfceXml!), ct)
-            : await provider.SendEcfAsync(rnc, d.ENcf, Unzip(d.SignedXml), ct);
+            ? await dgii.SendRfceAsync(rnc, d.ENcf, Unzip(d.RfceXml!), ct)
+            : await dgii.SendEcfAsync(rnc, d.ENcf, Unzip(d.SignedXml), ct);
     }
 
     private static void Apply(FiscalDocument d, DgiiAnswer a, DateTime now)

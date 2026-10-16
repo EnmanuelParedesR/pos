@@ -88,10 +88,13 @@ internal sealed class ModeEcfSigner(FiscalMode mode, IEcfSigner configured, Cert
 /// <summary>Sends to the appsettings' environment until one is saved; one DGII client per environment, made on first use.</summary>
 internal sealed class ModeEcfProvider(FiscalMode mode, FiscalEnvironment configured, Func<FiscalEnvironment, DgiiClient> client) : IEcfProvider, IDisposable
 {
-    private static readonly SimulatedEcfProvider Simulated = new();
     private readonly ConcurrentDictionary<FiscalEnvironment, DgiiClient> _clients = new();
 
-    private IEcfProvider Current => (mode.Environment ?? configured) is var env && env == FiscalEnvironment.Simulated ? Simulated : _clients.GetOrAdd(env, client);
+    private IEcfProvider Current => For(mode.Environment ?? configured);
+
+    /// <summary>R10 #2: each document goes to the environment it was signed for, even after the store changed environment.</summary>
+    public IEcfProvider For(FiscalEnvironment environment) =>
+        environment == FiscalEnvironment.Simulated ? SimulatedEcfProvider.Instance : _clients.GetOrAdd(environment, client);
 
     /// <summary>The DGII client of the current environment (directory lookups), or null while simulated.</summary>
     public DgiiClient? Dgii => Current as DgiiClient;
@@ -112,8 +115,9 @@ internal sealed class ModeEcfProvider(FiscalMode mode, FiscalEnvironment configu
 
 /// <summary>TK-238: what stands between the store and each environment. Going back to Simulated only needs an empty queue; a DGII environment needs a
 /// valid certificate, the RNC and the address; CerteCF and production need their own e-NCF ranges (TesteCF loads its own); production needs the
-/// DGII's verification ticked in the certification assistant.</summary>
-internal sealed class FiscalModeChecks(FiscalDbContext db, FiscalDocuments documents, EcfCertificate certificate, ISettingsQueries settings, TimeProvider clock)
+/// DGII's verification ticked in the certification assistant. Leaving production once it issued e-CF needs support (R10 #3).</summary>
+internal sealed class FiscalModeChecks(FiscalDbContext db, FiscalDocuments documents, EcfCertificate certificate, ISettingsQueries settings, TimeProvider clock,
+    IConfiguration config)
 {
     /// <summary>"Verificación del RNC por la DGII" in EcfCertificationPanel.razor: the step before the authorization.</summary>
     public const int VerifiedStep = CertificationSteps.Count - 2;
@@ -122,6 +126,10 @@ internal sealed class FiscalModeChecks(FiscalDbContext db, FiscalDocuments docum
     {
         var blockers = new List<string>();
         if (target == documents.Environment) return blockers;
+        // R10 #3: a store that already issued real e-CF does not go back with one click; support sets Fiscal:AllowLeavingProduction.
+        if (documents.Environment == FiscalEnvironment.eCF && !config.GetValue<bool>("Fiscal:AllowLeavingProduction")
+            && await db.Documents.AnyAsync(d => d.Environment == FiscalEnvironment.eCF, ct))
+            blockers.Add("La tienda ya emitió comprobantes en producción: no puede salir de producción desde aquí. Llame a soporte de Toki.");
         var waiting = await db.Documents.CountAsync(d => d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.Sent, ct)
             + await db.Voids.CountAsync(v => v.Status == SubmissionStatus.Pending || v.Status == SubmissionStatus.Sent, ct);
         if (waiting > 0)

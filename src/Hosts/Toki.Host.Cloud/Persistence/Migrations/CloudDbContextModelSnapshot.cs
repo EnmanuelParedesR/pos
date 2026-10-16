@@ -352,6 +352,10 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.HasIndex("TenantId", "StoreId");
 
+                    b.HasIndex(new[] { "TenantId", "StoreId" }, "IX_AccompanimentRequests_OneOpen")
+                        .IsUnique()
+                        .HasFilter("[Status] <> 'Certified' AND [Status] <> 'Cancelled'");
+
                     b.ToTable("AccompanimentRequests", "cloud");
                 });
 

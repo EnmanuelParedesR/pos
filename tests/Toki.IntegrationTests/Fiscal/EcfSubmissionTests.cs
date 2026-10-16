@@ -20,7 +20,7 @@ internal sealed class TestEcfProvider : IEcfProvider
     public List<string> Calls { get; } = [];
 
     public bool IsSimulated => false;
-    public FiscalEnvironment Environment => FiscalEnvironment.TesteCF;
+    public FiscalEnvironment Environment { get; init; } = FiscalEnvironment.TesteCF;
 
     private Task<DgiiAnswer> Next(string call)
     {
@@ -55,7 +55,8 @@ internal static class TestQueue
         app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Documents.AsNoTracking().SingleAsync(d => d.Id == id));
 
     /// <summary>A signed document waiting to be sent, as a real signer would leave it.</summary>
-    public static Task<Guid> PendingAsync(this TokiApp app, string encf, DateTime deadlineUtc, DateTime? nextAttemptUtc = null, EcfChannel channel = EcfChannel.Ecf) =>
+    public static Task<Guid> PendingAsync(this TokiApp app, string encf, DateTime deadlineUtc, DateTime? nextAttemptUtc = null, EcfChannel channel = EcfChannel.Ecf,
+        FiscalEnvironment environment = FiscalEnvironment.TesteCF) =>
         app.InScopeAsync(async sp =>
         {
             var db = sp.GetRequiredService<FiscalDbContext>();
@@ -64,7 +65,7 @@ internal static class TestQueue
                 Id = Guid.CreateVersion7(), ENcf = encf, Type = EcfType.Consumer32, ReferenceId = Guid.NewGuid(), Total = 1m, SignedUtc = app.Clock.GetUtcNow().UtcDateTime,
                 SecurityCode = "X", SignedXml = EcfSubmissionQueue.Zip("<ECF/>"), Status = SubmissionStatus.Pending, SubmitDeadlineUtc = deadlineUtc,
                 NextAttemptUtc = nextAttemptUtc, Channel = channel, RfceXml = channel == EcfChannel.Rfce ? EcfSubmissionQueue.Zip("<RFCE/>") : null,
-                Environment = FiscalEnvironment.TesteCF,
+                Environment = environment,
             };
             db.Documents.Add(d);
             await db.SaveChangesAsync();
@@ -219,5 +220,49 @@ public sealed class EcfSubmissionRejectionTests(TokiApp app) : IClassFixture<Tok
         list.EnumerateArray().Select(d => d.GetProperty("eNcf").GetString()).ShouldContain("E320000096001");
         EcfSubmissionQueue.RetryDelay(10).ShouldBe(TimeSpan.FromMinutes(60));
         EcfSubmissionQueue.PollDelay(20).ShouldBe(TimeSpan.FromMinutes(5));
+    }
+}
+
+/// <summary>R10 #2: the store moved to production while a TesteCF document was still waiting. The queue sends it to TesteCF, and a
+/// Simulated document never leaves the store. Own app.</summary>
+public sealed class EcfSubmissionEnvironmentTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    /// <summary>Production now; one scripted DGII per environment, as ModeEcfProvider keeps one client per environment.</summary>
+    private sealed class Router : IEcfProvider
+    {
+        public Dictionary<FiscalEnvironment, TestEcfProvider> Dgii { get; } = new()
+        {
+            [FiscalEnvironment.TesteCF] = new() { Environment = FiscalEnvironment.TesteCF },
+            [FiscalEnvironment.eCF] = new() { Environment = FiscalEnvironment.eCF },
+        };
+
+        private TestEcfProvider Current => Dgii[FiscalEnvironment.eCF];
+        public bool IsSimulated => false;
+        public FiscalEnvironment Environment => FiscalEnvironment.eCF;
+        public IEcfProvider For(FiscalEnvironment environment) => environment == FiscalEnvironment.Simulated ? SimulatedEcfProvider.Instance : Dgii[environment];
+        public Task<DgiiAnswer> SendEcfAsync(string issuerRnc, string encf, string signedXml, CancellationToken ct) => Current.SendEcfAsync(issuerRnc, encf, signedXml, ct);
+        public Task<DgiiAnswer> GetResultAsync(string trackId, CancellationToken ct) => Current.GetResultAsync(trackId, ct);
+        public Task<DgiiAnswer> SendRfceAsync(string issuerRnc, string encf, string signedRfce, CancellationToken ct) => Current.SendRfceAsync(issuerRnc, encf, signedRfce, ct);
+        public Task<DgiiAnswer?> FindAsync(string issuerRnc, string encf, string securityCode, EcfChannel channel, CancellationToken ct) =>
+            Current.FindAsync(issuerRnc, encf, securityCode, channel, ct);
+        public Task<DgiiAnswer> VoidAsync(string issuerRnc, string signedAnecf, CancellationToken ct) => Current.VoidAsync(issuerRnc, signedAnecf, ct);
+    }
+
+    [Fact]
+    public async Task Each_document_goes_to_the_environment_it_was_signed_for_and_simulated_ones_never_leave()
+    {
+        await app.AdminAsync();
+        var deadline = app.Clock.GetUtcNow().UtcDateTime.AddHours(72);
+        var test = await app.PendingAsync("E320000077001", deadline, environment: FiscalEnvironment.TesteCF);
+        var simulated = await app.PendingAsync("E320000077002", deadline.AddMinutes(1), environment: FiscalEnvironment.Simulated);
+        var router = new Router();
+        router.Dgii[FiscalEnvironment.TesteCF].Responses.Enqueue(() => new DgiiAnswer(DgiiState.Accepted, "T-1"));
+
+        (await app.ProcessAsync(router)).ShouldBe(2);
+
+        router.Dgii[FiscalEnvironment.TesteCF].Calls.ShouldBe(["send E320000077001"]);
+        router.Dgii[FiscalEnvironment.eCF].Calls.ShouldBeEmpty();
+        (await app.DocumentAsync(test)).Status.ShouldBe(SubmissionStatus.Accepted);
+        (await app.DocumentAsync(simulated)).Status.ShouldBe(SubmissionStatus.Simulated);
     }
 }
