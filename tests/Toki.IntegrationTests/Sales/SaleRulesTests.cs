@@ -75,6 +75,24 @@ public sealed class SaleRulesTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task A_RD_0_sale_counts_in_the_Z_sales()
+    {
+        var cashier = await app.CashierWithShiftAsync();
+        var soda = await ProductAsync("Refresco", 59m);
+        var saleId = Guid.CreateVersion7();
+        var sale = new
+        {
+            SaleId = saleId, ShiftId = cashier.ShiftId, Lines = new[] { new { ProductId = soda, Quantity = 1m, Discount = new { IsPercentage = true, Value = 100m } } },
+            Payments = Array.Empty<object>(), ExpectedTotal = 0m, SupervisorApprovals = new[] { await cashier.Client.ApproveAsync("sales.large-discount", saleId) },
+        };
+        (await cashier.SellAsync(sale)).StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        var z = await (await Admin()).GetFromJsonAsync<JsonElement>($"/api/cash/shifts/{cashier.ShiftId}/z");
+        z.GetProperty("saleCount").GetInt32().ShouldBe(1);
+        z.GetProperty("expectedCash").GetDecimal().ShouldBe(z.GetProperty("openingFloat").GetDecimal());
+    }
+
+    [Fact]
     public async Task A_small_discount_that_leaves_the_line_below_cost_needs_a_supervisor()
     {
         var cashier = await app.CashierWithShiftAsync();

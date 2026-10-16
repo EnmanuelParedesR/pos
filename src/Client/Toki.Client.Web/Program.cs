@@ -20,8 +20,8 @@ var scale = new SimulatedScale { Pounds = builder.Configuration.GetValue("Hardwa
 builder.Services.AddTokiHardware(new SimulatedDrivers(scale, builder.Configuration["Hardware:PrinterFile"] ?? Path.Combine(data, "receipts.txt")),
     new HardwareSettings(new PrinterSettings("Simulada", 80), new ScaleSettings("Simulada", ScaleProtocol.Continuous)));
 
-// TK-243: the Escuadra gallery (/dev/escuadra), for visual review while developing; never in the store.
-if (builder.Environment.IsDevelopment()) builder.Services.AddSingleton(new ExtraPages(typeof(App).Assembly));
+// TK-243: the Escuadra gallery (/dev/escuadra), for visual review while developing (and its screenshot test, Dev:Gallery); never in the store.
+if (builder.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("Dev:Gallery")) builder.Services.AddSingleton(new ExtraPages(typeof(App).Assembly));
 
 var app = builder.Build();
 app.UseStaticFiles();

@@ -118,6 +118,8 @@ internal sealed class CashRegisterOperations(CashRegisterDbContext db, IUserCont
     {
         foreach (var p in payments.Where(p => p.Amount > 0))
             Add(shiftId, CashMovementType.SalePayment, p.Method, p.Amount, saleId, p.Reference);
+        // TK-239: a RD$ 0 sale has no payment; a 0 movement still counts it in the Z's sales (and its void in the voided ones).
+        if (!payments.Any(p => p.Amount > 0)) Add(shiftId, CashMovementType.SalePayment, PaymentMethod.Cash, 0, saleId, null);
         if (rounding > 0) Add(shiftId, CashMovementType.Rounding, PaymentMethod.Cash, rounding, saleId, null);
         return Task.CompletedTask;
     }

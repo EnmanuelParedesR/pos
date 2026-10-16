@@ -68,7 +68,7 @@ Toki.slnx
    ├─ Toki.Hardware.Tests/         ← bytes ESC/POS/ZPL por snapshot, parser de balanzas
    ├─ Toki.Client.UI.Tests/        ← pantallas Blazor con bUnit
    ├─ Toki.Escuadra.Tests/         ← componentes del sistema de diseño con bUnit
-   └─ Toki.Escuadra.Visual/        ← capturas Playwright por resolución, tema y marca
+   └─ Toki.UiTests/                 ← también las capturas Playwright de Escuadra (EscuadraVisualTests, TK-243)
 ```
 
 **Dos proyectos por módulo, no cuatro.** El módulo (`Toki.Sales`) contiene sus slices, su dominio y su persistencia, todo `internal`. Su proyecto `Contracts` contiene lo único que otros pueden ver. No se separa cada módulo en Domain/Application/Infrastructure: eso es la arquitectura por capas que VSA reemplaza, y para un desarrollador casi solo multiplica los proyectos sin beneficio. Si un módulo crece mucho (Fiscal es el candidato), se le puede separar el dominio después.

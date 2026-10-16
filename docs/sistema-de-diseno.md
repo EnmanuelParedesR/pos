@@ -76,11 +76,12 @@ src/Client/
 src/Cloud/ (celular del dueño y panel web) ← también usa Toki.Escuadra
 tests/
 ├─ Toki.Client.UI.Tests/ ← bUnit por componente (EscuadraComponentTests) y contraste y tokens (EscuadraTokenTests), TK-243
-└─ Toki.Escuadra.Visual/ ← (pendiente) capturas con Playwright a 1024×768, 1366×768 y 390×844, tema claro/oscuro y 3 marcas
+└─ Toki.UiTests/         ← EscuadraVisualTests (TK-243): capturas con Playwright de /dev/escuadra a 1366×768 (caja clara, administración clara y oscura)
+                           contra Baselines/*.{windows,linux,macos}.png, con tolerancia de píxeles; si falta la referencia la escribe; borrarla acepta un cambio
 ```
 
 - **Galería de componentes** dentro de la app (solo en modo desarrollo): cada componente con todos sus estados. Es la referencia viva para programar y revisar.
-- **Reglas automáticas:** ningún color, tamaño o fuente escrito a mano fuera de los tokens (linter de CSS en CI); prueba de contraste de cada par texto/fondo; captura visual que falla si algo cambia sin querer.
+- **Reglas automáticas:** ningún color, tamaño o fuente escrito a mano fuera de los tokens (linter de CSS en CI); prueba de contraste de cada par texto/fondo; captura visual que falla si algo cambia sin querer (`EscuadraVisualTests`).
 
 ## Cómo se diseña y se revisa
 
