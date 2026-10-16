@@ -66,6 +66,12 @@ public sealed record InvoiceLineRead(string Description, decimal? Quantity, deci
 public sealed record InvoiceRead(Guid? SupplierId, string? SupplierRnc, string? SupplierName, string? Ncf, DateOnly? Date, InvoiceLineRead[] Lines,
     decimal? Subtotal, decimal? Itbis, decimal? Total, decimal Confidence, string[] Warnings, string? Source = null);
 
+/// <summary>TK-248: the business's invoice readings this month; AddOn = it has the paid add-on.</summary>
+public sealed record InvoiceReadingQuota(int Used, int Limit, DateOnly ResetsOn, bool AddOn)
+{
+    public int Remaining => Math.Max(Limit - Used, 0);
+}
+
 /// <summary>What is owed to a supplier by days overdue (from /api/reports/payables).</summary>
 public sealed record SupplierPayable(Guid SupplierId, string Supplier, decimal NotYetDue, decimal Overdue1To30, decimal Overdue31To60, decimal Overdue61To90,
     decimal OverdueOver90, decimal Total);

@@ -2,13 +2,15 @@ using System.Net;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Toki.Host.Cloud.Persistence;
+using Toki.Host.Cloud.Quotas;
 
 namespace Toki.Host.Cloud.Accounts;
 
 /// <summary>TK-230: the e-mails of Identity's endpoints (/api/auth: register, forgotPassword, resendConfirmationEmail) in Spanish, through the
 /// cloud's <see cref="IEmailSender"/> (logged in dev, ACS when configured). Links go to the panel with the code after "#" (R8 #12), never to the API.
 /// Identity sends a reset code only to a confirmed address and answers forgotPassword the same either way (no account enumeration).</summary>
-internal sealed class IdentityEmails(IEmailSender email, IConfiguration config) : IEmailSender<CloudUser>
+/// <remarks>TK-248: they count as the business's e-mails but are never refused (a reset must always arrive); the per-IP limits hold them back.</remarks>
+internal sealed class IdentityEmails(IEmailSender email, IConfiguration config, IQuota quota) : IEmailSender<CloudUser>
 {
     /// <summary>TK-231: POST /api/auth/resendConfirmationEmail, per IP (Program.cs).</summary>
     public const string ResendRateLimit = "auth-resend-confirmation";
@@ -18,7 +20,7 @@ internal sealed class IdentityEmails(IEmailSender email, IConfiguration config) 
     {
         var query = QueryHelpers.ParseQuery(new Uri(WebUtility.HtmlDecode(confirmationLink)).Query);
         var values = string.Join('&', query.Select(q => $"{q.Key}={Uri.EscapeDataString(q.Value.ToString())}"));
-        return email.SendAsync(to, "Confirme su correo de Toki",
+        return SendAsync(user, to, "Confirme su correo de Toki",
             $"""
             Hola:
 
@@ -26,11 +28,11 @@ internal sealed class IdentityEmails(IEmailSender email, IConfiguration config) 
             {MemberEndpoints.PanelUrl(config)}/app/confirmar#{values}
 
             Así podrá recuperar su contraseña si la olvida. Si usted no creó una cuenta en Toki, ignore este correo.
-            """, CancellationToken.None);
+            """);
     }
 
     public Task SendPasswordResetCodeAsync(CloudUser user, string to, string resetCode) =>
-        email.SendAsync(to, "Cambie su contraseña de Toki",
+        SendAsync(user, to, "Cambie su contraseña de Toki",
             $"""
             Hola:
 
@@ -38,9 +40,15 @@ internal sealed class IdentityEmails(IEmailSender email, IConfiguration config) 
             {MemberEndpoints.PanelUrl(config)}/app/restablecer#email={Uri.EscapeDataString(to)}&code={WebUtility.HtmlDecode(resetCode)}
 
             El enlace sirve una sola vez y por un día. Si usted no lo pidió, ignore este correo: su contraseña no cambia.
-            """, CancellationToken.None);
+            """);
 
     /// <summary>Not used by MapIdentityApi (it sends the code); kept for the interface.</summary>
     public Task SendPasswordResetLinkAsync(CloudUser user, string to, string resetLink) =>
-        email.SendAsync(to, "Cambie su contraseña de Toki", $"Para crear una contraseña nueva, abra este enlace:\n{WebUtility.HtmlDecode(resetLink)}", CancellationToken.None);
+        SendAsync(user, to, "Cambie su contraseña de Toki", $"Para crear una contraseña nueva, abra este enlace:\n{WebUtility.HtmlDecode(resetLink)}");
+
+    private async Task SendAsync(CloudUser user, string to, string subject, string body)
+    {
+        await email.SendAsync(to, subject, body, CancellationToken.None);
+        if (user.TenantId != Guid.Empty) await quota.AddAsync(user.TenantId, Meter.Emails, 1);
+    }
 }

@@ -93,7 +93,7 @@ internal static class AlertModel
 /// (the heartbeat's fiscal signals, <c>CertificationProgressedV1</c>). It runs right after the inbox applier applied something, never on a timer,
 /// so the serverless database still pauses at night (R8 #21). A store that stopped sending gets no fiscal alert; its "no data" issue covers it.</summary>
 /// <remarks>shortcut: reads every store's newest heartbeat on each run; scope it to the tenants of the batch when there are thousands of stores.</remarks>
-public sealed class AlertNotifier(CloudDbContext db, IEmailSender email, IConfiguration config, TimeProvider clock, ILogger<AlertNotifier> log)
+public sealed class AlertNotifier(CloudDbContext db, IEmailSender email, IConfiguration config, TimeProvider clock, Quotas.IQuota quota, ILogger<AlertNotifier> log)
 {
     public static readonly TimeSpan CertificateWarning = TimeSpan.FromDays(30);
     public static readonly TimeSpan QueueStaleAfter = TimeSpan.FromHours(24);
@@ -176,6 +176,12 @@ public sealed class AlertNotifier(CloudDbContext db, IEmailSender email, IConfig
                 await db.SaveChangesAsync(ct);
             }
             if (!pref.Wants(alert.Kind)) continue;
+            // TK-248: the business's e-mails of the month; a month spent stops alerts (logged) rather than the bill.
+            if (!(await quota.TryConsumeAsync(alert.TenantId, Quotas.Meter.Emails, 1, ct)).Allowed)
+            {
+                log.LogWarning("Alert {Kind} not e-mailed: tenant {TenantId} used its e-mails of the month", alert.Kind, alert.TenantId);
+                break;
+            }
             try
             {
                 await email.SendAsync(m.Email!, $"Toki · {storeName}: {alert.Subject}",

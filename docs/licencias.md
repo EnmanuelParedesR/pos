@@ -10,7 +10,7 @@ Una licencia es un **JWS compacto** (`encabezado.cuerpo.firma`, base64url) firma
 |---|---|
 | `store` | Nombre de la tienda (como sale en el contrato) |
 | `plan` | Nombre del plan (`Una caja`, `Varias cajas`, `Varias sucursales`) |
-| `features` | Funciones pagas: `ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant` |
+| `features` | Funciones pagas: `ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant`, `SupplierInvoiceReading` (servicio adicional de lectura de facturas con IA, ver `docs/cuotas.md`) |
 | `limits` | Límites por nombre: hoy solo `Registers` (cajas además de la PC principal) |
 | `issuedUtc`, `expiresUtc` | Emisión y vencimiento, en UTC |
 
@@ -37,6 +37,7 @@ La llave privada y el script están **fuera del repositorio**, en la PC del due�
 2. Ejecutar `issue-license.ps1` en esa carpeta con esos datos (ver la ayuda del propio script). Produce un archivo `.jws` (o el texto de la licencia).
 3. Enviar a la tienda el archivo o el texto por el canal acordado (correo o WhatsApp). La licencia no es secreta: solo sirve para la tienda que nombra y no se puede cambiar sin invalidar la firma.
 4. Anotar la licencia emitida (tienda, plan, vencimiento) en el registro de ventas.
+5. En la consola de la plataforma (cliente → **Plan y consumo**), poner el mismo plan y los servicios adicionales (`SupplierInvoiceReading`): las cuotas mensuales de la nube salen de ahí, no de la licencia (`docs/cuotas.md`).
 
 Si la llave privada se pierde o se filtra: generar un par nuevo, cambiar la llave pública en `LicenseService`, publicar una actualización y volver a emitir las licencias vigentes.
 

@@ -26,3 +26,8 @@ public sealed record SupplierInvoiceReading(string? SupplierRnc, string? Supplie
     public static readonly IReadOnlyList<string> ContentTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
     public const int MaxFileBytes = 4_000_000;
 }
+
+/// <summary>TK-248: the business's invoice readings this month (<c>POST /ai/v1/supplier-invoice/quota</c>, as the node). Every plan includes a few;
+/// <paramref name="AddOn"/> = it has the paid add-on (more a month).</summary>
+/// <param name="ResetsOn">The first day of the next store month, when <paramref name="Used"/> goes back to 0.</param>
+public sealed record SupplierInvoiceQuota(int Used, int Limit, DateOnly ResetsOn, bool AddOn);

@@ -24,6 +24,17 @@
         {
             <Notice Title="@_readError" />
         }
+        @* TK-248: the month's AI readings of the business (the cloud counts them); an XML e-CF never uses one. *@
+        @if (_quota is { Remaining: 0 } spent)
+        {
+            <Notice Kind="Notice.Kinds.Warning" Title="@($"Ya usó las {spent.Limit} lecturas de facturas con IA de este mes. Se renuevan el {spent.ResetsOn:dd/MM/yyyy}.")">
+                @(spent.AddOn ? "Mientras, suba el XML del e-CF o escriba la compra a mano." : "Para leer más, pida a Toki el servicio adicional de lectura de facturas. Mientras, suba el XML del e-CF o escriba la compra a mano.")
+            </Notice>
+        }
+        else if (_quota is { } quota)
+        {
+            <p class="esc-muted" style="margin:0 0 8px">Lecturas con IA este mes: le quedan @quota.Remaining de @quota.Limit.@(quota.AddOn ? "" : " Con el servicio adicional puede leer más.")</p>
+        }
         @if (_purchases is { Count: > 0 })
         {
             var posted = _purchases.Where(p => p.Status == "Posted").ToList();
@@ -228,11 +239,13 @@
     private string _period = "month";
     private string? _message, _error, _notice, _voidReason, _readError;
     private bool _sending, _voiding, _reading;
+    private InvoiceReadingQuota? _quota;
     private readonly Dictionary<string, string> _errors = [];
 
     protected override async Task OnInitializedAsync()
     {
         await LoadAsync();
+        await LoadQuotaAsync();
         // TK-240: "Registrar compra" on a received e-CF opens the form filled from it.
         if (FromReceived is not { } id) return;
         var r = await Api.PostAsync<InvoiceRead>("/api/purchasing/purchases/from-ecf", new { ReceivedId = id });
@@ -253,6 +266,9 @@
         var r = await Api.GetAsync<List<PurchaseSummary>>($"/api/purchasing/purchases?from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}");
         (_purchases, _message) = (r.Value ?? [], r.Problem?.Message);
     }
+
+    /// <summary>Null when the store is not connected to the cloud: then nothing is shown.</summary>
+    private async Task LoadQuotaAsync() => _quota = (await Api.GetAsync<InvoiceReadingQuota>("/api/purchasing/purchases/read-invoice/quota")).Value;
 
     private async Task LoadChoicesAsync()
     {
@@ -302,6 +318,7 @@
         var r = await Api.PostAsync<InvoiceRead>("/api/purchasing/purchases/read-invoice",
             new { File = Convert.ToBase64String(copy.ToArray()), ContentType = type, FileName = e.File.Name }, TimeSpan.FromSeconds(90));
         _reading = false;
+        await LoadQuotaAsync();
         if (r.Value is not { } read) { _readError = r.Problem?.Message; return; }
         await FillAsync(read, (copy.ToArray(), type, e.File.Name));
     }

@@ -27,7 +27,7 @@ public sealed class TrialTests(TokiApp app) : IClassFixture<TokiApp>
         var features = await Features();
         (features.GetProperty("status").GetString(), features.GetProperty("warning").ValueKind).ShouldBe(("Trial", JsonValueKind.Null));
         features.GetProperty("trialEndsUtc").ValueKind.ShouldBe(JsonValueKind.Null);
-        features.GetProperty("enabled").GetArrayLength().ShouldBe(4);
+        features.GetProperty("enabled").GetArrayLength().ShouldBe(Enum.GetValues<Toki.BuildingBlocks.Security.Feature>().Length); // all on in the trial
         app.Clock.Advance(TimeSpan.FromMinutes(1)); // registers pair after the main PC, in order
         var registerA = await PairAsync(admin);
         app.Clock.Advance(TimeSpan.FromMinutes(1));

@@ -118,4 +118,20 @@ public sealed class AdminPurchasingTests
         page.WaitForAssertion(() => page.Find(".esc-notice--success").TextContent.Trim().ShouldBe("Pago de RD$ 500.00 aplicado a B0100000001."));
         api.Requests.Single(r => r.Route == "/api/purchasing/payments").Body.ShouldContain($"\"supplierId\":\"{Farm}\",\"amount\":500,\"method\":\"Transfer\"");
     }
+
+    [Fact]
+    public void TK_248_the_month_s_AI_readings_left_show_and_once_spent_the_add_on_is_offered()
+    {
+        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        using var _ = ctx;
+        api.Json("GET", "/api/purchasing/purchases", Array.Empty<object>())
+           .Json("GET", "/api/purchasing/purchases/read-invoice/quota", new { used = 5, limit = 20, resetsOn = new DateOnly(2026, 11, 1), addOn = false });
+        var page = ctx.Render<Purchases>();
+        page.WaitForAssertion(() => page.Markup.ShouldContain("le quedan 15 de 20"));
+
+        api.Json("GET", "/api/purchasing/purchases/read-invoice/quota", new { used = 20, limit = 20, resetsOn = new DateOnly(2026, 11, 1), addOn = false });
+        page = ctx.Render<Purchases>();
+        page.WaitForAssertion(() => page.Find(".esc-notice").TextContent.ShouldContain("Ya usó las 20 lecturas de facturas con IA de este mes. Se renuevan el 01/11/2026."));
+        page.Find(".esc-notice").TextContent.ShouldContain("servicio adicional");
+    }
 }

@@ -10,6 +10,7 @@ using Toki.Host.Cloud.Accounts;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Panel;
 using Toki.Host.Cloud.Persistence;
+using Toki.Host.Cloud.Quotas;
 using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Assistant;
@@ -18,8 +19,9 @@ public sealed record ChatToolCall(string Id, string Name, string Arguments);
 
 /// <param name="Role">system, user, assistant or tool.</param>
 /// <param name="Attachments">Files a user message carries (TK-224: the supplier's invoice as an image or a PDF).</param>
+/// <param name="Tokens">TK-248: what the model reported spending on this reply (prompt + answer); 0 when it did not say.</param>
 public sealed record ChatMessage(string Role, string? Content, IReadOnlyList<ChatToolCall>? ToolCalls = null, string? ToolCallId = null,
-    IReadOnlyList<ChatAttachment>? Attachments = null);
+    IReadOnlyList<ChatAttachment>? Attachments = null, int Tokens = 0);
 
 /// <param name="ContentType">image/jpeg, image/png, image/webp or application/pdf.</param>
 public sealed record ChatAttachment(string ContentType, byte[] Data, string FileName);
@@ -74,7 +76,8 @@ internal sealed class AzureOpenAIChatModel(HttpClient http, AzureOpenAIOptions o
                 c.GetProperty("function").GetProperty("arguments").GetString() ?? "{}")).ToList()
             : null;
         var content = message.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
-        return new ChatMessage("assistant", content, calls);
+        var tokens = json.RootElement.TryGetProperty("usage", out var u) && u.TryGetProperty("total_tokens", out var t) && t.TryGetInt32(out var n) ? n : 0;
+        return new ChatMessage("assistant", content, calls, Tokens: tokens);
     }
 
     private static JsonNode ToWire(ChatMessage m)
@@ -128,6 +131,9 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
             }),
     ];
 
+    /// <summary>TK-248: tokens the model reported for every round of the questions asked so far.</summary>
+    public int TokensUsed { get; private set; }
+
     public async Task<string> AskAsync(Guid tenantId, string question, IReadOnlyList<AssistantTurn> history, CancellationToken ct)
     {
         var stores = await queries.StoreNamesAsync(tenantId, ct);
@@ -139,6 +145,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
         for (var round = 0; round < MaxRounds; round++)
         {
             var reply = await model.CompleteAsync(messages, Tools, ct);
+            TokensUsed += reply.Tokens;
             if (reply.ToolCalls is not { Count: > 0 }) return string.IsNullOrWhiteSpace(reply.Content) ? "No tengo una respuesta para eso." : reply.Content.Trim();
             messages.Add(reply);
             foreach (var call in reply.ToolCalls) messages.Add(new("tool", await RunToolAsync(tenantId, call, ct), ToolCallId: call.Id));
@@ -222,11 +229,20 @@ internal static class AssistantEndpoints
             if (question.Length is 0 or > 1000)
                 return EndpointExtensions.Problem(Error.Validation("Assistant.InvalidQuestion", "Escribe una pregunta (hasta 1000 letras)."));
 
+            // TK-248: a question of the month, and one token as a check that the month's tokens are not spent; the rest once the model says.
+            var tenantId = user.GetTenantId();
+            var quota = services.GetRequiredService<IQuota>();
+            if (await quota.TryConsumeAsync(tenantId, Meter.AssistantTokens, 1, ct) is { Allowed: false } tokens) return tokens.Problem();
+            if (await quota.TryConsumeAsync(tenantId, Meter.AssistantQuestions, 1, ct) is { Allowed: false } questions)
+            {
+                await quota.AddAsync(tenantId, Meter.AssistantTokens, -1, ct);
+                return questions.Problem();
+            }
+            var assistant = new OwnerAssistant(model, services.GetRequiredService<PanelQueries>(),
+                await PanelAccess.CanViewCostsAsync(user, services.GetRequiredService<CloudDbContext>(), ct));
             try
             {
-                var assistant = new OwnerAssistant(model, services.GetRequiredService<PanelQueries>(),
-                    await PanelAccess.CanViewCostsAsync(user, services.GetRequiredService<CloudDbContext>(), ct));
-                return Results.Ok(new AskResponse(await assistant.AskAsync(user.GetTenantId(), question, request.History ?? [], ct)));
+                return Results.Ok(new AskResponse(await assistant.AskAsync(tenantId, question, request.History ?? [], ct)));
             }
             catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
             {
@@ -234,7 +250,12 @@ internal static class AssistantEndpoints
                 log.LogWarning(ex, "Chat model call failed");
                 return Unavailable("Assistant.Unavailable", "El asistente no está disponible ahora. Intenta de nuevo en un momento.");
             }
-        }).RequireAuthorization(CloudAuth.PanelPolicy);
+            finally
+            {
+                // Rounds already answered cost even when a later one failed or the caller left.
+                await quota.AddAsync(tenantId, Meter.AssistantTokens, assistant.TokensUsed - 1, CancellationToken.None);
+            }
+        }).RequireAuthorization(CloudAuth.PanelPolicy).RequireRateLimiting(QuotaRateLimits.AssistantUser);
 
     private static IResult Unavailable(string code, string detail) =>
         Results.Problem(detail: detail, statusCode: StatusCodes.Status503ServiceUnavailable, title: code, extensions: new Dictionary<string, object?> { ["code"] = code });

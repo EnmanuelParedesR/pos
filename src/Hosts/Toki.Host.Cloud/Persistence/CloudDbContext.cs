@@ -56,6 +56,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Alerts.AlertPreference> AlertPreferences => Set<Alerts.AlertPreference>();
     public DbSet<Alerts.SentAlert> SentAlerts => Set<Alerts.SentAlert>();
     public DbSet<Assistant.AiUsage> AiUsage => Set<Assistant.AiUsage>();
+    public DbSet<Quotas.TenantUsage> TenantUsage => Set<Quotas.TenantUsage>();
     public DbSet<Certification.AccompanimentRequest> AccompanimentRequests => Set<Certification.AccompanimentRequest>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -68,6 +69,8 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         {
             e.ToTable("Tenants");
             e.Property(t => t.Name).HasMaxLength(256);
+            e.Property(t => t.Plan).HasMaxLength(50);
+            e.Property(t => t.AddOns).HasMaxLength(200);
         });
         builder.Entity<TenantMember>(e =>
         {
@@ -131,6 +134,12 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         {
             e.ToTable("AiUsage");
             e.HasKey(u => new { u.TenantId, u.Day });
+        });
+        builder.Entity<Quotas.TenantUsage>(e =>
+        {
+            e.ToTable("TenantUsage");
+            e.HasKey(u => new { u.TenantId, u.Month, u.Meter });
+            e.Property(u => u.Meter).HasConversion<string>().HasMaxLength(40);
         });
         builder.Entity<PlatformAuditRecord>(e =>
         {
@@ -370,6 +379,10 @@ public sealed class Tenant
     public DateTime CreatedUtc { get; set; }
     /// <summary>Set by Toki staff (TK-189): its nodes cannot upload and its users cannot use the panel.</summary>
     public DateTime? DisabledUtc { get; set; }
+    /// <summary>TK-248: the plan code whose monthly quotas apply (<c>Quotas:&lt;Plan&gt;</c>); null = Default. Set by Toki staff in the console.</summary>
+    public string? Plan { get; set; }
+    /// <summary>TK-248: paid add-ons, comma-separated (<c>SupplierInvoiceReading</c>). Set by Toki staff in the console.</summary>
+    public string AddOns { get; set; } = "";
 }
 
 public sealed class Store
