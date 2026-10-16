@@ -2,7 +2,7 @@
 
 Run headless from the repo root (Blender 4.x):
     blender -b --factory-startup -P design/blender/escenas.py -- <out_dir> [scene ...]
-Scenes: butcher, grocery, deli, counter. Output: <out_dir>/<scene>.webp (960x600, alpha).
+Scenes: butcher, grocery, deli, counter. Output: <out_dir>/<scene>.webp (960x600, alpha). Cycles (the shadow catcher needs it), 48 samples + denoise.
 Shapes are primitives on purpose: soft, friendly, readable at 300 px, and cheap to keep consistent.
 """
 import math
@@ -88,29 +88,27 @@ def text(body, loc, size, mat, rot=(math.radians(90), 0, 0)):
 def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     scene = bpy.context.scene
-    engines = [e.identifier for e in bpy.types.RenderSettings.bl_rna.properties["engine"].enum_items]
-    scene.render.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in engines else "BLENDER_EEVEE"
+    scene.render.engine = "CYCLES"  # the shadow catcher (transparent floor with real shadows) only works in Cycles
+    scene.cycles.samples = 48
+    scene.cycles.use_denoising = True
     scene.render.resolution_x, scene.render.resolution_y = 960, 600
     scene.render.film_transparent = True
     scene.render.image_settings.file_format = "WEBP"
     scene.render.image_settings.color_mode = "RGBA"
     scene.render.image_settings.quality = 82
-    scene.view_settings.view_transform = "Standard"
-    eevee = scene.eevee
-    for attr, value in (("taa_render_samples", 64), ("use_gtao", True), ("use_shadows", True), ("use_raytracing", True)):
-        if hasattr(eevee, attr):
-            setattr(eevee, attr, value)
+    scene.view_settings.view_transform = "Standard"  # keeps the brand blue true (AgX washes it out)
+    scene.view_settings.exposure = -0.35
     world = bpy.data.worlds.new("world")
     scene.world = world
     world.use_nodes = True
     world.node_tree.nodes["Background"].inputs["Color"].default_value = rgb("#FFFFFF")
-    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.6
+    world.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.35
     return scene
 
 
 def lights_and_camera(target=(0, 0, 0.25), distance=4.2, height=2.4, angle=-35, lens=50):
     tgt = Vector(target)
-    for name, energy, loc, size in (("key", 900, (-2.5, -3.0, 4.0), 3.0), ("fill", 300, (3.5, -2.0, 2.5), 4.0), ("rim", 400, (0.5, 3.5, 3.0), 2.0)):
+    for name, energy, loc, size in (("key", 450, (-2.5, -3.0, 4.0), 3.0), ("fill", 160, (3.5, -2.0, 2.5), 4.0), ("rim", 220, (0.5, 3.5, 3.0), 2.0)):
         bpy.ops.object.light_add(type="AREA", location=loc)
         light = bpy.context.object
         light.name = name
@@ -145,19 +143,19 @@ def scale_device(x, y, display="1.250"):
 def butcher():
     wood, meat, fat, steel, handle = material("wood", "#C8925A", 0.7), material("meat", "#C4473F", 0.5), material("fat", "#F3E6D8", 0.6), material("blade", "#D8DCE0", 0.2, 1.0), material("handle", INK, 0.5)
     box("board", (1.8, 1.1, 0.1), (-0.35, 0.1, 0.05), wood, r=0.04)
-    steak = blob("steak", (0.55, 0.38, 0.09), (-0.55, 0.15, 0.17), meat)
-    rim = blob("fat", (0.6, 0.42, 0.07), (-0.52, 0.17, 0.15), fat)
-    blob("bone", (0.08, 0.08, 0.08), (-0.35, 0.05, 0.22), fat)
+    steak = blob("steak", (0.52, 0.36, 0.14), (-0.55, 0.15, 0.2), meat)
+    rim = blob("fat", (0.58, 0.41, 0.1), (-0.53, 0.17, 0.17), fat)
+    blob("bone", (0.09, 0.09, 0.08), (-0.4, 0.06, 0.3), fat)
     box("cleaver_blade", (0.5, 0.02, 0.32), (0.25, 0.25, 0.2), steel, rot=(math.radians(90), 0, math.radians(20)), r=0.005)
     cyl("cleaver_handle", 0.035, 0.32, (0.58, 0.37, 0.12), handle, rot=(0, math.radians(90), math.radians(20)))
     scale_device(1.15, -0.1)
-    lights_and_camera(target=(0.25, 0, 0.2), distance=3.6, height=2.3)
+    lights_and_camera(target=(0.2, 0, 0.2), distance=4.3, height=2.5)
 
 
 def grocery():
     shelf = material("shelf", BRAND, 0.45)
     colors = ["#E4572E", "#F3A712", "#29BF12", "#FFFFFF", "#4F6D7A", "#F3E6D8"]
-    box("shelf_back", (2.4, 0.08, 1.7), (0, 0.45, 0.85), material("shelf_back", "#DCE7F3", 0.8), r=0.02)
+    box("shelf_back", (2.4, 0.08, 1.7), (0, 0.45, 0.85), material("shelf_back", "#C9DAEE", 0.8), r=0.02)
     for z in (0.04, 0.84):
         box(f"board_{z}", (2.4, 0.8, 0.08), (0, 0.1, z), shelf, r=0.02)
     for side in (-1.2, 1.2):
@@ -169,8 +167,9 @@ def grocery():
     for i, (w, h, c) in enumerate([(0.36, 0.52, "#F3A712"), (0.3, 0.6, "#E4572E"), (0.42, 0.4, "#FFFFFF"), (0.3, 0.5, "#29BF12"), (0.36, 0.46, "#4F6D7A")]):
         box(f"pack_{i}", (w, 0.3, h), (x, 0.1, 0.88 + h / 2), material(f"pack_{i}", c, 0.6))
         x += w + 0.08
-    blob("rice_bag", (0.32, 0.2, 0.3), (0.7, -0.6, 0.3), material("bag", "#F7F7F5", 0.8))
-    lights_and_camera(target=(0, 0, 0.75), distance=4.6, height=2.0, angle=-25)
+    box("rice_bag", (0.42, 0.26, 0.56), (0.62, -0.5, 0.3), material("bag", "#E2C894", 0.85), rot=(0, 0, math.radians(-12)), r=0.1)
+    box("rice_label", (0.3, 0.01, 0.16), (0.6, -0.64, 0.32), material("brand", BRAND, 0.4), rot=(0, 0, math.radians(-12)), r=0.02)
+    lights_and_camera(target=(0, -0.05, 0.75), distance=5.0, height=2.0, angle=-25)
 
 
 def deli():
@@ -190,16 +189,16 @@ def deli():
 
 def counter():
     """The general scene for the home: scale, receipt printer and card terminal on a counter."""
-    top, printer, paper, term = material("counter", "#E9E4DC", 0.6), material("printer", INK, 0.45), material("paper", "#FFFFFF", 0.8), material("terminal", "#2B323A", 0.4)
-    box("counter_top", (3.2, 1.4, 0.12), (0, 0, 0.06), top, r=0.04)
+    top, printer, paper, term = material("counter", "#D9CDBB", 0.6), material("printer", INK, 0.45), material("paper", "#FFFFFF", 0.8), material("terminal", "#2B323A", 0.4)
+    box("counter_top", (2.7, 1.3, 0.12), (0, 0, 0.06), top, r=0.04)
     scale_device(-0.9, 0.05, "2.350")
     box("printer", (0.62, 0.62, 0.42), (0.2, 0.15, 0.33), printer, r=0.08)
     box("receipt", (0.42, 0.01, 0.55), (0.2, -0.2, 0.62), paper, rot=(math.radians(-12), 0, 0), r=0.005)
     for i in range(5):
         box(f"line_{i}", (0.3 - (i % 2) * 0.08, 0.012, 0.02), (0.2, -0.215, 0.8 - i * 0.07), material("ink_line", "#B9C0C8", 0.6), rot=(math.radians(-12), 0, 0), r=0.002)
-    box("terminal", (0.34, 0.5, 0.1), (1.0, -0.05, 0.17), term, rot=(math.radians(-20), 0, math.radians(-10)), r=0.05)
-    box("terminal_screen", (0.26, 0.2, 0.01), (1.0, -0.11, 0.24), material("brand", BRAND, 0.3), rot=(math.radians(-20), 0, math.radians(-10)), r=0.005)
-    lights_and_camera(target=(0.05, 0, 0.3), distance=4.2, height=2.3, angle=-30)
+    box("terminal", (0.4, 0.62, 0.12), (0.9, -0.1, 0.19), term, rot=(math.radians(-20), 0, math.radians(-10)), r=0.05)
+    box("terminal_screen", (0.3, 0.25, 0.01), (0.9, -0.17, 0.27), material("brand", BRAND, 0.3), rot=(math.radians(-20), 0, math.radians(-10)), r=0.005)
+    lights_and_camera(target=(0, 0, 0.3), distance=4.0, height=2.2, angle=-30)
 
 
 SCENES = {"butcher": butcher, "grocery": grocery, "deli": deli, "counter": counter}

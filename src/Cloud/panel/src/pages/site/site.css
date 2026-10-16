@@ -175,11 +175,10 @@
 .site .biz--grocery { --tint: var(--amber-soft); --stroke: var(--amber-line); }
 .site .biz--deli { --tint: var(--green-soft); --stroke: var(--green-line); }
 .site .biz__pic, .site .biz-art { background: var(--tint); }
-.site .ill { stroke: var(--stroke); }
-.site .ill .ill__fill { fill: var(--bg); }
-.site .ill .ill__ink { stroke: var(--ink); }
+.site .render { display: block; width: 100%; height: 100%; object-fit: contain; }
+.site .counter-render { max-width: 560px; margin: 0 auto 24px; aspect-ratio: 960 / 600; }
 .site .biz-art { display: flex; align-items: center; justify-content: center; border-radius: 8px; min-height: 240px; }
-.site .biz-art .ill { width: 240px; height: auto; }
+.site .biz-art .render { max-width: 480px; height: auto; }
 
 /* Numbered steps (flow on the dark band, round numbers on the home page). */
 .site .flow { list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; grid-template-columns: 1fr; counter-reset: step; }

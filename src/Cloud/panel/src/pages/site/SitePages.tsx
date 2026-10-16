@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { site } from "./config";
 import { usePlanPrices } from "./livePrices";
 import { useReferralLink } from "../../referral";
-import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, Icon, IconTiles, ProductArt, Section, Steps, Tbd, Trial } from "./SiteParts";
+import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, Icon, IconTiles, ProductArt, Render, Section, Steps, Tbd, Trial } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
 export interface SitePage {
@@ -64,6 +64,9 @@ function Home() {
       </EcfFlow>
       <Section>
         <h2>Empiece hoy, en 3 pasos</h2>
+        <div className="counter-render">
+          <Render name="counter" />
+        </div>
         <Steps
           round
           items={[
