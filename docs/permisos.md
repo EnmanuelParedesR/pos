@@ -70,9 +70,9 @@ Plantillas que el dueño puede usar tal cual o copiar y ajustar:
 
 | Rol | Permisos |
 |---|---|
-| Cajero | vender, cerrar su turno, entradas de efectivo, cobrar abonos |
+| Cajero | vender, cerrar su turno, entradas de efectivo, cobrar abonos, agregar clientes en la caja (`customers.quick-add`) |
 | Cajero con apertura | lo de Cajero + abrir turno |
-| Supervisor | todo lo de caja y ventas, autorizar cierres, clientes y fiado, ver inventario, Turnos y cuadres, reportes |
+| Supervisor | todo lo de caja y ventas, autorizar cierres, clientes y fiado (`credit.sell`), ver inventario, compras sin pagar, Turnos y cuadres, reportes |
 | Inventario | productos, existencias, ajustes, conteos, transferencias, compras (sin pagar) |
 | Contador | reportes, reportes de la DGII, costos, Turnos y cuadres; solo lectura |
 | Administrador | todo (no se edita) |

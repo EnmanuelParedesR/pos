@@ -129,8 +129,7 @@ public sealed class StoreDayTests
 
         // A discount over the cap needs the supervisor.
         var discounted = Guid.CreateVersion7();
-        await SellAsync(r3, [new { ProductId = soda, Quantity = 4m, Discount = new { IsPercentage = true, Value = 20m } }], saleId: discounted,
-            extra: new() { ["SupervisorApprovals"] = new[] { await ApproveAsync(r3, "sales.large-discount", discounted) } });
+        await SellAsync(r3, [new { ProductId = soda, Quantity = 4m, Discount = new { IsPercentage = true, Value = 20m } }], saleId: discounted);
 
         // A double-tapped void: one goes through, the other finds it voided.
         var toVoid = r1.Sales.First(v => v.CashKept > 0);
@@ -140,17 +139,17 @@ public sealed class StoreDayTests
         r1.Cash -= toVoid.CashKept;
         r1.Sales.Remove(toVoid);
 
-        // A return on register 2's shift of a sale made on register 1 (one refresco back to the shelf, cash).
+        // A return on register 2's shift of a sale made on register 1 (one refresco back to the shelf, cash). The owner finds the sale (R11 A13:
+        // a cashier reads only their own).
         var fromRegister1 = r1.Sales.First(v => v.CashKept >= 60m); // the refund cannot exceed the cash this sale took
-        var sodaLine = (await Ok(await r2.Client.GetAsync($"/api/sales/{fromRegister1.SaleId}"))).GetProperty("lines").EnumerateArray()
+        var sodaLine = (await Ok(await admin.GetAsync($"/api/sales/{fromRegister1.SaleId}"))).GetProperty("lines").EnumerateArray()
             .First(l => l.GetProperty("description").GetString() == "Refresco 2L").GetProperty("id").GetGuid();
         await ReturnAsync(r2, fromRegister1.SaleId, sodaLine, 1m, "Cash");
         r2.Cash -= 59m;
 
         // The last piece: 3 cheeses for 100.00 by card, returned 1 + 1 + 1 to the card.
         var cheeses = Guid.CreateVersion7();
-        await SellAsync(r3, [new { ProductId = cheese, Quantity = 3m, Discount = new { IsPercentage = false, Value = 50m } }], method: "Card", saleId: cheeses,
-            extra: new() { ["SupervisorApprovals"] = new[] { await ApproveAsync(r3, "sales.large-discount", cheeses) } });
+        await SellAsync(r3, [new { ProductId = cheese, Quantity = 3m, Discount = new { IsPercentage = false, Value = 50m } }], method: "Card", saleId: cheeses);
         var cheeseLine = (await Ok(await r3.Client.GetAsync($"/api/sales/{cheeses}"))).GetProperty("lines")[0].GetProperty("id").GetGuid();
         var returned = new List<decimal>();
         for (var i = 0; i < 3; i++) returned.Add((await ReturnAsync(r3, cheeses, cheeseLine, 1m, "Card")).GetProperty("total").GetDecimal());
@@ -163,8 +162,7 @@ public sealed class StoreDayTests
         var onAccountLine = (await Ok(await r2.Client.GetAsync($"/api/sales/{onAccount}"))).GetProperty("lines")[0].GetProperty("id").GetGuid();
         (await ReturnAsync(r2, onAccount, onAccountLine, 1m, "CreditBalance")).GetProperty("total").GetDecimal().ShouldBe(165m);
         var overLimit = Guid.CreateVersion7();
-        await SellAsync(r2, [new { ProductId = porkChop, Quantity = 10m }], method: "OnAccount", saleId: overLimit,
-            extra: new() { ["CustomerId"] = neighbor, ["SupervisorApprovals"] = new[] { await ApproveAsync(r2, "credit.exceed-limit", overLimit) } });
+        await SellAsync(r2, [new { ProductId = porkChop, Quantity = 10m }], method: "OnAccount", saleId: overLimit, extra: new() { ["CustomerId"] = neighbor });
         await Ok(await r1.Client.PostAsJsonAsync($"/api/customers/{neighbor}/payments", new { CustomerPaymentId = Guid.CreateVersion7(), ShiftId = r1.ShiftId, Amount = 1000m, Method = "Cash" }));
         r1.Cash += 1000m;
         await Ok(await r3.Client.PostAsJsonAsync($"/api/customers/{neighbor}/payments", new { CustomerPaymentId = Guid.CreateVersion7(), ShiftId = r3.ShiftId, Amount = 300m, Method = "Card" }));
@@ -173,11 +171,11 @@ public sealed class StoreDayTests
         r2.Sales.RemoveAll(v => v.SaleId == overLimit);
 
         // A cash drop and a petty expense, both with the supervisor; a supplier paid by transfer.
-        await Ok(await r1.Client.PostAsJsonAsync($"/api/cash/shifts/{r1.ShiftId}/movements",
-            new { MovementId = Guid.NewGuid(), MovementType = "Withdrawal", Amount = 1500m, Reason = "CashPickup", SupervisorApprovalId = await ApproveAsync(r1, "register.withdraw", r1.ShiftId) }));
+        await Ok(await SupervisedAsync(r1, r1.ShiftId, approval => r1.Client.PostAsJsonAsync($"/api/cash/shifts/{r1.ShiftId}/movements",
+            new { MovementId = Guid.NewGuid(), MovementType = "Withdrawal", Amount = 1500m, Reason = "CashPickup", SupervisorApprovalId = approval })));
         r1.Cash -= 1500m;
-        await Ok(await r2.Client.PostAsJsonAsync($"/api/cash/shifts/{r2.ShiftId}/movements",
-            new { MovementId = Guid.NewGuid(), MovementType = "Expense", Amount = 150m, Reason = "PettyExpense", Note = "Hielo", SupervisorApprovalId = await ApproveAsync(r2, "register.withdraw", r2.ShiftId) }));
+        await Ok(await SupervisedAsync(r2, r2.ShiftId, approval => r2.Client.PostAsJsonAsync($"/api/cash/shifts/{r2.ShiftId}/movements",
+            new { MovementId = Guid.NewGuid(), MovementType = "Expense", Amount = 150m, Reason = "PettyExpense", Note = "Hielo", SupervisorApprovalId = approval })));
         r2.Cash -= 150m;
         await Ok(await admin.PostAsJsonAsync("/api/purchasing/payments", new { SupplierPaymentId = Guid.CreateVersion7(), SupplierId = supplier, Amount = 20000m, Method = "Transfer", Date = today }));
 
@@ -187,8 +185,8 @@ public sealed class StoreDayTests
         {
             var x = await Ok(await admin.GetAsync($"/api/cash/shifts/{register.ShiftId}/z"));
             x.GetProperty("expectedCash").GetDecimal().ShouldBe(register.Cash, $"{register.Name}: expected cash does not match what went through the register");
-            var z = await Ok(await register.Client.PostAsJsonAsync($"/api/cash/shifts/{register.ShiftId}/close",
-                new { CashCount = Count(register.Cash), SupervisorApprovalId = await ApproveAsync(register, "register.approve-close", register.ShiftId) }));
+            var z = await Ok(await SupervisedAsync(register, register.ShiftId, approval => register.Client.PostAsJsonAsync($"/api/cash/shifts/{register.ShiftId}/close",
+                new { CashCount = Count(register.Cash), SupervisorApprovalId = approval })));
             z.GetProperty("difference").GetDecimal().ShouldBe(0m);
             z.GetProperty("auditChainHead").GetString()!.ShouldStartWith("#");
             takenInDrawers += z.GetProperty("byMethod").EnumerateArray()
@@ -250,16 +248,34 @@ public sealed class StoreDayTests
         server.Errors500.ShouldBeEmpty(string.Join("\n", server.Errors500));
 
         // ── helpers (local functions keep the day readable top to bottom) ──
-        async Task<Guid> ApproveAsync(Register register, string permission, Guid resource) =>
-            (await Ok(await register.Client.PostAsJsonAsync("/api/identity/approvals", new { Code = "sup", Pin = SupervisorPin, Permission = permission, ResourceId = resource })))
-            .GetProperty("approvalId").GetGuid();
-
         async Task<JsonElement> ReturnAsync(Register register, Guid saleId, Guid lineId, decimal quantity, string method) =>
-            await Ok(await register.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
+            await Ok(await SupervisedAsync(register, saleId, approval => register.Client.PostAsJsonAsync($"/api/sales/{saleId}/returns", new
             {
                 ReturnId = Guid.CreateVersion7(), ShiftId = register.ShiftId, Method = method, Reason = "devolución",
-                Lines = new[] { new { SaleLineId = lineId, Quantity = quantity } }, SupervisorApprovalId = await ApproveAsync(register, "sales.return", saleId),
-            }));
+                Lines = new[] { new { SaleLineId = lineId, Quantity = quantity } }, SupervisorApprovalId = approval,
+            })));
+    }
+
+    private static async Task<Guid> ApproveAsync(Register register, string permission, Guid resource, string summary = "") =>
+        (await Ok(await register.Client.PostAsJsonAsync("/api/identity/approvals",
+            new { Code = "sup", Pin = SupervisorPin, Permission = permission, ResourceId = resource, Summary = summary })))
+        .GetProperty("approvalId").GetGuid();
+
+    /// <summary>The server's Approval.Required (permission and what is approved), or null.</summary>
+    private static async Task<(string Permission, string Summary)?> RequiredAsync(HttpResponseMessage r)
+    {
+        if (r.StatusCode != HttpStatusCode.Forbidden) return null;
+        var problem = JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
+        if (problem.GetProperty("code").GetString() != "Approval.Required") return null;
+        var errors = problem.GetProperty("errors");
+        return (errors.GetProperty("permission")[0].GetString()!, errors.GetProperty("summary")[0].GetString()!);
+    }
+
+    /// <summary>Like the register: the supervisor approves exactly what the server asks for (R11 A1), then it goes again.</summary>
+    private static async Task<HttpResponseMessage> SupervisedAsync(Register register, Guid resource, Func<Guid?, Task<HttpResponseMessage>> send)
+    {
+        var r = await send(null);
+        return await RequiredAsync(r) is { } required ? await send(await ApproveAsync(register, required.Permission, resource, required.Summary)) : r;
     }
 
     /// <summary>Sells like a register: it shows the server's total first (TotalChanged), then charges it. Records the cash the drawer keeps.</summary>
@@ -285,7 +301,18 @@ public sealed class StoreDayTests
             "Mixed" => [new { Method = "Card", Amount = total - cash, Reference = "AUT" }, new { Method = "Cash", Amount = cash }],
             _ => [new { Method = method, Amount = total, Reference = "AUT" }],
         };
-        var sale = await Ok(await WithRetryAsync(() => register.Client.PostAsJsonAsync("/api/sales", Body(total, payments))));
+        // Each permission the sale needs (discount, credit, over the limit) is approved by the supervisor as the server summarized it.
+        List<Guid> approvals = [];
+        HttpResponseMessage charged;
+        while (true)
+        {
+            var body = Body(total, payments);
+            if (approvals.Count > 0) body["SupervisorApprovals"] = approvals.ToArray();
+            charged = await WithRetryAsync(() => register.Client.PostAsJsonAsync("/api/sales", body));
+            if (approvals.Count > 4 || await RequiredAsync(charged) is not { } required) break;
+            approvals.Add(await ApproveAsync(register, required.Permission, id, required.Summary));
+        }
+        var sale = await Ok(charged);
         var kept = cash - sale.GetProperty("change").GetDecimal();
         lock (register)
         {
