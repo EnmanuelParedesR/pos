@@ -43,6 +43,8 @@ public sealed class BillingApp : CloudApp
     public ECDsa LicenseKey { get; } = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     public FakePaddle Paddle { get; } = new();
 
+    public DateTime Now => Clock.GetUtcNow().UtcDateTime;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         base.ConfigureWebHost(builder);
@@ -154,39 +156,41 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>
     [Fact]
     public async Task The_store_gets_a_license_signed_by_the_cloud_key_that_runs_out_with_what_was_paid()
     {
-        var owner = await app.OwnerAsync();
-        var node = await app.StoreWithNodeAsync(owner, "Carnicería La Esquina");
+        // Own app: it moves the clock weeks ahead, which would leave the other tests' fixed periods in the past.
+        await using var own = new BillingApp();
+        var owner = await own.OwnerAsync();
+        var node = await own.StoreWithNodeAsync(owner, "Carnicería La Esquina");
         async Task<string?> LicenseAsync() => (await (await node.Client.PostAsync("/api/nodes/license", null)).Json()).GetProperty("license").GetString();
         (await LicenseAsync()).ShouldBeNull(); // nothing paid
 
-        (await app.SendAsync(Subscription(Id(), "subscription.created", owner.TenantId, "active", Now, PeriodEnd, BillingApp.Registers, BillingApp.Invoices))).EnsureSuccessStatusCode();
+        (await own.SendAsync(Subscription(Id(), "subscription.created", owner.TenantId, "active", own.Now, PeriodEnd, BillingApp.Registers, BillingApp.Invoices))).EnsureSuccessStatusCode();
         var jws = await LicenseAsync();
         using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         Jws.Verify(jws!, other).IsFailure.ShouldBeTrue();
-        var license = Jws.Verify(jws!, other, app.LicenseKey).Value; // the store trusts either key
+        var license = Jws.Verify(jws!, other, own.LicenseKey).Value; // the store trusts either key
         (license.Store, license.Plan, license.Limits["Registers"], license.ExpiresUtc).ShouldBe(("Carnicería La Esquina", "Varias cajas", 3, PeriodEnd.AddDays(3)));
         license.Features.ShouldContain("SupplierInvoiceReading");
         license.Features.ShouldContain("ButcherModule");
         // Same subscription, same issue date: the store does not reinstall it every pull.
-        Jws.Verify((await LicenseAsync())!, app.LicenseKey).Value.IssuedUtc.ShouldBe(license.IssuedUtc);
+        Jws.Verify((await LicenseAsync())!, own.LicenseKey).Value.IssuedUtc.ShouldBe(license.IssuedUtc);
 
         // The renewal fails: past due. The paid period does not move, the plan stays while Paddle retries.
-        app.Clock.Advance(TimeSpan.FromDays(31));
-        (await app.SendAsync(Subscription(Id(), "subscription.past_due", owner.TenantId, "past_due", Now, PeriodEnd.AddMonths(1), BillingApp.Registers, BillingApp.Invoices)))
+        own.Clock.Advance(TimeSpan.FromDays(31));
+        (await own.SendAsync(Subscription(Id(), "subscription.past_due", owner.TenantId, "past_due", own.Now, PeriodEnd.AddMonths(1), BillingApp.Registers, BillingApp.Invoices)))
             .EnsureSuccessStatusCode();
-        owner = await app.SignInAsync(owner.Email);
+        owner = await own.SignInAsync(owner.Email);
         var billing = await BillingAsync(owner);
         (billing.GetProperty("status").GetString(), billing.GetProperty("plan").GetString()).ShouldBe(("PastDue", "MultiRegister"));
-        Jws.Verify((await LicenseAsync())!, app.LicenseKey).Value.ExpiresUtc.ShouldBe(PeriodEnd.AddDays(3)); // then the store's grace, then Restricted
+        Jws.Verify((await LicenseAsync())!, own.LicenseKey).Value.ExpiresUtc.ShouldBe(PeriodEnd.AddDays(3)); // then the store's grace, then Restricted
 
         // Past the margin there is no license to hand out; the store's own grace and Restricted follow (never read-only).
-        app.Clock.Advance(TimeSpan.FromDays(3));
+        own.Clock.Advance(TimeSpan.FromDays(3));
         (await LicenseAsync()).ShouldBeNull();
 
         // Paid at last: active again, a new period.
-        (await app.SendAsync(new
+        (await own.SendAsync(new
         {
-            event_id = Id(), event_type = "transaction.completed", occurred_at = Now.ToString("O"),
+            event_id = Id(), event_type = "transaction.completed", occurred_at = own.Now.ToString("O"),
             data = new
             {
                 id = "txn_1", status = "completed", customer_id = "ctm_x", subscription_id = "sub_" + owner.TenantId.ToString("N"),
@@ -195,10 +199,10 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>
                 custom_data = (object?)null,
             },
         })).EnsureSuccessStatusCode();
-        owner = await app.SignInAsync(owner.Email);
+        owner = await own.SignInAsync(owner.Email);
         billing = await BillingAsync(owner);
         (billing.GetProperty("status").GetString(), billing.GetProperty("addOns").GetArrayLength()).ShouldBe(("Active", 0));
-        Jws.Verify((await LicenseAsync())!, app.LicenseKey).Value.ExpiresUtc.ShouldBe(PeriodEnd.AddMonths(1).AddDays(3));
+        Jws.Verify((await LicenseAsync())!, own.LicenseKey).Value.ExpiresUtc.ShouldBe(PeriodEnd.AddMonths(1).AddDays(3));
     }
 
     [Fact]
