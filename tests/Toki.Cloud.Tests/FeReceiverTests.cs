@@ -397,6 +397,60 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
     }
 
     [Fact]
+    public async Task TK250_an_owner_decides_the_approval_in_the_panel_one_decision_wins_and_only_the_receivers_PC_pulls_it_until_the_store_records_it()
+    {
+        var (node, owner, rnc, _) = await ReceiverAsync();
+        var supplier = await SupplierClientAsync(rnc);
+        (await AckAsync(supplier, rnc, SupplierEcf(rnc, "E310000000031"))).Estado.ShouldBe("0");
+        (await AckAsync(supplier, rnc, SupplierEcf(rnc, "E310000000032"))).Estado.ShouldBe("0");
+        async Task<JsonElement> PullAsync(StoreNode pc) => await (await pc.Client.PostAsJsonAsync("/fiscal/v1/received/pull", new { after = 0 })).Json();
+        var ids = (await PullAsync(node)).GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetInt64()).ToList();
+        var (a, b) = (ids[0], ids[1]);
+        Task<HttpResponseMessage> Decide(Owner who, long id, bool approve, string? reason = null) =>
+            who.Client.PostAsJsonAsync($"/api/panel/fe/received/{id}/decision", new { approve, reason });
+
+        // Owners only; a rejection needs its reason; another business's document does not exist.
+        var email = $"contador{Guid.NewGuid():N}@example.com";
+        var invite = await (await owner.Client.PostAsJsonAsync("/api/members/invites", new { email, role = "ReadOnly" })).Json();
+        var link = invite.GetProperty("link").GetString()!;
+        (await app.CreateClient().PostAsJsonAsync("/api/invites/register", new { token = link[(link.IndexOf('#') + 1)..], password = CloudApp.Password }))
+            .EnsureSuccessStatusCode();
+        (await Decide(await app.SignInAsync(email), a, true)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await (await Decide(owner, a, false, "  ")).ErrorCode()).ShouldBe("Fe.ReasonRequired");
+        (await (await Decide(await app.OwnerAsync(), a, true)).ErrorCode()).ShouldBe("Fe.NotFound");
+
+        // Two decisions at once: one wins, the other is refused; the same one again changes nothing.
+        var both = await Task.WhenAll(Decide(owner, a, true), Decide(owner, a, false, "Montos incorrectos"));
+        both.Count(r => r.StatusCode == HttpStatusCode.OK).ShouldBe(1);
+        var lost = both.Single(r => r.StatusCode != HttpStatusCode.OK);
+        (await lost.ErrorCode()).ShouldBe("Fe.AlreadyDecided");
+        var won = (await both.Single(r => r.StatusCode == HttpStatusCode.OK).Json()).GetProperty("panelDecision").GetString()!;
+        var again = await Decide(owner, a, won == "Approved", won == "Approved" ? null : "Montos incorrectos");
+        again.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await again.Json()).GetProperty("approval").ValueKind.ShouldBe(JsonValueKind.Null); // pending: signed at the store
+
+        // Only the PC that activated the receiver (it has the certificate) pulls it, with who decided.
+        var pending = (await PullAsync(node)).GetProperty("decisions").EnumerateArray().ShouldHaveSingleItem();
+        (pending.GetProperty("id").GetInt64(), pending.GetProperty("decision").GetString(), pending.GetProperty("decidedBy").GetString()).ShouldBe((a, won, owner.Email));
+        (await PullAsync(await app.StoreWithNodeAsync(owner, "Sucursal"))).GetProperty("decisions").GetArrayLength().ShouldBe(0);
+
+        // The store decided b first: the panel cannot decide otherwise. And a decision made at the store before it pulled the panel's wins.
+        var at = CloudApp.Today.ToDateTime(new TimeOnly(15, 0), DateTimeKind.Utc);
+        var acecf = FeXml.Zip("<ACECF/>");
+        var storeSays = won == "Approved" ? "Rejected" : "Approved";
+        (await node.SendAsync(
+            Events.Envelope(new CommercialApprovalRecordedV1(Guid.NewGuid(), b, "Rejected", "Llegó dañado", at, at, at, null, acecf), at),
+            Events.Envelope(new CommercialApprovalRecordedV1(Guid.NewGuid(), a, storeSays, storeSays == "Rejected" ? "En la tienda" : null, at, at, at, null, acecf), at)))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+        await app.ApplyAsync();
+        (await (await Decide(owner, b, true)).ErrorCode()).ShouldBe("Fe.AlreadyDecided");
+        (await Decide(owner, b, false, "Llegó dañado")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await PullAsync(node)).GetProperty("decisions").GetArrayLength().ShouldBe(0);
+        var shown = (await owner.Client.GetFromJsonAsync<JsonElement>("/api/panel/fe/received")).EnumerateArray().Single(d => d.GetProperty("id").GetInt64() == a);
+        (shown.GetProperty("approval").GetString(), shown.GetProperty("panelDecision").GetString()).ShouldBe((storeSays, won));
+    }
+
+    [Fact]
     public async Task A_buyers_commercial_approval_of_an_e_CF_the_tenant_issued_is_kept()
     {
         var (_, owner, rnc, _) = await ReceiverAsync();

@@ -101,6 +101,13 @@ public sealed class FeReceivedDocument
     public DateTime? ApprovalDeliveredUtc { get; set; }
     public DateTime? ApprovalDgiiUtc { get; set; }
     public string? ApprovalMessage { get; set; }
+    /// <summary>TK-250: Approved or Rejected, decided by an owner in the panel and waiting for the PC that activated the receiver (it holds the
+    /// certificate) to sign and send it. Kept after the store records it: <see cref="Approval"/> is the result (a decision made at the store first wins).</summary>
+    public string? PanelDecision { get; set; }
+    public string? PanelReason { get; set; }
+    /// <summary>Who decided (e-mail) and when: the audit trail of the panel's decision.</summary>
+    public string? PanelDecidedBy { get; set; }
+    public DateTime? PanelDecidedUtc { get; set; }
 }
 
 /// <summary>TK-152: a commercial approval (ACECF) a buyer sent about an e-CF the tenant issued. Linked to the archive by e-NCF.</summary>
@@ -167,6 +174,9 @@ internal static class FeModel
             e.Property(d => d.Approval).HasMaxLength(10);
             e.Property(d => d.ApprovalReason).HasMaxLength(250);
             e.Property(d => d.ApprovalMessage).HasMaxLength(1000);
+            e.Property(d => d.PanelDecision).HasMaxLength(10);
+            e.Property(d => d.PanelReason).HasMaxLength(250);
+            e.Property(d => d.PanelDecidedBy).HasMaxLength(256);
             e.Property(d => d.Sha256).HasMaxLength(64);
             // R9 #5: per environment, a TesteCF document never makes the eCF one a duplicate.
             e.HasIndex(d => new { d.TenantId, d.Environment, d.IssuerRnc, d.ENcf, d.Sha256 }).IsUnique();

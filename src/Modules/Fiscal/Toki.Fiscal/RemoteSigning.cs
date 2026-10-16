@@ -27,8 +27,12 @@ internal sealed class RemoteSigning(ICloudClient cloud, CertificateEcfSigner sig
 {
     public const string NextPath = "/fiscal/v1/receiver/sign-requests/next";
     public static readonly IReadOnlySet<string> AllowedRoots = new HashSet<string>(StringComparer.Ordinal) { "ARECF" };
-    /// <summary>Not connected, no certificate, or this PC does not sign for the receiver: asked again after this.</summary>
+    /// <summary>Not connected, no certificate, or the cloud failed: asked again after this.</summary>
     public static readonly TimeSpan Idle = TimeSpan.FromMinutes(1);
+    /// <summary>The cloud says this PC does not sign for the receiver (404 <c>Fe.NotSigningNode</c>: not activated, or another PC activated it).
+    /// Polling every minute would keep the serverless database awake for nothing; activating here wakes the poll at once
+    /// (<see cref="RemoteSigningWake"/>).</summary>
+    public static readonly TimeSpan NotSigning = TimeSpan.FromHours(6);
 
     internal sealed record SignRequest(Guid Id, string Xml);
 
@@ -54,6 +58,7 @@ internal sealed class RemoteSigning(ICloudClient cloud, CertificateEcfSigner sig
         using (response)
         {
             if (response.StatusCode == HttpStatusCode.NoContent) return TimeSpan.Zero;
+            if (response.StatusCode == HttpStatusCode.NotFound) return NotSigning;
             if (!response.IsSuccessStatusCode || await response.Content.ReadFromJsonAsync<SignRequest>(ct) is not { } request) return Idle;
             var (signed, refused) = await SignAsync(request.Id, request.Xml, ct);
             using var answer = await cloud.PostAsJsonAsync($"/fiscal/v1/receiver/sign-requests/{request.Id}", new { signedXml = signed, refused }, ct);
@@ -95,7 +100,8 @@ internal sealed class RemoteSigning(ICloudClient cloud, CertificateEcfSigner sig
 
 /// <summary>Keeps the long poll open while the store is connected, unless <c>Sync:Enabled</c> is false (the test host calls
 /// <see cref="RemoteSigning.PollOnceAsync"/>).</summary>
-internal sealed class RemoteSigningWorker(IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<RemoteSigningWorker> log) : BackgroundService
+internal sealed class RemoteSigningWorker(IServiceScopeFactory scopes, IConfiguration config, RemoteSigningWake wake, TimeProvider clock, ILogger<RemoteSigningWorker> log)
+    : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -103,6 +109,7 @@ internal sealed class RemoteSigningWorker(IServiceScopeFactory scopes, IConfigur
         while (!stoppingToken.IsCancellationRequested)
         {
             TimeSpan wait;
+            var woken = wake.Next; // read before polling: an activation during the poll still cuts the wait short
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
@@ -117,7 +124,21 @@ internal sealed class RemoteSigningWorker(IServiceScopeFactory scopes, IConfigur
                 log.LogError(e, "Remote signing for the cloud receiver failed");
                 wait = RemoteSigning.Idle;
             }
-            if (wait > TimeSpan.Zero) await Task.Delay(wait, clock, stoppingToken);
+            if (wait <= TimeSpan.Zero) continue;
+            using var waiting = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            await Task.WhenAny(Task.Delay(wait, clock, waiting.Token), woken);
+            await waiting.CancelAsync(); // the delay a wake cut short
         }
     }
+}
+
+/// <summary>Cuts the remote signing poll's wait short: the receiver was just activated on this PC (StoreSigned), so the cloud now has requests for it.</summary>
+internal sealed class RemoteSigningWake
+{
+    private TaskCompletionSource _next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>Completes when <see cref="Now"/> is called after this was read.</summary>
+    public Task Next => Volatile.Read(ref _next).Task;
+
+    public void Now() => Interlocked.Exchange(ref _next, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
 }

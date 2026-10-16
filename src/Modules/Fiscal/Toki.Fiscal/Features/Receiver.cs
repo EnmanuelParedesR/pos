@@ -122,7 +122,7 @@ internal static class GiveReceiverConsent
         public void Map(IEndpointRouteBuilder app)
         {
             app.MapPost("/api/fiscal/receiver/consent", async (Request r, ICloudClient cloud, ISettingsQueries settings, CertificateEcfSigner signer,
-                ICommandHandler<Recorded, Ok> record, TimeProvider clock, CancellationToken ct) =>
+                ICommandHandler<Recorded, Ok> record, RemoteSigningWake wake, TimeProvider clock, CancellationToken ct) =>
             {
                 var rnc = (await settings.GetBusinessProfileAsync(ct)).Rnc;
                 var mode = r.Mode == ReceiverCloud.CloudCustody ? ReceiverCloud.CloudCustody : ReceiverCloud.StoreSigned;
@@ -150,6 +150,7 @@ internal static class GiveReceiverConsent
                 }
                 if (status.IsFailure) return EndpointExtensions.Problem(status.Error!);
                 await record.Handle(new Recorded(owner, holder, rnc, status.Value.Subject, mode, false), ct);
+                if (mode == ReceiverCloud.StoreSigned) wake.Now(); // the signing poll was backing off (not the signing PC until now)
                 return Results.Ok(status.Value);
             }).RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");
 
@@ -201,8 +202,9 @@ internal static class ReceivedDocuments
 internal sealed class CommercialApprovals(FiscalDbContext db, CertificateEcfSigner signer, IEcfProvider provider, ISettingsQueries settings, IHttpClientFactory http,
     ICommandHandler<CommercialApprovals.Decided, ReceivedDocuments.Item> record, TimeProvider clock, ILogger<CommercialApprovals> log)
 {
+    /// <param name="DecidedBy">TK-250: "panel: {e-mail}" when an owner decided it in the panel; null when decided at this PC (the audit has the user).</param>
     internal sealed record Decided(Guid Id, string Approval, string? Reason, DateTime ApprovalUtc, byte[] XmlGzip, DateTime? DeliveredUtc, DateTime? DgiiUtc,
-        string? Message) : ICommand<ReceivedDocuments.Item>;
+        string? Message, string? DecidedBy = null) : ICommand<ReceivedDocuments.Item>;
 
     internal sealed class Handler(FiscalDbContext db, IAuditLog audit, IOutbox outbox) : ICommandHandler<Decided, ReceivedDocuments.Item>
     {
@@ -212,14 +214,14 @@ internal sealed class CommercialApprovals(FiscalDbContext db, CertificateEcfSign
             var first = d.ApprovalXmlGzip is null;
             if (first) (d.Approval, d.ApprovalReason, d.ApprovalUtc, d.ApprovalXmlGzip) = (c.Approval, c.Reason, c.ApprovalUtc, c.XmlGzip);
             (d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage) = (d.ApprovalDeliveredUtc ?? c.DeliveredUtc, d.ApprovalDgiiUtc ?? c.DgiiUtc, c.Message);
-            if (first) await audit.RecordAsync("fiscal.commercial-approval", "ReceivedDocument", d.Id, new { d.IssuerRnc, d.ENcf, d.Approval, d.ApprovalReason }, ct);
+            if (first) await audit.RecordAsync("fiscal.commercial-approval", "ReceivedDocument", d.Id, new { d.IssuerRnc, d.ENcf, d.Approval, d.ApprovalReason, c.DecidedBy }, ct);
             outbox.Add(new CommercialApprovalRecordedV1(d.Id, d.CloudId, d.Approval!, d.ApprovalReason, d.ApprovalUtc!.Value, d.ApprovalDeliveredUtc,
                 d.ApprovalDgiiUtc, d.ApprovalMessage, d.ApprovalXmlGzip!));
             return ReceivedDocuments.Of(d);
         }
     }
 
-    public async Task<Result<ReceivedDocuments.Item>> DecideAsync(Guid id, ReceivedDocuments.ApprovalRequest r, CancellationToken ct)
+    public async Task<Result<ReceivedDocuments.Item>> DecideAsync(Guid id, ReceivedDocuments.ApprovalRequest r, CancellationToken ct, string? decidedBy = null)
     {
         var d = await db.Set<ReceivedDocument>().AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
         if (d is null) return Error.NotFound("Fiscal.ReceivedNotFound", "Ese comprobante recibido no existe.");
@@ -296,6 +298,6 @@ internal sealed class CommercialApprovals(FiscalDbContext db, CertificateEcfSign
         }
         var message = messages.Count == 0 ? null : string.Join(" ", messages);
         if (message?.Length > 1000) message = message[..1000];
-        return await record.Handle(new Decided(d.Id, d.Approval ?? decision, storedReason, approvalUtc, EcfSubmissionQueue.Zip(xml), delivered, taken, message), ct);
+        return await record.Handle(new Decided(d.Id, d.Approval ?? decision, storedReason, approvalUtc, EcfSubmissionQueue.Zip(xml), delivered, taken, message, decidedBy), ct);
     }
 }

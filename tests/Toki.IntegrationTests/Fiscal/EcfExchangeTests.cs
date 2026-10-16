@@ -249,6 +249,82 @@ public sealed class ReceivedDocumentsTests(ExchangeTokiApp app) : IClassFixture<
 }
 
 /// <summary>TK-246: the store signs for its cloud receiver on request (StoreSigned): only acknowledgements of this business, each one audited.</summary>
+/// <summary>TK-250: a commercial approval decided by the owner in the cloud panel comes down with the pull and is signed and sent here.</summary>
+public sealed class PanelDecisionTests(ExchangeTokiApp app) : IClassFixture<ExchangeTokiApp>
+{
+    private const string Supplier = "101672919";
+
+    [Fact]
+    public async Task A_decision_from_the_panel_is_signed_here_sent_to_the_supplier_and_the_DGII_and_one_made_here_first_wins()
+    {
+        var admin = await app.SetUpAsync();
+        object Item(long id, string encf) => new
+        {
+            id, environment = "testecf", issuerRnc = Supplier, issuerName = "Distribuidora del Cibao SRL", eNcf = encf, type = 31, issuedOn = "2026-10-15",
+            total = 1180m, itbis = 180m, receivedUtc = DateTime.UtcNow, xmlGzip = Convert.ToBase64String(EcfSubmissionQueue.Zip("<ECF/>")),
+        };
+        object Decision(long id) => new { id, decision = "Rejected", reason = "Montos incorrectos", decidedBy = "ana@example.com", decidedUtc = DateTime.UtcNow };
+        var decisions = Array.Empty<object>();
+        await app.ConnectAsync();
+        app.Dgii.Directory[Supplier] = FakeBuyerReceiver.Url;
+        app.Cloud.Respond = path => path == ReceivedDocumentsPuller.PullPath
+            ? Json(new { items = app.Cloud.Requests.Last().Body.GetProperty("after").GetInt64() < 12 ? new[] { Item(11, "E310000000011"), Item(12, "E310000000012") } : [], decisions })
+            : null;
+        (await PullAsync()).ShouldBe(2);
+        var received = (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/received")).EnumerateArray().ToList();
+        Guid IdOf(string encf) => received.Single(r => r.GetProperty("eNcf").GetString() == encf).GetProperty("id").GetGuid();
+        // 12 is approved here before the store pulls the panel's rejection.
+        (await admin.PostAsJsonAsync($"/api/fiscal/received/{IdOf("E310000000012")}/approval", new { approve = true })).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        decisions = [Decision(11), Decision(12)];
+        (await PullAsync()).ShouldBe(0);
+        (await PullAsync()).ShouldBe(0); // still pending in the cloud until the event lands: nothing goes twice
+
+        var toSupplier = app.Buyer.Requests.Where(r => r.Path == "/fe/aprobacioncomercial/api/ecf").ToList();
+        toSupplier.Count.ShouldBe(2);
+        app.Dgii.To("/aprobacioncomercial/api/aprobacioncomercial").Count().ShouldBe(2);
+        var acecf = XDocument.Parse(toSupplier.Single(r => r.FileName!.EndsWith("E310000000011.xml", StringComparison.Ordinal)).Xml!);
+        EcfXml.Validate(acecf, EcfXml.AcecfSchema).ShouldBeEmpty();
+        ReceivedDocumentsTests.SignatureIsValid(acecf.ToString(SaveOptions.DisableFormatting)).ShouldBeTrue();
+        (acecf.Descendants("Estado").Single().Value, acecf.Descendants("DetalleMotivoRechazo").Single().Value).ShouldBe(("2", "Montos incorrectos"));
+
+        var shown = (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/received")).EnumerateArray().ToDictionary(r => r.GetProperty("eNcf").GetString()!, r => r.GetProperty("approval").GetString());
+        (shown["E310000000011"], shown["E310000000012"]).ShouldBe(("Rejected", "Approved"));
+        var infra = (Func<Toki.BuildingBlocks.Persistence.InfraDbContext, Task<int>> q) => app.InScopeAsync(sp => q(sp.GetRequiredService<Toki.BuildingBlocks.Persistence.InfraDbContext>()));
+        (await infra(db => db.Outbox.CountAsync(m => m.Type == typeof(Toki.Fiscal.Contracts.CommercialApprovalRecordedV1).FullName))).ShouldBe(2);
+        (await infra(db => db.AuditRecords.CountAsync(a => a.Action == "fiscal.commercial-approval" && a.Data.Contains("panel: ana@example.com")))).ShouldBe(1);
+    }
+
+    private Task<int> PullAsync() => app.InScopeAsync(sp => sp.GetRequiredService<ReceivedDocumentsPuller>().PullAsync(CancellationToken.None));
+
+    private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
+}
+
+/// <summary>Audit: a store that does not sign for the receiver must not poll the cloud every minute (it kept the serverless database awake).</summary>
+public sealed class RemoteSigningBackoffTests(ExchangeTokiApp app) : IClassFixture<ExchangeTokiApp>
+{
+    [Fact]
+    public async Task A_PC_that_does_not_sign_for_the_receiver_backs_off_for_hours_and_activating_it_here_wakes_the_poll()
+    {
+        var admin = await app.SetUpAsync();
+        await app.ConnectAsync();
+        app.Cloud.Respond = path => path switch
+        {
+            RemoteSigning.NextPath => new HttpResponseMessage(HttpStatusCode.NotFound) { Content = JsonContent.Create(new { code = "Fe.NotSigningNode" }) },
+            "/fiscal/v1/receiver/challenge" => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { challenge = "reto" }) },
+            "/fiscal/v1/receiver/activate" => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { active = true, signingMode = "StoreSigned" }) },
+            _ => null,
+        };
+        (await app.InScopeAsync(sp => sp.GetRequiredService<RemoteSigning>().PollOnceAsync(CancellationToken.None))).ShouldBe(RemoteSigning.NotSigning);
+
+        var woken = app.Services.GetRequiredService<RemoteSigningWake>().Next;
+        woken.IsCompleted.ShouldBeFalse();
+        (await admin.PostAsJsonAsync("/api/fiscal/receiver/consent", new { mode = "StoreSigned", ownerName = "Ana Pérez", holderName = "Ana Pérez", accepted = true }))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+        woken.IsCompleted.ShouldBeTrue();
+    }
+}
+
 public sealed class RemoteSigningTests(ExchangeTokiApp app) : IClassFixture<ExchangeTokiApp>
 {
     [Fact]
