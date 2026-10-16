@@ -3,6 +3,8 @@
 Fuente del alcance: `docs/funcionalidades-v1.md` (sección 2) y `docs/arquitectura-v1-vsa.md` (sección 14).
 Estados: ✅ hecho · 🔨 en curso · ⬜ pendiente · ⏸ en espera (bloqueado por algo externo).
 
+Preguntas y decisiones pendientes (dueño, DGII, contador, abogado, INDOTEL, pruebas de campo, piloto): `docs/preguntas-abiertas.md`.
+
 Cada ticket se cierra solo con: endpoint, validación, handler, prueba de integración del camino principal, prueba unitaria si hay lógica de negocio, y entrada de auditoría si cambia dinero, inventario o permisos.
 
 Al terminar cada hito, un desarrollador senior (agente de revisión) revisa el código y las pruebas (unitarias, integración y de punta a punta). Sus hallazgos entran aquí como tickets `RV-…`.
