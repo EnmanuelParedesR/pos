@@ -249,7 +249,7 @@ Diseño: `docs/ecf-propio.md` (alcance, criterios y dependencias de cada ticket 
 
 ## M15 · Brechas frente a la competencia
 
-Origen: `docs/competencia-poszy.md` (TK-188). Alcance y criterios de aceptación de cada ticket en su §8. Tamaño: S (≤ 2 días), M (≤ 1 semana), L (más).
+Origen: `docs/competencia-poszy.md` (TK-188, alcance y criterios en su §8) y `docs/competencia-glecf.md` (TK-218, TK-220..TK-226 en su §9). Tamaño: S (≤ 2 días), M (≤ 1 semana), L (más).
 
 | Ticket | Qué | Estado |
 |---|---|---|
@@ -258,12 +258,19 @@ Origen: `docs/competencia-poszy.md` (TK-188). Alcance y criterios de aceptación
 | TK-193 | Encargos: fecha y hora de entrega, abono como anticipo, conversión en venta con el peso real, recordatorio (M) | ✅ `/api/orders` (`sales.Orders`); F10 en la caja guarda el carrito como encargo y lista los de hoy y mañana (también en el Resumen). El abono entra al Z como cobro a cliente y queda como saldo a favor; "Cobrar" carga el encargo a precio de hoy y el cobro usa ese saldo primero; la venta lo marca entregado en la misma transacción. Cancelar pide `sales.void` y devuelve el abono desde la caja. Pruebas de integración (Z, cancelar) y bUnit |
 | TK-194 | Cotizaciones que se convierten en venta (primer paso del módulo Mayorista) (M) | ✅ Mismo `Order` con `Kind = Quote` y vigencia; vista para imprimir o guardar PDF (`/quotes/{id}`); al cobrarla la venta sale a precio de hoy y la caja muestra la diferencia. No mueve inventario ni caja |
 | TK-195 | Catálogo público con QR y pedido por WhatsApp, desde la réplica de la nube (M) | ✅ Administración → Pedidos y catálogo: productos, WhatsApp, enlace y QR (`Cloud:PanelUrl`). `CatalogItemChangedV1` y `CatalogSettingsChangedV1` por el uploader; la nube los proyecta y sigue `PriceChangedV1`; `/api/public/catalog/{storeId}` sin sesión y sin costo ni existencia; página `/c/{storeId}` en el panel con "Pedir por WhatsApp" |
-| TK-196 | Prueba gratis autoservicio: instalador desde la web, asistente de un equipo, datos de ejemplo, **14 días** (decisión del dueño 15/10/2026, igual que GLECF) (M) | ⬜ |
+| TK-196 | Prueba gratis autoservicio: instalador desde la web, asistente de un equipo, datos de ejemplo, **14 días** desde la primera venta (decisión del dueño 15/10/2026; GLECF no tiene prueba por días sino un plan gratis permanente). Especificación en `docs/competencia-glecf.md` §7 (M) | ⬜ |
 | TK-197 | Sitio: precios públicos y páginas Carnicería, Colmado y Deli con FAQ (S–M, depende de TK-203) | ⬜ |
 | TK-198 | Contenido e-CF: "¿Ya te toca?" y plazo del 15/11/2026 (S) | ⬜ |
 | TK-199 | Programa de referidos para revendedores y contadores (S, decisión del dueño) | ⬜ |
-| TK-218 | Análisis de la competencia: GLECF (glecf.com): precios, prueba de 14 días, asistentes de certificación; brechas y tickets nuevos | 🔨 |
-| TK-219 | Acompañamiento en la certificación e-CF como servicio (asistente en la app TK-155 + proceso humano), como ofrece GLECF; después de terminar lo pendiente | ⬜ |
+| TK-218 | Análisis de la competencia: GLECF (glecf.com): precios, prueba de 14 días, asistentes de certificación; brechas y tickets nuevos | ✅ `docs/competencia-glecf.md`; tickets TK-220..TK-226 abajo |
+| TK-219 | Acompañamiento en la certificación e-CF como servicio (asistente en la app TK-155 + proceso humano), como ofrece GLECF; después de terminar lo pendiente. Dos niveles, dos citas, Toki nunca recibe la clave de la OFV: `docs/competencia-glecf.md` §7 | ⬜ |
+| TK-220 | Fin de la prueba de 14 días: vence 14 días después de la primera venta, avisos días 10 y 13, luego Restringido (nunca solo lectura), "Comprar licencia" sin reinstalar (S, depende de TK-196) | ⬜ |
+| TK-221 | Cambiarse a Toki ya siendo emisor electrónico: `.p12`, URL en "Mantenimiento Directorio FE", secuencias restantes, sin recertificar (confirmar con la DGII) (S) | ⬜ |
+| TK-222 | Avisos fuera de la app (correo; WhatsApp con el add-on): rechazos de la DGII, certificado por vencer, cola de más de 24 h, avance de la certificación (M) | ⬜ |
+| TK-223 | Cruzar compras y gastos con el Excel de comprobantes recibidos de la DGII: faltantes, duplicados, diferencias; compra en borrador desde un faltante (M) | ⬜ |
+| TK-224 | Compra en borrador desde la factura del suplidor (PDF o foto) con IA, siempre revisada por una persona (M) | ⬜ |
+| TK-225 | Seguimiento de la certificación por cliente en la consola de plataforma (paso, días en el paso, atascados) y etapa "Certificado" en el embudo (S) | ⬜ |
+| TK-226 | Páginas públicas de novedades y "Certifícate con Toki" (requisitos, etapas, quién hace qué, precio del servicio) (S, con TK-197) | ⬜ |
 | TK-200 | Cierre de turno (Z) y estado de cuenta de fiado en PDF de una página (S) | ✅ Turnos y cuadres → Z y Clientes → cuenta: "para PDF" descarga una página A4 (negocio, logo C5, totales, diferencia, quién autorizó) que se imprime o guarda como PDF; sin librería de PDF (QuestPDF no es MIT/Apache; `Printables.cs`). Falta: el panel de la nube |
 | TK-201 | Costo, utilidad y valor de inventario visibles solo con permiso, en caja, administración, panel y exportaciones (S) | ✅ Permiso `costs.view` ("Ver costos y ganancias"; Administrador sí, Supervisor no por defecto): sin él la API manda null en costo de producto, existencias y valor, kardex, conteo aplicado, reportes de ventas e inventario (y sus columnas vacías en CSV/Excel), y la administración los oculta (Inventario, Resumen "Ganancia"). Las líneas de compra siguen con `purchasing.manage`. Falta: el panel de la nube |
 | TK-202 | Investigación: caja ligera o toma de pedidos en tablet Android contra la PC principal (M, spike → ADR) | ⬜ |
