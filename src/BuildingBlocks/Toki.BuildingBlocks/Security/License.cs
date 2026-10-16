@@ -24,6 +24,8 @@ public interface IFeatureService
     DateTime? EndsUtc { get; }
     bool IsEnabled(Feature feature);
     int LimitOf(Limit limit);
+    /// <summary>R11 B-Low8: the installed license as Toki signed it (JWS), for the cloud to verify; null without one.</summary>
+    string? LicenseJws => null;
 }
 
 /// <summary>The license as the vendor signed it (docs/licencias.md). <see cref="Features"/> holds <see cref="Feature"/> names; <see cref="Limits"/> by <see cref="Limit"/> name.

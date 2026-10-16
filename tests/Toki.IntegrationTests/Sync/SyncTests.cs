@@ -323,6 +323,7 @@ public sealed class HeartbeatTests(TokiApp app) : IClassFixture<TokiApp>
             "eventId", "occurredUtc", "aggregateId", "onAccount", "scaleConfigured", "printerConfigured", "fiscalProvider", "businessNameSet", "rncSet",
             "activeProducts", "day", "sales", "salesAmount", "activeCashiers", "voids", "returns", "license", "status", "endsUtc",
             "fiscal", "rejectedWithoutReplacement", "oldestPendingUtc", "certificateExpiresUtc",
+            "jws", // R11 B-Low8: the license Toki itself signed (null in a trial), for the cloud to verify
         };
         Names(heartbeat).ShouldAllBe(n => allowed.Contains(n));
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/identity/users");

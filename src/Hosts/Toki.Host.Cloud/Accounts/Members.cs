@@ -166,8 +166,9 @@ internal static class MemberEndpoints
         // A new account for the invited e-mail, joined to the tenant in the same SaveChanges (no tenant of its own).
         // R9 #21: anyone can register any address in /api/auth/register, which used to block the invite. A link that arrived by e-mail proves the
         // address, so an unconfirmed account with it becomes this person's: new password (a new security stamp: other sessions cannot refresh) and
-        // confirmed. It keeps what it had, since it may be their own earlier sign-up. A confirmed account, or a link the inviter saw, proves nothing.
-        invites.MapPost("/register", async (AcceptInviteRegisterRequest request, CloudDbContext db, UserManager<CloudUser> users, TimeProvider clock,
+        // confirmed. It keeps its own business (it may be their own earlier sign-up), but R11 B-High1: not the members and invites someone else may
+        // have added to it before. A confirmed account, or a link the inviter saw, proves nothing.
+        invites.MapPost("/register", async (AcceptInviteRegisterRequest request, CloudDbContext db, CloudUserManager users, TimeProvider clock,
             CancellationToken ct) =>
         {
             var invite = await FindAsync(db, request.Token, clock, ct, tracked: true);
@@ -195,6 +196,7 @@ internal static class MemberEndpoints
             {
                 return InvalidInvite(); // someone used or revoked it a moment ago
             }
+            if (result.Succeeded && existing is not null && !invite.LinkShown) await users.ClearBeforeConfirmationAsync(account);
             // Same shape as /api/auth/register: the panel turns Identity's codes into Spanish.
             return result.Succeeded ? Results.NoContent() : EndpointExtensions.Problem(Error.Validation("Invites.InvalidAccount", "Revise la contraseña.") with
             {
@@ -203,7 +205,7 @@ internal static class MemberEndpoints
         }).AllowAnonymous();
 
         // An existing account joins; its token then moves to the new tenant (the panel renews it).
-        invites.MapPost("/accept", async (InviteTokenRequest request, ClaimsPrincipal user, CloudDbContext db, UserManager<CloudUser> users, TimeProvider clock,
+        invites.MapPost("/accept", async (InviteTokenRequest request, ClaimsPrincipal user, CloudDbContext db, CloudUserManager users, TimeProvider clock,
             CancellationToken ct) =>
         {
             var account = await users.GetUserAsync(user);
@@ -218,6 +220,7 @@ internal static class MemberEndpoints
             db.TenantMembers.Add(new TenantMember { TenantId = invite.TenantId, UserId = account.Id, Role = invite.Role, JoinedUtc = now });
             invite.AcceptedUtc = now;
             account.TenantId = invite.TenantId;
+            var confirms = !account.EmailConfirmed && !invite.LinkShown;
             account.EmailConfirmed |= !invite.LinkShown; // TK-231: the link reached that inbox by e-mail (R8 #1)
             try
             {
@@ -227,6 +230,7 @@ internal static class MemberEndpoints
             {
                 return InvalidInvite();
             }
+            if (confirms) await users.ClearBeforeConfirmationAsync(account); // R11 B-High1, for a session from before e-mails had to be confirmed
             return Results.NoContent();
         }).RequireAuthorization();
     }

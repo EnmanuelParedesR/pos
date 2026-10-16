@@ -43,10 +43,11 @@ public sealed record FeReceivedItem(long Id, string Environment, string IssuerRn
 
 /// <summary>A received e-CF as the panel lists it (no XML).</summary>
 /// <param name="PanelDecision">TK-250: the owner's decision from the panel; pending at the store while <paramref name="Approval"/> is null.</param>
+/// <param name="SignerUnverified">R11 B-High2: "firmante sin verificar"; the store never gets it.</param>
 public sealed record FePanelReceived(long Id, string Environment, string IssuerRnc, string IssuerName, string ENcf, int Type, DateOnly IssuedOn, decimal Total,
     decimal Itbis, DateTime ReceivedUtc, string? Approval, string? ApprovalReason, DateTime? ApprovalUtc, DateTime? ApprovalDeliveredUtc, DateTime? ApprovalDgiiUtc,
     string? ApprovalMessage, bool Conflict, DateTime? AcknowledgedUtc, string? PanelDecision = null, string? PanelReason = null, string? PanelDecidedBy = null,
-    DateTime? PanelDecidedUtc = null);
+    DateTime? PanelDecidedUtc = null, bool SignerUnverified = false);
 
 public sealed record FePullRequest(long? After);
 
@@ -81,6 +82,10 @@ internal static class FeErrors
         "El receptor no está activo: la aprobación se firma en la PC de la tienda que lo activó. Actívelo desde la tienda.");
     public static readonly Error AlreadyDecided = Error.Conflict("Fe.AlreadyDecided",
         "Ese comprobante ya tiene otra decisión (en la tienda o en el panel) y no se puede cambiar.");
+    public static readonly Error OtherNodeActive = Error.Conflict("Fe.OtherNodeActive",
+        "El receptor está activo desde otra PC del negocio. Retírelo desde esa PC o, como dueño, desde el panel, y actívelo aquí.");
+    public static readonly Error SignerUnverified = Error.Conflict("Fe.SignerUnverified",
+        "Ese comprobante lo firmó una persona (cédula) por la empresa y no se puede verificar que firme por ella. Confírmelo con el suplidor antes de usarlo.");
 }
 
 internal static class FeServices
@@ -132,7 +137,8 @@ internal static class FeServices
         var store = app.MapGroup("/fiscal/v1").RequireAuthorization(CloudAuth.NodePolicy).WithTags("Fe");
 
         // CloudCustody. R9 #6: the receiver URLs are published for the RNC, so the certificate must be of an INDOTEL authority and belong to that RNC (or
-        // be the delegated signer's cédula on a company's RNC); the database keeps one active receiver per RNC. A disputed RNC stays with support.
+        // be a cédula on a company's RNC that Toki support approved, R11 B-High2); the database keeps one active receiver per RNC. A disputed RNC
+        // stays with support.
         store.MapPost("/receiver/certificate", async (FeConsentRequest r, ClaimsPrincipal user, HttpRequest http, CloudDbContext db, IFeCertificateVault vault,
             FeTrust trust, TimeProvider clock, IConfiguration config, CancellationToken ct) =>
         {
@@ -152,7 +158,7 @@ internal static class FeServices
                 if (key is null) return EndpointExtensions.Problem(FeErrors.CertificateWithoutKey);
                 if (opened.NotAfter.ToUniversalTime() <= now) return EndpointExtensions.Problem(FeErrors.CertificateExpired);
                 if (!trust.IsTrusted(opened)) return EndpointExtensions.Problem(FeErrors.CertificateUntrusted);
-                if (!FeTrust.BelongsTo(opened, rnc)) return EndpointExtensions.Problem(FeErrors.CertificateRncMismatch);
+                if (await FeDelegations.CheckAsync(db, node, rnc, opened, holder, now, ct) is { } refused) return refused; // R11 B-High2
             }
             catch (CryptographicException) { return EndpointExtensions.Problem(FeErrors.CertificateUnreadable); }
             if (await db.FeCertificates.AnyAsync(c => c.Rnc == rnc && c.RevokedUtc == null && c.TenantId != node.TenantId, ct))
@@ -174,21 +180,29 @@ internal static class FeServices
         store.MapPost("/receiver/status", async (ClaimsPrincipal user, HttpRequest http, CloudDbContext db, IConfiguration config, CancellationToken ct) =>
             Results.Ok(await StatusAsync(db, NodeIdentity.From(user).TenantId, BaseUrl(http, config), config, ct)));
 
+        // R11 B-Med4: only the PC that activated it withdraws it from the store (an Owner can always do it in the panel).
         store.MapPost("/receiver/revoke", async (ClaimsPrincipal user, CloudDbContext db, IFeCertificateVault vault, TimeProvider clock, CancellationToken ct) =>
         {
-            await RevokeAsync(db, vault, NodeIdentity.From(user).TenantId, "Retirado desde la tienda", clock.GetUtcNow().UtcDateTime, ct);
+            var node = NodeIdentity.From(user);
+            if (await db.FeCertificates.AnyAsync(c => c.TenantId == node.TenantId && c.RevokedUtc == null && c.ConsentedByNodeId != node.NodeId, ct))
+                return EndpointExtensions.Problem(FeErrors.OtherNodeActive);
+            await RevokeAsync(db, vault, node.TenantId, "Retirado desde la tienda", clock.GetUtcNow().UtcDateTime, ct);
             return Results.Ok(new FeReceiverStatus(false));
         });
 
         // The store asks every 30 s for what arrived after the last one it has (the cursor is the cloud id), and (TK-250) for the approvals the owner
         // decided in the panel that this PC has to sign and send. One stays pending until the store's CommercialApprovalRecordedV1 sets Approval.
+        // R11 B-Med4: only the PC that activated the receiver gets either (another store of the business gets nothing). R11 B-High2: never a document
+        // whose signer is unverified: it is not a purchase until the DGII can tell (the panel shows it).
         store.MapPost("/received/pull", async (FePullRequest r, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
         {
             var node = NodeIdentity.From(user);
             var after = r.After ?? 0;
-            var items = await db.FeReceived.AsNoTracking().Where(d => d.TenantId == node.TenantId && d.Id > after).OrderBy(d => d.Id).Take(100).ToListAsync(ct);
-            // Only the PC that activated the receiver gets them: it holds the certificate (another PC of the tenant would fail to sign).
             var signer = await db.FeCertificates.AnyAsync(c => c.TenantId == node.TenantId && c.RevokedUtc == null && c.ConsentedByNodeId == node.NodeId, ct);
+            var items = signer
+                ? await db.FeReceived.AsNoTracking().Where(d => d.TenantId == node.TenantId && d.Id > after && !d.SignerUnverified).OrderBy(d => d.Id).Take(100)
+                    .ToListAsync(ct)
+                : [];
             var decisions = signer
                 ? await db.FeReceived.AsNoTracking().Where(d => d.TenantId == node.TenantId && d.PanelDecision != null && d.Approval == null)
                     .OrderBy(d => d.Id).Take(20)
@@ -200,13 +214,18 @@ internal static class FeServices
 
     /// <summary>Registers the tenant's receiver: the previous activation ends (its vault key, if any, is deleted) and this one starts in one transaction
     /// (the old one first, since only one active row per RNC may exist). A switch of mode is a new activation.</summary>
+    /// <remarks>R11 B-Med4: while it is active from one PC, another PC of the business cannot take it over (an Owner withdraws it in the panel first).</remarks>
     internal static async Task<IResult> ActivateAsync(CloudDbContext db, IFeCertificateVault vault, FeCertificate row, HttpRequest http, IConfiguration config,
         CancellationToken ct)
     {
-        if (await db.FeCertificates.AnyAsync(c => c.Rnc == row.Rnc && c.RevokedUtc == null && c.TenantId != row.TenantId, ct))
+        var refusal = await db.FeCertificates.AnyAsync(c => c.Rnc == row.Rnc && c.RevokedUtc == null && c.TenantId != row.TenantId, ct) ? FeErrors.RncTaken
+            : await db.FeCertificates.AnyAsync(c => c.TenantId == row.TenantId && c.RevokedUtc == null && c.ConsentedByNodeId != row.ConsentedByNodeId, ct)
+                ? FeErrors.OtherNodeActive
+                : null;
+        if (refusal is not null)
         {
             if (row.KeyName.Length > 0) await vault.DeleteAsync(row.KeyName, ct);
-            return EndpointExtensions.Problem(FeErrors.RncTaken);
+            return EndpointExtensions.Problem(refusal);
         }
         var replaced = await db.Database.CreateExecutionStrategy().ExecuteAsync<List<string>?>(async () =>
         {
@@ -285,7 +304,8 @@ internal static class FeServices
             var tenant = user.GetTenantId();
             var by = FeXml.Cut(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name ?? "", 256);
             var row = db.FeReceived.Where(d => d.Id == id && d.TenantId == tenant);
-            if (!await row.AnyAsync(ct)) return EndpointExtensions.Problem(FeErrors.NotFound);
+            if (await row.Select(d => (bool?)d.SignerUnverified).SingleOrDefaultAsync(ct) is not { } unverified) return EndpointExtensions.Problem(FeErrors.NotFound);
+            if (unverified) return EndpointExtensions.Problem(FeErrors.SignerUnverified); // R11 B-High2: the store never got it
             if (!await db.FeCertificates.AnyAsync(c => c.TenantId == tenant && c.RevokedUtc == null, ct)) return EndpointExtensions.Problem(FeErrors.ReceiverInactive);
 
             var now = clock.GetUtcNow().UtcDateTime;
@@ -330,7 +350,7 @@ internal static class FeServices
     private static readonly System.Linq.Expressions.Expression<Func<FeReceivedDocument, FePanelReceived>> PanelItem = d => new FePanelReceived(d.Id,
         d.Environment, d.IssuerRnc, d.IssuerName, d.ENcf, d.Type, d.IssuedOn, d.Total, d.Itbis, d.ReceivedUtc, d.Approval, d.ApprovalReason, d.ApprovalUtc,
         d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage, d.Conflict, d.AcknowledgedUtc, d.PanelDecision, d.PanelReason, d.PanelDecidedBy,
-        d.PanelDecidedUtc);
+        d.PanelDecidedUtc, d.SignerUnverified);
 
     private static FeReceivedItem Item(FeReceivedDocument d) => new(d.Id, d.Environment, d.IssuerRnc, d.IssuerName, d.ENcf, d.Type, d.IssuedOn, d.Total, d.Itbis,
         d.ReceivedUtc, Convert.ToBase64String(d.XmlGzip), d.Approval, d.ApprovalReason, d.ApprovalUtc, d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage,

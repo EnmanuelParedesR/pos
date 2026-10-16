@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Toki.BuildingBlocks.Endpoints;
@@ -10,13 +11,25 @@ namespace Toki.Host.Cloud.Platform;
 
 /// <summary>Toki staff (TK-189), not store owners. The role is a claim stored on the
 /// account by the <see cref="PlatformCli"/> command. Never self-service.</summary>
+/// <remarks>R11 B-Med6: the policy reads the role from the database on every call (a revoke counts at once), needs 2FA on the account and a token
+/// from a sign-in that passed it (<c>amr=mfa</c>). A refreshed token has no <c>amr</c>, so the console lasts one access token (Program.cs,
+/// <c>Auth:AccessTokenMinutes</c>) after the sign-in with the code; the rest of the panel goes on as usual.</remarks>
 public static class PlatformAuth
 {
     public const string Policy = "PlatformAdmin";
     public const string RoleClaim = "platform_role";
     public const string Admin = "admin";
 
-    public static bool IsPlatformAdmin(this ClaimsPrincipal user) => user.HasClaim(RoleClaim, Admin);
+    public static void Require(AuthorizationPolicyBuilder p) =>
+        p.RequireAuthenticatedUser().RequireClaim("amr", "mfa").RequireAssertion(async context =>
+            context.Resource is HttpContext http && context.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } userId
+            && await IsAdminInDbAsync(http.RequestServices.GetRequiredService<CloudDbContext>(), userId, http.RequestAborted, needsTwoFactor: true));
+
+    /// <summary>The account has the role now (and, for the console, 2FA on).</summary>
+    public static async Task<bool> IsAdminInDbAsync(CloudDbContext db, string? userId, CancellationToken ct, bool needsTwoFactor = false) =>
+        userId is not null
+        && await db.UserClaims.AnyAsync(c => c.UserId == userId && c.ClaimType == RoleClaim && c.ClaimValue == Admin, ct)
+        && (!needsTwoFactor || await db.Users.AnyAsync(u => u.Id == userId && u.TwoFactorEnabled, ct));
 }
 
 /// <summary><c>grant-platform-admin &lt;email&gt;</c> / <c>revoke-platform-admin &lt;email&gt;</c>: run by Toki staff against the cloud database.
@@ -67,13 +80,17 @@ public sealed record PlatformUsageResponse(UsageResponse Usage, IReadOnlyList<st
 
 public sealed record TenantPlanRequest(string? Plan, IReadOnlyList<string>? AddOns);
 
+public sealed record TenantSearchRequest(string? Search);
+
 internal static class PlatformEndpoints
 {
     public static void MapPlatform(this IEndpointRouteBuilder app)
     {
         var platform = app.MapGroup("/api/platform").RequireAuthorization(PlatformAuth.Policy).AddEndpointFilter(AuditAsync);
 
-        platform.MapGet("/tenants", async (string? search, PlatformQueries q, CancellationToken ct) => Results.Ok(await q.TenantsAsync(search, ct)));
+        platform.MapGet("/tenants", async (PlatformQueries q, CancellationToken ct) => Results.Ok(await q.TenantsAsync(null, ct)));
+        // R11 B-Low1: the search (often an e-mail) goes in the body, never in a URL that telemetry and the audit keep.
+        platform.MapPost("/tenants/search", async (TenantSearchRequest r, PlatformQueries q, CancellationToken ct) => Results.Ok(await q.TenantsAsync(r.Search, ct)));
 
         platform.MapGet("/tenants/{tenantId:guid}", async (Guid tenantId, PlatformQueries q, CancellationToken ct) =>
             await q.TenantAsync(tenantId, ct) is { } tenant ? Results.Ok(tenant) : NotFound("Platform.TenantNotFound", "No encontramos ese cliente."));
@@ -116,6 +133,7 @@ internal static class PlatformEndpoints
 
         Certification.AccompanimentEndpoints.MapPlatformAccompaniment(platform); // TK-234
         Billing.BillingEndpoints.MapPlatformBilling(platform); // TK-249
+        Fe.FeDelegations.MapPlatformDelegations(platform); // R11 B-High2
 
         var metrics = platform.MapGroup("/metrics");
         metrics.MapGet("/overview", async (PlatformQueries q, CancellationToken ct) => Results.Ok((await q.MetricsAsync(ct)).Overview()));

@@ -37,23 +37,39 @@ builder.Services.AddSingleton(TimeProvider.System);
 
 // Panel users (bearer tokens) and store nodes (signed with their own key, TK-241).
 builder.Services.AddSingleton<NodeNonces>();
+builder.Services.AddSingleton<FailedCodes>();
 builder.Services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, NodeAuthenticationHandler>(CloudAuth.NodeScheme, null);
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(CloudAuth.NodePolicy, p => p.AddAuthenticationSchemes(CloudAuth.NodeScheme).RequireAuthenticatedUser())
     .AddPolicy(CloudAuth.PanelPolicy, p => p.RequireAuthenticatedUser().RequireClaim(TenantClaims.TenantId).RequireAssertion(PanelAccess.IsMemberAsync))
     .AddPolicy(CloudAuth.OwnerPolicy, p => p.RequireAuthenticatedUser().RequireClaim(TenantClaims.TenantId).RequireAssertion(PanelAccess.IsOwnerAsync))
-    .AddPolicy(PlatformAuth.Policy, p => p.RequireAuthenticatedUser().RequireClaim(PlatformAuth.RoleClaim, PlatformAuth.Admin));
+    .AddPolicy(PlatformAuth.Policy, PlatformAuth.Require);
+// R11 B-High1: only a confirmed e-mail signs in (an invite link that arrived by e-mail confirms it). Development may turn it off (no e-mail there).
+var requireConfirmedEmail = builder.Environment.IsProduction() || config.GetValue("Auth:RequireConfirmedEmail", true);
 builder.Services.AddIdentityApiEndpoints<CloudUser>(o =>
     {
         o.User.RequireUniqueEmail = true;
         o.Password.RequiredLength = 8;
         o.Password.RequireNonAlphanumeric = false;
+        o.SignIn.RequireConfirmedEmail = requireConfirmedEmail;
+        // R11 B-Low6: wrong passwords count per IP and account (LoginThrottle); the per-account lockout is only a backstop against many IPs.
+        o.Lockout.MaxFailedAccessAttempts = config.GetValue("Auth:AccountLockoutFailures", 50);
     })
     .AddEntityFrameworkStores<CloudDbContext>()
     .AddClaimsPrincipalFactory<CloudClaimsFactory>()
+    .AddUserManager<CloudUserManager>()
     .AddSignInManager<CloudSignInManager>();
+// R11 B-Med5: short-lived tokens. The panel keeps the refresh token in localStorage (the API and the panel are on different sites, so an HttpOnly
+// cookie would be a third-party cookie); a strict CSP on the panel (swa-config.mjs) is what keeps scripts from reading it.
+builder.Services.Configure<Microsoft.AspNetCore.Authentication.BearerToken.BearerTokenOptions>(IdentityConstants.BearerScheme, o =>
+{
+    o.BearerTokenExpiration = TimeSpan.FromMinutes(config.GetValue("Auth:AccessTokenMinutes", 30));
+    o.RefreshTokenExpiration = TimeSpan.FromDays(config.GetValue("Auth:RefreshTokenDays", 7));
+});
 builder.Services.AddScoped<IUserStore<CloudUser>, CloudUserStore>();
 builder.Services.AddTransient<IEmailSender<CloudUser>, IdentityEmails>(); // TK-230: confirm and reset e-mails, in Spanish
+builder.Services.AddSingleton<IdentityEmailCap>();
+builder.Services.AddSingleton<LoginThrottle>();
 
 // Guessing an 8-digit code is the only way in without an account.
 var registerPerMinute = config.GetValue("Nodes:RegisterPerMinute", 10);
@@ -66,6 +82,10 @@ var invoicesPerNodeMinute = config.GetValue("Ai:SupplierInvoicesPerMinutePerNode
 var authPerMinute = config.GetValue("Auth:RequestsPerMinute", 10);
 var panelPerUserMinute = config.GetValue("Panel:RequestsPerMinutePerUser", 120);
 var assistantPerUserMinute = config.GetValue("Ai:AssistantQuestionsPerMinutePerUser", 10);
+// R11 B-Med2/B-Med3: account management per user; uploads per store PC (a compromised one cannot flood the database).
+var managePerUserMinute = config.GetValue("Auth:ManagePerMinutePerUser", 10);
+var ingestPerNodeMinute = config.GetValue("Ingest:BatchesPerMinutePerNode", 60);
+var archivePerNodeMinute = config.GetValue("Archive:UploadsPerMinutePerNode", 120);
 // The e-CF receiver's limits (R9 #2) are the global limiter, set by AddFe.
 builder.Services.AddRateLimiter(o =>
 {
@@ -83,8 +103,15 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = authPerMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(QuotaRateLimits.PanelUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.PanelPerMinute, panelPerUserMinute));
     o.AddPolicy(QuotaRateLimits.AssistantUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.AssistantPerMinute, assistantPerUserMinute));
+    o.AddPolicy(AccountSecurityEndpoints.ManageRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = managePerUserMinute, Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy(IngestEndpoint.NodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = ingestPerNodeMinute, Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy(EcfArchiveEndpoint.NodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = archivePerNodeMinute, Window = TimeSpan.FromMinutes(1) }));
 });
 builder.Services.AddScoped<IQuota, Quota>();
+builder.Services.AddSingleton<LicenseCheck>();
 
 builder.Services.AddSingleton<InboxSignal>();
 builder.Services.AddSingleton<InboxApplier>();
@@ -136,14 +163,19 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference().AllowAnonymous();
 }
 app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
-app.MapHealthChecks("/health/ready").AllowAnonymous();
+// R11 B-Low4: it wakes the serverless database, so only Toki staff ask it (docs/despliegue-azure.md).
+app.MapHealthChecks("/health/ready").RequireAuthorization(PlatformAuth.Policy);
 
-app.MapGroup("/api/auth").MapIdentityApi<CloudUser>().Add(e =>
+var auth = app.MapGroup("/api/auth");
+auth.MapIdentityApi<CloudUser>().Add(e =>
 {
-    if (e is not RouteEndpointBuilder { RoutePattern.RawText: { } route }) return;
+    if (e is not RouteEndpointBuilder { RoutePattern.RawText: { } route } endpoint) return;
     if (route.EndsWith("/resendConfirmationEmail", StringComparison.Ordinal)) e.Metadata.Add(new EnableRateLimitingAttribute(IdentityEmails.ResendRateLimit));
+    else if (route.Contains("/manage/", StringComparison.Ordinal)) e.Metadata.Add(new EnableRateLimitingAttribute(AccountSecurityEndpoints.ManageRateLimit));
     else if (QuotaRateLimits.AuthRoutes.Any(r => route.EndsWith(r, StringComparison.Ordinal))) e.Metadata.Add(new EnableRateLimitingAttribute(QuotaRateLimits.Auth));
+    if (route.EndsWith("/register", StringComparison.Ordinal)) endpoint.FilterFactories.Add((_, next) => c => AccountSecurityEndpoints.SameAnswerForTakenEmail(c, next));
 });
+app.MapAccountSecurity();
 app.MapQuotas();
 app.MapBilling();
 app.MapStores();

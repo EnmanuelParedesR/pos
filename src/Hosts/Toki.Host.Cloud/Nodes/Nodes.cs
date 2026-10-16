@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -31,9 +30,12 @@ internal static class NodeEndpoints
 {
     public static void MapNodes(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/nodes/register", async (RegisterNodeRequest request, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
+        app.MapPost("/api/nodes/register", async (RegisterNodeRequest request, CloudDbContext db, TimeProvider clock, FailedCodes failed, CancellationToken ct) =>
         {
             var invalid = Error.Validation("Nodes.InvalidCode", "El código no es válido o ya venció. Pida uno nuevo en el panel.");
+            if (failed.Blocked)
+                return Results.Problem(detail: "Hubo demasiados intentos de conexión. Espere unos minutos y vuelva a intentar.", statusCode: StatusCodes.Status429TooManyRequests,
+                    title: "Nodes.TooManyAttempts", extensions: new Dictionary<string, object?> { ["code"] = "Nodes.TooManyAttempts" });
             var code = request.Code?.Trim() ?? "";
             var name = request.NodeName?.Trim() ?? "";
             if (code.Length != 8 || name.Length is 0 or > 100) return EndpointExtensions.Problem(invalid);
@@ -46,7 +48,10 @@ internal static class NodeEndpoints
             // Taking the code is one conditional update, so two PCs typing it at once cannot both get in.
             if (found is null || await db.ConnectionCodes.Where(c => c.Id == found.Id && c.UsedUtc == null)
                     .ExecuteUpdateAsync(s => s.SetProperty(c => c.UsedUtc, now), ct) != 1)
+            {
+                failed.Add();
                 return EndpointExtensions.Problem(invalid);
+            }
 
             var node = new Node
             {
@@ -128,24 +133,72 @@ public static class NodeSignature
     }
 }
 
-/// <summary>Nonces already used inside the signature window (replay protection).</summary>
-/// <remarks>shortcut: in memory, one App Service instance; move to the database or a cache service before scaling out to two instances.</remarks>
+/// <summary>A node nonce used inside the signature window (replay protection), until <see cref="ExpiresUtc"/>.</summary>
+public sealed class UsedNonce
+{
+    /// <summary><c>nodeId.nonce</c>.</summary>
+    public string Key { get; set; } = "";
+    public DateTime ExpiresUtc { get; set; }
+
+    internal static void Configure(ModelBuilder builder) => builder.Entity<UsedNonce>(e =>
+    {
+        e.ToTable("NodeNonces");
+        e.HasKey(n => n.Key);
+        e.Property(n => n.Key).HasMaxLength(110);
+        e.HasIndex(n => n.ExpiresUtc);
+    });
+}
+
+/// <summary>Nonces already used inside the signature window (replay protection). R11 B-Low3: kept in the database, so a restart or a second
+/// instance never accepts a replay; the primary key refuses the second use. Expired ones go at most once a minute.</summary>
 public sealed class NodeNonces
 {
-    private readonly ConcurrentDictionary<string, DateTime> _seen = new();
     private long _lastSweepTicks;
 
-    public bool TryUse(string key, DateTime nowUtc)
+    public async Task<bool> TryUseAsync(CloudDbContext db, string key, DateTime nowUtc, CancellationToken ct)
     {
-        // TK-251: a full scan per call under load is wasted work; expired nonces go at most once a minute.
         var last = Interlocked.Read(ref _lastSweepTicks);
         if (nowUtc.Ticks - last > TimeSpan.TicksPerMinute && Interlocked.CompareExchange(ref _lastSweepTicks, nowUtc.Ticks, last) == last)
-            foreach (var (k, until) in _seen)
-                if (until < nowUtc) _seen.TryRemove(k, out _);
-        return _seen.TryAdd(key, nowUtc + 2 * NodeSignature.Window);
+            await db.NodeNonces.Where(n => n.ExpiresUtc < nowUtc).ExecuteDeleteAsync(ct);
+        // Runs before the endpoint, so nothing else is tracked yet; detached either way, so the endpoint's own SaveChanges never sees it.
+        var entry = db.NodeNonces.Add(new UsedNonce { Key = key, ExpiresUtc = nowUtc + 2 * NodeSignature.Window });
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            return false; // used already
+        }
+        finally
+        {
+            entry.State = EntityState.Detached;
+        }
+    }
+}
+
+/// <summary>R11 B-Low5: wrong connection codes from anywhere, counted together. Past <c>Nodes:FailedCodesPer10Minutes</c> (200) every attempt waits
+/// for the window to end, so many IPs together cannot walk the 8-digit space either.</summary>
+public sealed class FailedCodes(TimeProvider clock, IConfiguration config)
+{
+    private static readonly TimeSpan Window = TimeSpan.FromMinutes(10);
+    private readonly Lock _gate = new();
+    private (int Count, DateTime Since) _failures;
+
+    public bool Blocked
+    {
+        get
+        {
+            lock (_gate) return clock.GetUtcNow().UtcDateTime - _failures.Since < Window && _failures.Count >= config.GetValue("Nodes:FailedCodesPer10Minutes", 200);
+        }
     }
 
-    internal int Count => _seen.Count;
+    public void Add()
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        lock (_gate) _failures = now - _failures.Since >= Window ? (1, now) : (_failures.Count + 1, _failures.Since);
+    }
 }
 
 /// <summary>Node calls, signed with the node's key (<see cref="NodeSignature"/>, ADR-0008). The tenant and store come from the node row, never from the body.</summary>
@@ -187,7 +240,7 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
         var bodyHash = NodeSignature.Base64Url(await SHA256.HashDataAsync(Request.Body, Context.RequestAborted));
         Request.Body.Position = 0;
         var payload = NodeSignature.Payload(node.Id, seconds, nonce, Request.Method, $"{Request.Path}{Request.QueryString}", bodyHash);
-        return NodeSignature.Verify(node.PublicKey, payload, signature) && nonces.TryUse($"{node.Id}.{nonce}", now.UtcDateTime);
+        return NodeSignature.Verify(node.PublicKey, payload, signature) && await nonces.TryUseAsync(db, $"{node.Id}.{nonce}", now.UtcDateTime, Context.RequestAborted);
     }
 }
 

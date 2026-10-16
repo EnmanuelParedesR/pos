@@ -63,6 +63,9 @@ param paddleClientToken string = ''
 @description('TK-249: name of the cloud license key in the vault (EC P-256, created with az, docs/cobro-paddle.md). Empty = the cloud issues no licenses.')
 param licenseKeyName string = ''
 
+@description('TK-246 / R11 B-Low7: CloudCustody (a copy of the stores\' certificates in Key Vault). Off until ADR-0011\'s conditions; while off the API gets no Key Vault certificate role, and the key role only for the license key.')
+param allowCloudCustody bool = false
+
 var suffix = uniqueString(resourceGroup().id)
 var name = 'toki-${env}'
 var tags = { app: 'toki', env: env }
@@ -153,6 +156,7 @@ resource openAi 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   properties: {
     customSubDomainName: 'oai-${name}-${take(suffix, 6)}'
     publicNetworkAccess: 'Enabled'
+    disableLocalAuth: true // R11 B-Low7: no API keys; the API signs in with its managed identity (apiUsesOpenAi)
   }
 }
 
@@ -166,12 +170,6 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-1
   }
 }
 
-// shortcut: the app reads an API key from Key Vault; switch to its managed identity ("Cognitive Services OpenAI User") when the code takes Entra tokens.
-resource openAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: vault
-  name: 'AzureOpenAI--ApiKey'
-  properties: { value: openAi.listKeys().key1 }
-}
 
 // TK-207: cold archive of the signed e-CF (10 years, DGII). The API moves XML older than Archive:HotDays (90) out of SQL into here, as Cool.
 // Only the API's managed identity reaches it (no account keys, no public blobs).
@@ -276,12 +274,25 @@ resource api 'Microsoft.Web/sites@2023-12-01' = {
   }
 }
 
-// Key Vault Secrets User for the API's managed identity (Key Vault references).
-resource apiReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(vault.id, api.id, '4633458b-17de-408a-b874-0445c86b69e6')
-  scope: vault
+// R11 B-Low7: no publishing user names and passwords (FTP, SCM/Kudu). Deploys go with Entra ID (az webapp deploy, docs/despliegue-azure.md).
+resource apiNoScmBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: api
+  name: 'scm'
+  properties: { allow: false }
+}
+
+resource apiNoFtpBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = {
+  parent: api
+  name: 'ftp'
+  properties: { allow: false }
+}
+
+// R11 B-Low7: Cognitive Services OpenAI User for the API's managed identity (the resource takes no keys). No Key Vault secret is read any more.
+resource apiUsesOpenAi 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(openAi.id, api.id, '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')
+  scope: openAi
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd')
     principalId: api.identity.principalId
     principalType: 'ServicePrincipal'
   }
@@ -299,9 +310,10 @@ resource apiWritesArchive 'Microsoft.Authorization/roleAssignments@2022-04-01' =
 }
 
 // TK-151: the API imports and deletes the stores' certificates (Key Vault Certificates Officer) and signs receiver acknowledgements with their
-// non-exportable keys (Key Vault Crypto User): the CloudCustody mode. TK-246: kept for that mode, which stays off (Fe__AllowCloudCustody false)
-// until the conditions of ADR-0011; the default is StoreSigned (no certificate in the cloud). The signer refuses in code anything but ARECF and ACECF.
-resource apiManagesCertificates 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+// non-exportable keys (Key Vault Crypto User): the CloudCustody mode. TK-246: that mode stays off (allowCloudCustody false) until the conditions of
+// ADR-0011; the default is StoreSigned (no certificate in the cloud). R11 B-Low7: so the roles exist only with allowCloudCustody. The signer refuses
+// in code anything but ARECF and ACECF.
+resource apiManagesCertificates 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (allowCloudCustody) {
   name: guid(vault.id, api.id, 'a4417e6f-fecd-4de8-b567-7b0420556985')
   scope: vault
   properties: {
@@ -311,7 +323,7 @@ resource apiManagesCertificates 'Microsoft.Authorization/roleAssignments@2022-04
   }
 }
 
-resource apiSignsWithKeys 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource apiSignsWithKeys 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (allowCloudCustody) {
   name: guid(vault.id, api.id, '12338af0-0e69-4776-bea7-57ae8d297424')
   scope: vault
   properties: {
@@ -321,11 +333,38 @@ resource apiSignsWithKeys 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   }
 }
 
-// Set after the Key Vault role exists: App Service resolves Key Vault references once and caches a denial for up to a day.
+// TK-249, R11 B-Low7: Key Vault Crypto User on the license key only (not the whole vault), when the cloud issues licenses.
+resource licenseKey 'Microsoft.KeyVault/vaults/keys@2023-07-01' existing = if (!empty(licenseKeyName)) {
+  parent: vault
+  name: empty(licenseKeyName) ? 'none' : licenseKeyName
+}
+
+resource apiSignsLicenses 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(licenseKeyName)) {
+  name: guid(vault.id, api.id, licenseKeyName, '12338af0-0e69-4776-bea7-57ae8d297424')
+  scope: licenseKey
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')
+    principalId: api.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// TK-249, R11 B-Low7: Key Vault Secrets User only while Paddle is on (its two secrets are Key Vault references); nothing else reads secrets.
+resource apiReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(paddleEnvironment)) {
+  name: guid(vault.id, api.id, '4633458b-17de-408a-b874-0445c86b69e6')
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
+    principalId: api.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Set after the roles exist: App Service resolves Key Vault references once and caches a denial for up to a day.
 resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: api
   name: 'appsettings'
-  dependsOn: [apiReadsSecrets, apiWritesArchive, apiManagesCertificates, apiSignsWithKeys]
+  dependsOn: [apiUsesOpenAi, apiWritesArchive, apiManagesCertificates, apiSignsWithKeys, apiSignsLicenses, apiReadsSecrets]
   properties: union({
     ASPNETCORE_ENVIRONMENT: 'Production'
     ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
@@ -336,14 +375,13 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     AzureOpenAI__Endpoint: openAi.properties.endpoint
     AzureOpenAI__Deployment: chatDeployment.name
     AzureOpenAI__ApiVersion: openAiApiVersion
-    AzureOpenAI__ApiKey: '@Microsoft.KeyVault(SecretUri=${openAiKey.properties.secretUri})'
     Panel__Origins__0: 'https://${panel.properties.defaultHostname}'
     Archive__Blob__ServiceUri: archive.properties.primaryEndpoints.blob
     Archive__Blob__Container: archiveContainer.name
     Fe__Vault: 'KeyVault'
     Fe__KeyVaultUri: vault.properties.vaultUri
     Fe__DefaultSigningMode: 'StoreSigned' // TK-246 (ADR-0011)
-    Fe__AllowCloudCustody: 'false'
+    Fe__AllowCloudCustody: string(allowCloudCustody)
   }, empty(emailEndpoint) ? {} : {
     // TK-222: alerts and invites by e-mail. Off (logged only) until both params are set; see docs/despliegue-azure.md.
     Email__Provider: 'AzureCommunicationServices'
@@ -454,7 +492,7 @@ resource alertInbox 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' 
     criteria: {
       allOf: [
         {
-          query: 'AppServiceConsoleLogs | where ResultDescription has "could not be applied" or ResultDescription has "Inbox applier run failed"'
+          query: 'AppServiceConsoleLogs | where ResultDescription has "could not be applied" or ResultDescription has "Inbox applier run failed" or ResultDescription has "Ingest cap reached"'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0

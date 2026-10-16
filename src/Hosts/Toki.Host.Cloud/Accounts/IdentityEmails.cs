@@ -9,8 +9,10 @@ namespace Toki.Host.Cloud.Accounts;
 /// <summary>TK-230: the e-mails of Identity's endpoints (/api/auth: register, forgotPassword, resendConfirmationEmail) in Spanish, through the
 /// cloud's <see cref="IEmailSender"/> (logged in dev, ACS when configured). Links go to the panel with the code after "#" (R8 #12), never to the API.
 /// Identity sends a reset code only to a confirmed address and answers forgotPassword the same either way (no account enumeration).</summary>
-/// <remarks>TK-248: they count as the business's e-mails but are never refused (a reset must always arrive); the per-IP limits hold them back.</remarks>
-internal sealed class IdentityEmails(IEmailSender email, IConfiguration config, IQuota quota) : IEmailSender<CloudUser>
+/// <remarks>TK-248: they count as the business's e-mails but are never refused (a reset must always arrive); the per-IP limits hold them back,
+/// and R11 B-Med2 caps them per recipient (<see cref="IdentityEmailCap"/>).</remarks>
+internal sealed class IdentityEmails(IEmailSender email, IConfiguration config, IQuota quota, IdentityEmailCap cap, ILogger<IdentityEmails> log)
+    : IEmailSender<CloudUser>
 {
     /// <summary>TK-231: POST /api/auth/resendConfirmationEmail, per IP (Program.cs).</summary>
     public const string ResendRateLimit = "auth-resend-confirmation";
@@ -48,6 +50,11 @@ internal sealed class IdentityEmails(IEmailSender email, IConfiguration config, 
 
     private async Task SendAsync(CloudUser user, string to, string subject, string body)
     {
+        if (!cap.TryTake(to))
+        {
+            log.LogWarning("Identity e-mail to user {UserId} not sent: the per-recipient hourly cap was reached", user.Id);
+            return;
+        }
         await email.SendAsync(to, subject, body, CancellationToken.None);
         if (user.TenantId != Guid.Empty) await quota.AddAsync(user.TenantId, Meter.Emails, 1);
     }

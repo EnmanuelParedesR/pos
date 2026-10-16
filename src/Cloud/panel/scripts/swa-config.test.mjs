@@ -34,6 +34,19 @@ describe("staticwebapp.config.json (TK-228)", () => {
     for (const path of ["/nada", "/precios/x", "/c", "/application", "/salesman", "/invitex"]) expect(servedBy(path), path).toBeNull();
   });
 
+  it("R11: sends a strict CSP that allows only this site, the API and Paddle's checkout, HSTS and no framing", () => {
+    const headers = swaConfig(base, pages, movedToApp, "https://api.toki.example/").globalHeaders;
+    const csp = Object.fromEntries(headers["Content-Security-Policy"].split("; ").map((d) => [d.split(" ")[0], d.split(" ").slice(1).join(" ")]));
+    expect(csp["script-src"]).toBe("'self' https://cdn.paddle.com");
+    expect(csp["connect-src"]).toBe("'self' https://api.toki.example https://*.paddle.com");
+    expect(csp["frame-src"]).toBe("https://buy.paddle.com https://sandbox-buy.paddle.com");
+    expect(csp["frame-ancestors"]).toBe("'none'");
+    expect(csp["default-src"]).toBe("'self'");
+    expect(headers["Strict-Transport-Security"]).toMatch(/^max-age=\d{8,}/);
+    expect(headers["X-Frame-Options"]).toBe("DENY");
+    expect(headers["X-Content-Type-Options"]).toBe("nosniff"); // the base headers stay
+  });
+
   it("follows the Static Web Apps route rules", () => {
     const routes = config.routes.map((r) => r.route);
     expect(new Set(routes).size).toBe(routes.length);

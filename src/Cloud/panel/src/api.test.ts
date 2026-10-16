@@ -111,8 +111,12 @@ describe("api", () => {
 
   it("shows the register errors from Identity in Spanish, once each", async () => {
     const { ApiError, identityMessages } = await load();
-    const error = new ApiError(400, "400", "x", { PasswordTooShort: ["Passwords must be..."], DuplicateUserName: ["..."], DuplicateEmail: ["..."] });
+    const error = new ApiError(400, "400", "x", { PasswordTooShort: ["Passwords must be..."], PasswordRequiresDigit: ["..."], PasswordRequiresUpper: ["..."] });
 
-    expect(identityMessages(error)).toEqual(["La contraseña debe tener al menos 8 caracteres.", "Ese correo ya tiene una cuenta."]);
+    expect(identityMessages(error)).toEqual([
+      "La contraseña debe tener al menos 8 caracteres.",
+      "La contraseña debe tener al menos un número.",
+      "La contraseña debe tener al menos una letra mayúscula.",
+    ]);
   });
 });

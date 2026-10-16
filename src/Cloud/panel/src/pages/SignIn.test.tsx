@@ -73,27 +73,44 @@ it("TK-230: creating an account checks the server's password rules while typing"
   expect(state().every(([, met]) => met)).toBe(true);
 });
 
-it("TK-230: an e-mail that already has an account says so, and its link switches to Entrar keeping the e-mail", async () => {
-  const { onSignedIn } = renderSignIn((path) =>
-    path === "/api/auth/register"
-      ? json(400, { title: "One or more validation errors occurred.", errors: { DuplicateUserName: ["x"], DuplicateEmail: ["x"] } })
-      : undefined,
-  );
+it("R11: creating an account asks to confirm the e-mail first and switches to Entrar keeping the e-mail", async () => {
+  const { fetch, onSignedIn } = renderSignIn((path) => (path === "/api/auth/register" || path === "/api/auth/resendConfirmationEmail" ? json(200) : undefined));
   fireEvent.click(tab("Crear cuenta"));
   fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "dueno@carniceria.com" } });
   fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
   fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
 
-  const alert = await screen.findByRole("alert");
-  expect(alert.textContent).toContain("Ese correo ya tiene una cuenta.");
-  expect(screen.getByLabelText("Correo").getAttribute("aria-invalid")).toBe("true");
-  fireEvent.click(within(alert).getByRole("button", { name: "Entre con su contraseña" }));
-
+  expect(await screen.findByText("Confirme su correo para entrar.")).toBeTruthy();
   expect(tab("Entrar").getAttribute("aria-selected")).toBe("true");
-  expect(screen.queryByRole("alert")).toBeNull();
   expect((screen.getByLabelText("Correo") as HTMLInputElement).value).toBe("dueno@carniceria.com");
-  expect(document.activeElement).toBe(screen.getByLabelText("Contraseña"));
+  expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/auth/login"))).toBe(false); // it cannot sign in yet
+  fireEvent.click(screen.getByRole("button", { name: "pida otro" }));
+  await vi.waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/auth/resendConfirmationEmail"))).toBe(true));
   expect(onSignedIn).not.toHaveBeenCalled();
+});
+
+it("R11: an unconfirmed e-mail is told to confirm it", async () => {
+  renderSignIn((path) => (path === "/api/auth/login" ? json(401, { detail: "NotAllowed" }) : undefined));
+  fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "dueno@carniceria.com" } });
+  fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
+  fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+  expect(await screen.findByText("Confirme su correo para entrar.")).toBeTruthy();
+});
+
+it("R11: an account with two-step verification asks for the app's code and sends it with the password", async () => {
+  let calls = 0;
+  const { fetch, onSignedIn } = renderSignIn((path) =>
+    path === "/api/auth/login" ? (++calls === 1 ? json(401, { detail: "RequiresTwoFactor" }) : json(200, { accessToken: "a", refreshToken: "r" })) : undefined,
+  );
+  fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "staff@toki.do" } });
+  fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
+  fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+
+  fireEvent.change(await screen.findByLabelText("Código de verificación"), { target: { value: "123456" } });
+  fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+  await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalled());
+  const [, init] = fetch.mock.calls.filter(([url]) => String(url).endsWith("/api/auth/login"))[1] as unknown as [string, RequestInit];
+  expect(JSON.parse(String(init.body))).toEqual({ email: "staff@toki.do", password: "Carne2026", twoFactorCode: "123456" });
 });
 
 it("TK-230: ¿La olvidó? asks for the reset e-mail and answers the same whether the account exists or not", async () => {

@@ -1,5 +1,5 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { ApiError, forgotPassword, identityMessages, isDuplicateEmail, register, signIn } from "../api";
+import { ApiError, forgotPassword, identityMessages, register, resendConfirmation, signIn } from "../api";
 import { Notice } from "../ui";
 import { AuthFrame, PasswordChecklist, PasswordField } from "./AuthFrame";
 import { contactHref, site } from "./site/config";
@@ -21,11 +21,15 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
   const [resetSent, setResetSent] = useState(false);
+  // R11 B-High1: after "Crear cuenta" (or an Entrar refused for an unconfirmed e-mail) the person confirms the address from the e-mail first.
+  const [checkEmail, setCheckEmail] = useState(false);
+  // R11 B-Med6: an account with two-step verification asks for the app's code after the password.
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState("");
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
-  const passwordRef = useRef<HTMLInputElement>(null);
   const creating = mode === "create";
 
-  const choose = (m: Mode) => (setMode(m), setError(null));
+  const choose = (m: Mode) => (setMode(m), setError(null), setCheckEmail(false));
 
   /** Tabs pattern: arrows, Home and End move and select. */
   function onTabKey(e: KeyboardEvent) {
@@ -52,26 +56,32 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
   function submit(e: FormEvent) {
     e.preventDefault();
     if (forgot) return run(() => forgotPassword(email.trim()).then(() => setResetSent(true)));
+    if (creating) return run(() => register(email.trim(), password).then(() => (setMode("in"), setCheckEmail(true))));
     return run(async () => {
-      await (creating ? register : signIn)(email.trim(), password);
+      try {
+        await signIn(email.trim(), password, needsCode ? code.trim() : undefined);
+      } catch (err) {
+        if (err instanceof ApiError && err.code === "Auth.RequiresTwoFactor") setNeedsCode(true);
+        if (err instanceof ApiError && err.code === "Auth.NotAllowed") setCheckEmail(true);
+        throw err;
+      }
       await onSignedIn();
     });
   }
 
   const messages = error ? identityMessages(error) : [];
-  const duplicate = error !== null && isDuplicateEmail(error);
-  const notice = error && (
+  const notice = error && error.code !== "Auth.RequiresTwoFactor" && (
     <Notice kind={error.offline ? "warning" : "error"} title={messages[0]}>
-      {duplicate ? (
-        <>
-          <button type="button" className="auth-link" onClick={() => (choose("in"), passwordRef.current?.focus())}>
-            Entre con su contraseña
-          </button>{" "}
-          o use otro correo.
-        </>
-      ) : messages.length > 1 ? (
-        messages.slice(1).join(" ")
-      ) : undefined}
+      {messages.length > 1 ? messages.slice(1).join(" ") : undefined}
+    </Notice>
+  );
+  const confirmNotice = checkEmail && (
+    <Notice kind="info" title="Confirme su correo para entrar.">
+      Le enviamos un enlace a {email.trim()}. Ábralo y luego entre con su contraseña. Si no lo ve, busque en el correo no deseado o{" "}
+      <button type="button" className="auth-link" onClick={() => void resendConfirmation(email.trim()).catch(() => undefined)}>
+        pida otro
+      </button>
+      .
     </Notice>
   );
 
@@ -87,8 +97,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
         placeholder="usted@sunegocio.com"
         required
         value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        aria-invalid={duplicate || undefined}
+        onChange={(e) => (setEmail(e.target.value), setNeedsCode(false))}
       />
     </div>
   );
@@ -148,15 +157,15 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
               <h2>{creating ? "Cree su cuenta" : "Bienvenido de nuevo"}</h2>
               <p>{creating ? "14 días de prueba. Empiezan a contar con su primera venta." : "Entre para ver cómo van sus tiendas."}</p>
             </div>
+            {confirmNotice}
             {notice}
             {emailField}
             <PasswordField
               id="signin-password"
               value={password}
               onChange={setPassword}
-              inputRef={passwordRef}
               autoComplete={creating ? "new-password" : "current-password"}
-              invalid={error !== null && !duplicate && !error.offline}
+              invalid={error !== null && !error.offline && error.code !== "Auth.RequiresTwoFactor" && error.code !== "Auth.NotAllowed"}
               describedBy={creating ? "signin-checks" : undefined}
               aside={
                 !creating && (
@@ -168,6 +177,25 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
             >
               {creating && <PasswordChecklist id="signin-checks" password={password} />}
             </PasswordField>
+            {needsCode && !creating && (
+              <div className="auth-field">
+                <label htmlFor="signin-code">Código de verificación</label>
+                <input
+                  id="signin-code"
+                  className="auth-input"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9 ]{6,7}"
+                  placeholder="123456"
+                  required
+                  autoFocus
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  aria-describedby="signin-code-hint"
+                />
+                <p id="signin-code-hint" className="auth-note">El de 6 dígitos que muestra su aplicación de autenticación.</p>
+              </div>
+            )}
             <button type="submit" className="esc-button esc-button--primary auth-submit" disabled={busy}>
               {busy ? "Un momento…" : creating ? "Crear cuenta" : "Entrar"}
             </button>

@@ -13,11 +13,39 @@ export const shellRoutes = (appRedirects) => [
   ...appRedirects.flatMap((p) => [`/${p}`, `/${p}/*`]),
 ];
 
-/** `base` is public/staticwebapp.config.json; `pages` the prerendered pages ({ path }); returns the config to write to dist. */
-export function swaConfig(base, pages, appRedirects) {
+/** R11 B-Med5: what keeps another site's script out of the panel (the refresh token is in localStorage) and the panel out of another site's frame.
+ * Scripts only from this site; the API is the only other address it talks to. Styles allow inline: React's `style` props and the prerendered
+ * pages carry them, and a style cannot read the token. */
+const paddle = { cdn: "https://cdn.paddle.com", any: "https://*.paddle.com", checkout: "https://buy.paddle.com https://sandbox-buy.paddle.com" };
+
+export function securityHeaders(apiUrl) {
+  return {
+    "Content-Security-Policy": [
+      "default-src 'self'",
+      // TK-249: the billing page loads Paddle.js from Paddle's CDN and opens its checkout in a frame (Paddle's own CSP list).
+      `script-src 'self' ${paddle.cdn}`,
+      `style-src 'self' 'unsafe-inline' ${paddle.cdn}`,
+      `img-src 'self' data: ${paddle.any}`,
+      "font-src 'self' data:",
+      `connect-src 'self' ${new URL(apiUrl).origin} ${paddle.any}`,
+      `frame-src ${paddle.checkout}`,
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "object-src 'none'",
+    ].join("; "),
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Frame-Options": "DENY",
+  };
+}
+
+/** `base` is public/staticwebapp.config.json; `pages` the prerendered pages ({ path }); `apiUrl` the cloud API the build talks to
+ * (VITE_API_URL); returns the config to write to dist. */
+export function swaConfig(base, pages, appRedirects, apiUrl = "http://localhost:5100") {
   const file = (path) => (path === "/" ? "/index.html" : `${path}.html`);
   return {
     ...base,
+    globalHeaders: { ...base.globalHeaders, ...securityHeaders(apiUrl) },
     routes: [
       ...pages.filter((p) => p.path !== "/" && p.path !== "/404").map((p) => ({ route: p.path, rewrite: file(p.path) })),
       ...shellRoutes(appRedirects).map((route) => ({ route, rewrite: "/shell.html" })),

@@ -109,18 +109,22 @@ public sealed class NodeKeyTests(CloudApp app) : IClassFixture<CloudApp>
     }
 
     [Fact]
-    public void The_nonce_store_sweeps_expired_nonces_at_most_once_a_minute()
+    public async Task R11_the_nonce_store_lives_in_the_database_and_sweeps_expired_nonces_at_most_once_a_minute()
     {
-        var nonces = new NodeNonces();
+        var nonces = new NodeNonces(); // a new instance, as after a restart: the database still refuses a replay
+        var prefix = Guid.NewGuid().ToString("N");
         var start = new DateTime(2026, 10, 16, 12, 0, 0, DateTimeKind.Utc);
         var aExpires = start + 2 * NodeSignature.Window;
-        nonces.TryUse("a", start).ShouldBeTrue();
-        nonces.TryUse("a", start).ShouldBeFalse(); // replay
-        nonces.TryUse("b", aExpires.AddSeconds(-30)).ShouldBeTrue(); // sweeps; "a" is still valid
-        nonces.TryUse("c", aExpires.AddSeconds(1)).ShouldBeTrue(); // "a" expired, but the last sweep was 31 s ago
-        nonces.Count.ShouldBe(3);
-        nonces.TryUse("d", aExpires.AddSeconds(31)).ShouldBeTrue(); // a minute after the last sweep: "a" goes
-        nonces.Count.ShouldBe(3);
+        Task<bool> Use(string key, DateTime at) => app.InDbAsync(db => nonces.TryUseAsync(db, prefix + key, at, CancellationToken.None));
+        Task<int> Count() => app.InDbAsync(db => db.NodeNonces.CountAsync(n => EF.Functions.Like(n.Key, prefix + "%")));
+        (await Use("a", start)).ShouldBeTrue();
+        (await Use("a", start)).ShouldBeFalse(); // replay
+        (await app.InDbAsync(db => new NodeNonces().TryUseAsync(db, prefix + "a", start, CancellationToken.None))).ShouldBeFalse(); // after a restart too
+        (await Use("b", aExpires.AddSeconds(-30))).ShouldBeTrue(); // sweeps; "a" is still valid
+        (await Use("c", aExpires.AddSeconds(1))).ShouldBeTrue(); // "a" expired, but the last sweep was 31 s ago
+        (await Count()).ShouldBe(3);
+        (await Use("d", aExpires.AddSeconds(31))).ShouldBeTrue(); // a minute after the last sweep: "a" goes
+        (await Count()).ShouldBe(3);
     }
 
     private static async Task<HttpStatusCode> RegisterWithCodeAsync(HttpClient client, string code)

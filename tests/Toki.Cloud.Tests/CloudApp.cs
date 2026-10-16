@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -76,10 +77,24 @@ public class CloudApp : WebApplicationFactory<Program>
         return await SignInAsync(email);
     }
 
-    /// <summary>A new token for an existing account (claims are read at sign-in).</summary>
-    public async Task<Owner> SignInAsync(string email)
+    /// <summary>R11 B-High1: only a confirmed e-mail signs in. Tests confirm it in the database; the e-mailed link is tested in PasswordResetTests.</summary>
+    public Task ConfirmEmailAsync(string email) => ConfirmEmailAsync(this, email);
+
+    public static async Task ConfirmEmailAsync(WebApplicationFactory<Program> factory, string email)
     {
-        var login = await CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = Password });
+        await using var scope = factory.Services.CreateAsyncScope();
+        var normalized = email.ToUpperInvariant();
+        await scope.ServiceProvider.GetRequiredService<CloudDbContext>().Users.Where(u => u.NormalizedEmail == normalized)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.EmailConfirmed, true));
+    }
+
+    /// <summary>A new token for an existing account (claims are read at sign-in), its e-mail confirmed first. With <paramref name="twoFactorKey"/>,
+    /// the sign-in passes the authenticator code too (R11 B-Med6).</summary>
+    public async Task<Owner> SignInAsync(string email, string? twoFactorKey = null)
+    {
+        await ConfirmEmailAsync(email);
+        var login = await CreateClient().PostAsJsonAsync("/api/auth/login",
+            new { email, password = Password, twoFactorCode = twoFactorKey is null ? null : Totp.Code(twoFactorKey) });
         login.EnsureSuccessStatusCode();
         var client = CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", (await login.Json()).GetProperty("accessToken").GetString());
@@ -100,14 +115,23 @@ public class CloudApp : WebApplicationFactory<Program>
 
     private Owner? _staff;
 
-    /// <summary>The platform admin of this app (TK-189): registered, granted with the CLI command and signed in again, on first use.</summary>
+    /// <summary>The platform admin of this app (TK-189): registered, granted with the CLI command, with 2FA on and signed in again with the
+    /// authenticator code (R11 B-Med6), on first use.</summary>
     public async Task<Owner> StaffAsync()
     {
         if (_staff is not null) return _staff;
-        await OwnerAsync(StaffEmail);
+        var account = await OwnerAsync(StaffEmail);
         if (await Toki.Host.Cloud.Platform.PlatformCli.RunAsync(Services, Toki.Host.Cloud.Platform.PlatformCli.Grant, StaffEmail) != 0)
             throw new InvalidOperationException("grant-platform-admin failed");
-        return _staff = await SignInAsync(StaffEmail);
+        return _staff = await SignInAsync(StaffEmail, await EnableTwoFactorAsync(account));
+    }
+
+    /// <summary>Turns on 2FA as the panel's Seguridad page does (Identity's /manage/2fa) and returns the authenticator key.</summary>
+    public static async Task<string> EnableTwoFactorAsync(Owner who)
+    {
+        var key = (await (await who.Client.PostAsJsonAsync("/api/auth/manage/2fa", new { })).Json()).GetProperty("sharedKey").GetString()!;
+        (await who.Client.PostAsJsonAsync("/api/auth/manage/2fa", new { enable = true, twoFactorCode = Totp.Code(key) })).EnsureSuccessStatusCode();
+        return key;
     }
 
     /// <summary>A store for the owner with its main PC registered as a node.</summary>
@@ -168,6 +192,25 @@ public class CloudApp : WebApplicationFactory<Program>
 }
 
 public sealed record Owner(HttpClient Client, Guid TenantId, string Email);
+
+/// <summary>The code an authenticator app shows (RFC 6238: HMAC-SHA1, 30 s, 6 digits) for Identity's Base32 key. Identity checks it against the real clock.</summary>
+public static class Totp
+{
+    public static string Code(string base32Key)
+    {
+        var bits = string.Concat(base32Key.ToUpperInvariant().Where(c => c != ' ' && c != '=')
+            .Select(c => Convert.ToString("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".IndexOf(c), 2).PadLeft(5, '0')));
+        var key = Enumerable.Range(0, bits.Length / 8).Select(i => Convert.ToByte(bits.Substring(i * 8, 8), 2)).ToArray();
+        var step = BitConverter.GetBytes(DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30);
+        if (BitConverter.IsLittleEndian) Array.Reverse(step);
+#pragma warning disable CA5350 // RFC 6238 is HMAC-SHA1, as every authenticator app
+        var hash = HMACSHA1.HashData(key, step);
+#pragma warning restore CA5350
+        var offset = hash[^1] & 0x0F;
+        var value = ((hash[offset] & 0x7F) << 24) | (hash[offset + 1] << 16) | (hash[offset + 2] << 8) | hash[offset + 3];
+        return (value % 1_000_000).ToString("000000", System.Globalization.CultureInfo.InvariantCulture);
+    }
+}
 
 public sealed record StoreNode(Guid StoreId, Guid NodeId, HttpClient Client);
 
