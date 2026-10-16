@@ -124,6 +124,7 @@
             if (Session.Can("sales.create") || Session.Can("products.manage")) yield return new("admin/orders", "Pedidos y catálogo", "Pedidos", "calendar"); // TK-193..195
             yield return new("admin/invoices", "Facturas", "Facturas", "receipt");
             if (Pages.Admin.Reports.Allowed(Session)) yield return new("admin/reports", "Reportes", "Reportes", "chart");
+            if (Session.Can("audit.view")) yield return new("admin/audit", "Auditoría", "Auditoría", "shield"); // TK-213
             if (Session.Can("fiscal.manage")) yield return new("admin/ecf", "Comprobantes electrónicos", "e-CF", "send"); // TK-204
             if (Pages.Admin.Settings.Allowed(Session)) yield return new("admin/settings", "Configuración", "Ajustes", "settings");
         }

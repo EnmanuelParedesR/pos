@@ -28,11 +28,18 @@ public static class IdentityModule
         services.AddModuleDbContext<IdentityDbContext>();
         services.AddScoped<ISupervisorApprovals, SupervisorApprovals>();
         services.AddScoped<ICloudSnapshot, UserSnapshot>();
+        services.AddScoped<IUserDirectory, UserDirectory>();
         services.AddAuthentication(Scheme).AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(Scheme, null);
         // Secure by default: an endpoint that forgets its authorization call still requires a session.
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
         return services;
     }
+}
+
+internal sealed class UserDirectory(IdentityDbContext db) : IUserDirectory
+{
+    public async Task<IReadOnlyList<UserName>> AllAsync(CancellationToken ct) =>
+        await db.Users.AsNoTracking().OrderBy(u => u.Name).Select(u => new UserName(u.Id, u.Name)).ToListAsync(ct);
 }
 
 /// <summary>Authenticates "Authorization: Bearer &lt;session&gt;" plus the device header the session was opened on.</summary>

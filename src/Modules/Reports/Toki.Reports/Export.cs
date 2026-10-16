@@ -52,6 +52,9 @@ internal static class Export
         ["Over90"] = "MasDe90", ["CreditLimit"] = "LimiteCredito",
         ["SupplierId"] = "SuplidorId", ["Supplier"] = "Suplidor", ["NotYetDue"] = "PorVencer", ["Overdue1To30"] = "Vencido1a30", ["Overdue31To60"] = "Vencido31a60",
         ["Overdue61To90"] = "Vencido61a90", ["OverdueOver90"] = "VencidoMas90",
+        // audit log (TK-213)
+        ["Sequence"] = "Registro", ["DateUtc"] = "Fecha", ["UserId"] = "UsuarioId", ["User"] = "Usuario", ["Action"] = "Accion", ["ResourceType"] = "Entidad",
+        ["ResourceId"] = "EntidadId", ["Data"] = "Detalle",
     };
 
     public static IResult As<T>(IReadOnlyList<T> rows, string? format, string name) => format?.ToLowerInvariant() switch

@@ -8,4 +8,7 @@ public interface ICashRegisterReports
 {
     /// <summary>Shifts opened in the business-day range, oldest first.</summary>
     Task<IReadOnlyList<ShiftSummary>> ShiftsAsync(DateOnly from, DateOnly to, CancellationToken ct);
+
+    /// <summary>Names of the registers with an open shift, whenever it was opened.</summary>
+    Task<IReadOnlyList<string>> OpenRegistersAsync(CancellationToken ct);
 }

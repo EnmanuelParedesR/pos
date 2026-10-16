@@ -58,3 +58,9 @@
   .esc-status-bar, .esc-side, .esc-topbar, .esc-tabbar, .esc-page-head, .no-print { display: none !important; }
   body, .esc-card { background: #FFFFFF !important; box-shadow: none !important; border: 0 !important; }
 }
+/* TK-213: the audit log's expandable details. */
+.audit-detail > td { background: var(--surface-2); }
+.audit-data { margin: 8px 0 0; padding: 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font: var(--t-13)/1.5 ui-monospace, Consolas, monospace; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-small); }
+.audit-chevron { display: inline-flex; transition: transform .15s; }
+.audit-chevron--open { transform: rotate(90deg); }

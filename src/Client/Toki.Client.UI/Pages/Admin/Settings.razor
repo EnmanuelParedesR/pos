@@ -320,16 +320,18 @@
                 </div>
             </section>
             <section class="esc-card esc-setting">
-                <div class="esc-setting__about"><h2>Respaldos</h2><p>Una copia cifrada de todos los datos de la tienda.</p>
+                <div class="esc-setting__about"><h2>Respaldos</h2><p>Una copia cifrada de todos los datos de la tienda. “Restaurar” reemplaza los datos de ahora por los de un respaldo.</p>
                     <div style="margin-top:12px"><Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="BackUpAsync">@(_sending ? "Respaldando… puede tardar unos minutos" : "Respaldar ahora")</Button></div></div>
                 <div class="esc-setting__body">
                     <div class="esc-table-wrap">
                         <table class="esc-table">
-                            <thead><tr><th>Fecha</th><th>Archivo</th><th class="esc-num">Tamaño</th></tr></thead>
+                            <thead><tr><th>Fecha</th><th class="esc-hide-sm">Archivo</th><th class="esc-num">Tamaño</th><th></th></tr></thead>
                             <tbody>
                                 @foreach (var b in _backups)
                                 {
-                                    <tr><td style="font-weight:600">@Format.Date(b.DateUtc)</td><td class="esc-muted">@b.FileName</td><td class="esc-num">@((b.Bytes / 1024d / 1024d).ToString("0.0")) MB</td></tr>
+                                    <tr><td style="font-weight:600">@Format.Date(b.DateUtc)<span class="esc-table__sub esc-only-sm esc-muted">@b.FileName</span></td><td class="esc-hide-sm esc-muted">@b.FileName</td>
+                                        <td class="esc-num">@((b.Bytes / 1024d / 1024d).ToString("0.0")) MB</td>
+                                        <td class="esc-num"><Button class="esc-button esc-button--small" aria-label="@($"Restaurar {b.FileName}")" OnClick="() => _restoring = b">Restaurar</Button></td></tr>
                                 }
                             </tbody>
                         </table>
@@ -337,6 +339,10 @@
                     </div>
                 </div>
             </section>
+            @if (_restoring is { } restoring)
+            {
+                <RestoreBackupDialog Backup="restoring" OnClose="() => _restoring = null" />
+            }
             break;
 
         case Section.Cloud:
@@ -446,6 +452,7 @@
     private List<Role> _roles = [];
     private Guid _userRole;
     private List<BackupFile> _backups = [];
+    private BackupFile? _restoring;
     private LicenseFeatures? _features;
     private SyncStatus? _sync;
     private string? _cloudCode;

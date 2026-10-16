@@ -75,6 +75,48 @@ public static class AdminNames
         _ => "Gastos de seguros",
     };
 
+    /// <summary>The audit log's action codes as the owner reads them (TK-213). A code not listed here shows as it is.</summary>
+    public static readonly IReadOnlyDictionary<string, string> AuditActions = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["sales.create"] = "Venta", ["sales.void"] = "Venta anulada", ["sales.return"] = "Devolución",
+        ["orders.create"] = "Pedido creado", ["quotes.create"] = "Cotización creada", ["orders.cancel"] = "Pedido cancelado", ["orders.ready"] = "Pedido listo",
+        ["cash.cash-in"] = "Entrada de efectivo", ["cash.withdrawal"] = "Retiro de efectivo", ["cash.expense"] = "Gasto de caja",
+        ["cash.open-shift"] = "Abrió turno", ["cash.close-shift"] = "Cerró turno", ["cash.create-register"] = "Caja creada",
+        ["cash.rename-register"] = "Caja renombrada", ["cash.assign-device"] = "Equipo asignado a caja",
+        ["customers.save"] = "Cliente guardado", ["customers.payment"] = "Abono de cliente", ["customers.void-payment"] = "Abono anulado",
+        ["inventory.create-product"] = "Producto creado", ["inventory.update-product"] = "Producto editado", ["inventory.adjustment"] = "Ajuste de inventario",
+        ["inventory.transfer"] = "Transferencia", ["inventory.apply-stock-count"] = "Conteo físico aplicado", ["inventory.save-category"] = "Categoría guardada",
+        ["inventory.save-presentation"] = "Presentación guardada", ["inventory.add-barcode"] = "Código de barras agregado",
+        ["inventory.remove-barcode"] = "Código de barras quitado", ["inventory.create-warehouse"] = "Almacén creado", ["inventory.label-formats"] = "Etiquetas de balanza",
+        ["catalog.update"] = "Catálogo en línea",
+        ["purchasing.post"] = "Compra recibida", ["purchasing.void"] = "Compra anulada", ["purchasing.record-expense"] = "Gasto registrado",
+        ["purchasing.void-expense"] = "Gasto anulado", ["purchasing.pay-supplier"] = "Pago a suplidor", ["purchasing.void-payment"] = "Pago a suplidor anulado",
+        ["purchasing.save-supplier"] = "Suplidor guardado",
+        ["fiscal.load-sequence"] = "Secuencia cargada", ["fiscal.void-sequence"] = "Secuencia anulada", ["fiscal.void-document"] = "Comprobante anulado",
+        ["fiscal.replace-rejected"] = "Comprobante rechazado reemplazado", ["fiscal.import-certificate"] = "Certificado digital instalado",
+        ["identity.setup"] = "Primera configuración", ["identity.create-user"] = "Usuario creado", ["identity.update-user"] = "Usuario editado",
+        ["identity.change-pin"] = "PIN cambiado", ["identity.pin-failed"] = "PIN equivocado", ["identity.save-role"] = "Rol guardado",
+        ["identity.delete-role"] = "Rol borrado", ["identity.pair"] = "Equipo emparejado", ["identity.revoke"] = "Equipo desconectado",
+        ["approval.granted"] = "Autorización de supervisor", ["approval.used"] = "Autorización usada",
+        ["settings.business"] = "Datos del negocio", ["settings.approvals"] = "Autorizaciones", ["settings.backup-passphrase"] = "Frase de respaldos",
+        ["settings.restore-backup"] = "Respaldo restaurado", ["settings.license"] = "Licencia",
+        ["sync.connect"] = "Conectada a la nube", ["sync.disconnect"] = "Desconectada de la nube",
+    };
+
+    public static string AuditAction(string code) => AuditActions.GetValueOrDefault(code, code);
+
+    /// <summary>What an audit record is about. Approvals name the command they unlocked ("VoidSale"): those show as they are.</summary>
+    public static string AuditResource(string type) => type switch
+    {
+        "Business" => "Negocio", "Category" => "Categoría", "CloudConnection" => "Nube", "Customer" => "Cliente", "Device" => "Equipo",
+        "EcfCertificate" => "Certificado digital", "EcfVoid" => "Anulación de e-NCF", "Expense" => "Gasto", "FiscalDocument" => "Comprobante",
+        "LabelFormat" => "Etiquetas", "License" => "Licencia", "NcfSequence" => "Secuencia", "Product" => "Producto", "Purchase" => "Compra",
+        "Register" => "Caja", "Role" => "Rol", "Sale" => "Venta", "Shift" => "Turno", "CloseShift" => "Cierre de turno", "StockCount" => "Conteo físico",
+        "SupervisorApproval" => "Autorización", "Supplier" => "Suplidor", "Transfer" => "Transferencia", "User" => "Usuario", "Warehouse" => "Almacén",
+        "Order" => "Pedido", "CatalogSettings" => "Catálogo en línea",
+        _ => type,
+    };
+
     private static readonly CultureInfo Es = CultureInfo.GetCultureInfo("es-DO");
 
     /// <summary>"15 oct 2026".</summary>

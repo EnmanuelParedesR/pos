@@ -22,6 +22,36 @@ public sealed class AuditTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task The_audit_log_lists_by_period_user_and_action_and_exports_to_csv()
+    {
+        var session = await app.AdminAsync();
+        var admin = app.Client(session);
+        await admin.CategoryAsync("Categoría de la auditoría");
+        (await admin.PutAsJsonAsync("/api/settings/business", new { Name = "Carnicería auditada", DiscountCapPercent = 10m })).EnsureSuccessStatusCode();
+        var today = Toki.SharedKernel.BusinessDay.Of(app.Clock.GetUtcNow().UtcDateTime);
+        var range = $"from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}";
+
+        var rows = await admin.GetFromJsonAsync<JsonElement>($"/api/audit?{range}&userId={session.UserId}&action=settings.business");
+        var row = rows.EnumerateArray().ShouldHaveSingleItem();
+        row.GetProperty("user").GetString().ShouldNotBeNullOrEmpty();
+        row.GetProperty("resourceId").ValueKind.ShouldBe(JsonValueKind.Null); // store-wide record
+        row.GetProperty("data").GetString()!.ShouldContain("auditada");
+        (await admin.GetFromJsonAsync<JsonElement>($"/api/audit?{range}&userId={Guid.NewGuid()}")).GetArrayLength().ShouldBe(0);
+        var yesterday = today.AddDays(-1);
+        (await admin.GetFromJsonAsync<JsonElement>($"/api/audit?from={yesterday:yyyy-MM-dd}&to={yesterday:yyyy-MM-dd}")).GetArrayLength().ShouldBe(0);
+        (await admin.GetFromJsonAsync<JsonElement>("/api/audit/users")).EnumerateArray().ShouldContain(u => u.GetProperty("id").GetGuid() == session.UserId);
+
+        using var csv = await admin.GetAsync($"/api/audit?{range}&format=csv");
+        csv.Content.Headers.ContentDisposition!.FileName!.ShouldContain("auditoria");
+        var text = await csv.Content.ReadAsStringAsync();
+        text.ShouldContain("Registro,Fecha,UsuarioId,Usuario,Supervisor,Accion,Entidad,EntidadId,Detalle");
+        text.ShouldContain("settings.business");
+
+        var accountant = app.Client(await app.UserAsync(Roles.Accountant));
+        (await accountant.GetAsync($"/api/audit?{range}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
     public async Task Editing_or_deleting_audit_records_breaks_the_chain()
     {
         var admin = app.Client(await app.AdminAsync());
