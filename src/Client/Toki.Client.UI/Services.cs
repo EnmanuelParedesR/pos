@@ -30,6 +30,9 @@ public static class Services
         services.AddScoped(sp => new Peripherals(sp.GetRequiredService<ILocalStore>(), drivers, defaults ?? new()));
 }
 
+/// <summary>Pages of another assembly the router serves too (the web host's /dev/escuadra gallery, in Development only).</summary>
+public sealed record ExtraPages(params System.Reflection.Assembly[] Assemblies);
+
 /// <summary>The connections to the store server. Pairing (or forgetting it) changes this PC's client certificate, and a pooled connection
 /// keeps the certificate it was opened with: so a new pool is started whenever it changes.</summary>
 internal sealed class StoreHandler(NodeCertificatePin pin) : HttpMessageHandler

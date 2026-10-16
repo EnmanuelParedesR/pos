@@ -48,6 +48,16 @@
                 {
                     <span class="@(l.Warning is null ? "muted" : "esc-offline")" role="status">@note</span>
                 }
+                @* TK-243: this PC's scale and printer, when it has them; amber when one stops answering (the sale goes on). *@
+                @foreach (var (icon, device, state) in new[] { ("scale", "Balanza", Peripherals.ScaleState), ("printer", "Impresora", Peripherals.PrinterState) })
+                {
+                    if (state is { } st)
+                    {
+                        <span class="esc-status-bar__device @(st == Peripherals.DeviceState.Error ? "esc-offline" : "muted")" role="status">
+                            <Icon Name="@icon" Size="16" />@device @(st switch { Peripherals.DeviceState.Connected => "conectada", Peripherals.DeviceState.Error => "sin respuesta", _ => "configurada" })
+                        </span>
+                    }
+                }
                 @if (Session.Online)
                 {
                     <span class="muted">En línea</span>
@@ -104,6 +114,7 @@
         await Session.LoadAsync();
         await Peripherals.LoadAsync();
         Session.Changed += OnSessionChanged;
+        Peripherals.Changed += OnDevicesChanged;
         Nav.LocationChanged += OnLocationChanged;
         Guard();
         _ready = true;
@@ -153,9 +164,12 @@
         StateHasChanged();
     });
 
+    private void OnDevicesChanged() => InvokeAsync(StateHasChanged);
+
     public void Dispose()
     {
         Session.Changed -= OnSessionChanged;
+        Peripherals.Changed -= OnDevicesChanged;
         Nav.LocationChanged -= OnLocationChanged;
         _clock?.Dispose();
     }

@@ -1,4 +1,5 @@
-<Router AppAssembly="typeof(Routes).Assembly">
+@inject IServiceProvider Provider
+<Router AppAssembly="typeof(Routes).Assembly" AdditionalAssemblies="@((Provider.GetService(typeof(ExtraPages)) as ExtraPages)?.Assemblies ?? [])">
     <Found Context="route">
         <RouteView RouteData="route" DefaultLayout="typeof(Components.Frame)" />
     </Found>

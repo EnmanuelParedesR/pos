@@ -1,0 +1,48 @@
+@* TK-243: the scale's live weight, always in the same place on the Sale screen while this PC has one. Only this piece re-renders
+   (twice a second, and only when the reading changed), so the cart and the tiles never redraw for it. *@
+@implements IDisposable
+@inject Peripherals Peripherals
+
+@if (Peripherals.Scale is not null)
+{
+    <ScaleReadout Pounds="_reading.Pounds" State="StateOf(_reading)" />
+}
+
+@code {
+    private readonly CancellationTokenSource _stop = new();
+    private ScaleReading _reading = new(0m, ScaleStatus.Unstable);
+
+    protected override void OnInitialized() => _ = WatchAsync();
+
+    private async Task WatchAsync()
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+            do
+            {
+                if (Peripherals.Scale is null) continue;
+                var r = await Peripherals.ReadScaleAsync(_stop.Token);
+                if (r == _reading) continue;
+                _reading = r;
+                await InvokeAsync(StateHasChanged);
+            } while (await timer.WaitForNextTickAsync(_stop.Token));
+        }
+        catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException) { } // left the screen
+    }
+
+    public static ScaleReadout.States StateOf(ScaleReading r) => r.Status switch
+    {
+        ScaleStatus.Stable when r.Pounds > 0 => ScaleReadout.States.Stable,
+        ScaleStatus.Stable => ScaleReadout.States.Empty,
+        ScaleStatus.Unstable => ScaleReadout.States.Weighing,
+        ScaleStatus.Overload => ScaleReadout.States.Overload,
+        _ => ScaleReadout.States.Disconnected,
+    };
+
+    public void Dispose()
+    {
+        _stop.Cancel();
+        _stop.Dispose();
+    }
+}
