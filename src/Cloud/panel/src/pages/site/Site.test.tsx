@@ -111,7 +111,7 @@ it("TK-235: /certificacion lists everything the owner prepares before the first 
   expect(list.textContent).toContain("Abastalia nunca le pide esa clave");
 });
 
-it("TK-245: the home page shows the product: deadline banner, trial and contact calls to action, decorative art and the price placeholder", () => {
+it("TK-245: the home page shows the product: deadline banner, trial and contact calls to action, decorative art and no price placeholder", () => {
   renderAt("/");
   expect(screen.getByRole("heading", { level: 1, name: "Venda, pese y facture. Aunque se vaya el internet." })).toBeTruthy();
   expect(screen.getByRole("link", { name: /15 de noviembre de 2026/ }).getAttribute("href")).toBe("/e-cf");
@@ -121,7 +121,8 @@ it("TK-245: the home page shows the product: deadline banner, trial and contact 
   expect(screen.getByRole("link", { name: "Hablemos" }).getAttribute("href")).toBe("/precios#contacto"); // no WhatsApp number yet
   expect(document.querySelector(".art__stage")!.getAttribute("aria-hidden")).toBe("true");
   expect(screen.getByText(/cifras son ilustrativas/)).toBeTruthy();
-  expect(screen.getByText("Precio por confirmar")).toBeTruthy();
+  expect(screen.queryByText("Precio por confirmar")).toBeNull(); // TK-274: no placeholder on the home; the band invites to the trial
+  expect(screen.getByRole("heading", { level: 2, name: "Pruebe Abastalia 14 días gratis" })).toBeTruthy();
   expect(screen.getByRole("link", { name: "¿Necesita certificarse? Le acompañamos →" }).getAttribute("href")).toBe("/certificacion");
   for (const [name, href] of [["Carnicería", "/carniceria"], ["Colmado", "/colmado"], ["Deli", "/deli"]])
     expect(screen.getAllByRole("link", { name: new RegExp(`^${name}`) }).some((a) => a.getAttribute("href") === href)).toBe(true);

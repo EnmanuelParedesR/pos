@@ -123,7 +123,7 @@ export function CtaBand({ title, text = "Sin cupo de e-CF. Nunca queda en solo l
     <section className="band">
       <div className="wrap band__grid">
         <div>
-          <h2>{title ?? (price ? <>Desde {price}</> : <>Desde <Tbd>Precio por confirmar</Tbd> al mes</>)}</h2>
+          <h2>{title ?? (price ? <>Desde {price}</> : <>Pruebe Abastalia 14 días gratis</>)}</h2>
           <p>{text}</p>
         </div>
         <div className="actions">
@@ -164,10 +164,10 @@ export function EcfFlow({ children }: { children?: ReactNode }) {
 }
 
 const lines: [string, string, string][] = [
-  ["Chuleta ahumada", "2.350 lb × 185.00", "434.75"],
-  ["Pechuga de pollo", "3.120 lb × 165.00", "514.80"],
-  ["Salami 1 lb", "2 × 210.00", "420.00"],
-  ["Refresco rojo", "4 × 59.00", "236.00"],
+  ["Arroz selecto 5 lb", "1 × 245.00", "245.00"],
+  ["Queso de freír", "1.250 lb × 220.00", "275.00"],
+  ["Aceite 1 L", "2 × 235.00", "470.00"],
+  ["Refresco 2 L", "3 × 95.00", "285.00"],
 ];
 
 /** Hero art: the register screen (sample sale) overlapped by the owner's phone. Decorative: hidden from screen readers, captioned as an example. */
@@ -196,13 +196,13 @@ export function ProductArt() {
               <div className="mock__box">
                 <small className="label">Balanza</small>
                 <span className="mock__big">
-                  2.350 <small>lb</small>
+                  1.250 <small>lb</small>
                 </span>
                 <small className="ok">Estable</small>
               </div>
               <div className="mock__box mock__box--grow">
                 <small className="label">Total</small>
-                <span className="mock__big">1,605.55</span>
+                <span className="mock__big">1,275.00</span>
                 <small>RD$ · ITBIS incluido</small>
               </div>
               <div className="mock__pay">
