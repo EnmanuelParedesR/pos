@@ -19,6 +19,7 @@
     "alertEmail": { "value": "" },
     "paddleEnvironment": { "value": "" },
     "paddleClientToken": { "value": "" },
-    "licenseKeyName": { "value": "" }
+    "licenseKeyName": { "value": "" },
+    "panelDomain": { "value": "abastalia.com" }
   }
 }

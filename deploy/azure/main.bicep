@@ -66,6 +66,9 @@ param licenseKeyName string = ''
 @description('TK-246 / R11 B-Low7: CloudCustody (a copy of the stores\' certificates in Key Vault). Off until ADR-0011\'s conditions; while off the API gets no Key Vault certificate role, and the key role only for the license key.')
 param allowCloudCustody bool = false
 
+@description('TK-267: the site and panel\'s own domain (e.g. abastalia.com, bound to the Static Web App with its www). Empty = only the Static Web App\'s default host.')
+param panelDomain string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var name = 'abastalia-${env}'
 var tags = { app: 'abastalia', env: env }
@@ -382,6 +385,11 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Fe__KeyVaultUri: vault.properties.vaultUri
     Fe__DefaultSigningMode: 'StoreSigned' // TK-246 (ADR-0011)
     Fe__AllowCloudCustody: string(allowCloudCustody)
+  }, empty(panelDomain) ? {} : {
+    // TK-267: CORS for the own domain and its www; e-mail links (invites, password reset) point to it.
+    Panel__Origins__1: 'https://${panelDomain}'
+    Panel__Origins__2: 'https://www.${panelDomain}'
+    Panel__Url: 'https://${panelDomain}'
   }, empty(emailEndpoint) ? {} : {
     // TK-222: alerts and invites by e-mail. Off (logged only) until both params are set; see docs/despliegue-azure.md.
     Email__Provider: 'AzureCommunicationServices'
@@ -431,7 +439,7 @@ resource alertGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(al
   location: 'global'
   tags: tags
   properties: {
-    groupShortName: 'abastalia-alerts'
+    groupShortName: 'abastalia'
     enabled: true
     emailReceivers: [{ name: 'owner', emailAddress: alertEmail, useCommonAlertSchema: true }]
   }
