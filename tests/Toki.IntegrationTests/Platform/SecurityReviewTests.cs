@@ -389,8 +389,7 @@ public sealed class IdleLockTests(IdleLockTests.App app) : IClassFixture<IdleLoc
     }
 }
 
-/// <summary>R11 A10, A18: the audit chain is keyed (a rewrite with plain SHA-256 is caught) and a server clock behind the newest record writes
-/// nothing. Own app: both tests damage the audit log on purpose.</summary>
+/// <summary>R11 A10: the audit chain is keyed, so a rewrite recomputed with plain SHA-256 is caught. Own app: it damages the audit log.</summary>
 public sealed class AuditIntegrityTests(TokiApp app) : IClassFixture<TokiApp>
 {
     [Fact]
@@ -415,6 +414,11 @@ public sealed class AuditIntegrityTests(TokiApp app) : IClassFixture<TokiApp>
         });
         broken.ShouldBe(1);
     }
+}
+
+/// <summary>R11 A18. Own app: it moves the newest audit record into the future.</summary>
+public sealed class ClockBehindTests(TokiApp app) : IClassFixture<TokiApp>
+{
 
     [Fact]
     public async Task A18_with_the_clock_behind_the_newest_audit_record_nothing_is_saved()
