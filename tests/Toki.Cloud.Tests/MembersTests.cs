@@ -350,6 +350,44 @@ public sealed class InviteSecurityTests(CloudApp app) : IClassFixture<CloudApp>
     }
 
     [Fact]
+    public async Task R9_21_an_account_someone_registered_with_the_invitees_email_does_not_block_the_invite_sent_to_that_email()
+    {
+        await using var mailing = new MailingCloudApp();
+        var owner = await mailing.OwnerAsync();
+        var email = $"member{Guid.NewGuid():N}@example.com";
+        var squatter = await mailing.OwnerAsync(email); // registered first, by someone who does not read that inbox
+        (await owner.Client.PostAsJsonAsync("/api/members/invites", new { email, role = "ReadOnly" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = mailing.Mail.Sent.Single(m => m.To == email).Body;
+        var token = body[(body.IndexOf('#') + 1)..];
+
+        const string newPassword = "Invitada2026";
+        (await mailing.CreateClient().PostAsJsonAsync("/api/invites/register", new { token, password = newPassword })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var account = await mailing.InDbAsync(db => db.Users.SingleAsync(u => u.Email == email));
+        account.EmailConfirmed.ShouldBeTrue();
+        (await mailing.CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = CloudApp.Password })).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        var login = await mailing.CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = newPassword });
+        login.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await mailing.InDbAsync(db => db.TenantMembers.AnyAsync(m => m.TenantId == owner.TenantId && m.UserId == account.Id))).ShouldBeTrue();
+        // It may be the person's own earlier sign-up: the account keeps what it had; whoever else knew the old password is out.
+        account.Id.ShouldBe(await mailing.InDbAsync(db => db.TenantMembers.Where(m => m.TenantId == squatter.TenantId).Select(m => m.UserId).SingleAsync()));
+    }
+
+    [Fact]
+    public async Task R9_21_a_confirmed_account_is_never_taken_over_by_an_invite()
+    {
+        await using var mailing = new MailingCloudApp();
+        var first = await mailing.OwnerAsync();
+        var email = $"member{Guid.NewGuid():N}@example.com";
+        await mailing.OwnerAsync(email);
+        await mailing.InDbAsync(db => db.Users.Where(u => u.Email == email).ExecuteUpdateAsync(s => s.SetProperty(u => u.EmailConfirmed, true)));
+        (await first.Client.PostAsJsonAsync("/api/members/invites", new { email, role = "ReadOnly" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = mailing.Mail.Sent.Single(m => m.To == email).Body;
+        var r = await mailing.CreateClient().PostAsJsonAsync("/api/invites/register", new { token = body[(body.IndexOf('#') + 1)..], password = "Otra2026x" });
+        (await r.ErrorCode()).ShouldBe("Invites.AccountExists");
+    }
+
+    [Fact]
     public async Task An_email_in_the_old_Platform_Admins_setting_gets_no_platform_role()
     {
         var account = await app.OwnerAsync(CloudApp.LegacyAdminEmail);

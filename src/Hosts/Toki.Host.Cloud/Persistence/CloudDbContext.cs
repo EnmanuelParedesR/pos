@@ -55,6 +55,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<ReplicaCertification> Certifications => Set<ReplicaCertification>();
     public DbSet<Alerts.AlertPreference> AlertPreferences => Set<Alerts.AlertPreference>();
     public DbSet<Alerts.SentAlert> SentAlerts => Set<Alerts.SentAlert>();
+    public DbSet<Assistant.AiUsage> AiUsage => Set<Assistant.AiUsage>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -120,9 +121,14 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(r => r.Environment).HasMaxLength(10);
             e.Property(r => r.ReplacesENcf).HasMaxLength(13);
             e.Property(r => r.ReplacedByENcf).HasMaxLength(13);
-            e.HasIndex(r => new { r.TenantId, r.ENcf }).IsUnique();
+            e.HasIndex(r => new { r.TenantId, r.Environment, r.ENcf }).IsUnique(); // R9 #4
             e.Property(r => r.ColdKey).HasMaxLength(100);
             e.HasIndex(r => new { r.ColdUtc, r.ReceivedUtc });
+        });
+        builder.Entity<Assistant.AiUsage>(e =>
+        {
+            e.ToTable("AiUsage");
+            e.HasKey(u => new { u.TenantId, u.Day });
         });
         builder.Entity<PlatformAuditRecord>(e =>
         {
@@ -415,7 +421,7 @@ public sealed class PlatformAuditRecord
 public enum EcfRelayStatus { Accepted, AcceptedConditional, Rejected, Pending, Simulated }
 
 /// <summary>The cloud archive of a signed e-CF and its DGII result (<c>/fiscal/v1/archive</c>; the type and table keep the relay's name).
-/// The e-NCF is the natural key: a later upload updates the row.</summary>
+/// The environment and the e-NCF are the natural key (R9 #4): a later upload updates the row.</summary>
 public sealed class EcfRelayRecord
 {
     public Guid Id { get; set; }

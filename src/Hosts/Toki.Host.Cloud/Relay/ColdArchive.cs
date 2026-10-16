@@ -94,8 +94,9 @@ internal sealed class ColdArchiver(CloudDbContext db, IColdArchive store, TimePr
             if (rows.Count == 0) return moved;
             foreach (var row in rows)
             {
-                // Tenant first: one prefix per business, so a business's documents can be listed or handed over together.
-                var key = $"{row.TenantId:N}/{row.ENcf}";
+                // Tenant first: one prefix per business, so a business's documents can be listed or handed over together. Then the environment
+                // (R9 #4): the same e-NCF in TesteCF and eCF are two documents, and a key is written once.
+                var key = $"{row.TenantId:N}/{row.Environment}/{row.ENcf}";
                 await store.PutAsync(key + ".xml.gz", row.SignedXmlGzip, ct);
                 if (row.RfceGzip is { } rfce) await store.PutAsync(key + ".rfce.xml.gz", rfce, ct);
                 (row.ColdKey, row.ColdHasRfce, row.ColdUtc, row.SignedXmlGzip, row.RfceGzip) = (key, row.RfceGzip is not null, now, [], null);
@@ -160,13 +161,18 @@ internal static class ColdArchiveSetup
         if (config.GetValue("Archive:MoveInBackground", true)) services.AddHostedService<ColdArchiveWorker>();
     }
 
-    /// <summary>The owner or the accountant gets a document back by its e-NCF: from SQL, or from cold storage.</summary>
+    /// <summary>The owner or the accountant gets a document back by its e-NCF: from SQL, or from cold storage. The production one (eCF) unless
+    /// <c>?environment=</c> asks for TesteCF or CerteCF; with no production one, the newest.</summary>
     public static void MapColdArchive(this IEndpointRouteBuilder app) =>
-        app.MapGet("/api/fiscal/archive/{encf}", async (string encf, ClaimsPrincipal user, CloudDbContext db, IServiceProvider services, CancellationToken ct) =>
+        app.MapGet("/api/fiscal/archive/{encf}", async (string encf, string? environment, ClaimsPrincipal user, CloudDbContext db, IServiceProvider services,
+            CancellationToken ct) =>
         {
             var tenantId = user.GetTenantId();
             var key = encf.Trim().ToUpperInvariant();
-            var row = await db.EcfRelays.AsNoTracking().SingleOrDefaultAsync(r => r.TenantId == tenantId && r.ENcf == key, ct);
+            var wanted = EcfArchiveEndpoint.EnvironmentOf(environment);
+            var rows = await db.EcfRelays.AsNoTracking().Where(r => r.TenantId == tenantId && r.ENcf == key && (wanted == null || r.Environment == wanted))
+                .ToListAsync(ct);
+            var row = rows.FirstOrDefault(r => r.Environment == "eCF") ?? rows.MaxBy(r => r.ReceivedUtc);
             if (row is null) return EndpointExtensions.Problem(Error.NotFound("Archive.NotFound", "No encontramos ese e-NCF en el archivo de la nube."));
 
             byte[]? xml = row.SignedXmlGzip, rfce = row.RfceGzip;
