@@ -144,6 +144,19 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Fuente:** `docs/ecf-propio.md` §11 #4 y §12 (TK-141); `docs/servicio-certificacion.md` §5.
 - **Respuesta:** Se hará con la cuenta piloto (Toki no tendrá RNC); investigar cuál entidad es la más económica para nuestros clientes.
 
+### D19 · Referidos: planes que califican y monto del descuento (TK-255)
+- **Pregunta:** ¿Qué planes cuentan para el referido y cuánto se descuenta (porcentaje o monto) en el siguiente pago de quien refirió?
+- **Por qué importa:** los referidos están construidos pero apagados hasta definir `Billing:Referrals`.
+- **Hoy:** apagado. Además falta en Paddle: permiso de la llave de API para crear descuentos y los eventos `adjustment.*` en el destino de notificaciones.
+- **Fuente:** `docs/cobro-paddle.md` (Referidos).
+- **Respuesta:**
+
+### D20 · Precio por cajero
+- **Pregunta:** ¿Cuánto cuesta cada cajero adicional, cuántos incluye cada plan y cómo se cuentan (propuesta: usuarios con PIN que entraron en el mes)?
+- **Por qué importa:** el dueño quiere cobrar por cajero (trazabilidad de quién hizo qué); sin estas cifras no se carga en Paddle.
+- **Hoy:** no construido; TK-258 deja el camino libre para un adicional "Cajero adicional" por cantidad.
+- **Respuesta:**
+
 ---
 
 ## 2. DGII
