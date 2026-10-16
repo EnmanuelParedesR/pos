@@ -64,6 +64,48 @@ public sealed class RegisterTests
         sent[1].Body.ShouldContain(cart.SaleId.ToString());
     }
 
+    /// <summary>R11 A16 (e2e 2026-10-16): with the store's default the card authorization is required, as the server checks it.</summary>
+    [Fact]
+    public void A_card_payment_needs_its_authorization_when_the_store_asks_for_it()
+    {
+        var (ctx, api) = ScreenContext.Create("sales.create");
+        using var _ = ctx;
+        var cart = ctx.Services.GetRequiredService<Cart>();
+        cart.Add(Salami, null);
+        api.Json("GET", "/api/settings/business", new BusinessProfile("Carnicería", null, null, null, null, 10m))
+           .Json("POST", "/api/sales", new SaleRegistered(cart.SaleId, 1, "E320000000001", 210m, 0m, ReceiptFor(210m)), HttpStatusCode.Created);
+        SaleRegistered? sold = null;
+        var checkout = ctx.Render<CheckoutDialog>(p => p.Add(x => x.ShiftId, ScreenContext.Shift.ShiftId).Add(x => x.OnSold, v => sold = v));
+
+        checkout.Find("[role=dialog]").KeyDown(new KeyboardEventArgs { Key = "F6" });
+        checkout.WaitForAssertion(() => checkout.Markup.ShouldContain("Escriba el número de autorización"));
+        checkout.Markup.ShouldNotContain("(opcional)");
+        checkout.Find(".esc-button--money").HasAttribute("disabled").ShouldBeTrue();
+
+        checkout.Find("input[aria-required=true]").Input("483920");
+        checkout.Find(".esc-button--money").Click();
+        checkout.WaitForAssertion(() => sold.ShouldNotBeNull());
+        api.Requests.Single(r => r.Route == "/api/sales").Body.ShouldContain("\"reference\":\"483920\"");
+    }
+
+    [Fact]
+    public void A_store_that_turned_the_reference_off_charges_the_card_without_it()
+    {
+        var (ctx, api) = ScreenContext.Create("sales.create");
+        using var _ = ctx;
+        var cart = ctx.Services.GetRequiredService<Cart>();
+        cart.Add(Salami, null);
+        api.Json("GET", "/api/settings/business", new BusinessProfile("Carnicería", null, null, null, null, 10m, RequirePaymentReference: false))
+           .Json("POST", "/api/sales", new SaleRegistered(cart.SaleId, 1, "E320000000001", 210m, 0m, ReceiptFor(210m)), HttpStatusCode.Created);
+        SaleRegistered? sold = null;
+        var checkout = ctx.Render<CheckoutDialog>(p => p.Add(x => x.ShiftId, ScreenContext.Shift.ShiftId).Add(x => x.OnSold, v => sold = v));
+
+        checkout.Find("[role=dialog]").KeyDown(new KeyboardEventArgs { Key = "F6" });
+        checkout.WaitForAssertion(() => checkout.Markup.ShouldContain("Referencia (opcional)"));
+        checkout.Find(".esc-button--money").Click();
+        checkout.WaitForAssertion(() => sold.ShouldNotBeNull());
+    }
+
     [Fact]
     public void A_large_discount_asks_for_a_supervisor_and_retries_with_the_approval()
     {

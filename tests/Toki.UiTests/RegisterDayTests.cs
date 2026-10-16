@@ -121,7 +121,10 @@ public sealed class RegisterDayTests(RegisterApp app) : IClassFixture<RegisterAp
         await Keys.TypeAsync("500");
         var partial = checkout.GetByRole(AriaRole.Button, new() { Name = "Agregar este pago" });
         await Expect(partial).ToBeVisibleAsync(); // it shows once the amount is less than the total
+        await Expect(partial).ToBeDisabledAsync(); // R11 A16: the card authorization first
         await Keys.PressAsync("Tab");
+        await Keys.TypeAsync("483920");
+        await Expect(partial).ToBeEnabledAsync();
         await Keys.PressAsync("Tab");
         await Expect(partial).ToBeFocusedAsync();
         await Keys.PressAsync("Enter");
@@ -154,6 +157,7 @@ public sealed class RegisterDayTests(RegisterApp app) : IClassFixture<RegisterAp
         await Expect(checkout.GetByLabel("Monto")).ToHaveValueAsync("59.00");
         await Expect(checkout.GetByLabel("Monto")).ToBeFocusedAsync();
         await Keys.PressAsync("Enter");
+        await ApproveAsync("fiado RD$ 59.00 a Colmado Vecino"); // R11 A6: selling on account needs credit.sell, the cashier does not have it
         await Expect(Saved).ToBeVisibleAsync();
 
         // ── Hold a sale and resume it ──
