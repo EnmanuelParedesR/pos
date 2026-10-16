@@ -13,6 +13,7 @@ Una licencia es un **JWS compacto** (`encabezado.cuerpo.firma`, base64url) firma
 | `features` | Funciones pagas: `ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant`, `SupplierInvoiceReading` (servicio adicional de lectura de facturas con IA, ver `docs/cuotas.md`) |
 | `limits` | Límites por nombre: hoy solo `Registers` (cajas además de la PC principal) |
 | `issuedUtc`, `expiresUtc` | Emisión y vencimiento, en UTC |
+| `tenantId` | Opcional. Id del negocio en la nube (consola de la plataforma). La tienda no lo mira; la nube solo deja que la licencia active el lector de facturas con IA de ese negocio (R11 B-Low8, TK-268). Sin él, la licencia no cuenta en la nube (el negocio usa su suscripción o la prueba) |
 
 Ejemplo de cuerpo:
 
@@ -33,7 +34,7 @@ La tienda solo tiene **llaves públicas** (dentro de `LicenseService`): la del d
 
 La llave privada y el script están **fuera del repositorio**, en la PC del dueño: `%USERPROFILE%\Abastalia-licencias\` con `issue-license.ps1`. Solo el dueño (o quien él autorice en esa PC) emite licencias.
 
-1. Confirmar el pago y los datos: nombre de la tienda, plan, funciones, número de cajas y fecha de vencimiento.
+1. Confirmar el pago y los datos: nombre de la tienda, plan, funciones, número de cajas y fecha de vencimiento; si el negocio está conectado a la nube, su id (`tenantId`).
 2. Ejecutar `issue-license.ps1` en esa carpeta con esos datos (ver la ayuda del propio script). Produce un archivo `.jws` (o el texto de la licencia).
 3. Enviar a la tienda el archivo o el texto por el canal acordado (correo o WhatsApp). La licencia no es secreta: solo sirve para la tienda que nombra y no se puede cambiar sin invalidar la firma.
 4. Anotar la licencia emitida (tienda, plan, vencimiento) en el registro de ventas.

@@ -23,10 +23,15 @@ internal static class GetReceipt
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/sales/{id:guid}/receipt", async (Guid id, SalesDbContext db, ISettingsQueries settings, IUserContext user, CancellationToken ct) =>
-                    await db.FullSaleAsync(id, ct) is { } s && SaleAccess.MayRead(user, s)
-                        ? Results.Ok(Receipt.From(s, await settings.GetBusinessProfileAsync(ct)))
-                        : EndpointExtensions.Problem(SalesErrors.SaleNotFound))
+            app.MapGet("/api/sales/{id:guid}/receipt", async (Guid id, SalesDbContext db, ISettingsQueries settings, IUserContext user,
+                    ICashRegisterReports cash, CancellationToken ct) =>
+                {
+                    var s = await db.FullSaleAsync(id, ct);
+                    if (s is null || !SaleAccess.MayRead(user, s)) return EndpointExtensions.Problem(SalesErrors.SaleNotFound);
+                    var receipt = Receipt.From(s, await settings.GetBusinessProfileAsync(ct));
+                    // R11 A2 (TK-268): like the sale detail, the reprint shows no payments nor change to its cashier while the shift is open.
+                    return Results.Ok(!SaleAccess.SeesAll(user) && await cash.IsOpenAsync(s.ShiftId, ct) ? receipt with { Payments = [], Change = 0 } : receipt);
+                })
                 .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
     }
 }

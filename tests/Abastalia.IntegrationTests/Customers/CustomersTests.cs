@@ -37,7 +37,7 @@ public sealed class CustomersTests(AbastaliaApp app) : IClassFixture<AbastaliaAp
 
     private static Task<HttpResponseMessage> PayAsync(Cashier cashier, Guid customer, decimal amount, string method = "Cash", Guid? paymentId = null) =>
         cashier.Client.PostAsJsonAsync($"/api/customers/{customer}/payments",
-            new { CustomerPaymentId = paymentId ?? Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Amount = amount, Method = method });
+            new { CustomerPaymentId = paymentId ?? Guid.CreateVersion7(), ShiftId = cashier.ShiftId, Amount = amount, Method = method, Reference = method == "Cash" ? null : "AUT-1" });
 
     private async Task<decimal> DebtAsync(Guid customer) =>
         (await (await Admin()).GetFromJsonAsync<JsonElement>($"/api/customers/{customer}")).GetProperty("debt").GetDecimal();

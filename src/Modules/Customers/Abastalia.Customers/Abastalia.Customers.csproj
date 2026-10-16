@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Abastalia.Customers.Contracts\Abastalia.Customers.Contracts.csproj" />
     <ProjectReference Include="..\..\CashRegister\Abastalia.CashRegister.Contracts\Abastalia.CashRegister.Contracts.csproj" />
     <ProjectReference Include="..\..\Fiscal\Abastalia.Fiscal.Contracts\Abastalia.Fiscal.Contracts.csproj" />
+    <ProjectReference Include="..\..\Settings\Abastalia.Settings.Contracts\Abastalia.Settings.Contracts.csproj" />
     <ProjectReference Include="..\..\Sync\Abastalia.Sync.Contracts\Abastalia.Sync.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>

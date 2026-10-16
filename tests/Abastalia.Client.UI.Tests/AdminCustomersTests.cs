@@ -182,4 +182,29 @@ public sealed class AdminCustomersTests
         page.WaitForAssertion(() => page.Markup.ShouldContain("Caja 1 ahora se llama Caja del frente."));
         api.Requests.Single(r => r.Method == "PUT").Body.ShouldBe("{\"name\":\"Caja del frente\"}");
     }
+
+    [Fact]
+    public void A_registers_standard_float_is_set_from_Cajas()
+    {
+        var (ctx, api) = ScreenContext.Create("registers.manage");
+        using var _ = ctx;
+        var register = Guid.NewGuid();
+        api.Json("GET", "/api/settings/business", new { name = "Mi tienda", discountCapPercent = 10m })
+           .Json("GET", "/api/settings/features", new { status = "Active", plan = "Negocio", expiresUtc = (DateTime?)null, enabled = Array.Empty<string>(), registers = 3 })
+           .Json("GET", "/api/cash/registers", new[] { new { id = register, name = "Caja 1", isActive = true, openShiftId = (Guid?)null, cashier = (string?)null, standardFloat = (decimal?)null } })
+           .Respond("PUT", $"/api/cash/registers/{register}/standard-float", _ => new HttpResponseMessage(HttpStatusCode.NoContent));
+        var page = ctx.Render<Settings>();
+        page.WaitForAssertion(() => page.FindAll("[role=tab]").Single(t => t.TextContent == "Cajas").Click());
+        page.WaitForAssertion(() => page.Markup.ShouldContain("Sin fijar"));
+
+        page.Find("button[aria-label='Fondo estándar de Caja 1']").Click();
+        page.Find("tbody input").Change("2000.50");
+        page.Find("tbody form").Submit();
+        page.Markup.ShouldContain("Escriba el monto en pesos enteros.");
+        page.Find("tbody input").Change("2000");
+        page.Find("tbody form").Submit();
+
+        page.WaitForAssertion(() => page.Markup.ShouldContain("Caja 1 abre con RD$ 2,000"));
+        api.Requests.Single(r => r.Method == "PUT").Body.ShouldBe("{\"amount\":2000}");
+    }
 }

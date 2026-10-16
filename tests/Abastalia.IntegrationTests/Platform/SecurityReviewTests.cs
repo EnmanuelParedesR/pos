@@ -108,9 +108,14 @@ public sealed class SecurityReviewTests(AbastaliaApp app) : IClassFixture<Abasta
         (mine.GetProperty("payments").GetArrayLength(), mine.GetProperty("change").GetDecimal()).ShouldBe((0, 0m));
         var owner = await (await Admin()).GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}");
         (owner.GetProperty("payments").GetArrayLength(), owner.GetProperty("change").GetDecimal()).ShouldBe((1, 400m));
+        // Nor does the reprinted receipt (TK-268).
+        var receipt = await other.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}/receipt");
+        (receipt.GetProperty("payments").GetArrayLength(), receipt.GetProperty("change").GetDecimal()).ShouldBe((0, 0m));
+        (await (await Admin()).GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}/receipt")).GetProperty("payments").GetArrayLength().ShouldBe(1);
         (await other.Client.PostAsJsonAsync($"/api/cash/shifts/{other.ShiftId}/close", new { CashCount = new[] { new { Denomination = 100m, Quantity = 1 } } }))
             .EnsureSuccessStatusCode();
         (await other.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}")).GetProperty("payments").GetArrayLength().ShouldBe(1);
+        (await other.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}/receipt")).GetProperty("change").GetDecimal().ShouldBe(400m);
     }
 
     [Fact]
@@ -337,10 +342,15 @@ public sealed class SecurityReviewTests(AbastaliaApp app) : IClassFixture<Abasta
             Name = business.GetProperty("name").GetString(), Rnc = business.GetProperty("rnc").GetString(), DiscountCapPercent = 10m, RequirePaymentReference = false,
         })).EnsureSuccessStatusCode();
         (await cashier.SellAsync(ByCard(null))).StatusCode.ShouldBe(HttpStatusCode.Created);
+        // A payment on credit follows the same switch (TK-268): off, it goes past the check (to a customer that does not exist).
+        Task<HttpResponseMessage> PayByTransfer() => cashier.Client.PostAsJsonAsync($"/api/customers/{Guid.NewGuid()}/payments",
+            new { CustomerPaymentId = Guid.CreateVersion7(), cashier.ShiftId, Amount = 100m, Method = "Transfer" });
+        (await (await PayByTransfer()).ErrorCode()).ShouldBe("Customers.CustomerNotFound");
         (await admin.PutAsJsonAsync("/api/settings/business", new
         {
             Name = business.GetProperty("name").GetString(), Rnc = business.GetProperty("rnc").GetString(), DiscountCapPercent = 10m, RequirePaymentReference = true,
         })).EnsureSuccessStatusCode();
+        (await (await PayByTransfer()).ErrorCode()).ShouldBe("Customers.ReferenceRequired");
     }
 
     [Fact]

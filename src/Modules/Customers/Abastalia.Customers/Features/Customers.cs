@@ -10,6 +10,7 @@ using Abastalia.BuildingBlocks.Security;
 using Abastalia.CashRegister.Contracts;
 using Abastalia.Customers.Contracts;
 using Abastalia.Customers.Domain;
+using Abastalia.Settings.Contracts;
 using Abastalia.SharedKernel;
 
 namespace Abastalia.Customers.Features;
@@ -137,12 +138,16 @@ internal static class RecordCustomerPayment
         }
     }
 
-    internal sealed class Handler(CustomersDbContext db, ICashRegisterOperations register, IUserContext user, IOutbox outbox, IAuditLog audit, TimeProvider clock)
-        : ICommandHandler<Command, Response>
+    internal sealed class Handler(CustomersDbContext db, ICashRegisterOperations register, ISettingsQueries settings, IUserContext user, IOutbox outbox,
+        IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             if (await SavedAsync(c, ct) is { } already) return already;
+            // R11 A16 (TK-268): like a sale, card and transfer carry their reference unless the store turned it off.
+            if (c.Method is PaymentMethod.Card or PaymentMethod.Transfer && string.IsNullOrWhiteSpace(c.Reference)
+                && (await settings.GetBusinessProfileAsync(ct)).RequirePaymentReference)
+                return CustomersErrors.ReferenceRequired;
             // Shift first, then the customer: the same lock order as a sale. A concurrent retry waits here and then finds the payment.
             if (await register.GetOpenShiftAsync(c.ShiftId, ct) is { IsFailure: true } shift) return shift.Error!;
             if (await db.LockAsync(c.CustomerId, ct) == 0) return CustomersErrors.CustomerNotFound;

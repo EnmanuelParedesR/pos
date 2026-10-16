@@ -165,7 +165,7 @@ public sealed class StoreDayTests
         await SellAsync(r2, [new { ProductId = porkChop, Quantity = 10m }], method: "OnAccount", saleId: overLimit, extra: new() { ["CustomerId"] = neighbor });
         await Ok(await r1.Client.PostAsJsonAsync($"/api/customers/{neighbor}/payments", new { CustomerPaymentId = Guid.CreateVersion7(), ShiftId = r1.ShiftId, Amount = 1000m, Method = "Cash" }));
         r1.Cash += 1000m;
-        await Ok(await r3.Client.PostAsJsonAsync($"/api/customers/{neighbor}/payments", new { CustomerPaymentId = Guid.CreateVersion7(), ShiftId = r3.ShiftId, Amount = 300m, Method = "Card" }));
+        await Ok(await r3.Client.PostAsJsonAsync($"/api/customers/{neighbor}/payments", new { CustomerPaymentId = Guid.CreateVersion7(), ShiftId = r3.ShiftId, Amount = 300m, Method = "Card", Reference = "AUT-300" }));
         await Ok(await r2.Client.PostAsJsonAsync($"/api/sales/{overLimit}/void",
             new { Reason = "se llevó menos", SupervisorApprovalId = await ApproveAsync(r2, "sales.void", overLimit) }));
         r2.Sales.RemoveAll(v => v.SaleId == overLimit);

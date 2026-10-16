@@ -30,7 +30,10 @@ public interface IFeatureService
 
 /// <summary>The license as the vendor signed it (docs/licencias.md). <see cref="Features"/> holds <see cref="Feature"/> names; <see cref="Limits"/> by <see cref="Limit"/> name.
 /// The store verifies it; the owner's offline script and, since TK-249, the cloud sign it.</summary>
-public sealed record LicenseData(string Store, string Plan, IReadOnlyList<string> Features, IReadOnlyDictionary<string, int> Limits, DateTime IssuedUtc, DateTime ExpiresUtc);
+/// <param name="TenantId">R11 B-Low8 (TK-268): the cloud business it was issued for. The cloud only lets it unlock the paid extras of that business;
+/// the store itself ignores it (it may not be connected to the cloud).</param>
+public sealed record LicenseData(string Store, string Plan, IReadOnlyList<string> Features, IReadOnlyDictionary<string, int> Limits, DateTime IssuedUtc, DateTime ExpiresUtc,
+    Guid? TenantId = null);
 
 /// <summary>Compact JWS with ES256 (ECDSA P-256, SHA-256, signature r‖s). Only the vendor's private keys sign; the store has only the public keys,
 /// so there is no license generator in the client (the old system shipped one).</summary>
