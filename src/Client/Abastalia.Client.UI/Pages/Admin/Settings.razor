@@ -555,6 +555,7 @@
 
     protected override Task OnInitializedAsync() => GoAsync(Requested switch
     {
+        "registers" when Sections.Contains(Section.Registers) => Section.Registers, // TK-281: "Crear una caja" from Abrir caja on the first day
         "fiscal" when Sections.Contains(Section.FiscalSequences) => Section.FiscalSequences,
         "health" when Sections.Contains(Section.Health) => Section.Health,
         "updates" when Sections.Contains(Section.Updates) => Section.Updates,
