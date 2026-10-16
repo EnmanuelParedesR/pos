@@ -11,7 +11,7 @@ namespace Toki.Client.UI.Tests;
 /// <summary>TK-191 (suggested order), TK-200 (Z and statement to print as PDF) and TK-201 (costs only with costs.view).</summary>
 public sealed class AdminGapsTests
 {
-    private static readonly Guid Farm = Guid.NewGuid(), Ribs = Guid.NewGuid(), Salt = Guid.NewGuid();
+    private static readonly Guid Farm = Guid.NewGuid(), Ribs = Guid.NewGuid(), Salt = Guid.NewGuid(), Beer = Guid.NewGuid(), Box = Guid.NewGuid();
 
     [Fact]
     public void The_suggested_order_groups_by_last_supplier_and_creates_a_draft_without_NCF()
@@ -22,13 +22,20 @@ public sealed class AdminGapsTests
             {
                 new
                 {
-                    supplierId = (Guid?)Farm, supplier = "Granja del Cibao", subtotal = 4375m,
-                    lines = new[] { new { productId = Ribs, product = "Costilla", unit = "Pound", itbisRate = "Exempt", stock = 15.5m, minimumStock = 20m, maximumStock = 50m, suggested = 35m, lastCost = (decimal?)125m } },
+                    supplierId = (Guid?)Farm, supplier = "Granja del Cibao", subtotal = 6175m,
+                    lines = new[]
+                    {
+                        new { productId = Ribs, product = "Costilla", unit = "Pound", itbisRate = "Exempt", stock = 15.5m, minimumStock = 20m, maximumStock = 50m, suggested = 35m,
+                            lastCost = (decimal?)125m, presentationId = (Guid?)null, presentation = (string?)null, factor = 1m, quantity = 35m },
+                        new { productId = Beer, product = "Cerveza", unit = "Unit", itbisRate = "Exempt", stock = 12m, minimumStock = 20m, maximumStock = 40m, suggested = 36m,
+                            lastCost = (decimal?)600m, presentationId = (Guid?)Box, presentation = (string?)"Caja 12", factor = 12m, quantity = 3m },
+                    },
                 },
                 new
                 {
                     supplierId = (Guid?)null, supplier = (string?)null, subtotal = 0m,
-                    lines = new[] { new { productId = Salt, product = "Sal", unit = "Unit", itbisRate = "General18", stock = 2m, minimumStock = 5m, maximumStock = 10m, suggested = 8m, lastCost = (decimal?)null } },
+                    lines = new[] { new { productId = Salt, product = "Sal", unit = "Unit", itbisRate = "General18", stock = 2m, minimumStock = 5m, maximumStock = 10m, suggested = 8m,
+                        lastCost = (decimal?)null, presentationId = (Guid?)null, presentation = (string?)null, factor = 1m, quantity = 8m } },
                 },
             })
            .Respond("POST", "/api/purchasing/purchases", body =>
@@ -39,13 +46,17 @@ public sealed class AdminGapsTests
         var farm = page.Find("section[aria-label='Granja del Cibao']");
         farm.TextContent.ShouldContain("35 lb");
         farm.TextContent.ShouldContain("4,375.00");
+        farm.TextContent.ShouldContain("3 × Caja 12"); // in the presentation last bought, with what it adds up to
+        farm.TextContent.ShouldContain("36 unidades");
+        farm.TextContent.ShouldContain("1,800.00");
         page.Find("section[aria-label='Sin compras anteriores']").QuerySelector("button").ShouldBeNull(); // no supplier to order from
         page.Find("button[aria-label='Crear compra a Granja del Cibao']").Click();
 
         page.WaitForAssertion(() => page.Find(".esc-notice--success").TextContent.ShouldContain("Compra en borrador para Granja del Cibao"));
         var sent = api.Requests.Single(r => r.Method == "POST").Body;
         sent.ShouldContain($"\"supplierId\":\"{Farm}\",\"ncf\":\"\"");
-        sent.ShouldContain($"\"lines\":[{{\"productId\":\"{Ribs}\",\"presentationId\":null,\"quantity\":35,\"unitCost\":125,\"itbisRate\":\"Exempt\"}}]");
+        sent.ShouldContain($"\"lines\":[{{\"productId\":\"{Ribs}\",\"presentationId\":null,\"quantity\":35,\"unitCost\":125,\"itbisRate\":\"Exempt\"}},"
+            + $"{{\"productId\":\"{Beer}\",\"presentationId\":\"{Box}\",\"quantity\":3,\"unitCost\":600,\"itbisRate\":\"Exempt\"}}]");
         Button(page, "Borrador creado").ShouldNotBeNull();
     }
 

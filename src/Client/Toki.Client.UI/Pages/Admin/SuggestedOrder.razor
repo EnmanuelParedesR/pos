@@ -65,9 +65,12 @@
                                         <td style="font-weight:600">@l.Product<span class="esc-table__sub esc-only-sm">Hay @AdminNames.Stock(l.Stock, l.Unit)@(l.LastCost is { } c ? $" · {Format.WithCurrency(c)} c/u" : "")</span></td>
                                         <td class="esc-num esc-hide-sm"><span class="esc-pill esc-pill--warning">@AdminNames.Stock(l.Stock, l.Unit)</span></td>
                                         <td class="esc-num esc-hide-sm esc-muted">@AdminNames.Number(l.MinimumStock) / @(l.MaximumStock > 0 ? AdminNames.Number(l.MaximumStock) : "—")</td>
-                                        <td class="esc-num" style="font-weight:700;white-space:nowrap">@AdminNames.Stock(l.Suggested, l.Unit)</td>
+                                        <td class="esc-num" style="font-weight:700;white-space:nowrap">@Order(l)@if (l.PresentationId is not null)
+                                            {
+                                                <span class="esc-table__sub" style="font-weight:400">@BaseUnits(l)</span>
+                                            }</td>
                                         <td class="esc-num esc-hide-sm">@(l.LastCost is { } cost ? Format.Amount(cost) : "—")</td>
-                                        <td class="esc-num esc-hide-sm">@(l.LastCost is { } price ? Format.Amount(Math.Round(price * l.Suggested, 2, MidpointRounding.AwayFromZero)) : "—")</td>
+                                        <td class="esc-num esc-hide-sm">@(l.LastCost is { } price ? Format.Amount(Math.Round(price * l.Quantity, 2, MidpointRounding.AwayFromZero)) : "—")</td>
                                     </tr>
                                 }
                             </tbody>
@@ -88,6 +91,14 @@
 
     private int Lines => _groups?.Sum(g => g.Lines.Length) ?? 0;
 
+    /// <summary>"3 × Caja 12" in the presentation last bought; "35 lb" or "8" without one.</summary>
+    private static string Order(SuggestedLine l) =>
+        l.Presentation is { } name ? $"{AdminNames.Number(l.Quantity)} × {name}" : AdminNames.Stock(l.Suggested, l.Unit);
+
+    /// <summary>"36 unidades" or "50 lb": what the presentations add up to.</summary>
+    private static string BaseUnits(SuggestedLine l) =>
+        l.Unit == UnitOfMeasure.Pound ? AdminNames.Stock(l.Suggested, l.Unit) : $"{AdminNames.Number(l.Suggested)} {(l.Suggested == 1 ? "unidad" : "unidades")}";
+
     protected override async Task OnInitializedAsync()
     {
         var r = await Api.GetAsync<List<SuggestedGroup>>("/api/purchasing/suggested-order");
@@ -101,7 +112,7 @@
         _notice = null;
         var id = Guid.CreateVersion7();
         var body = new SavePurchase(supplier, "", Format.Today, PaymentTerms.Credit,
-            [.. g.Lines.Select(l => new PurchaseLineInput(l.ProductId, null, l.Suggested, l.LastCost ?? 0, l.ItbisRate))],
+            [.. g.Lines.Select(l => new PurchaseLineInput(l.ProductId, l.PresentationId, l.Quantity, l.LastCost ?? 0, l.ItbisRate))],
             null, null, "Pedido sugerido", null, null, id, null);
         var r = await Api.PostAsync<PurchaseSaved>("/api/purchasing/purchases", body);
         _busy.Remove(supplier);

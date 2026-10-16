@@ -13,10 +13,12 @@ public enum StockMovementType
 }
 
 /// <summary>What a sale needs to price and record a line. <see cref="Factor"/> is base units per sold unit (1 without a presentation).</summary>
+/// <param name="Name">"Refresco (Caja 12)" for a presentation.</param>
+/// <param name="Presentation">The presentation's own name ("Caja 12"); null without one.</param>
 public sealed record ProductForSale(
     Guid ProductId, Guid? PresentationId, string Name, Guid CategoryId, string Category, UnitOfMeasure Unit,
     ItbisRate ItbisRate, decimal Price, decimal? WholesalePrice, decimal Factor, decimal BaseCost,
-    bool SellWithoutStock, bool IsActive);
+    bool SellWithoutStock, bool IsActive, string? Presentation = null);
 
 public interface ICatalogQueries
 {

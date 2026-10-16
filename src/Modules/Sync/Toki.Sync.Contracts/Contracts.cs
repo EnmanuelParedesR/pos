@@ -27,8 +27,8 @@ public sealed record NodeLicenseV1(string Status, DateTime? EndsUtc);
 public sealed record NodeFiscalV1(int RejectedWithoutReplacement, DateTime? OldestPendingUtc, DateTime? CertificateExpiresUtc);
 
 /// <param name="OnAccount">Some customer owes on credit (fiado in use).</param>
-/// <param name="ScaleConfigured">Null: the register (client) knows it, the store server does not; not reported yet.</param>
-/// <param name="PrinterConfigured">Null: same as <paramref name="ScaleConfigured"/>.</param>
+/// <param name="ScaleConfigured">Some active register has a scale (each register reports its own, TK-190); null while none has reported.</param>
+/// <param name="PrinterConfigured">Same as <paramref name="ScaleConfigured"/>, for a receipt printer.</param>
 /// <param name="FiscalProvider">Who sends the e-CF (<c>Fiscal:Provider</c>): Simulated or Relay.</param>
 public sealed record NodeFeaturesV1(bool OnAccount, bool? ScaleConfigured, bool? PrinterConfigured, string FiscalProvider);
 

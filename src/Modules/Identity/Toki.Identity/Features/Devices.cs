@@ -164,3 +164,29 @@ internal static class RevokeDevice
                 .RequirePermission(Permissions.DevicesManage).WithTags("Identity");
     }
 }
+
+/// <summary>TK-190: the register says whether it has a scale and a printer (its settings live on the PC, not here), at sign-in and when they
+/// change, so the heartbeat can count them. Only the kind: never a port or a printer name. Any signed-in session of the device may report.</summary>
+internal static class ReportPeripherals
+{
+    /// <param name="ScaleProtocol">Null without a scale.</param>
+    /// <param name="PrinterWidth">58 or 80; null without a printer.</param>
+    public sealed record Request(string? ScaleProtocol, int? PrinterWidth);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapPut("/api/identity/devices/current/peripherals", async (Request r, IdentityDbContext db, IUserContext me, TimeProvider clock, CancellationToken ct) =>
+                {
+                    if (r.ScaleProtocol is { Length: > 20 } || r.PrinterWidth is not (null or 58 or 80))
+                        return EndpointExtensions.Problem(Error.Validation("Identity.InvalidPeripherals", "Los equipos de la caja no son válidos."));
+                    var scale = string.IsNullOrWhiteSpace(r.ScaleProtocol) ? null : r.ScaleProtocol.Trim();
+                    var updated = await db.Devices.Where(d => d.Id == me.DeviceId && !d.IsRevoked).ExecuteUpdateAsync(s => s
+                        .SetProperty(d => d.PeripheralsReportedUtc, clock.GetUtcNow().UtcDateTime)
+                        .SetProperty(d => d.ScaleProtocol, scale)
+                        .SetProperty(d => d.PrinterWidth, r.PrinterWidth), ct);
+                    return updated == 0 ? EndpointExtensions.Problem(IdentityErrors.DeviceNotFound) : Results.NoContent();
+                })
+                .WithTags("Identity");
+    }
+}

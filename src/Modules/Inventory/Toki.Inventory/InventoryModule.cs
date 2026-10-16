@@ -56,7 +56,7 @@ internal sealed class CatalogQueries(InventoryDbContext db) : ICatalogQueries
             {
                 if (!presentations.TryGetValue(pid, out var pr) || pr.ProductId != productId) continue;
                 result.Add(new ProductForSale(p.Id, pr.Id, $"{p.Name} ({pr.Name})", p.CategoryId, x.Category, p.Unit, p.ItbisRate,
-                    pr.Price, pr.WholesalePrice, pr.Factor, p.Cost, p.SellWithoutStock, p.IsActive && pr.IsActive));
+                    pr.Price, pr.WholesalePrice, pr.Factor, p.Cost, p.SellWithoutStock, p.IsActive && pr.IsActive, pr.Name));
             }
             else
             {

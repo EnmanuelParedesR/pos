@@ -26,7 +26,7 @@ public sealed record PurchaseLineInput(Guid ProductId, Guid? PresentationId, dec
 public sealed record SavePurchase(Guid SupplierId, string Ncf, DateOnly InvoiceDate, PaymentTerms Terms, IReadOnlyList<PurchaseLineInput> Lines,
     Guid? WarehouseId, int? CreditDays, string? Notes, decimal? InvoiceItbis, decimal? InvoiceTotal, Guid? Id, SupplierPaymentMethod? Method);
 public sealed record PurchaseSaved(Guid Id, decimal Subtotal, decimal Itbis, decimal Total);
-public sealed record PurchaseDetailLine(Guid ProductId, string Description, decimal Quantity, decimal Factor, decimal UnitCost, ItbisRate ItbisRate,
+public sealed record PurchaseDetailLine(Guid ProductId, Guid? PresentationId, string Description, decimal Quantity, decimal Factor, decimal UnitCost, ItbisRate ItbisRate,
     decimal Subtotal, decimal Itbis);
 public sealed record PurchaseDetail(Guid Id, long Number, Guid SupplierId, string SupplierName, string Ncf, DateOnly InvoiceDate, PaymentTerms Terms,
     SupplierPaymentMethod? Method, DateOnly? DueDate, Guid? WarehouseId, string Status, decimal Subtotal, decimal Itbis, decimal Total, string? Notes,
@@ -45,9 +45,10 @@ public sealed record SupplierPaid(Guid SupplierPaymentId, PaymentAllocated[] All
 
 public sealed record VoidReason(string Reason);
 
-/// <summary>TK-191: GET /api/purchasing/suggested-order. Quantities in base units (lb or units); cost per base unit without ITBIS.</summary>
+/// <summary>TK-191: GET /api/purchasing/suggested-order. Quantity in the presentation last bought (base units without one), Suggested in base
+/// units (lb or units), LastCost per ordered unit without ITBIS.</summary>
 public sealed record SuggestedLine(Guid ProductId, string Product, UnitOfMeasure Unit, ItbisRate ItbisRate, decimal Stock, decimal MinimumStock, decimal MaximumStock,
-    decimal Suggested, decimal? LastCost);
+    decimal Suggested, decimal? LastCost, Guid? PresentationId, string? Presentation, decimal Factor, decimal Quantity);
 /// <param name="SupplierId">Null for products never bought from an active supplier.</param>
 /// <param name="Subtotal">Null (and every LastCost) without costs.view.</param>
 public sealed record SuggestedGroup(Guid? SupplierId, string? Supplier, SuggestedLine[] Lines, decimal? Subtotal);

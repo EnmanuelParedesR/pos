@@ -37,6 +37,7 @@ public static class IdentityModule
         services.AddScoped<ISupervisorApprovals, SupervisorApprovals>();
         services.AddScoped<ICloudSnapshot, UserSnapshot>();
         services.AddScoped<IUserDirectory, UserDirectory>();
+        services.AddScoped<IDevicePeripherals, DevicePeripherals>();
         services.AddAuthentication(Scheme).AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(Scheme, null);
         // Secure by default: an endpoint that forgets its authorization call still requires a session.
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
@@ -48,6 +49,16 @@ internal sealed class UserDirectory(IdentityDbContext db) : IUserDirectory
 {
     public async Task<IReadOnlyList<UserName>> AllAsync(CancellationToken ct) =>
         await db.Users.AsNoTracking().OrderBy(u => u.Name).Select(u => new UserName(u.Id, u.Name)).ToListAsync(ct);
+}
+
+internal sealed class DevicePeripherals(IdentityDbContext db) : IDevicePeripherals
+{
+    public async Task<PeripheralsSummary> SummaryAsync(CancellationToken ct)
+    {
+        var reported = db.Devices.Where(d => !d.IsRevoked && d.PeripheralsReportedUtc != null);
+        return new PeripheralsSummary(await reported.CountAsync(ct), await reported.CountAsync(d => d.ScaleProtocol != null, ct),
+            await reported.CountAsync(d => d.PrinterWidth != null, ct));
+    }
 }
 
 /// <summary>Which paired device sent a request: by its client certificate (TK-091, issued by the store CA and checked by Kestrel), or by

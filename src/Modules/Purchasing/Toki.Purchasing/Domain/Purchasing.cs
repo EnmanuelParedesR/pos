@@ -79,6 +79,8 @@ internal sealed class PurchaseLine
     public Guid PurchaseId { get; set; }
     public int LineNumber { get; set; }
     public Guid ProductId { get; set; }
+    /// <summary>Bought in this presentation (a box), so a draft reopens in it and the suggested order (TK-191) orders in it; null in base units.</summary>
+    public Guid? PresentationId { get; set; }
     public string Description { get; set; } = "";
     public decimal Quantity { get; set; }
     /// <summary>Base units per purchased unit.</summary>
