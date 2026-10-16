@@ -273,7 +273,7 @@ public sealed class RegisterDayTests(RegisterApp app) : IClassFixture<RegisterAp
         await Keys.PressAsync("F12");
         await Expect(Page.GetByText("¿Cerrar con RD$ 3,187.00 contado?")).ToBeVisibleAsync();
         await Keys.PressAsync("F12");
-        await ApproveAsync("Cerrar la caja");
+        await ApproveAsync("Cerrar turno con diferencia");
         await Expect(Page.GetByText("Faltaron RD$ 1.00.")).ToBeVisibleAsync();
 
         var z = await Ok(await admin.GetAsync($"/api/cash/shifts/{shiftId}/z"));
