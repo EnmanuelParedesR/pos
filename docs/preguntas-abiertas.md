@@ -133,9 +133,9 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 ### D17 · Umbral del reloj para firmar (§11 #12)
 - **Pregunta:** ¿Desde qué diferencia de hora con la DGII se deja de firmar (propuesta: 2 minutos)?
 - **Por qué importa:** una `FechaHoraFirma` posterior a la hora de la DGII causa rechazo; bloquear de más detiene ventas.
-- **Hoy:** sin umbral bloqueante; TK-156 dice que falta el reloj.
+- **Hoy:** implementado en TK-156 con 2 minutos (`Fiscal:MaxClockSkewSeconds`): pasado el umbral no se firma, pero la venta sigue y el e-CF se firma al corregir la hora.
 - **Fuente:** `docs/ecf-propio.md` §11 #12; TK-156.
-- **Respuesta:** Sin respuesta: queda la propuesta de 2 minutos.
+- **Respuesta:** el dueño aceptó la propuesta de 2 minutos.
 
 ### D18 · Certificado digital: entidad, formato y precio (§11 #4)
 - **Pregunta:** ¿Con quién se compra el certificado de prueba (Avansi o Digifirma), en qué formato (`.p12` exportable, token o nube), a qué precio y con qué vigencia?

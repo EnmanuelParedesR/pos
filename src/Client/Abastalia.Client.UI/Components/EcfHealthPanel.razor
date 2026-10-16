@@ -10,7 +10,7 @@
     </div>
     @if (_dgii is { } d)
     {
-        <p role="status" class="esc-muted"><span class="esc-pill esc-pill--@(d.State == "Up" ? "success" : d.State == "Down" ? "warning" : "neutral")">@(d.State == "Up" ? "La DGII responde" : d.State == "Down" ? "La DGII no responde" : "Simulado")</span> @d.Message</p>
+        <p role="status" class="esc-muted"><span class="esc-pill esc-pill--@(d.State switch { "Up" => "success", "Down" or "Unreachable" => "warning", _ => "neutral" })">@(d.State switch { "Up" => "La DGII responde", "Down" => "La DGII no responde", "Unreachable" => "No se llega a la DGII", _ => "Simulado" })</span> @d.Message</p>
     }
     @if (_health is { } h)
     {
@@ -40,6 +40,7 @@
         <summary>Qué hacer si no se puede facturar con e-CF</summary>
         <ol>
             <li><b>Sin internet o la DGII caída:</b> siga vendiendo. Los comprobantes se firman y quedan en la cola; salen solos al volver. El plazo es de 72 horas desde la firma.</li>
+            <li><b>La hora de la PC principal está adelantada o atrasada más de 2 minutos:</b> siga vendiendo; esos comprobantes esperan sin firmar (el recibo sale sin código de seguridad). Corrija la hora de Windows (Fecha y hora → Sincronizar ahora): se firman y salen solos.</li>
             <li><b>Sin certificado, certificado vencido o la PC principal dañada:</b> eso es "imposibilidad de emitir". Declare la contingencia en la Oficina Virtual (OFV) de la DGII y actívela abajo: la caja factura con comprobantes serie B en papel.</li>
             <li>La contingencia dura como máximo <b>15 días</b>. Resuelva el certificado o la PC en ese tiempo.</li>
             <li>Al terminar: declare la salida en la OFV, termine la contingencia aquí y pulse <b>Regularizar</b>. Cada comprobante serie B se reemplaza con un e-CF que va solo a la DGII, en <b>30 días</b> como máximo.</li>

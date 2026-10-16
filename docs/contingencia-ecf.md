@@ -8,6 +8,7 @@
 | Situación | ¿Puede vender con e-CF? | Qué hacer |
 |---|---|---|
 | **Sin internet** o la **DGII no responde** | Sí | Nada. Siga vendiendo. Cada factura se firma en la PC principal y queda en la cola; sale sola al volver la conexión. El recibo lleva la leyenda de contingencia. |
+| La **hora de la PC principal** está adelantada o atrasada **más de 2 minutos** frente a la de la DGII | Sí (se firman después) | Corrija la hora de Windows (Configuración → Hora e idioma → Fecha y hora → Sincronizar ahora). Mientras tanto siga vendiendo: la DGII rechaza lo firmado con la hora mal, así que cada factura queda guardada **sin firmar** (el recibo sale sin código de seguridad ni QR y con la leyenda de contingencia). En cuanto la hora está bien, Abastalia las firma y las envía solas, y al reimprimir el recibo ya trae el código. La caja y "Salud de la operación" lo avisan. No es "imposibilidad de emitir": no declare la contingencia por esto. |
 | **Sin certificado digital**, certificado **vencido** o la **PC principal dañada** | No | Es "imposibilidad de emitir": declare la contingencia (sección 3). |
 | La DGII lleva **más de 15 días hábiles** caída | Sí (se guardan) | La OFV habilita reportes alternos: llame a la DGII. |
 
@@ -17,7 +18,8 @@
 
 - Renueve el certificado **antes** de que venza. Abastalia avisa 30 días antes en el Resumen y en la caja.
 - Tenga cargado un **rango de comprobantes serie B** (consumo B02 y, si vende a empresas, crédito fiscal B01). Se piden en la OFV y se cargan en "Contingencia (serie B)". Abastalia no los usa mientras pueda firmar.
-- Pulse "Consultar a la DGII" si duda de si el problema es su internet o la DGII.
+- Pulse "Consultar a la DGII" si duda de si el problema es su internet o la DGII: "La DGII no responde" es de la DGII (intermitencia o mantenimiento); "No se llega a la DGII" es casi siempre el internet de la tienda. La DGII tiene un servicio de estatus y ventanas de mantenimiento, pero solo para programas con una llave que todavía no entrega; si duda, llame (sección 6).
+- Deje la hora de Windows en automático ("Establecer la hora automáticamente"). Con la hora atrasada más de 5 minutos respecto a lo último guardado, Abastalia no guarda nada (protege el registro de auditoría); con más de 2 minutos de diferencia con la DGII, deja de firmar (ver arriba).
 
 ## 3. Si no puede emitir e-CF
 

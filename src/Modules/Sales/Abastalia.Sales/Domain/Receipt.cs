@@ -33,7 +33,8 @@ public sealed record Receipt(
             s.DateUtc + BusinessDay.Offset, s.Register, s.Cashier, s.CustomerName, s.CustomerRnc,
             s.Lines.OrderBy(l => l.Position).Select(l => new ReceiptLine(l.Description, l.Quantity, l.Unit, l.UnitPrice, l.Discount, l.Total, l.Note)).ToList(),
             s.Subtotal, s.Discount, itbis, s.Total, s.Payments.Select(p => new ReceiptPayment(PaymentMethodNames.Display(p.Method), p.Amount, p.Received)).ToList(), s.Change,
-            s.SecurityCode, s.QrUrl, b.ReceiptFooter, s.Status == SaleStatus.Voided, paper ? null : s.SignedUtc + BusinessDay.Offset,
+            // TK-156: an e-CF waiting for the clock is not signed yet (no code either); a reprint after the signature shows both.
+            s.SecurityCode, s.QrUrl, b.ReceiptFooter, s.Status == SaleStatus.Voided, s.SecurityCode.Length == 0 ? null : s.SignedUtc + BusinessDay.Offset,
             s.DocumentType == EcfType.FiscalCredit31 ? s.SequenceExpiresOn : null, s.Contingency ? EcfReceiptTexts.ContingencyLegend : null);
     }
 
