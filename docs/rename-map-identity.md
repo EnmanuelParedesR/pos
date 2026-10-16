@@ -1,6 +1,6 @@
 # Rename map, phase B: Identity module
 
-Spanish → English renames in `src/Modules/Identity/Toki.Identity/**`. Behavior did not change. Tests, the Host and the client update their references with this map. Phase A names (`docs/rename-map.md`) are used as given.
+Spanish → English renames in `src/Modules/Identity/Abastalia.Identity/**`. Behavior did not change. Tests, the Host and the client update their references with this map. Phase A names (`docs/rename-map.md`) are used as given.
 
 ## Files and folders
 
@@ -23,10 +23,10 @@ Spanish → English renames in `src/Modules/Identity/Toki.Identity/**`. Behavior
 |---|---|
 | `IdentidadModule` (public static class) | `IdentityModule` |
 | `IdentidadModule.AddIdentidadModule(services)` | `IdentityModule.AddIdentityModule(services)` |
-| `IdentidadModule.Esquema` (`"Toki"`) | `IdentityModule.Scheme` (value `"Toki"`, unchanged) |
+| `IdentidadModule.Esquema` (`"Abastalia"`) | `IdentityModule.Scheme` (value `"Abastalia"`, unchanged) |
 | `IdentidadModule.HeaderDispositivo` (`"X-Dispositivo"`) | `IdentityModule.DeviceHeader` (`"X-Device"`) |
 
-`src/Hosts/Toki.Host.Local/Program.cs`: `typeof(IdentidadModule).Assembly` → `typeof(IdentityModule).Assembly`, `AddIdentidadModule()` → `AddIdentityModule()`.
+`src/Hosts/Abastalia.Host.Local/Program.cs`: `typeof(IdentidadModule).Assembly` → `typeof(IdentityModule).Assembly`, `AddIdentidadModule()` → `AddIdentityModule()`.
 
 ## HTTP header
 
@@ -241,7 +241,7 @@ No body. `Command(Id)` unchanged.
 | `Identidad.NoAutoBloqueo` | `Identity.CannotLockSelf` | inline in `UpdateUser` |
 | `Licencia.LimiteCajas` | `Identity.RegisterLimitReached` | inline in `PairDevice` |
 
-`Licencia.LimiteCajas` was raised by Identity (pairing), so it takes the `Identity` prefix per the phase A convention. It is checked by `src/Client/Toki.Client.UI/Paginas/Configurar.razor` and `tests/Toki.IntegrationTests/Configuracion/LicenciaTests.cs`.
+`Licencia.LimiteCajas` was raised by Identity (pairing), so it takes the `Identity` prefix per the phase A convention. It is checked by `src/Client/Abastalia.Client.UI/Paginas/Configurar.razor` and `tests/Abastalia.IntegrationTests/Configuracion/LicenciaTests.cs`.
 
 Validation errors still use the cross-cutting `Validation` code; their messages are unchanged (Spanish).
 
@@ -345,12 +345,12 @@ Migration command used (from the repo root):
 
 ```
 dotnet tool restore
-dotnet dotnet-ef migrations add InitialIdentity --project src/Modules/Identity/Toki.Identity --startup-project src/Modules/Identity/Toki.Identity --context IdentityDbContext --output-dir Persistence/Migrations --no-build
+dotnet dotnet-ef migrations add InitialIdentity --project src/Modules/Identity/Abastalia.Identity --startup-project src/Modules/Identity/Abastalia.Identity --context IdentityDbContext --output-dir Persistence/Migrations --no-build
 ```
 
-## Internal types and members (visible to `Toki.UnitTests` and `Toki.IntegrationTests`)
+## Internal types and members (visible to `Abastalia.UnitTests` and `Abastalia.IntegrationTests`)
 
-### Persistence (`Toki.Identity.Persistence`)
+### Persistence (`Abastalia.Identity.Persistence`)
 
 | Old | New |
 |---|---|
@@ -365,7 +365,7 @@ dotnet dotnet-ef migrations add InitialIdentity --project src/Modules/Identity/T
 | `IdentidadConfiguration` | `IdentityConfiguration` |
 | `DisenoIdentidad` | `IdentityDesignTimeFactory` |
 
-### Domain (`Toki.Identity.Domain`)
+### Domain (`Abastalia.Identity.Domain`)
 
 | Old | New |
 |---|---|
@@ -403,7 +403,7 @@ dotnet dotnet-ef migrations add InitialIdentity --project src/Modules/Identity/T
 | `IdentidadErrors` | `IdentityErrors` (members in the error code table) |
 | `ResultadoPin` | `PinResult` (values in the enum table) |
 
-### Module (`Toki.Identity`)
+### Module (`Abastalia.Identity`)
 
 | Old | New |
 |---|---|
@@ -411,7 +411,7 @@ dotnet dotnet-ef migrations add InitialIdentity --project src/Modules/Identity/T
 | `AutorizacionesSupervisor` (implements `ISupervisorApprovals`) | `SupervisorApprovals` |
 | auth failure message `"Sesión inválida o vencida."` | `"Invalid or expired session."` |
 
-### Features (`Toki.Identity.Features`)
+### Features (`Abastalia.Identity.Features`)
 
 | Old | New |
 |---|---|
@@ -434,8 +434,8 @@ dotnet dotnet-ef migrations add InitialIdentity --project src/Modules/Identity/T
 
 ## Known references to update outside the module
 
-- `src/Hosts/Toki.Host.Local/Program.cs`: `IdentidadModule`, `AddIdentidadModule`.
-- `tests/Toki.UnitTests/Identidad/UsuarioTests.cs`: `Usuario`, `CambiarPin`, `IntentarPin`, `ResultadoPin.*`, `IntentosFallidos`, `BloqueadoHastaUtc`, `Activo`, `Codigo`, `Pin.EsValido`.
-- `tests/Toki.IntegrationTests/Identidad/SesionesTests.cs`: `IdentidadDbContext().Usuarios`, `IntentosFallidos`, routes, error codes.
-- `tests/Toki.IntegrationTests/**`: every `/api/identidad/...` route, `X-Dispositivo` header, JSON fields (`token`, `codigo`, `nombreDispositivo`, …) and `Identidad.*` / `Licencia.LimiteCajas` codes.
+- `src/Hosts/Abastalia.Host.Local/Program.cs`: `IdentidadModule`, `AddIdentidadModule`.
+- `tests/Abastalia.UnitTests/Identidad/UsuarioTests.cs`: `Usuario`, `CambiarPin`, `IntentarPin`, `ResultadoPin.*`, `IntentosFallidos`, `BloqueadoHastaUtc`, `Activo`, `Codigo`, `Pin.EsValido`.
+- `tests/Abastalia.IntegrationTests/Identidad/SesionesTests.cs`: `IdentidadDbContext().Usuarios`, `IntentosFallidos`, routes, error codes.
+- `tests/Abastalia.IntegrationTests/**`: every `/api/identidad/...` route, `X-Dispositivo` header, JSON fields (`token`, `codigo`, `nombreDispositivo`, …) and `Identidad.*` / `Licencia.LimiteCajas` codes.
 - `src/Client/**`: routes, header, JSON fields, `Licencia.LimiteCajas` in `Paginas/Configurar.razor`.

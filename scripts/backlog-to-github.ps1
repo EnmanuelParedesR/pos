@@ -2,7 +2,7 @@
 param(
     [string] $Repo = "EnmanuelParedesR/pos",
     [string] $Owner = "EnmanuelParedesR",
-    [string] $ProjectTitle = "Toki V1",
+    [string] $ProjectTitle = "Abastalia V1",
     [string] $Backlog = "$PSScriptRoot\..\backlog\BACKLOG.md",
     [switch] $DryRun
 )

@@ -1,6 +1,6 @@
 # Rename map, phase B: CashRegister module
 
-Spanish → English renames done in `src/Modules/CashRegister/Toki.CashRegister/**`. Tests, the Host and the client must update their references with this map. Behavior did not change: same rules, transactions, audit, ordering and rounding. The Contracts names are in `docs/rename-map.md` (`Toki.CashRegister.Contracts`).
+Spanish → English renames done in `src/Modules/CashRegister/Abastalia.CashRegister/**`. Tests, the Host and the client must update their references with this map. Behavior did not change: same rules, transactions, audit, ordering and rounding. The Contracts names are in `docs/rename-map.md` (`Abastalia.CashRegister.Contracts`).
 
 JSON is camelCase and enums go over the wire as strings, so every wire name below is the camelCase of the C# name.
 
@@ -68,7 +68,7 @@ Item record `Cajas.Item` → `Registers.Item`:
 
 | | Old | New |
 |---|---|---|
-| slice | `AbrirTurno` | `OpenShift` (feature class `Toki.CashRegister.Features.OpenShift`; not the Contracts record `OpenShift`) |
+| slice | `AbrirTurno` | `OpenShift` (feature class `Abastalia.CashRegister.Features.OpenShift`; not the Contracts record `OpenShift`) |
 | body `AbrirTurno.Command` → `OpenShift.Command` | `{ cajaId, fondoInicial }` | `{ registerId, openingFloat }` |
 | response | `{ turnoId }` | `{ shiftId }` |
 
@@ -225,9 +225,9 @@ The movement actions were built as `"caja." + tipo.ToLowerInvariant()`; they are
 
 Published with the Contracts names: `ShiftOpenedV1`, `CashMovementRecordedV1`, `ShiftClosedV1`. `CashMovementRecordedV1.Type` is the `CashMovementType` name, so it now carries the English values below.
 
-## Domain (internal; `InternalsVisibleTo` Toki.UnitTests and Toki.IntegrationTests)
+## Domain (internal; `InternalsVisibleTo` Abastalia.UnitTests and Abastalia.IntegrationTests)
 
-Namespace `Toki.CashRegister.Domain` (unchanged).
+Namespace `Abastalia.CashRegister.Domain` (unchanged).
 
 | Old | New |
 |---|---|
@@ -270,7 +270,7 @@ Namespace `Toki.CashRegister.Domain` (unchanged).
 
 Stored data kept in Spanish: the note `"Anulación"` on the `CashIn` that reverses a voided supplier payment (owner-visible). The rounding-reversal marker in `CashMovements.Reference` is now `"rounding"` (was `"redondeo"`).
 
-## Module types (namespace `Toki.CashRegister`)
+## Module types (namespace `Abastalia.CashRegister`)
 
 | Old | New |
 |---|---|
@@ -345,5 +345,5 @@ Migration command used (from the repo root):
 
 ```
 dotnet tool restore
-dotnet dotnet-ef migrations add InitialCashRegister --project src/Modules/CashRegister/Toki.CashRegister --startup-project src/Modules/CashRegister/Toki.CashRegister --context CashRegisterDbContext --output-dir Persistence/Migrations --no-build
+dotnet dotnet-ef migrations add InitialCashRegister --project src/Modules/CashRegister/Abastalia.CashRegister --startup-project src/Modules/CashRegister/Abastalia.CashRegister --context CashRegisterDbContext --output-dir Persistence/Migrations --no-build
 ```

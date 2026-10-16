@@ -1,6 +1,6 @@
 # Rename map, phase B: Reports module
 
-Spanish → English renames in `src/Modules/Reports/Toki.Reports/**`. Tests, the Host and the client update their references with this map. Behavior did not change: same period check (366 days max), same formats, same 50,000-row Excel limit, CSV with BOM and formula-injection protection, same downloaded file names and sheet names, same Spanish CSV/XLSX column titles.
+Spanish → English renames in `src/Modules/Reports/Abastalia.Reports/**`. Tests, the Host and the client update their references with this map. Behavior did not change: same period check (366 days max), same formats, same 50,000-row Excel limit, CSV with BOM and formula-injection protection, same downloaded file names and sheet names, same Spanish CSV/XLSX column titles.
 
 The module has no DbContext, tables or migrations (ADR-0004): nothing to regenerate.
 
@@ -8,8 +8,8 @@ The module has no DbContext, tables or migrations (ADR-0004): nothing to regener
 
 | Old | New |
 |---|---|
-| project `Toki.Reports` (`src/Modules/Reports/Toki.Reports/Toki.Reports.csproj`) | (unchanged) |
-| namespace `Toki.Reports` | (unchanged) |
+| project `Abastalia.Reports` (`src/Modules/Reports/Abastalia.Reports/Abastalia.Reports.csproj`) | (unchanged) |
+| namespace `Abastalia.Reports` | (unchanged) |
 | `ReportesModule.cs` | `ReportsModule.cs` |
 | `Exportar.cs` | `Export.cs` |
 
@@ -17,7 +17,7 @@ The module has no DbContext, tables or migrations (ADR-0004): nothing to regener
 
 | Old | New | Notes |
 |---|---|---|
-| `ReportesModule` (public static, empty) | `ReportsModule` | Host: `typeof(ReportsModule).Assembly` in `src/Hosts/Toki.Host.Local/Program.cs` |
+| `ReportesModule` (public static, empty) | `ReportsModule` | Host: `typeof(ReportsModule).Assembly` in `src/Hosts/Abastalia.Host.Local/Program.cs` |
 | `ReportesEndpoints` (internal, `IEndpoint`) | `ReportsEndpoints` | |
 | `Periodo(DateOnly Desde, DateOnly Hasta, string? Formato)` (internal record struct) | `Period(DateOnly From, DateOnly To, string? Format)` | bound with `[AsParameters]`, so the query params are now `from`, `to`, `format` |
 | `Periodo.MaxDias` (= 366) | `Period.MaxDays` | |
@@ -134,11 +134,11 @@ If a Contracts row record gains or renames a property, add it to `Export.Spanish
 
 ## References to update outside the module
 
-- `src/Hosts/Toki.Host.Local/Program.cs:78`: `typeof(ReportesModule).Assembly` → `typeof(ReportsModule).Assembly`.
-- `src/Client/Toki.Client.UI/Paginas/Admin/Turnos.razor:61`: `/api/reportes/turnos?desde=…&hasta=…` → `/api/reports/shifts?from=…&to=…`.
-- `src/Client/Toki.Client.UI/Paginas/Admin/Resumen.razor:61,66`: `/api/reportes/ventas/por-dia` and `/ventas/por-producto` with `desde/hasta` → `/api/reports/sales/by-day` and `/sales/by-product` with `from/to`.
-- `tests/Toki.IntegrationTests/Reportes/ReportesTests.cs`: routes, `formato=` → `format=`, codes `Reports.InvalidPeriod` / `Reports.InvalidFormat`, JSON fields (e.g. `abiertoUtc` → `openedUtc`, `montoFacturado` → `invoicedAmount`, `efectivo` → `cash`, `tarjeta` → `card`, `chequeTransferencia` → `checkTransfer`, `tipoIngreso` → `incomeType`). The CSV/XLSX title asserts (`,Abierto,`, `ProductoId,CategoriaId,Producto,`, cell `Producto`) still hold.
-- `tests/Toki.IntegrationTests/Reportes/DevolucionOtroDiaTests.cs:20`: `/api/reportes/{ruta}?desde=…&hasta=…` → `/api/reports/{route}?from=…&to=…` (and the route strings it passes).
-- `tests/Toki.IntegrationTests/Compras/ComprasTests.cs:96,270,295,306`: `por-pagar` → `payables`, `dgii/606?desde&hasta` → `dgii/606?from&to`, `formato=csv` → `format=csv`, `suplidorId` → `supplierId`.
-- `tests/Toki.IntegrationTests/Clientes/ClientesTests.cs:85,87,197`: `por-cobrar` → `receivables`.
-- `tests/Toki.E2ETests/DiaDeTiendaTests.cs:219-247`: `por-cobrar` → `receivables` (`clienteId` → `customerId`), `por-pagar` → `payables` (`suplidorId` → `supplierId`), `ventas/por-dia` → `sales/by-day`, `dgii/607`, `inventario/valor` → `inventory/value`, and the `periodo` query string `desde/hasta` → `from/to`.
+- `src/Hosts/Abastalia.Host.Local/Program.cs:78`: `typeof(ReportesModule).Assembly` → `typeof(ReportsModule).Assembly`.
+- `src/Client/Abastalia.Client.UI/Paginas/Admin/Turnos.razor:61`: `/api/reportes/turnos?desde=…&hasta=…` → `/api/reports/shifts?from=…&to=…`.
+- `src/Client/Abastalia.Client.UI/Paginas/Admin/Resumen.razor:61,66`: `/api/reportes/ventas/por-dia` and `/ventas/por-producto` with `desde/hasta` → `/api/reports/sales/by-day` and `/sales/by-product` with `from/to`.
+- `tests/Abastalia.IntegrationTests/Reportes/ReportesTests.cs`: routes, `formato=` → `format=`, codes `Reports.InvalidPeriod` / `Reports.InvalidFormat`, JSON fields (e.g. `abiertoUtc` → `openedUtc`, `montoFacturado` → `invoicedAmount`, `efectivo` → `cash`, `tarjeta` → `card`, `chequeTransferencia` → `checkTransfer`, `tipoIngreso` → `incomeType`). The CSV/XLSX title asserts (`,Abierto,`, `ProductoId,CategoriaId,Producto,`, cell `Producto`) still hold.
+- `tests/Abastalia.IntegrationTests/Reportes/DevolucionOtroDiaTests.cs:20`: `/api/reportes/{ruta}?desde=…&hasta=…` → `/api/reports/{route}?from=…&to=…` (and the route strings it passes).
+- `tests/Abastalia.IntegrationTests/Compras/ComprasTests.cs:96,270,295,306`: `por-pagar` → `payables`, `dgii/606?desde&hasta` → `dgii/606?from&to`, `formato=csv` → `format=csv`, `suplidorId` → `supplierId`.
+- `tests/Abastalia.IntegrationTests/Clientes/ClientesTests.cs:85,87,197`: `por-cobrar` → `receivables`.
+- `tests/Abastalia.E2ETests/DiaDeTiendaTests.cs:219-247`: `por-cobrar` → `receivables` (`clienteId` → `customerId`), `por-pagar` → `payables` (`suplidorId` → `supplierId`), `ventas/por-dia` → `sales/by-day`, `dgii/607`, `inventario/valor` → `inventory/value`, and the `periodo` query string `desde/hasta` → `from/to`.

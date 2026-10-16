@@ -1,0 +1,234 @@
+/* Escuadra: Abastalia's design system. Tokens and base pieces; screens compose them (docs/sistema-de-diseno.md). */
+
+:root {
+  /* Color */
+  --frame: #14181D;
+  --frame-text: #F1F3F5;
+  --frame-muted: #A9B2BC;
+  --frame-line: #343B44;
+  --frame-hover: #1F252C;
+  --background: #EEF0F2;
+  --surface: #FFFFFF;
+  --paper: #FFFFFF; /* white on the brand and on paper (receipts, print): the same in every theme */
+  --surface-2: #F5F6F7;
+  --card-border: #C9CED4;
+  --control-border: #7A838C;
+  --text: #14181D;
+  --text-2: #4A535D;
+  --brand: #0B5CAD;
+  --brand-hover: #094C90;
+  --brand-tint: #E4EEF8;
+  --success: #176B35;
+  --success-bg: #E3F4E8;
+  --warning: #8A4B00;
+  --warning-bg: #FFF1D6;
+  --error: #B42318;
+  --error-bg: #FDE7E4;
+  --offline: #F5B94A;
+  --offline-bg: #3A2A08;
+
+  /* Type: 12 13 15 17 20 24 32 44 52 72 */
+  --t-12: 12px; --t-13: 13px; --t-15: 15px; --t-17: 17px; --t-20: 20px;
+  --t-24: 24px; --t-32: 32px; --t-44: 44px; --t-52: 52px; --t-72: 72px;
+
+  /* Space and shape */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px; --s-6: 32px; --s-7: 48px;
+  --r-1: 4px; --r-2: 6px; --r-3: 8px;
+  --touch: 48px;
+  --touch-money: 72px;
+}
+
+/* IBM Plex Sans (OFL), bundled: the Latin-1 subset of @ibm/plex-sans 1.1.0 (fonts/README.md). The panel imports this file too; Vite bundles the fonts. */
+@font-face { font-family: "Abastalia Sans"; src: url("fonts/IBMPlexSans-Regular-Latin1.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Abastalia Sans"; src: url("fonts/IBMPlexSans-Medium-Latin1.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Abastalia Sans"; src: url("fonts/IBMPlexSans-SemiBold-Latin1.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Abastalia Sans"; src: url("fonts/IBMPlexSans-Bold-Latin1.woff2") format("woff2"); font-weight: 700; font-display: swap; }
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: "Abastalia Sans", "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  font-size: var(--t-15);
+  line-height: 1.3;
+  color: var(--text);
+  background: var(--background);
+  font-variant-numeric: tabular-nums lining-nums;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+a { color: var(--brand); }
+a:hover { color: var(--brand-hover); }
+h1, h2, h3, p { margin: 0; }
+
+/* Layout helpers */
+.esc-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.esc-col { display: flex; flex-direction: column; gap: var(--s-2); }
+.esc-spacer { flex: 1 1 auto; }
+.esc-title { font-size: var(--t-24); font-weight: 700; }
+.esc-subtitle { font-size: var(--t-13); color: var(--text-2); }
+.esc-label { font-size: var(--t-12); font-weight: 600; letter-spacing: 0.04em; color: var(--text-2); text-transform: uppercase; }
+.esc-muted { color: var(--text-2); }
+.esc-num { text-align: right; font-variant-numeric: tabular-nums; }
+.esc-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Card */
+.esc-card { background: var(--surface); border: 1px solid var(--card-border); border-radius: var(--r-2); }
+.esc-card--padded { padding: var(--s-4); }
+
+/* Buttons */
+.esc-button { text-decoration: none;
+  min-height: var(--touch); padding: 0 var(--s-4);
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2);
+  border: 1px solid var(--control-border); border-radius: var(--r-2);
+  background: var(--surface); color: var(--text); font-weight: 600;
+}
+.esc-button:hover:not(:disabled) { background: var(--surface-2); }
+.esc-button:disabled { opacity: 0.5; }
+.esc-button--primary { background: var(--brand); border-color: var(--brand); color: var(--paper); font-weight: 700; }
+.esc-button--primary:hover:not(:disabled) { background: var(--brand-hover); }
+.esc-button--danger { background: var(--surface); border-color: var(--error); color: var(--error); }
+.esc-button--danger:hover:not(:disabled) { background: var(--error-bg); }
+.esc-button--ghost { border-color: transparent; background: transparent; }
+.esc-button--money { min-height: var(--touch-money); padding: 0 var(--s-5); font-size: var(--t-24); justify-content: space-between; }
+.esc-button--wide { width: 100%; }
+.esc-button--primary .esc-keycap { border-color: var(--paper); color: var(--paper); }
+
+/* Keycap */
+.esc-keycap {
+  display: inline-block; padding: 1px 6px; min-width: 22px; text-align: center;
+  border: 1px solid var(--control-border); border-radius: var(--r-1);
+  font-size: var(--t-12); font-weight: 600; line-height: 1.4; color: var(--text-2);
+}
+
+/* Fields */
+.esc-field { display: flex; flex-direction: column; gap: var(--s-1); }
+.esc-field > span { font-size: var(--t-13); font-weight: 600; color: var(--text-2); }
+.esc-input, .esc-select {
+  min-height: var(--touch); padding: 0 var(--s-3); width: 100%;
+  border: 1px solid var(--control-border); border-radius: var(--r-2); background: var(--surface);
+}
+.esc-input--large { min-height: 56px; font-size: var(--t-24); font-weight: 600; }
+.esc-input[aria-invalid="true"] { border: 2px solid var(--error); }
+.esc-error-help { font-size: var(--t-13); color: var(--error); font-weight: 600; }
+
+/* Inline notices: never modal (principle 4) */
+.esc-notice {
+  display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-2); border: 1px solid transparent; font-weight: 600;
+}
+.esc-notice svg { flex: none; margin-top: 1px; }
+.esc-notice--error { background: var(--error-bg); color: var(--error); border-color: var(--error); }
+.esc-notice--warning { background: var(--warning-bg); color: var(--warning); border-color: var(--warning); }
+.esc-notice--success { background: var(--success-bg); color: var(--success); border-color: var(--success); }
+.esc-notice--info { background: var(--brand-tint); color: var(--brand); border-color: var(--brand); }
+.esc-notice__body { flex: 1 1 auto; display: flex; flex-direction: column; gap: 2px; }
+.esc-notice__detail { font-weight: 400; color: var(--text); }
+
+/* Status pill */
+.esc-pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: var(--t-13); font-weight: 600; }
+.esc-pill--success { background: var(--success-bg); color: var(--success); }
+.esc-pill--warning { background: var(--warning-bg); color: var(--warning); }
+.esc-pill--error { background: var(--error-bg); color: var(--error); }
+.esc-pill--neutral { background: var(--surface-2); color: var(--text-2); }
+
+/* Dialog: the only element with a shadow */
+.esc-overlay { position: fixed; inset: 0; background: rgba(20, 24, 29, 0.55); display: flex; align-items: center; justify-content: center; padding: var(--s-4); z-index: 50; }
+.esc-dialog {
+  width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto;
+  background: var(--surface); border-radius: var(--r-3); box-shadow: 0 12px 40px rgba(20, 24, 29, 0.35);
+  display: flex; flex-direction: column;
+}
+.esc-dialog--wide { width: min(880px, 100%); }
+.esc-dialog__header { padding: var(--s-4) var(--s-5); border-bottom: 1px solid var(--card-border); display: flex; flex-direction: column; gap: 2px; }
+.esc-dialog__body { padding: var(--s-5); display: flex; flex-direction: column; gap: var(--s-4); }
+.esc-dialog__footer { padding: var(--s-4) var(--s-5); border-top: 1px solid var(--card-border); display: flex; gap: var(--s-2); justify-content: flex-end; flex-wrap: wrap; }
+
+/* Keypad */
+.esc-keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-2); }
+.esc-keypad button {
+  min-height: 64px; border: 1px solid var(--control-border); border-radius: var(--r-2);
+  background: var(--surface); font-size: var(--t-24); font-weight: 600;
+}
+.esc-keypad button:hover { background: var(--surface-2); }
+.esc-keypad button:active { background: var(--brand-tint); }
+
+/* PIN dots */
+.esc-pin { display: flex; gap: var(--s-3); justify-content: center; padding: var(--s-2) 0; }
+.esc-pin span { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--control-border); }
+.esc-pin span.filled { background: var(--text); border-color: var(--text); }
+
+/* Tables (admin) */
+.esc-table-wrap { overflow-x: auto; }
+.esc-table { width: 100%; border-collapse: collapse; }
+.esc-table th { padding: 10px var(--s-4); border-bottom: 1px solid var(--card-border); font-size: var(--t-12); font-weight: 600; letter-spacing: 0.04em; color: var(--text-2); text-align: left; text-transform: uppercase; white-space: nowrap; }
+.esc-table td { height: var(--touch); padding: 0 var(--s-4); border-bottom: 1px solid var(--card-border); }
+.esc-table tr:last-child td { border-bottom: 0; }
+.esc-table tbody tr.selectable { cursor: pointer; }
+.esc-table tbody tr.selectable:hover { background: var(--surface-2); }
+.esc-table tbody tr.selected { background: var(--brand-tint); }
+
+/* Chips and tiles */
+.esc-chip {
+  min-height: var(--touch); padding: 0 var(--s-4); border-radius: 999px;
+  border: 1px solid var(--control-border); background: var(--surface); font-weight: 600;
+}
+.esc-chip[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: var(--paper); }
+.esc-tile {
+  min-height: 88px; padding: var(--s-3); display: flex; flex-direction: column; justify-content: space-between; gap: var(--s-1);
+  border: 1px solid var(--card-border); border-radius: var(--r-2); background: var(--surface); text-align: left;
+}
+.esc-tile:hover { border-color: var(--brand); }
+.esc-tile__name { font-weight: 600; font-size: var(--t-15); }
+.esc-tile__price { font-size: var(--t-13); color: var(--text-2); }
+
+/* Frame: status bar and key bar */
+.esc-status-bar {
+  min-height: 40px; padding: 4px var(--s-4); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px var(--s-5);
+  background: var(--frame); color: var(--frame-text); font-size: var(--t-13);
+}
+.esc-status-bar .muted { color: var(--frame-muted); }
+.esc-status-bar__group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; }
+.esc-status-bar__device { display: inline-flex; align-items: center; gap: 6px; }
+.esc-offline { background: var(--offline-bg); color: var(--offline); padding: 2px 10px; border-radius: var(--r-1); font-weight: 600; }
+.esc-key-bar { display: flex; flex-wrap: wrap; background: var(--frame); color: var(--frame-text); }
+.esc-key-bar button {
+  flex: 1 1 140px; min-height: var(--touch); padding: 0 var(--s-2);
+  display: flex; align-items: center; justify-content: center; gap: var(--s-2);
+  border: 0; border-right: 1px solid var(--frame-line); background: transparent; color: var(--frame-text); font-weight: 600;
+}
+.esc-key-bar button:last-child { border-right: 0; }
+.esc-key-bar button:hover:not(:disabled) { background: var(--frame-hover); }
+.esc-key-bar button:disabled { opacity: 0.45; }
+.esc-key-bar .esc-keycap { border-color: var(--frame-muted); color: var(--frame-muted); }
+
+/* Scale readout (Lectura de balanza): fixed widths, so nothing moves while the weight changes */
+.esc-scale { display: flex; align-items: center; gap: var(--s-3); }
+.esc-scale__value { min-width: 7ch; font-size: var(--t-32); font-weight: 700; line-height: 1; }
+.esc-scale__value span { font-size: var(--t-17); font-weight: 600; color: var(--text-2); }
+.esc-scale .esc-pill { min-width: 120px; justify-content: center; }
+
+/* Logo */
+.esc-logo { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: -0.02em; }
+
+/* Money */
+.esc-money { display: inline-flex; align-items: baseline; gap: 6px; font-weight: 700; }
+.esc-money__currency { font-size: 0.45em; font-weight: 600; color: var(--text-2); }
+
+/* Page body (register screens; the back office's shell is in escuadra-admin.css) */
+.esc-page { flex: 1 1 auto; min-width: 0; padding: 20px var(--s-5); display: flex; flex-direction: column; gap: var(--s-4); }
+.esc-page:focus { outline: 0; }
+
+/* Short amber message from escuadra.js (an ignored scan); above dialogs, never blocks the screen. */
+.esc-toast { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); z-index: 60; padding: var(--s-3) var(--s-4); border-radius: var(--r-2);
+  background: var(--warning-bg); color: var(--warning); border: 1px solid var(--warning); font-weight: 600; box-shadow: 0 4px 16px rgba(20, 24, 29, 0.25); }
+
+/* Blazor shows it when the app itself fails (the screens' failures are caught by the ErrorBoundary in the frame). */
+#blazor-error-ui { display: none; position: fixed; inset: auto 0 0 0; z-index: 70; padding: var(--s-3) var(--s-4); background: var(--error-bg); color: var(--error); border-top: 2px solid var(--error); font-weight: 600; }
+#blazor-error-ui a { margin-left: var(--s-3); }
+
+@media (max-width: 760px) {
+  .esc-page { padding: var(--s-4); }
+}

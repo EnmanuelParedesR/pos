@@ -1,4 +1,4 @@
-# Investigación de usuarios: administración de Toki (dueño y supervisor)
+# Investigación de usuarios: administración de Abastalia (dueño y supervisor)
 
 Ticket: TK-171. Fecha: 15 de octubre de 2026. Alcance: la administración en la PC de la tienda (Blazor) y el panel del dueño en la nube (React, pensado primero para el celular).
 
@@ -40,7 +40,7 @@ Fuentes: el sistema viejo y sus dolores (`arquitectura-v1.md`), las decisiones d
 | 1 | Resumen jerárquico: una cifra héroe con su comparación, "Para revisar" arriba y una gráfica con el día anterior de referencia | Alto | Medio |
 | 2 | Nueva identidad visual para la administración: menos bordes, superficies con tinte, jerarquía tipográfica real y color con significado | Alto | Medio |
 | 3 | Navegación: barra lateral compacta con íconos en la PC y barra inferior de 4 o 5 destinos en el celular | Alto | Bajo |
-| 4 | Asistente siempre visible (barra "Pregúntale a Toki…") | Medio | Bajo |
+| 4 | Asistente siempre visible (barra "Pregúntale a Talia…") | Medio | Bajo |
 | 5 | Nombres de cajeros en la nube (TK-165) | Alto | Medio (backend) |
 | 6 | Cifras en lenguaje humano ("Faltaron RD$ 150 en la Caja 2 · Yudelka · 6:05 p. m.") | Alto | Bajo |
 

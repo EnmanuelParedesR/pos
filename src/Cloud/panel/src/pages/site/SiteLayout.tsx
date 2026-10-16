@@ -67,7 +67,7 @@ export function SiteLayout() {
         <div className="wrap top__bar">
           <Link className="brand" to="/">
             <Logo size={32} withName={false} />
-            <span aria-hidden="true">toki</span>
+            <span aria-hidden="true">abastalia</span>
           </Link>
           <nav className="menu" aria-label="Principal">
             <Menu paths={header} />
@@ -85,7 +85,7 @@ export function SiteLayout() {
       </main>
       <footer className="foot">
         <div className="wrap foot__grid">
-          <span>© 2026 Toki · Hecho en República Dominicana</span>
+          <span>© 2026 Abastalia · Hecho en República Dominicana</span>
           <nav aria-label="Pie de página">
             <ul>
               {sitePages

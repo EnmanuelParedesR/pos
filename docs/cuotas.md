@@ -1,6 +1,6 @@
 # Cuotas y límites de uso (TK-248)
 
-Pedido del dueño: todo lo que Toki ofrece debe tener cuotas que eviten el abuso y el consumo excesivo de los servicios. Este documento inventaría cada servicio de la nube y de la tienda que cuesta dinero o se presta al abuso, dice qué límite tiene hoy, qué falta y qué límite se propone. Hay dos tipos de límite:
+Pedido del dueño: todo lo que Abastalia ofrece debe tener cuotas que eviten el abuso y el consumo excesivo de los servicios. Este documento inventaría cada servicio de la nube y de la tienda que cuesta dinero o se presta al abuso, dice qué límite tiene hoy, qué falta y qué límite se propone. Hay dos tipos de límite:
 
 - **Por minuto (anti-abuso):** frena ráfagas (un script, un bucle, un reintento atascado). Usa el limitador de ASP.NET (`AddRateLimiter` en `Program.cs`); al pasarse responde **429**.
 - **Por mes (consumo):** lo que un negocio puede gastar en el mes de la tienda (UTC−4) según su plan. Lo lleva `IQuota` (tabla `cloud.TenantUsage`); al pasarse responde **429 `Quota.Exceeded`** con el medidor, lo usado, el límite, la fecha en que se renueva (`resetsOn`, el día 1 del mes siguiente) y un mensaje en español.
@@ -9,9 +9,9 @@ Pedido del dueño: todo lo que Toki ofrece debe tener cuotas que eviten el abuso
 
 - `IQuota.TryConsumeAsync(negocio, medidor, n)` toma `n` del mes en **una sola sentencia** (`UPDATE … SET Count = Count + n WHERE Count + n <= límite`), así que dos llamadas a la vez nunca toman la última unidad las dos (SQL Server y SQLite). El primer uso del mes inserta la fila; si otra llamada la insertó antes, se cuenta sobre ella.
 - `IQuota.AddAsync` suma sin límite: para lo que solo se conoce después (tokens del asistente), para lo que nunca debe negarse (el correo de recuperar la contraseña) o para devolver lo tomado cuando otro límite rechaza la llamada.
-- El límite sale de (TK-249, `PlanLimits`): el **producto de Paddle** del plan (`custom_data.toki.quotas.<Medidor>`), si no `Quotas:<Plan>:<Medidor>` de la configuración, si no lo de `Default` (Paddle, luego configuración), si no 0 (no se ofrece). Un servicio adicional comprado (`custom_data.toki.quotas` de su producto, o `Quotas:AddOns:<Adicional>:<Medidor>`) **suma** el suyo al del plan, una vez por unidad comprada (TK-258: adicionales con cantidad; `Quotas:AddOns:AssistantPack` suma 1,000 preguntas por paquete). Esquema completo de `custom_data.toki` en `docs/cobro-paddle.md`.
-- **Límites por minuto por plan** (TK-249): la API del panel por usuario (`panelPerMinute`), las preguntas al asistente por usuario (`assistantPerMinute`) y las facturas leídas por caja (`supplierInvoicesPerMinute`) salen de `custom_data.toki.rateLimits` del plan, si no de `Quotas:<Plan>:RateLimits:<clave>`, si no de `Default`, si no del valor global (`Panel:RequestsPerMinutePerUser`, `Ai:AssistantQuestionsPerMinutePerUser`, `Ai:SupplierInvoicesPerMinutePerNode`). Los de entrada, registro e invitaciones siguen por IP, iguales para todos.
-- El plan y los adicionales de cada negocio salen de su suscripción de Paddle (TK-249) o los pone el personal de Toki en la consola (**Plataforma → cliente → Plan y consumo**; `PUT /api/platform/tenants/{id}/plan`, auditado). Sin plan puesto, el negocio usa `Default`.
+- El límite sale de (TK-249, `PlanLimits`): el **producto de Paddle** del plan (`custom_data.abastalia.quotas.<Medidor>`), si no `Quotas:<Plan>:<Medidor>` de la configuración, si no lo de `Default` (Paddle, luego configuración), si no 0 (no se ofrece). Un servicio adicional comprado (`custom_data.abastalia.quotas` de su producto, o `Quotas:AddOns:<Adicional>:<Medidor>`) **suma** el suyo al del plan, una vez por unidad comprada (TK-258: adicionales con cantidad; `Quotas:AddOns:AssistantPack` suma 1,000 preguntas por paquete). Esquema completo de `custom_data.abastalia` en `docs/cobro-paddle.md`.
+- **Límites por minuto por plan** (TK-249): la API del panel por usuario (`panelPerMinute`), las preguntas al asistente por usuario (`assistantPerMinute`) y las facturas leídas por caja (`supplierInvoicesPerMinute`) salen de `custom_data.abastalia.rateLimits` del plan, si no de `Quotas:<Plan>:RateLimits:<clave>`, si no de `Default`, si no del valor global (`Panel:RequestsPerMinutePerUser`, `Ai:AssistantQuestionsPerMinutePerUser`, `Ai:SupplierInvoicesPerMinutePerNode`). Los de entrada, registro e invitaciones siguen por IP, iguales para todos.
+- El plan y los adicionales de cada negocio salen de su suscripción de Paddle (TK-249) o los pone el personal de Abastalia en la consola (**Plataforma → cliente → Plan y consumo**; `PUT /api/platform/tenants/{id}/plan`, auditado). Sin plan puesto, el negocio usa `Default`.
 - **Atajo documentado:** la nube no lee el plan de la licencia firmada de la tienda. El latido solo *dice* el estado de la licencia y la tienda podría mandar cualquier cosa, así que no se confía en él para dar más cuota. Al emitir una licencia con un adicional, el personal también lo activa en la consola. Si mantener ambos al día se vuelve pesado: mandar la licencia (JWS) en el latido y verificar su firma en la nube con la llave pública.
 
 Planes (códigos de configuración, TK-258): `Essential` = **Esencial**; `Default` = Prueba y **Estándar**; `MultiRegister` = **Pro**; `MultiStore` = **Varias sucursales** (ya no se vende; sigue para quien lo tenga). Lo que un plan no define lo toma de `Default`. Precios y adicionales en `docs/cobro-paddle.md` (provisionales, aprobados 16/10/2026).
@@ -33,7 +33,7 @@ Notas:
 
 - Los precios de Azure son de lista y aproximados: confirmarlos con la calculadora de Azure antes de fijar precios. El costo máximo es el de un negocio que gasta toda su cuota; casi ninguno lo hará.
 - Los correos de **confirmar correo** y **cambiar contraseña** cuentan en `Emails` pero **nunca se niegan** (una recuperación de contraseña debe llegar siempre); los frenan los límites por IP. Los **avisos** se dejan de mandar (queda en el registro) cuando el negocio gastó sus correos del mes. Una **invitación** gasta una invitación y un correo; si no queda alguno, 429.
-- Los correos que el personal manda al dueño por el acompañamiento (citas) no cuentan: los dispara Toki, no el negocio.
+- Los correos que el personal manda al dueño por el acompañamiento (citas) no cuentan: los dispara Abastalia, no el negocio.
 - `ArchiveRetrievals` cuenta cada intento sobre un documento frío, también mientras vuelve del nivel Archive (horas). Los documentos de menos de 90 días están en SQL y no cuentan.
 
 ## Servicio adicional: lectura de facturas con IA
@@ -41,7 +41,7 @@ Notas:
 - **Incluido en todos los planes:** 20 facturas al mes (`Quotas:Default:SupplierInvoices`).
 - **Adicional pago** `SupplierInvoiceReading` ("Lectura de facturas"): **suma** 300 al mes por unidad (`Quotas:AddOns:SupplierInvoiceReading:SupplierInvoices`), o sea 320 con las 20 del plan. Precio: **US$7** al mes (US$70 al año), provisional, aprobado 16/10/2026.
 - Otros adicionales con cuota (TK-258): `AssistantPack` ("Asistente +1,000 preguntas", US$5): +1,000 preguntas y +10,000,000 tokens por unidad; `ExtraUsers` ("Usuarios del panel +5", US$3): +5 invitaciones al mes por unidad.
-- En la licencia de la tienda es la función `SupplierInvoiceReading` (`Feature` en `Toki.BuildingBlocks.Security`); la nube aplica la cuota según lo que el personal puso en la consola (ver el atajo arriba).
+- En la licencia de la tienda es la función `SupplierInvoiceReading` (`Feature` en `Abastalia.BuildingBlocks.Security`); la nube aplica la cuota según lo que el personal puso en la consola (ver el atajo arriba).
 - Además del mes siguen: 100 por día por negocio (`Ai:SupplierInvoicesPerDay`, tabla `AiUsage`, R9 #14), 10 por minuto por PC (`Ai:SupplierInvoicesPerMinutePerNode`) y nada con la licencia restringida. Si el día rechaza, la lectura del mes se devuelve.
 - La tienda muestra en **Compras** "Lecturas con IA este mes: le quedan X de Y" (`GET /api/purchasing/purchases/read-invoice/quota`, que pregunta a la nube `POST /ai/v1/supplier-invoice/quota`). Agotadas, avisa la fecha en que se renuevan y sugiere el adicional; el XML del e-CF del suplidor se sigue leyendo sin IA y sin gastar lecturas.
 
@@ -67,7 +67,7 @@ Notas:
 | Archivo frío de e-CF (`GET /api/fiscal/archive/{encf}`) | Lectura y rehidratación de Blob Archive | Rehidratación estándar (la barata), una sola vez por documento | Mes: `ArchiveRetrievals`; 120 por minuto por usuario | — |
 | Solicitudes de acompañamiento (`POST /fiscal/v1/accompaniment`) | Tiempo del personal, correos | Una abierta por tienda | Mes: `AccompanimentRequests` | — |
 | Panel (`/api/panel/*`, `/api/members`, `/api/usage`, archivo) | Consultas pesadas a SQL | Rangos ≤ 366 días; solo miembros | 120 por minuto por usuario (`Panel:RequestsPerMinutePerUser`) | `/api/me`, `/api/stores`, `/api/notifications` y `/api/panel/fe` (en `Fe/`) sin límite por minuto: son livianos |
-| Consola de la plataforma (`/api/platform/*`) | Datos de todos los negocios | Solo personal de Toki (rol dado por comando), cada llamada auditada | — | — |
+| Consola de la plataforma (`/api/platform/*`) | Datos de todos los negocios | Solo personal de Abastalia (rol dado por comando), cada llamada auditada | — | — |
 | API local de la tienda (LAN, `https://0.0.0.0:5443`) | Fuerza bruta del PIN | Cada caja con su certificado de dispositivo; el PIN se bloquea tras 5 intentos fallidos (5 minutos, el doble cada vez, hasta 60) | — | — |
 
 ## Dónde se ve el consumo

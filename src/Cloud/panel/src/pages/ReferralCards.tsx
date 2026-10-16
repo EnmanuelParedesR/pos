@@ -9,7 +9,7 @@ const day = (utc: string | null) => (utc ? dayName(utc.slice(0, 10)) : "—");
 export const rewardLabel = (r: ReferralReward) =>
   r.type === "percentage" ? `${r.amount} %` : priceLabel({ priceId: "", interval: null, amount: r.amount, currency: r.currency });
 
-/** TK-255 "Recomiende Toki" (Owners): the link to share, how many referrals paid and the discount on the next payment. Hidden while it is off. */
+/** TK-255 "Recomiende Abastalia" (Owners): the link to share, how many referrals paid and the discount on the next payment. Hidden while it is off. */
 export function ReferralCard() {
   const { data, error } = useApi<Referrals>("/api/billing/referrals");
   const [copied, setCopied] = useState(false);
@@ -28,7 +28,7 @@ export function ReferralCard() {
   }
 
   return (
-    <Card title="Recomiende Toki" aside={`${rewardLabel(data.reward)} en su próximo pago`}>
+    <Card title="Recomiende Abastalia" aside={`${rewardLabel(data.reward)} en su próximo pago`}>
       <p className="esc-muted" style={{ marginTop: 0 }}>
         Comparta su enlace. Cuando un negocio que usted recomendó pague su plan, le descontamos {rewardLabel(data.reward)} en su próximo pago.
       </p>
@@ -66,10 +66,10 @@ const reasonNames: Record<string, string> = {
   SameRnc: "Mismo RNC",
   MonthlyLimit: "Límite del mes",
   Refund: "Reembolso",
-  Staff: "Ajuste de Toki",
+  Staff: "Ajuste de Abastalia",
 };
 
-/** Toki staff (TK-255): the business's referrals, made and received, with manual adjustments (a reason is required; the call is audited). */
+/** Abastalia staff (TK-255): the business's referrals, made and received, with manual adjustments (a reason is required; the call is audited). */
 export function PlatformReferralsCard({ tenantId }: { tenantId: string }) {
   const { data, error, reload } = useApi<PlatformReferrals>(`/api/platform/tenants/${tenantId}/referrals`);
   const [note, setNote] = useState("");

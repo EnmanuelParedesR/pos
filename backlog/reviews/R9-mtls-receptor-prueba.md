@@ -1,6 +1,6 @@
 # R9 · TK-091, receptor e-CF, prueba, alertas, compras con IA (f0beef5..61704e1)
 
-Alcance: `f0beef5..HEAD` (261 archivos). Leídos completos: `Toki.Host.Cloud/Fe/*`, `Relay/ColdArchive.cs`, `Alerts/Alerts.cs`, `Assistant/SupplierInvoiceReader.cs`, `Accounts/Members.cs`, `StoreCertificateAuthority.cs`, `Toki.Host.Local/Program.cs`, `NodeCertificatePin.cs`, `Session.cs`, `SetupDevice.razor`, `Backups.cs`, `Contingency.cs`, `Certification.cs`, `EcfExchange.cs`, `Receiver.cs`, `License.cs`, `SampleData.cs`, `SupplierInvoiceAi.cs`, `DgiiReconciliation.cs` y las migraciones nuevas; diffs de Identity, Fiscal, Sales/Orders, Customers y Members. Solo lectura: no se compiló ni se corrieron pruebas. 21 hallazgos: 4 🔴, 10 🟡, 7 🟢.
+Alcance: `f0beef5..HEAD` (261 archivos). Leídos completos: `Abastalia.Host.Cloud/Fe/*`, `Relay/ColdArchive.cs`, `Alerts/Alerts.cs`, `Assistant/SupplierInvoiceReader.cs`, `Accounts/Members.cs`, `StoreCertificateAuthority.cs`, `Abastalia.Host.Local/Program.cs`, `NodeCertificatePin.cs`, `Session.cs`, `SetupDevice.razor`, `Backups.cs`, `Contingency.cs`, `Certification.cs`, `EcfExchange.cs`, `Receiver.cs`, `License.cs`, `SampleData.cs`, `SupplierInvoiceAi.cs`, `DgiiReconciliation.cs` y las migraciones nuevas; diffs de Identity, Fiscal, Sales/Orders, Customers y Members. Solo lectura: no se compiló ni se corrieron pruebas. 21 hallazgos: 4 🔴, 10 🟡, 7 🟢.
 
 Comprobado sin problema:
 - **mTLS:** el servidor exige el uso ClientAuth y la caja ServerAuth, así que el certificado de una caja no se hace pasar por el servidor ni al revés. Un certificado desconocido nunca cae al secreto, y revocar invalida en cada petición.
@@ -44,7 +44,7 @@ Comprobado sin problema:
 7. 🟡 **R8 #2 deja un hueco ante una caída** (`EcfSubmissionQueue.cs:45,95`).
    - **Qué pasa:** si el proceso se cae después de que la DGII aceptó y antes de guardar, el siguiente intento reenvía sin consultar primero.
    - **Arreglo:** consultar con `FindAsync` también cuando `SentUtc` no es nulo.
-8. 🟡 **Si la CA de la tienda no se puede leer, el servicio no arranca** (`StoreCertificateAuthority.cs:126-135`, `Toki.Host.Local/Program.cs:125`).
+8. 🟡 **Si la CA de la tienda no se puede leer, el servicio no arranca** (`StoreCertificateAuthority.cs:126-135`, `Abastalia.Host.Local/Program.cs:125`).
    - **Arreglo:** apartar la CA dañada, crear una nueva y avisar en salud que hay que volver a unir las cajas.
 9. 🟡 **"Unir a una tienda" envía el código antes de confirmar la huella** (`SetupDevice.razor:28-39,95-104`).
    - **Arreglo:** casilla obligatoria "La huella es igual" antes de enviar, como en Instalar.

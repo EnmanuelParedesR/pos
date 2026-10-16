@@ -9,17 +9,17 @@ El backend V1 está completo (M0–M10). Faltaban las pantallas de caja y de adm
 
 ## Decisión
 
-- `src/Client/Toki.Escuadra` (RCL): tokens en CSS (`escuadra.css`), componentes, íconos y el logo C5. Marca fija de Toki: no hay tema por revendedor.
-- `src/Client/Toki.Client.UI` (RCL): las pantallas (`Paginas/`), los diálogos (`Componentes/`), la sesión, el carrito y un cliente HTTP escrito a mano (`TokiApi`).
+- `src/Client/Abastalia.Escuadra` (RCL): tokens en CSS (`escuadra.css`), componentes, íconos y el logo C5. Marca fija de Abastalia: no hay tema por revendedor.
+- `src/Client/Abastalia.Client.UI` (RCL): las pantallas (`Paginas/`), los diálogos (`Componentes/`), la sesión, el carrito y un cliente HTTP escrito a mano (`AbastaliaApi`).
 - Dos anfitriones con el mismo `Routes`:
-  - `Toki.Client.Wpf`: la app de la tienda. WPF + BlazorWebView. El token del equipo se guarda cifrado con DPAPI para el usuario de Windows.
-  - `Toki.Client.Web`: solo para desarrollo y pruebas. Blazor Server interactivo. El token va en un archivo del perfil, y recargar la página cierra la sesión.
+  - `Abastalia.Client.Wpf`: la app de la tienda. WPF + BlazorWebView. El token del equipo se guarda cifrado con DPAPI para el usuario de Windows.
+  - `Abastalia.Client.Web`: solo para desarrollo y pruebas. Blazor Server interactivo. El token va en un archivo del perfil, y recargar la página cierra la sesión.
 - Las pantallas no repiten reglas del backend. Mandan el comando y reaccionan al `code` de ProblemDetails:
   - `Autorizacion.Requerida` abre el diálogo único de supervisor y se reintenta con el id de la autorización.
   - `Ventas.TotalCambio` muestra el total del servidor y pide confirmarlo.
   - Sin conexión se ve en ámbar y nunca se pierde el carrito.
 - Teclado primero: teclas F visibles, foco siempre de vuelta al escáner y diálogos que reciben cualquier tecla. `escuadra.js` impide que el navegador use F1–F12 (F5 recargaría a mitad de una venta).
-- Pruebas con bUnit sobre una API falsa (`tests/Toki.Client.UI.Tests`). La verificación visual se hace con el host web contra la API real.
+- Pruebas con bUnit sobre una API falsa (`tests/Abastalia.Client.UI.Tests`). La verificación visual se hace con el host web contra la API real.
 
 ## Consecuencias
 

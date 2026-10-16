@@ -1,0 +1,35 @@
+@* TK-193: the reminder in the back office's summary: open orders for today and tomorrow. Hidden when there are none. *@
+@inject AbastaliaApi Api
+@inject Session Session
+
+@if (_orders is { Count: > 0 } orders)
+{
+    <section class="esc-card" aria-labelledby="orders-title">
+        <div class="esc-card__head" style="padding:16px 20px 0;margin:0">
+            <h2 id="orders-title" class="esc-card__title">Pedidos de hoy y mañana</h2>
+            <a class="esc-card__aside" href="admin/orders">Ver todos</a>
+        </div>
+        <ul class="esc-alerts">
+            @foreach (var o in orders)
+            {
+                <li class="esc-alert esc-alert--@(o.PickupDate == Format.Today ? "warning" : "info")">
+                    <span class="esc-alert__icon"><Icon Name="calendar" Size="18" /></span>
+                    <div class="esc-alert__body">
+                        <div class="esc-alert__title"><b>@OrderView.Pickup(o)</b> · @o.CustomerName · @Format.WithCurrency(o.Total)</div>
+                        <div class="esc-alert__meta">@OrderView.Summary(o)@(o.Notes is null ? "" : $" · {o.Notes}") · @OrderView.Status(o)@(o.Deposit > 0 ? $" · abonó {Format.WithCurrency(o.Deposit)}" : "")</div>
+                    </div>
+                </li>
+            }
+        </ul>
+    </section>
+}
+
+@code {
+    private List<OrderItem>? _orders;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.Can("sales.create")) return;
+        _orders = (await Api.GetAsync<List<OrderItem>>($"/api/orders?kind=Order&from={Format.Today:yyyy-MM-dd}&to={Format.Today.AddDays(1):yyyy-MM-dd}&openOnly=true")).Value;
+    }
+}

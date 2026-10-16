@@ -1,6 +1,6 @@
 # Rename map, phase B: Settings module
 
-Spanish → English renames in `src/Modules/Settings/Toki.Settings/**`. Tests, the Host and the client must update their references with this map. Behavior did not change: only names, comments, log text and the on-disk names listed under "Files on disk".
+Spanish → English renames in `src/Modules/Settings/Abastalia.Settings/**`. Tests, the Host and the client must update their references with this map. Behavior did not change: only names, comments, log text and the on-disk names listed under "Files on disk".
 
 Builds on `docs/rename-map.md` (phase A). The Contracts (`BusinessProfile`, `ISettingsQueries`) were already renamed there.
 
@@ -15,7 +15,7 @@ Builds on `docs/rename-map.md` (phase A). The Contracts (`BusinessProfile`, `ISe
 | `Respaldos.cs` | `Backups.cs` |
 | `Persistence/Migraciones/` (`InicialConfiguracion`, `FraseRespaldoConfiguracion`, `ConfiguracionDbContextModelSnapshot`) | `Persistence/Migrations/` (`20261015152345_InitialSettings`, `SettingsDbContextModelSnapshot`, regenerated) |
 
-Namespace stays `Toki.Settings`; migrations are in `Toki.Settings.Persistence.Migrations`.
+Namespace stays `Abastalia.Settings`; migrations are in `Abastalia.Settings.Persistence.Migrations`.
 
 ## Routes
 
@@ -144,36 +144,36 @@ Descriptions stay in Spanish (shown to the owner).
 
 | Old | New | Read by | Default |
 |---|---|---|---|
-| `Toki:CarpetaClaves` (env `Toki__CarpetaClaves`) | `Toki:KeysFolder` (env `Toki__KeysFolder`) | `AddSettingsModule` (Data Protection key ring) | `C:\ProgramData\Toki\keys` (was `…\claves`) |
+| `Abastalia:CarpetaClaves` (env `Abastalia__CarpetaClaves`) | `Abastalia:KeysFolder` (env `Abastalia__KeysFolder`) | `AddSettingsModule` (Data Protection key ring) | `C:\ProgramData\Abastalia\keys` (was `…\claves`) |
 | `Auditoria:VerificacionNocturna` | `Audit:NightlyCheck` | `NightlyAuditCheck` | `true` |
-| `Licencia:ClavePublica` | `License:PublicKey` | `LicenseService` (ignored in Production) | Toki's key |
-| `Licencia:Archivo` | `License:File` | `LicenseService` | `C:\ProgramData\Toki\license.jws` (was `licencia.jws`) |
-| `Respaldo:Carpeta` (env `Respaldo__Carpeta`) | `Backup:Folder` (env `Backup__Folder`) | `Backups.Folder` | `C:\ProgramData\Toki\backups` (was `…\respaldos`) |
+| `Licencia:ClavePublica` | `License:PublicKey` | `LicenseService` (ignored in Production) | Abastalia's key |
+| `Licencia:Archivo` | `License:File` | `LicenseService` | `C:\ProgramData\Abastalia\license.jws` (was `licencia.jws`) |
+| `Respaldo:Carpeta` (env `Respaldo__Carpeta`) | `Backup:Folder` (env `Backup__Folder`) | `Backups.Folder` | `C:\ProgramData\Abastalia\backups` (was `…\respaldos`) |
 | `Respaldo:Conservar` | `Backup:Keep` | `Backups` | `14` |
 | `Respaldo:CopiaEn` | `Backup:CopyTo` | `Backups.CreateAsync` | none |
 | `Respaldo:Automatico` | `Backup:Automatic` | `NightlyBackup` | `true` |
 | `Respaldo:Hora` | `Backup:Time` | `NightlyBackup` | `23:30:00` |
 
-Users of these keys outside the module: `tests/Toki.IntegrationTests/Infra/TokiApp.cs` (`Auditoria:VerificacionNocturna`, `Respaldo:Automatico`, `Toki:CarpetaClaves`, `Licencia:ClavePublica`, `Licencia:Archivo`, `Respaldo:Carpeta`), `tests/Toki.IntegrationTests/Configuracion/Respaldos*Tests.cs` (`Respaldo:Carpeta`, `Respaldo:CopiaEn`, `Respaldo:Conservar`), `tests/Toki.E2ETests/ServidorToki.cs` (`Respaldo__Carpeta`, `Toki__CarpetaClaves`), README.
+Users of these keys outside the module: `tests/Abastalia.IntegrationTests/Infra/AbastaliaApp.cs` (`Auditoria:VerificacionNocturna`, `Respaldo:Automatico`, `Abastalia:CarpetaClaves`, `Licencia:ClavePublica`, `Licencia:Archivo`, `Respaldo:Carpeta`), `tests/Abastalia.IntegrationTests/Configuracion/Respaldos*Tests.cs` (`Respaldo:Carpeta`, `Respaldo:CopiaEn`, `Respaldo:Conservar`), `tests/Abastalia.E2ETests/ServidorAbastalia.cs` (`Respaldo__Carpeta`, `Abastalia__CarpetaClaves`), README.
 
 ## Files on disk
 
 | Old | New | Note |
 |---|---|---|
-| backup extension `.toki-respaldo` (`Respaldos.Extension`) | `.toki-backup` (`Backups.Extension`) | Spanish word, translated. Old `.toki-respaldo` files are not listed, pruned or counted by the health check any more; `decrypt-backup` still opens them (same format). |
-| temporary `<name>.toki-respaldo.parcial` | `<name>.toki-backup.partial` | |
-| file prefix `toki-yyyyMMdd-HHmmss` | (unchanged) | |
+| backup extension `.abastalia-respaldo` (`Respaldos.Extension`) | `.abastalia-backup` (`Backups.Extension`) | Spanish word, translated. Old `.abastalia-respaldo` files are not listed, pruned or counted by the health check any more; `decrypt-backup` still opens them (same format). |
+| temporary `<name>.abastalia-respaldo.parcial` | `<name>.abastalia-backup.partial` | |
+| file prefix `abastalia-yyyyMMdd-HHmmss` | (unchanged) | |
 | work folder `respaldos\trabajo` (`Respaldos.Trabajo`) | `backups\work` (`Backups.WorkFolder`) | **Host**: `PrepararServicio.cs` creates `respaldos`, `claves` and `respaldos\trabajo` and grants SQL Server Modify on the work folder; it must create `backups`, `keys` and `backups\work` instead, or SQL Server backups fail under the service account. Tests that look in `Path.Combine(folder, "trabajo")` must use `"work"`. |
-| default backup folder `C:\ProgramData\Toki\respaldos` | `C:\ProgramData\Toki\backups` | README mentions the old path. |
-| Data Protection key folder `C:\ProgramData\Toki\claves` | `C:\ProgramData\Toki\keys` | |
-| license file `C:\ProgramData\Toki\licencia.jws` | `C:\ProgramData\Toki\license.jws` | |
-| Data Protection purpose `Toki.Respaldo.Clave` | `Toki.Backup.Key` | Keys stored with the old purpose cannot be unprotected (`Backup.UnreadablePassphrase`); databases start fresh anyway. |
+| default backup folder `C:\ProgramData\Abastalia\respaldos` | `C:\ProgramData\Abastalia\backups` | README mentions the old path. |
+| Data Protection key folder `C:\ProgramData\Abastalia\claves` | `C:\ProgramData\Abastalia\keys` | |
+| license file `C:\ProgramData\Abastalia\licencia.jws` | `C:\ProgramData\Abastalia\license.jws` | |
+| Data Protection purpose `Abastalia.Respaldo.Clave` | `Abastalia.Backup.Key` | Keys stored with the old purpose cannot be unprotected (`Backup.UnreadablePassphrase`); databases start fresh anyway. |
 
-**Kept on purpose (backup file format, byte-compatible):** magic bytes `TOKIRSP2`, HKDF info `toki-respaldo`, header layout, chunk size, PBKDF2 iterations (600,000). A backup made before the rename decrypts with the new code. The `CryptographicException` messages (`No es un respaldo de Toki.`, `El respaldo está dañado.`, `El respaldo está cortado.`) stay in Spanish: `decrypt-backup` prints them to the person restoring.
+**Kept on purpose (backup file format, byte-compatible):** magic bytes `TOKIRSP2`, HKDF info `toki-respaldo`, header layout, chunk size, PBKDF2 iterations (600,000). A backup made before the rename decrypts with the new code. The `CryptographicException` messages (`No es un respaldo de Abastalia.`, `El respaldo está dañado.`, `El respaldo está cortado.`) stay in Spanish: `decrypt-backup` prints them to the person restoring.
 
 ## Console command (in the Host, not in this module)
 
-`descifrar-respaldo <archivo> <salida>` → `decrypt-backup <file> <output>` (glossary). It calls `CifradoRespaldo.DescifrarAsync` → `BackupEncryption.DecryptAsync`. The environment variable `TOKI_FRASE_RESPALDO` is defined in `Program.cs`; suggested `TOKI_BACKUP_PASSPHRASE`.
+`descifrar-respaldo <archivo> <salida>` → `decrypt-backup <file> <output>` (glossary). It calls `CifradoRespaldo.DescifrarAsync` → `BackupEncryption.DecryptAsync`. The environment variable `ABASTALIA_FRASE_RESPALDO` is defined in `Program.cs`; suggested `ABASTALIA_BACKUP_PASSPHRASE`.
 
 ## Database (schema `config` → `settings`)
 
@@ -199,7 +199,7 @@ Migration command used (from the repo root):
 
 ```
 dotnet tool restore
-dotnet dotnet-ef migrations add InitialSettings --project src/Modules/Settings/Toki.Settings --startup-project src/Modules/Settings/Toki.Settings --context SettingsDbContext --output-dir Persistence/Migrations --no-build
+dotnet dotnet-ef migrations add InitialSettings --project src/Modules/Settings/Abastalia.Settings --startup-project src/Modules/Settings/Abastalia.Settings --context SettingsDbContext --output-dir Persistence/Migrations --no-build
 ```
 
 ## Types and members
@@ -255,7 +255,7 @@ dotnet dotnet-ef migrations add InitialSettings --project src/Modules/Settings/T
 | `EstadoRespaldo.ErrorCopia` | `BackupStatus.CopyError` |
 | `Respaldos` (internal, scoped) | `Backups` |
 | ctor `Respaldos(ConfiguracionDbContext db, DatabaseOptions opciones, IDataProtectionProvider proteccion, IConfiguration config, TimeProvider reloj, EstadoRespaldo estado, ILogger<Respaldos> log)` | `Backups(SettingsDbContext db, DatabaseOptions options, IDataProtectionProvider protection, IConfiguration config, TimeProvider clock, BackupStatus status, ILogger<Backups> log)` (same order) |
-| `Respaldos.Extension` (`".toki-respaldo"`) | `Backups.Extension` (`".toki-backup"`) |
+| `Respaldos.Extension` (`".abastalia-respaldo"`) | `Backups.Extension` (`".abastalia-backup"`) |
 | `Respaldos.SinFrase` / `FraseIlegible` | `Backups.NoPassphrase` / `UnreadablePassphrase` |
 | `Respaldos.Carpeta` / `Trabajo` | `Backups.Folder` / `WorkFolder` |
 | `Respaldos.Conservar` (private) | `Backups.Keep` |
@@ -286,7 +286,7 @@ dotnet dotnet-ef migrations add InitialSettings --project src/Modules/Settings/T
 | `ServicioLicencia.Estado` | `LicenseService.Status` |
 | `ServicioLicencia.EstaActiva(Funcion)` / `LimiteDe(Limite)` | `LicenseService.IsEnabled(Feature)` / `LimitOf(Limit)` |
 | `ServicioLicencia.Instalar(string jws)` | `LicenseService.Install(string jws)` |
-| private `ClavePublicaToki` / `Vigente` | `TokiPublicKey` / `IsCurrent` |
+| private `ClavePublicaAbastalia` / `Vigente` | `AbastaliaPublicKey` / `IsCurrent` |
 | `InstalarLicencia` (`Command`, `Validator`, `Handler`, `Funciones`, `Endpoint`) | `InstallLicense` (`Command`, `Validator`, `Handler`, `Features`, `Endpoint`) |
 
 ## Log texts (now English)

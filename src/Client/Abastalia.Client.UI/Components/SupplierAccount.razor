@@ -1,0 +1,158 @@
+@* A supplier's statement (invoices and payments with the running balance), paying it (oldest invoices first) and voiding a payment typed wrong.
+   Opened from Suplidores and from Por pagar. *@
+@inject AbastaliaApi Api
+@inject Session Session
+
+<Dialog Title="@(_statement?.Supplier ?? "Estado de cuenta")" Subtitle="@Subtitle" Wide="true" OnClose="OnClose">
+    <ChildContent>
+        @if (_paid is not null)
+        {
+            <Notice Kind="Notice.Kinds.Success" Title="@_paid" />
+        }
+        @if (_paying)
+        {
+            <div class="esc-form-grid">
+                <Field Label="Monto RD$ *" Error="@_amountError" Hint="Se aplica primero a las facturas más viejas.">
+                    <input class="esc-input esc-num" inputmode="decimal" @bind="_amount" @bind:after="() => _amountError = null" aria-invalid="@(_amountError is null ? "false" : "true")" autofocus />
+                </Field>
+                <Field Label="Forma de pago">
+                    <select class="esc-select" @bind="_method">
+                        @foreach (var m in Enum.GetValues<SupplierPaymentMethod>()) { <option value="@m">@AdminNames.Method(m)</option> }
+                    </select>
+                </Field>
+                <Field Label="Fecha">
+                    <input type="date" class="esc-input" @bind="_date" />
+                </Field>
+                <Field Label="Referencia" Hint="Opcional: número de cheque o de transferencia.">
+                    <input class="esc-input" maxlength="60" @bind="_reference" />
+                </Field>
+            </div>
+        }
+        else if (_statement is null)
+        {
+            <Skeleton Width="100%" />
+        }
+        else
+        {
+            <div class="esc-table-wrap" style="max-height:420px">
+                <table class="esc-table">
+                    <thead><tr><th>Fecha</th><th>Documento</th><th class="esc-num">Cargo</th><th class="esc-num">Pago</th><th class="esc-num">Balance</th><th class="esc-table__chev"><span class="esc-visually-hidden">Anular</span></th></tr></thead>
+                    <tbody>
+                        @foreach (var l in _statement.Lines)
+                        {
+                            <tr>
+                                <td style="white-space:nowrap">@AdminNames.Day(l.Date)</td>
+                                <td><span style="font-weight:600">@l.Type</span> <span class="esc-muted">@l.Document</span>
+                                    @if (l.DueDate is { } due && l.Charge > 0) { <span class="esc-table__sub">Vence @AdminNames.Day(due)</span> }
+                                </td>
+                                <td class="esc-num">@(l.Charge > 0 ? Format.Amount(l.Charge) : "")</td>
+                                <td class="esc-num" style="color:var(--success)">@(l.Payment > 0 ? Format.Amount(l.Payment) : "")</td>
+                                <td class="esc-num" style="font-weight:600">@Format.Amount(l.Balance)</td>
+                                <td class="esc-table__chev">
+                                    @if (l.PaymentId is { } id && CanPay)
+                                    {
+                                        <button type="button" class="esc-button esc-button--ghost esc-button--small" @onclick="() => (_voiding, _voidReason, _error) = (id, null, null)">Anular</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (_statement.Lines.Length == 0)
+                {
+                    <EmptyState Icon="receipt" Title="Sin facturas a crédito ni pagos">Las compras y gastos a crédito de este suplidor salen aquí.</EmptyState>
+                }
+            </div>
+            @if (_voiding is not null)
+            {
+                <div class="esc-card" style="padding:16px;background:var(--surface-2);box-shadow:none">
+                    <Field Label="¿Por qué se anula el pago? *" Hint="Las facturas que pagaba quedan pendientes otra vez.">
+                        <input class="esc-input" maxlength="200" @bind="_voidReason" autofocus />
+                    </Field>
+                    <div class="esc-row" style="gap:8px;margin-top:12px">
+                        <Button OnClick="() => _voiding = null">No anular</Button>
+                        <Button Variant="Button.Variants.Danger" Disabled="@(string.IsNullOrWhiteSpace(_voidReason) || _sending)" OnClick="VoidAsync">Anular pago</Button>
+                    </div>
+                </div>
+            }
+        }
+        @if (_error is not null) { <Notice Title="@_error" /> }
+    </ChildContent>
+    <Footer>
+        @if (_paying)
+        {
+            <Button OnClick="() => _paying = false" Shortcut="Esc">Volver</Button>
+            <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="PayAsync">@(_sending ? "Guardando…" : "Registrar pago")</Button>
+        }
+        else
+        {
+            <Button OnClick="OnClose" Shortcut="Esc">Cerrar</Button>
+            @if (_statement is { Balance: > 0 } && CanPay)
+            {
+                <Button Variant="Button.Variants.Primary" OnClick="StartPayment"><Icon Name="cash" Size="18" /> Pagar</Button>
+            }
+        }
+    </Footer>
+</Dialog>
+
+@code {
+    [Parameter, EditorRequired] public Guid SupplierId { get; set; }
+    [Parameter] public bool Pay { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// <summary>A payment was saved or voided: the list behind should reload.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>TK-214: paying and voiding payments take payables.pay; purchasing.manage alone only reads the statement.</summary>
+    private bool CanPay => Session.Can("payables.pay");
+    private SupplierStatement? _statement;
+    private bool _paying, _sending;
+    private string? _amount, _reference, _amountError, _error, _paid, _voidReason;
+    private SupplierPaymentMethod _method = SupplierPaymentMethod.Transfer;
+    private DateOnly _date = Format.Today;
+    private Guid? _voiding, _paymentId;
+
+    private string Subtitle => _statement is null ? "" : _statement.Balance > 0 ? $"Se le debe {Format.WithCurrency(_statement.Balance)}" : "No se le debe nada";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        if (Pay && CanPay && _statement is { Balance: > 0 }) StartPayment();
+    }
+
+    private async Task LoadAsync()
+    {
+        var r = await Api.GetAsync<SupplierStatement>($"/api/purchasing/suppliers/{SupplierId}/statement");
+        (_statement, _error) = (r.Value, r.Problem?.Message);
+    }
+
+    private void StartPayment() =>
+        (_paying, _amount, _reference, _amountError, _error, _paid, _date, _paymentId) = (true, AdminNames.Number(_statement?.Balance ?? 0), null, null, null, null, Format.Today, Guid.CreateVersion7());
+
+    private async Task PayAsync()
+    {
+        var amount = Format.ParseNumber(_amount);
+        if (amount is not > 0) { _amountError = "Escriba un monto mayor que cero."; return; }
+        if (amount > _statement!.Balance) { _amountError = $"Es más de lo que se le debe ({Format.WithCurrency(_statement.Balance)})."; return; }
+        _sending = true;
+        var r = await Api.PostAsync<SupplierPaid>("/api/purchasing/payments",
+            new PaySupplier(SupplierId, amount.Value, _method, _date, string.IsNullOrWhiteSpace(_reference) ? null : _reference.Trim(), _paymentId));
+        _sending = false;
+        if (r.Value is not { } paid) { _error = r.Problem!.Message; return; }
+        _paid = $"Pago de {Format.WithCurrency(amount.Value)} aplicado a {string.Join(", ", paid.Allocations.Select(a => a.Ncf))}.";
+        _paying = false;
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task VoidAsync()
+    {
+        if (_voiding is not { } id) return;
+        _sending = true;
+        var r = await Api.PostAsync<Empty>($"/api/purchasing/payments/{id}/void", new VoidReason(_voidReason!.Trim()));
+        _sending = false;
+        if (r.Problem is { } p) { _error = p.Message; return; }
+        (_voiding, _paid) = (null, "Pago anulado. Sus facturas quedaron pendientes otra vez.");
+        await LoadAsync();
+        await OnChanged.InvokeAsync();
+    }
+}

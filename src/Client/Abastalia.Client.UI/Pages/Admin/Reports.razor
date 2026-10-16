@@ -1,0 +1,137 @@
+@page "/admin/reports"
+@inject AbastaliaApi Api
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@inject Session Session
+
+<Admin Title="Reportes" Subtitle="Descargue lo que necesita para revisar el negocio o para su contador, en Excel o CSV.">
+    <ChildContent>
+        <section class="esc-card esc-card--padded esc-col" style="gap:12px">
+            <div class="esc-row" style="gap:12px;align-items:flex-end">
+                <Segmented Label="Periodo" Options="Periods" Value="@_period" ValueChanged="ChoosePeriod" />
+                <label class="esc-field" style="flex:0 1 170px"><span>Desde</span><input class="esc-input" type="date" aria-label="Desde" @bind="_from" @bind:after='() => _period = "custom"' /></label>
+                <label class="esc-field" style="flex:0 1 170px"><span>Hasta</span><input class="esc-input" type="date" aria-label="Hasta" @bind="_to" @bind:after='() => _period = "custom"' /></label>
+            </div>
+            <span class="esc-muted">@PeriodText</span>
+            @if (!Session.Can("costs.view"))
+            {
+                <span class="esc-muted">Las columnas de costo, ganancia y valor al costo salen vacías: hace falta el permiso “Ver costos y ganancias”.</span>
+            }
+            @if (_message is not null)
+            {
+                <Notice Kind="_messageKind" Title="@_message" />
+            }
+        </section>
+
+        @foreach (var group in Shown)
+        {
+            <section class="esc-card esc-card--padded">
+                <div class="esc-card__head"><h2 class="esc-section-title">@group.Title</h2>@if (group.Note is not null) { <span class="esc-muted">@group.Note</span> }</div>
+                <ul class="esc-alerts">
+                    @foreach (var r in group.Reports)
+                    {
+                        <li class="esc-alert esc-alert--info" style="padding-left:0;padding-right:0">
+                            <span class="esc-alert__icon"><Icon Name="@r.Icon" Size="18" /></span>
+                            <div class="esc-alert__body">
+                                <div class="esc-alert__title">@r.Name</div>
+                                <div class="esc-alert__meta">@r.About@(r.UsesPeriod ? "" : " · al día de hoy")</div>
+                            </div>
+                            <div class="esc-row" style="gap:8px;flex-wrap:nowrap">
+                                @foreach (var (format, label) in Formats)
+                                {
+                                    var key = r.Path + format;
+                                    <Button class="esc-button esc-button--small" Disabled="@(_busy.Contains(key))" aria-label="@($"Descargar {r.Name} en {label}")" OnClick="() => DownloadAsync(r, format)">
+                                        <Icon Name="arrow-down" Size="16" /> @(_busy.Contains(key) ? "Preparando…" : label)
+                                    </Button>
+                                }
+                            </div>
+                        </li>
+                    }
+                </ul>
+            </section>
+        }
+    </ChildContent>
+</Admin>
+
+@code {
+    private sealed record Report(string Path, string Name, string About, string Icon, bool UsesPeriod = true);
+    private sealed record Group(string Title, string? Note, Report[] Reports);
+
+    /// <summary>TK-213: Turnos y cuadres needs shifts.view and the DGII formats fiscal.reports; the rest reports.view (the server checks the same).</summary>
+    private static string PermissionOf(Report r) => r.Path == "shifts" ? "shifts.view" : r.Path.StartsWith("dgii/", StringComparison.Ordinal) ? "fiscal.reports" : "reports.view";
+
+    public static bool Allowed(Session s) => s.Can("reports.view") || s.Can("shifts.view") || s.Can("fiscal.reports");
+
+    private IEnumerable<Group> Shown => Groups.Select(g => g with { Reports = [.. g.Reports.Where(r => Session.Can(PermissionOf(r)))] }).Where(g => g.Reports.Length > 0);
+
+    private static readonly IReadOnlyList<(string, string)> Periods = [("month", "Este mes"), ("last-month", "Mes pasado"), ("7", "7 días")]; // any other dates: the fields beside it
+    private static readonly (string, string)[] Formats = [("xlsx", "Excel"), ("csv", "CSV")];
+    private static readonly System.Globalization.CultureInfo Es = System.Globalization.CultureInfo.GetCultureInfo("es-DO");
+
+    private static readonly Group[] Groups =
+    [
+        new("Ventas", null, [
+            new("sales/by-day", "Ventas por día", "Ventas, descuentos, devoluciones, ITBIS, costo y ganancia de cada día", "calendar"),
+            new("sales/by-product", "Ventas por producto", "Cantidad, venta sin ITBIS y ganancia de cada producto", "package"),
+            new("sales/by-category", "Ventas por categoría", "Venta, costo y ganancia de cada categoría", "chart"),
+            new("sales/by-cashier", "Ventas por cajero", "Lo que vendió cada persona", "users"),
+        ]),
+        new("Caja e inventario", null, [
+            new("shifts", "Turnos y cuadres", "Cada turno con lo esperado, lo contado y la diferencia", "wallet"),
+            new("inventory/value", "Valor del inventario", "Existencia y costo de cada producto", "database", UsesPeriod: false),
+        ]),
+        new("Cuentas", null, [
+            new("receivables", "Cuentas por cobrar", "Lo que deben los clientes, por antigüedad", "users", UsesPeriod: false),
+            new("payables", "Cuentas por pagar", "Lo que se les debe a los suplidores", "building", UsesPeriod: false),
+        ]),
+        new("DGII", "Para el contador: se copian en la herramienta de la DGII.", [
+            new("dgii/607", "Formato 607 · ventas", "Comprobantes emitidos en el periodo", "receipt"),
+            new("dgii/606", "Formato 606 · compras", "Compras y gastos con comprobante en el periodo", "receipt"),
+            new("dgii/608", "Formato 608 · anulados", "Comprobantes anulados o rechazados en el periodo", "receipt"),
+        ]),
+    ];
+
+    private string _period = "month";
+    private DateOnly _from, _to;
+    private string? _message;
+    private Notice.Kinds _messageKind;
+    private readonly HashSet<string> _busy = [];
+
+    private string PeriodText => _from > _to ? "“Desde” va después de “Hasta”."
+        : $"Del {_from.ToString("d 'de' MMMM yyyy", Es)} al {_to.ToString("d 'de' MMMM yyyy", Es)} · {_to.DayNumber - _from.DayNumber + 1} días";
+
+    protected override void OnInitialized() => ChoosePeriod("month");
+
+    private void ChoosePeriod(string period)
+    {
+        var today = Format.Today;
+        var month = new DateOnly(today.Year, today.Month, 1);
+        (_from, _to) = period switch
+        {
+            "month" => (month, today),
+            "last-month" => (month.AddMonths(-1), month.AddDays(-1)),
+            "7" => (today.AddDays(-6), today),
+            _ => (_from, _to),
+        };
+        (_period, _message) = (period, null);
+    }
+
+    private async Task DownloadAsync(Report r, string format)
+    {
+        var key = r.Path + format;
+        if (!_busy.Add(key)) return;
+        _message = null;
+        var url = $"/api/reports/{r.Path}?format={format}" + (r.UsesPeriod ? $"&from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}" : "");
+        var file = await Api.GetAsync<FileDownload>(url);
+        _busy.Remove(key);
+        if (file.Value is { } f)
+        {
+            await JS.InvokeVoidAsync("escuadra.download", f.FileName, f.ContentType, f.Content);
+            (_messageKind, _message) = (Notice.Kinds.Success, $"Listo: {f.FileName}");
+            return;
+        }
+        (_messageKind, _message) = (file.Problem!.Kind, file.Problem.Code == "Reports.InvalidPeriod"
+            ? "Revise las fechas: “Desde” va antes de “Hasta” y el periodo es de un año como máximo."
+            : file.Problem.Message);
+    }
+}

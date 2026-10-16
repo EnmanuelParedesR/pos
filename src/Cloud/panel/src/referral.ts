@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { apiUrl } from "./api";
 
 /** TK-255: the code from /precios?ref=CODE, kept in this browser until the business's first checkout sends it (the cloud keeps it from then on). */
-const key = "toki.ref";
+const key = "abastalia.ref";
 
-/** Toki's codes: 8 letters and digits without 0/O, 1/I/L. */
+/** Abastalia's codes: 8 letters and digits without 0/O, 1/I/L. */
 export const normalizeReferral = (code: string | null) => {
   const c = code?.trim().toUpperCase() ?? "";
   return /^[A-HJKMNP-Z2-9]{8}$/.test(c) ? c : null;

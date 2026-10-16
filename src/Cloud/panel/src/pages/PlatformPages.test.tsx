@@ -42,7 +42,7 @@ const overview: MetricsOverview = {
 
 /** The whole app signed in as `me`, at `path`. */
 function renderApp(me: Me, path: string) {
-  localStorage.setItem("toki.refreshToken", "saved");
+  localStorage.setItem("abastalia.refreshToken", "saved");
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) =>
@@ -76,8 +76,8 @@ it("TK-189: an owner never sees the Plataforma area, not even by its address", a
   expect(fetch.mock.calls.some(([url]) => String(url).includes("/api/platform"))).toBe(false);
 });
 
-it("TK-189 / TK-190: Toki staff get the Plataforma area with the metrics dashboard", async () => {
-  renderApp({ ...owner, email: "staff@toki.example", isPlatformAdmin: true }, "/platform");
+it("TK-189 / TK-190: Abastalia staff get the Plataforma area with the metrics dashboard", async () => {
+  renderApp({ ...owner, email: "staff@abastalia.example", isPlatformAdmin: true }, "/platform");
 
   expect(await screen.findByText("Embudo de activación")).toBeTruthy();
   expect(screen.getAllByRole("link", { name: /Plataforma/ }).length).toBeGreaterThan(0);
@@ -94,18 +94,18 @@ it("TK-189 / TK-190: Toki staff get the Plataforma area with the metrics dashboa
   expect(within(certification).getByText("Detenida")).toBeTruthy();
   expect(within(screen.getByText("Súper Listo").closest("tr")!).getByText("Certificada")).toBeTruthy();
   expect(within(funnel).getByText("Certificado DGII")).toBeTruthy();
-  expect(screen.queryByPlaceholderText(/Pregúntale a Toki/)).toBeNull(); // the owner's assistant is not for staff pages
+  expect(screen.queryByPlaceholderText(/Pregúntale a Talia/)).toBeNull(); // the owner's assistant is not for staff pages
 });
 
 it("TK-234: staff list the accompaniment requests and schedule session 1 in store time", async () => {
-  localStorage.setItem("toki.refreshToken", "saved");
+  localStorage.setItem("abastalia.refreshToken", "saved");
   const request: PlatformAccompaniment = {
     id: "a1", tenantId: "t2", tenantName: "colmado@example.com", storeId: "s2", storeName: "Colmado Acompañado", contactName: "Ana Pérez", phone: "809-555-1234",
     preferredTimes: "Mañanas", status: "New", session1Utc: null, session2Utc: null, notes: null, createdUtc: "2026-10-15T15:00:00Z", changedUtc: "2026-10-15T15:00:00Z",
   };
   const fetch = vi.fn(async (url: string, init?: RequestInit) =>
     url.endsWith("/api/me")
-      ? json(200, { ...owner, email: "staff@toki.example", isPlatformAdmin: true })
+      ? json(200, { ...owner, email: "staff@abastalia.example", isPlatformAdmin: true })
       : url.endsWith("/api/platform/accompaniment") && (init?.method ?? "GET") === "GET"
         ? json(200, [request])
         : url.includes("/api/platform/accompaniment/a1")

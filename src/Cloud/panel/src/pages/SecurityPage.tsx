@@ -5,7 +5,7 @@ import { ConfirmButton, LoadError, Notice, PageHead, Skeleton } from "../ui";
 /** The key in groups of four, as authenticator apps show it. */
 const groups = (key: string) => key.replace(/(.{4})/g, "$1 ").trim();
 
-/** R11 B-Med6: "Seguridad", the account's two-step verification (Identity's /manage/2fa). Required for Toki staff in the platform console;
+/** R11 B-Med6: "Seguridad", the account's two-step verification (Identity's /manage/2fa). Required for Abastalia staff in the platform console;
  * any owner may turn it on. The key goes in an authenticator app (Google Authenticator, Microsoft Authenticator…); the backup codes show once. */
 export function SecurityPage() {
   const [status, setStatus] = useState<TwoFactorStatus | null>(null);

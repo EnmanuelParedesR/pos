@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Abastalia.BuildingBlocks\Abastalia.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\Abastalia.Sales.Contracts\Abastalia.Sales.Contracts.csproj" />
+    <ProjectReference Include="..\..\Settings\Abastalia.Settings.Contracts\Abastalia.Settings.Contracts.csproj" />
+    <ProjectReference Include="..\..\Inventory\Abastalia.Inventory.Contracts\Abastalia.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\CashRegister\Abastalia.CashRegister.Contracts\Abastalia.CashRegister.Contracts.csproj" />
+    <ProjectReference Include="..\..\Fiscal\Abastalia.Fiscal.Contracts\Abastalia.Fiscal.Contracts.csproj" />
+    <ProjectReference Include="..\..\Customers\Abastalia.Customers.Contracts\Abastalia.Customers.Contracts.csproj" />
+    <ProjectReference Include="..\..\Sync\Abastalia.Sync.Contracts\Abastalia.Sync.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="QRCoder" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Abastalia.UnitTests" />
+    <InternalsVisibleTo Include="Abastalia.IntegrationTests" />
+  </ItemGroup>
+</Project>

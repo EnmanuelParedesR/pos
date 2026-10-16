@@ -51,8 +51,8 @@ it("TK-255: /precios?ref= keeps a valid code and the first checkout sends it", a
       <App />
     </MemoryRouter>,
   );
-  expect(await screen.findByText(/Viene recomendado por un cliente de Toki/)).toBeTruthy();
-  expect(localStorage.getItem("toki.ref")).toBe("ABCD2345");
+  expect(await screen.findByText(/Viene recomendado por un cliente de Abastalia/)).toBeTruthy();
+  expect(localStorage.getItem("abastalia.ref")).toBe("ABCD2345");
   cleanup();
 
   const billing: Billing = {

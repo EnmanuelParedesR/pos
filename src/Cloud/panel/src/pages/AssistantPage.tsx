@@ -7,7 +7,7 @@ interface Turn { role: "user" | "assistant"; content: string }
 
 const suggestions = ["¿Cuánto vendí hoy?", "¿Qué cajera tuvo faltante esta semana?", "¿Qué fue lo más vendido este mes?"];
 
-/** Chat with the owner's assistant. History lives only in this screen; a question asked from the "Pregúntale a Toki" bar arrives in router state. */
+/** Chat with the owner's assistant. History lives only in this screen; a question asked from the "Pregúntale a Talia" bar arrives in router state. */
 export function AssistantPage() {
   const { state } = useLocation() as { state: { question?: string } | null };
   const [history, setHistory] = useState<Turn[]>([]);
@@ -48,7 +48,7 @@ export function AssistantPage() {
 
   return (
     <>
-      <PageHead title="Pregúntale a Toki" subtitle="Contesto con los datos que envían sus tiendas: ventas, cuadres y productos." />
+      <PageHead title="Pregúntale a Talia" subtitle="Contesto con los datos que envían sus tiendas: ventas, cuadres y productos." />
 
       <section className="esc-card esc-chat" aria-live="polite">
         {history.length === 0 && !busy && (

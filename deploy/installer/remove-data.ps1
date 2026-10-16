@@ -1,23 +1,23 @@
 ﻿#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-  Uninstall with "borrar datos" ticked (TK-242): deletes the Toki database and C:\ProgramData\Toki (backups, license, keys, logs).
+  Uninstall with "borrar datos" ticked (TK-242): deletes the Abastalia database and C:\ProgramData\Abastalia (backups, license, keys, logs).
   Cannot be undone. Without it, uninstalling keeps everything so a reinstall or a move to a new PC finds the data.
-  First (R10 #9) it copies the newest encrypted backup (.toki-backup, opens with the store's backup phrase) to $BackupTo\Toki - ultimo respaldo,
+  First (R10 #9) it copies the newest encrypted backup (.abastalia-backup, opens with the store's backup phrase) to $BackupTo\Abastalia - ultimo respaldo,
   outside ProgramData. There is no backup command outside the running service, so it is the last one the service made, looked up in
-  Backup:Folder of the installed server's settings (as Backups.Folder in the Settings module), C:\ProgramData\Toki\backups by default.
+  Backup:Folder of the installed server's settings (as Backups.Folder in the Settings module), C:\ProgramData\Abastalia\backups by default.
   Exit 2 = no backup to copy or the copy failed, and nothing was deleted. Exit 3 = something could not be deleted.
   -NoFinalBackup deletes without that copy.
-  R11 C9: it also deletes what lives outside that folder: the e-CF certificate and its key (the key of NT SERVICE\Toki, with that account's
-  profile; a certificate imported into a Windows store, by the thumbprint in keys\ecf-certificate.json), the self-signed "CN=Toki Nodo"
-  certificate of stores installed before TK-091, and the service's SQL Server login. R11 C13: a link planted in C:\ProgramData\Toki stops it.
+  R11 C9: it also deletes what lives outside that folder: the e-CF certificate and its key (the key of NT SERVICE\Abastalia, with that account's
+  profile; a certificate imported into a Windows store, by the thumbprint in keys\ecf-certificate.json), the self-signed "CN=Abastalia Nodo"
+  certificate of stores installed before TK-091, and the service's SQL Server login. R11 C13: a link planted in C:\ProgramData\Abastalia stops it.
 #>
-param([string] $Server = '', [string] $Database = 'Toki',
+param([string] $Server = '', [string] $Database = 'Abastalia',
     [string] $BackupTo = [Environment]::GetFolderPath('Desktop'), [switch] $NoFinalBackup,
-    [string] $ServerDir = (Join-Path $PSScriptRoot '..\server'), [string] $Service = 'Toki')
+    [string] $ServerDir = (Join-Path $PSScriptRoot '..\server'), [string] $Service = 'Abastalia')
 $ErrorActionPreference = 'Continue'
 . (Join-Path $PSScriptRoot 'remove-tree.ps1')
-$data = Join-Path $env:ProgramData 'Toki'
+$data = Join-Path $env:ProgramData 'Abastalia'
 $failed = $false
 
 # Same order as the service reads its configuration: appsettings.json, appsettings.Production.json, then the Section__Key variable.
@@ -35,15 +35,15 @@ function Get-Setting([string] $Section, [string] $Key, [string] $Default) {
 }
 function Get-BackupFolder { Get-Setting 'Backup' 'Folder' (Join-Path $data 'backups') }
 if (-not $Server) {
-    $Server = try { (New-Object System.Data.SqlClient.SqlConnectionStringBuilder (Get-Setting 'Database' 'ConnectionString' 'Server=.\TOKI')).DataSource } catch { '.\TOKI' }
+    $Server = try { (New-Object System.Data.SqlClient.SqlConnectionStringBuilder (Get-Setting 'Database' 'ConnectionString' 'Server=.\ABASTALIA')).DataSource } catch { '.\ABASTALIA' }
 }
 
 if (-not $NoFinalBackup) {
-    $latest = Get-ChildItem -LiteralPath (Get-BackupFolder) -Filter '*.toki-backup' -File -ErrorAction SilentlyContinue |
+    $latest = Get-ChildItem -LiteralPath (Get-BackupFolder) -Filter '*.abastalia-backup' -File -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
-    $target = Join-Path $BackupTo 'Toki - ultimo respaldo'
+    $target = Join-Path $BackupTo 'Abastalia - ultimo respaldo'
     if (-not $latest -or -not $BackupTo -or $target.StartsWith($env:ProgramData, [StringComparison]::OrdinalIgnoreCase)) {
-        Write-Warning 'No hay un respaldo de Toki para guardar fuera de ProgramData. No se borró nada (-NoFinalBackup borra sin él).'
+        Write-Warning 'No hay un respaldo de Abastalia para guardar fuera de ProgramData. No se borró nada (-NoFinalBackup borra sin él).'
         exit 2
     }
     try {
@@ -79,7 +79,7 @@ try {
 $ecf = Join-Path $data 'keys\ecf-certificate.json'
 $thumbprint = try { [string](Get-Content -LiteralPath $ecf -Raw | ConvertFrom-Json).Fiscal.Certificate.Thumbprint } catch { '' }
 $certificates = @(Get-ChildItem Cert:\LocalMachine\My | Where-Object { ($thumbprint -and $_.Thumbprint -eq $thumbprint) -or
-    ($_.Subject -eq 'CN=Toki Nodo' -and $_.Issuer -eq 'CN=Toki Nodo') })
+    ($_.Subject -eq 'CN=Abastalia Nodo' -and $_.Issuer -eq 'CN=Abastalia Nodo') })
 foreach ($certificate in $certificates) {
     try { Remove-Item -LiteralPath $certificate.PSPath -DeleteKey -ErrorAction Stop }
     catch { Write-Warning "No se pudo borrar el certificado $($certificate.Subject): $_"; $failed = $true }
@@ -99,7 +99,7 @@ if (Test-Path -LiteralPath $data) {
     $failed = $true
 }
 if ($failed) {
-    Write-Warning 'No se pudieron borrar todos los datos de Toki.'
+    Write-Warning 'No se pudieron borrar todos los datos de Abastalia.'
     exit 3
 }
-Write-Host 'Datos de Toki borrados.'
+Write-Host 'Datos de Abastalia borrados.'

@@ -4,22 +4,22 @@ Regla (15 de octubre de 2026): **todo el código está en inglés**. Eso incluye
 
 En español queda solo lo que ve una persona en la tienda: textos de pantalla, mensajes de error y de validación que muestra la caja, la factura impresa y los reportes para el dueño o el contador. La documentación de `docs/` y `backlog/` sigue en español.
 
-Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), e-CF (`Ecf`), DGII, 606/607, PLU.
+Los nombres propios no se traducen: Abastalia, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), e-CF (`Ecf`), DGII, 606/607, PLU.
 
 ## Módulos
 
 | Español | Proyecto | Esquema SQL | Ruta |
 |---|---|---|---|
-| Identidad | `Toki.Identity` | `identity` | `/api/identity` |
-| Configuración, licencia, respaldos, auditoría | `Toki.Settings` | `settings` | `/api/settings`, `/api/backups`, `/api/audit` |
-| Inventario y catálogo | `Toki.Inventory` | `inventory` | `/api/inventory` |
-| Caja (cajas, turnos, movimientos, cierre Z) | `Toki.CashRegister` | `cash` | `/api/cash` |
-| Ventas | `Toki.Sales` | `sales` | `/api/sales` |
-| Compras y suplidores | `Toki.Purchasing` | `purchasing` | `/api/purchasing` |
-| Clientes y fiado | `Toki.Customers` | `customers` | `/api/customers` |
-| Fiscal (e-CF) | `Toki.Fiscal` | `fiscal` | `/api/fiscal` |
-| Reportes | `Toki.Reports` | — | `/api/reports` |
-| Nube (conexión y subida) | `Toki.Sync` | `sync` | `/api/sync` |
+| Identidad | `Abastalia.Identity` | `identity` | `/api/identity` |
+| Configuración, licencia, respaldos, auditoría | `Abastalia.Settings` | `settings` | `/api/settings`, `/api/backups`, `/api/audit` |
+| Inventario y catálogo | `Abastalia.Inventory` | `inventory` | `/api/inventory` |
+| Caja (cajas, turnos, movimientos, cierre Z) | `Abastalia.CashRegister` | `cash` | `/api/cash` |
+| Ventas | `Abastalia.Sales` | `sales` | `/api/sales` |
+| Compras y suplidores | `Abastalia.Purchasing` | `purchasing` | `/api/purchasing` |
+| Clientes y fiado | `Abastalia.Customers` | `customers` | `/api/customers` |
+| Fiscal (e-CF) | `Abastalia.Fiscal` | `fiscal` | `/api/fiscal` |
+| Reportes | `Abastalia.Reports` | — | `/api/reports` |
+| Nube (conexión y subida) | `Abastalia.Sync` | `sync` | `/api/sync` |
 
 ## Términos
 
@@ -125,6 +125,6 @@ Roles de partida (M16): Administrador, Supervisor, Cajero, Cajero con apertura, 
 - Encabezado del equipo: `X-Device` (antes `X-Dispositivo`).
 - Códigos de error: `Modulo.Motivo` en inglés, por ejemplo `Sales.TotalChanged` (antes `Ventas.TotalCambio`) y `Approval.Required` (antes `Autorizacion.Requerida`).
 - Comandos de consola: `prepare-service` y `decrypt-backup` (tienda); `grant-platform-admin` y `revoke-platform-admin` (nube).
-- Equipo de Toki en la nube (TK-189): superadministrador = `PlatformAdmin` (claim `platform_role`), consola = `/api/platform`, cliente = `Tenant`, desactivar = `disable`, revocar caja = `revoke`. Latido del nodo (TK-190) = `NodeHeartbeatV1`.
+- Equipo de Abastalia en la nube (TK-189): superadministrador = `PlatformAdmin` (claim `platform_role`), consola = `/api/platform`, cliente = `Tenant`, desactivar = `disable`, revocar caja = `revoke`. Latido del nodo (TK-190) = `NodeHeartbeatV1`.
 - Miembros del panel en la nube (TK-217): miembro = `TenantMember`, rol = `MemberRole` (Dueño = `Owner`, Solo lectura = `ReadOnly`), invitación = `TenantInvite` (enlace de un solo uso, `/invite#{token}` en el panel), equipo = `/api/members`, cambiar de negocio = `POST /api/me/tenant`, política de escritura = `PanelOwner`. Correo saliente = `IEmailSender`.
 - Datos que ve el dueño, como los nombres de los roles sembrados (Administrador, Supervisor, Cajero), siguen en español: son contenido, no código. En el código, las constantes que los identifican van en inglés (`RoleIds.Administrator`).

@@ -1,0 +1,127 @@
+@page "/sign-in"
+@inject AbastaliaApi Api
+@inject Session Session
+@inject NavigationManager Nav
+
+<div class="esc-page" style="align-items:center;justify-content:center">
+    <div style="display:flex;flex-wrap:wrap;gap:24px;width:min(1040px,100%);align-items:flex-start;justify-content:center">
+        <section class="esc-col" style="flex:1 1 420px;max-width:640px;gap:12px" aria-label="¿Quién entra?">
+            <h1 class="esc-title">¿Quién entra?</h1>
+            @if (Expired || Session.Expired)
+            {
+                <Notice Kind="Notice.Kinds.Warning" Title="Su sesión terminó. Entre de nuevo con su PIN." />
+            }
+            @if (_users is null)
+            {
+                <div class="esc-muted">Cargando…</div>
+            }
+            else if (_users.Count == 0)
+            {
+                <Notice Kind="Notice.Kinds.Warning" Title="@(_listError ?? "No hay usuarios activos.")" />
+            }
+            else
+            {
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px">
+                    @foreach (var u in _users)
+                    {
+                        <button type="button" class="esc-tile" aria-pressed="@(u == _chosen ? "true" : "false")"
+                                style="@(u == _chosen ? "border:2px solid var(--brand);background:var(--brand-tint)" : "")" @onclick="() => Choose(u)">
+                            <Icon Name="user" Size="24" />
+                            <span class="esc-tile__name">@u.Name</span>
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+
+        <section class="esc-card esc-card--padded esc-col" style="flex:0 1 360px;gap:16px" @onkeydown="KeyDown" tabindex="0" data-no-scan @ref="_pinArea" aria-label="PIN">
+            <div>
+                <div style="font-size:var(--t-20);font-weight:700">@(_chosen?.Name ?? "Elija su nombre")</div>
+                <div class="esc-subtitle">Escriba su PIN</div>
+            </div>
+            <PinDots Length="_pin.Length" Max="Math.Max(4, _pin.Length)" />
+            @if (_error is not null)
+            {
+                <Notice Kind="_errorKind" Title="@_error" />
+            }
+            <Keypad OnKey="Key" />
+            <Button Variant="Button.Variants.Primary" Money="true" Shortcut="Enter" Disabled="@(_chosen is null || _pin.Length < 4 || _sending)" OnClick="SignInAsync">Entrar</Button>
+        </section>
+    </div>
+</div>
+
+@code {
+    /// <summary><c>sign-in?expired=true</c> (Blazor reads only true/false here: "1" would throw while rendering).</summary>
+    [SupplyParameterFromQuery] public bool Expired { get; set; }
+
+    private List<ActiveUser>? _users;
+    private ActiveUser? _chosen;
+    private string _pin = "";
+    private string? _error, _listError;
+    private Notice.Kinds _errorKind;
+    private bool _sending;
+    private ElementReference _pinArea;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.LoadAsync();
+        var r = await Api.GetAsync<List<ActiveUser>>("/api/identity/users/active");
+        if (r.Problem?.Code == "Identity.DeviceNotPaired")
+        {
+            // This PC was revoked by the owner: pair it again.
+            await Session.ForgetDeviceAsync();
+            Nav.NavigateTo("setup");
+            return;
+        }
+        _listError = r.Problem?.Message;
+        _users = r.Value ?? [];
+    }
+
+    private async Task Choose(ActiveUser u)
+    {
+        (_chosen, _pin, _error) = (u, "", null);
+        await _pinArea.FocusAsync();
+    }
+
+    private void Key(string k) => _pin = Keypad.Apply(_pin, k, 8);
+
+    private async Task KeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key.Length == 1 && char.IsAsciiDigit(e.Key[0])) Key(e.Key);
+        else if (e.Key == "Backspace") Key("backspace");
+        else if (e.Key == "Enter" && _chosen is not null && _pin.Length >= 4) await SignInAsync();
+    }
+
+    private async Task SignInAsync()
+    {
+        if (_chosen is null || _sending) return;
+        _sending = true;
+        var r = await Api.PostAsync<OpenedSession>("/api/identity/sessions", new { _chosen.Code, Pin = _pin });
+        if (r.Value is not { } s)
+        {
+            _sending = false;
+            _pin = "";
+            _errorKind = r.Problem!.Kind;
+            _error = r.Problem.Code switch
+            {
+                "Identity.InvalidCredentials" => "PIN incorrecto.",
+                "Identity.UserLocked" => "Demasiados intentos. Espere unos minutos o pida a un supervisor que lo desbloquee.",
+                _ => r.Problem.Message,
+            };
+            return;
+        }
+
+        // The profile needs the new session token on the request.
+        Session.Open(s, new Me(s.UserId, s.Name, Guid.Empty, []));
+        var me = await Api.GetAsync<Me>("/api/identity/me");
+        Session.Open(s, me.Value ?? new Me(s.UserId, s.Name, Guid.Empty, []));
+        if (Session.Can("products.manage") && await Session.TakeSampleDataRequestAsync()) await Api.PostAsync<SampleDataStatus>("/api/inventory/sample-data");
+        if (Session.Can("settings.manage") && await Session.TakeBusinessRequestAsync() is { } business) await Api.PutAsync<Empty>("/api/settings/business", business);
+        _sending = false;
+
+        if (Session.IsBackOffice) { Nav.NavigateTo("admin"); return; }
+        var shift = await Api.GetAsync<CurrentShift>("/api/cash/shifts/current");
+        Session.Shift = shift.Value;
+        Nav.NavigateTo(shift.Value is null ? "open-register" : "sale");
+    }
+}

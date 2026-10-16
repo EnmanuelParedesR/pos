@@ -1,0 +1,100 @@
+@implements IDisposable
+@inject Approver Approver
+@inject AbastaliaApi Api
+@inject Session Session
+
+@if (Approver.Current is { } s)
+{
+    <Dialog Title="Autoriza un supervisor" Subtitle="@Approver.Explain(s.Permission)" OnClose="Cancel" OnKey="KeyDown">
+        <ChildContent>
+            <div class="esc-notice esc-notice--info"><div class="esc-notice__body">@(string.IsNullOrEmpty(s.Summary) ? s.Reason : s.Summary)</div></div>
+            @if (_supervisors is null)
+            {
+                <div class="esc-muted">Cargando…</div>
+            }
+            else
+            {
+                <div class="esc-row" role="group" aria-label="Supervisor">
+                    @foreach (var u in _supervisors)
+                    {
+                        <button type="button" class="esc-chip" aria-pressed="@(u.Code == _code ? "true" : "false")" @onclick="() => Choose(u.Code)">@u.Name</button>
+                    }
+                </div>
+            }
+            <div tabindex="0" data-no-scan @ref="_pinArea" style="outline:none;display:flex;flex-direction:column;gap:12px">
+                <PinDots Length="_pin.Length" Max="Math.Max(4, _pin.Length)" />
+                <Keypad OnKey="Key" />
+            </div>
+            @if (_error is not null)
+            {
+                <Notice Kind="_errorKind" Title="@_error" />
+            }
+        </ChildContent>
+        <Footer>
+            <Button OnClick="Cancel" Shortcut="Esc">Cancelar</Button>
+            <Button Variant="Button.Variants.Primary" Shortcut="Enter" Disabled="@(_code is null || _pin.Length < 4 || _sending)" OnClick="ApproveAsync">Autorizar</Button>
+        </Footer>
+    </Dialog>
+}
+
+@code {
+    private List<ActiveUser>? _supervisors;
+    private string? _code, _error;
+    private string _pin = "";
+    private bool _sending;
+    private Notice.Kinds _errorKind;
+    private ElementReference _pinArea;
+
+    protected override void OnInitialized() => Approver.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(async () =>
+    {
+        (_code, _pin, _error, _supervisors) = (null, "", null, null);
+        StateHasChanged();
+        if (Approver.Current is null) return;
+        var r = await Api.GetAsync<List<ActiveUser>>("/api/identity/users/active");
+        // Anyone can be chosen; the API checks that the person has the permission (Identity.SupervisorLacksPermission).
+        _supervisors = r.Value?.Where(u => u.Id != Session.UserId).ToList() ?? [];
+        if (_supervisors.Count == 1) _code = _supervisors[0].Code;
+        StateHasChanged();
+        await _pinArea.FocusAsync();
+    });
+
+    private async Task Choose(string code)
+    {
+        (_code, _pin, _error) = (code, "", null);
+        await _pinArea.FocusAsync();
+    }
+
+    private void Key(string k) => _pin = Keypad.Apply(_pin, k, 8);
+
+    private async Task KeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key.Length == 1 && char.IsAsciiDigit(e.Key[0])) Key(e.Key);
+        else if (e.Key == "Backspace") Key("backspace");
+        else if (e.Key == "Enter" && _code is not null && _pin.Length >= 4) await ApproveAsync();
+    }
+
+    private async Task ApproveAsync()
+    {
+        // Guarded: a second Enter or click while the first is in flight would count as another PIN attempt.
+        if (Approver.Current is not { } s || _code is null || _sending) return;
+        _sending = true;
+        var r = await Api.PostAsync<ApprovalGranted>("/api/identity/approvals", new { Code = _code, Pin = _pin, s.Permission, s.ResourceId, s.Summary });
+        _sending = false;
+        if (r.Value is { } a)
+        {
+            Approver.Respond(a.ApprovalId);
+            return;
+        }
+        (_pin, _errorKind, _error) = ("", r.Problem!.Kind, r.Problem.Code switch
+        {
+            "Identity.InvalidCredentials" => "PIN incorrecto, o esa persona no puede autorizar esto.",
+            _ => r.Problem.Message,
+        });
+    }
+
+    private void Cancel() => Approver.Respond(null);
+
+    public void Dispose() => Approver.Changed -= OnChanged;
+}

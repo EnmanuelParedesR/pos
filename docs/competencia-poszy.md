@@ -1,4 +1,4 @@
-# Competencia: Poszy frente a Toki
+# Competencia: Poszy frente a Abastalia
 
 > Ticket TK-188 (#157). 15 de octubre de 2026. Solo investigación: no cambia código.
 > Fuentes: el sitio público de Poszy (cada afirmación lleva su URL, leída el 15/10/2026) y los documentos de este repositorio (`docs/funcionalidades-v1.md`, `backlog/BACKLOG.md`, `docs/ecf-propio.md`, ADRs).
@@ -18,9 +18,9 @@
 
 ## 2. Comparación por funcionalidad
 
-Leyenda de Toki: ✅ hecho · 🔨 en curso · ⬜ planeado · — no previsto. "Toki hoy" es lo que está en `backlog/BACKLOG.md`; el e-CF real con la DGII está en construcción (M13) y hoy es simulado.
+Leyenda de Abastalia: ✅ hecho · 🔨 en curso · ⬜ planeado · — no previsto. "Abastalia hoy" es lo que está en `backlog/BACKLOG.md`; el e-CF real con la DGII está en construcción (M13) y hoy es simulado.
 
-| Área | Poszy (según su sitio) | Toki hoy | Toki planeado |
+| Área | Poszy (según su sitio) | Abastalia hoy | Abastalia planeado |
 |---|---|---|---|
 | **Despliegue** | Nube; web y app Android, también en terminales Elo ([inicio](https://poszy.com/), [descargar](https://poszy.com/descargar)) | ✅ Local-primero: PC principal con la API + cajas Windows; nube para panel y respaldo | Modalidad "en línea" sin PC principal (fase 2) |
 | **Sin internet** | No se menciona; el e-CF tiene un estado "No procesado (sin conexión)" ([planes](https://poszy.com/#pricing)). Su propio blog dice que el sistema debe funcionar "aunque la conexión fluctúe" ([blog](https://poszy.com/blog/como-elegir-sistema-pos-en-republica-dominicana)) | ✅ La tienda vende, cobra y cuadra sin internet; e-CF en cola de 72 h | ✅ |
@@ -57,7 +57,7 @@ Leyenda de Toki: ✅ hecho · 🔨 en curso · ⬜ planeado · — no previsto. 
 
 ## 3. Precios (alto nivel)
 
-| | Poszy | Toki |
+| | Poszy | Abastalia |
 |---|---|---|
 | Planes | Básico RD$950, Profesional RD$1,850, Empresarial RD$3,000 al mes; 5 % menos al año ([planes](https://poszy.com/#pricing)) | Tres planes por tamaño (cajas y sucursales), propuesta en revisión |
 | Qué limita el plan | Usuarios (3/5/12), sucursales, cajas, almacenes y e-CF al mes; módulos (traslados, conteos, cuentas por pagar, reportes avanzados) solo en los planes altos ([planes](https://poszy.com/#pricing)) | Cajas, sucursales y el celular del dueño; lo básico (balanza, e-CF, inventario completo, cuadre ciego, fiado, 606/607, respaldo) en todos |
@@ -65,9 +65,9 @@ Leyenda de Toki: ✅ hecho · 🔨 en curso · ⬜ planeado · — no previsto. 
 | Instalación | Sin costo ([planes](https://poszy.com/#pricing)) | Cobro único de instalación y alta e-CF; kit de equipos cotizado |
 | Al pasarse del cupo | No se pueden crear más elementos hasta subir de plan ([planes](https://poszy.com/#pricing)) | Nunca se detiene la venta ni el e-CF |
 
-**Lectura:** Poszy pone el piso del mercado en precio. El plan de entrada de Toki, tal como está propuesto, cuesta varias veces el Básico de Poszy. Toki se justifica en una tienda con balanza, varias cajas y mala conexión (carnicería), pero en el colmado de una caja el dueño va a comparar contra RD$950 sin instalación. Ver TK-203.
+**Lectura:** Poszy pone el piso del mercado en precio. El plan de entrada de Abastalia, tal como está propuesto, cuesta varias veces el Básico de Poszy. Abastalia se justifica en una tienda con balanza, varias cajas y mala conexión (carnicería), pero en el colmado de una caja el dueño va a comparar contra RD$950 sin instalación. Ver TK-203.
 
-## 4. Dónde Toki es más fuerte
+## 4. Dónde Abastalia es más fuerte
 
 1. **Sigue vendiendo sin internet.** La tienda entera (varias cajas, inventario y caja compartidos) funciona contra la PC principal, y el e-CF se firma en la tienda con cola de 72 h. Poszy no menciona modo sin conexión ni contingencia ([planes](https://poszy.com/#pricing)), aunque su propio blog lo pone como requisito ([blog](https://poszy.com/blog/como-elegir-sistema-pos-en-republica-dominicana)).
 2. **Hecho para carnicería.** Venta por peso con 3 decimales, etiquetas de balanza EAN-13 con peso o precio, presentaciones por libra/paquete/caja, notas de corte, cuarto frío como almacén, precio mayorista para quien surte colmados y restaurantes. Poszy no menciona peso ni balanza en ninguna página.
@@ -77,7 +77,7 @@ Leyenda de Toki: ✅ hecho · 🔨 en curso · ⬜ planeado · — no previsto. 
 
 ## 5. Dónde Poszy va delante
 
-1. **Cero fricción para empezar.** Crear cuenta gratis, sin tarjeta, sin instalar nada, desde el celular ([planes](https://poszy.com/#pricing)). Toki pide una PC principal y un script de instalación.
+1. **Cero fricción para empezar.** Crear cuenta gratis, sin tarjeta, sin instalar nada, desde el celular ([planes](https://poszy.com/#pricing)). Abastalia pide una PC principal y un script de instalación.
 2. **Precio de entrada y página de precios pública** con límites claros ([planes](https://poszy.com/#pricing)).
 3. **Reposición:** mínimos, máximos y pedido sugerido con el último suplidor ([colmados](https://poszy.com/pos-para-colmados)).
 4. **Funciones de venta fuera del mostrador:** catálogo/menú con QR y WhatsApp, cotizaciones y encargos con recordatorio ([blog](https://poszy.com/blog/menu-digital-catalogo-digital-qr-negocio-republica-dominicana), [tiendas](https://poszy.com/pos-para-tiendas), [panaderías](https://poszy.com/pos-para-panaderias)).
@@ -87,13 +87,13 @@ Leyenda de Toki: ✅ hecho · 🔨 en curso · ⬜ planeado · — no previsto. 
 
 ## 6. Lecciones de UX y marketing
 
-- **Una página por segmento con el dolor en el título.** Poszy escribe "El fiao deja de vivir en una libreta" y "Cuadrar la caja sin discusión" ([colmados](https://poszy.com/pos-para-colmados)). Toki debería tener "Carnicería", "Colmado" y "Deli" con el dolor de cada una: la balanza, el cuadre y el internet que se va.
+- **Una página por segmento con el dolor en el título.** Poszy escribe "El fiao deja de vivir en una libreta" y "Cuadrar la caja sin discusión" ([colmados](https://poszy.com/pos-para-colmados)). Abastalia debería tener "Carnicería", "Colmado" y "Deli" con el dolor de cada una: la balanza, el cuadre y el internet que se va.
 - **La urgencia fiscal vende.** El blog de Poszy de octubre habla del calendario obligatorio y de las sanciones ([blog](https://poszy.com/blog)). El plazo de los pequeños contribuyentes (15/11/2026, `docs/ecf-propio.md`) es la ventana de compra de este trimestre.
 - **Atacar el punto débil del otro sin nombrarlo:** "Si se va el internet, sigues vendiendo y facturando". Poszy no puede decirlo hoy.
-- **Precios visibles y límites en lenguaje simple.** Poszy lo hace bien; Toki debe publicar los suyos con la regla de "nunca se detiene la venta".
-- **WhatsApp como canal único** (demo, ventas, soporte) es lo que espera el dueño dominicano; Toki ya lo prevé vía revendedores.
-- **Prueba social:** Poszy no tiene testimonios. Toki puede ganar ese espacio con el piloto (fotos de la tienda, el dueño hablando, cifras de cuadre).
-- **Responder al buscador:** Poszy tiene una FAQ "¿Poszy es lo mismo que pooszy?" para captar errores de escritura ([colmados](https://poszy.com/pos-para-colmados)). Toki debe reservar sus variantes de nombre.
+- **Precios visibles y límites en lenguaje simple.** Poszy lo hace bien; Abastalia debe publicar los suyos con la regla de "nunca se detiene la venta".
+- **WhatsApp como canal único** (demo, ventas, soporte) es lo que espera el dueño dominicano; Abastalia ya lo prevé vía revendedores.
+- **Prueba social:** Poszy no tiene testimonios. Abastalia puede ganar ese espacio con el piloto (fotos de la tienda, el dueño hablando, cifras de cuadre).
+- **Responder al buscador:** Poszy tiene una FAQ "¿Poszy es lo mismo que pooszy?" para captar errores de escritura ([colmados](https://poszy.com/pos-para-colmados)). Abastalia debe reservar sus variantes de nombre.
 
 ## 7. Brechas priorizadas (impacto × esfuerzo)
 
@@ -148,7 +148,7 @@ Impacto en ventas o retención para carnicerías y colmados; esfuerzo S (≤ 2 d
 - **Aceptación:** las cuatro páginas publicadas, con los precios aprobados (TK-203), rápidas en el celular y con metadatos para buscadores.
 
 ### TK-198 · Contenido e-CF y plazo del 15 de noviembre (S)
-- **Alcance:** guía corta "¿Ya te toca emitir e-CF?", qué pasa si no se cumple y cómo Toki factura sin internet; basada en `docs/ecf-propio.md` y fuentes de la DGII.
+- **Alcance:** guía corta "¿Ya te toca emitir e-CF?", qué pasa si no se cumple y cómo Abastalia factura sin internet; basada en `docs/ecf-propio.md` y fuentes de la DGII.
 - **Aceptación:** artículo publicado y revisado por un contador, con enlaces a la DGII y sin afirmaciones legales sin fuente.
 
 ### TK-199 · Programa de referidos (S, definición)

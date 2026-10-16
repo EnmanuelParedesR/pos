@@ -24,7 +24,7 @@ const report: ShiftReport = {
 };
 
 function renderApp(path: string, routes: Record<string, unknown>) {
-  localStorage.setItem("toki.refreshToken", "saved");
+  localStorage.setItem("abastalia.refreshToken", "saved");
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     if (url.endsWith("/api/me")) return json(200, me);
     const hit = Object.keys(routes).find((r) => url.includes(r));

@@ -1,6 +1,6 @@
 # Rename map, phase B: Customers module
 
-Spanish → English renames in `src/Modules/Customers/Toki.Customers/**`. Behavior did not change: only names, comments, routes, JSON fields, enum values, error codes, audit strings and the database names. Contracts names come from `docs/rename-map.md` (`Toki.Customers.Contracts`, `Toki.CashRegister.Contracts`, building blocks).
+Spanish → English renames in `src/Modules/Customers/Abastalia.Customers/**`. Behavior did not change: only names, comments, routes, JSON fields, enum values, error codes, audit strings and the database names. Contracts names come from `docs/rename-map.md` (`Abastalia.Customers.Contracts`, `Abastalia.CashRegister.Contracts`, building blocks).
 
 The API uses camelCase JSON and string enums, so every property below appears on the wire in camelCase (`CreditLimit` → `creditLimit`).
 
@@ -17,7 +17,7 @@ The API uses camelCase JSON and string enums, so every property below appears on
 
 | Old | New |
 |---|---|
-| `Toki.Customers.ClientesModule` | `Toki.Customers.CustomersModule` |
+| `Abastalia.Customers.ClientesModule` | `Abastalia.Customers.CustomersModule` |
 | `ClientesModule.AddClientesModule(services)` | `CustomersModule.AddCustomersModule(services)` |
 | `ClientesDbContext` (internal) | `CustomersDbContext` |
 | `DisenoClientes : DisenoDbContext<ClientesDbContext>` (internal) | `CustomersDesignTimeFactory : DesignTimeFactory<CustomersDbContext>` |
@@ -51,7 +51,7 @@ The migrations guard test finds the design-time factory by its context name: now
 | `Abonar(clienteId, origen, referenciaId, monto, abiertos)` | `ApplyPayment(customerId, source, referenceId, amount, open)` |
 | `AgregarSaldo(clienteId, tipo, monto, referenciaId)` | `AddBalance(customerId, type, amount, referenceId)` |
 
-### Domain (`Toki.Customers.Domain`, internal)
+### Domain (`Abastalia.Customers.Domain`, internal)
 
 | Old | New |
 |---|---|
@@ -65,7 +65,7 @@ The migrations guard test finds the design-time factory by its context name: now
 
 Entity properties are listed with their columns under **Database**.
 
-### Feature classes (`Toki.Customers.Features`, internal)
+### Feature classes (`Abastalia.Customers.Features`, internal)
 
 | Old | New |
 |---|---|

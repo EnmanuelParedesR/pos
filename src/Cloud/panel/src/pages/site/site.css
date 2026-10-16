@@ -1,6 +1,6 @@
-/* Toki public site (TK-228, was src/Site/assets/site.css; TK-245: product-first layout from docs/diseno/sitio-inicio-maqueta.html).
-   Brand fixed (docs/sistema-de-diseno.md §2): Azul Toki, Tinta, Papel, Mostrador, Azul claro; Azul noche in dark mode. Colors live only in the
-   tokens below. Everything under .site so nothing leaks into the panel; IBM Plex Sans ("Toki Sans") comes from escuadra.css. Mobile first. */
+/* Abastalia public site (TK-228, was src/Site/assets/site.css; TK-245: product-first layout from docs/diseno/sitio-inicio-maqueta.html).
+   Brand fixed (docs/sistema-de-diseno.md §2): Azul Abastalia, Tinta, Papel, Mostrador, Azul claro; Azul noche in dark mode. Colors live only in the
+   tokens below. Everything under .site so nothing leaks into the panel; IBM Plex Sans ("Abastalia Sans") comes from escuadra.css. Mobile first. */
 .site {
   --brand: #0B5CAD;
   --brand-strong: #094B8E;
@@ -46,7 +46,7 @@
     --shadow: rgba(0, 0, 0, 0.5); color-scheme: dark; }
 }
 
-.site { min-height: 100vh; display: flex; flex-direction: column; font: 400 17px/1.6 "Toki Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+.site { min-height: 100vh; display: flex; flex-direction: column; font: 400 17px/1.6 "Abastalia Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums; color: var(--ink); background: var(--bg); -webkit-text-size-adjust: 100%; overflow-x: clip; }
 .site main { flex: 1 0 auto; }
 .site img, .site svg { max-width: 100%; }

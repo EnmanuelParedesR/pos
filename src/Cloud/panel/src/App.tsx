@@ -75,7 +75,7 @@ function Panel() {
   const [me, setMe] = useState<Me | null | undefined>(hasSession() ? undefined : null);
 
   useEffect(() => {
-    document.title = "Toki · Panel";
+    document.title = "Abastalia · Panel";
     setOnSignedOut(() => setMe(null));
     if (me === undefined) api<Me>("/api/me").then(setMe, () => setMe(null));
     // Only on start: later sign-ins set `me` themselves.
@@ -103,7 +103,7 @@ function Panel() {
         <Route path="security" element={<SecurityPage />} />
         {me.role === "Owner" && <Route path="members" element={<MembersPage me={me} />} />}
         {me.role === "Owner" && <Route path="billing" element={<BillingPage />} />}
-        {/* Toki staff only (TK-189); the API checks the role on every call anyway. */}
+        {/* Abastalia staff only (TK-189); the API checks the role on every call anyway. */}
         {me.isPlatformAdmin && (
           <>
             <Route path="platform" element={<PlatformMetricsPage />} />
@@ -136,7 +136,7 @@ const billingSection = { to: "/app/billing", label: "Facturación", icon: "recei
 const platformSection = { to: "/app/platform", label: "Plataforma", icon: "shield" as IconName };
 
 
-const collapsedKey = "toki.menuCollapsed";
+const collapsedKey = "abastalia.menuCollapsed";
 
 function readCollapsed() {
   try {
@@ -213,7 +213,7 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
             </span>
             <div>
               <b>{me.email ?? me.tenantName}</b>
-              {me.isPlatformAdmin ? "Equipo de Toki" : roleNames[me.role]}
+              {me.isPlatformAdmin ? "Equipo de Abastalia" : roleNames[me.role]}
             </div>
           </div>
           <ThemeToggle />
@@ -260,7 +260,7 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
   );
 }
 
-/** "Pregúntale a Toki…": the assistant one tap away from every screen (JTBD 7). The question travels in router state, not in the URL. */
+/** "Pregúntale a Talia…": the assistant one tap away from every screen (JTBD 7). The question travels in router state, not in the URL. */
 function AskBar() {
   const navigate = useNavigate();
   const [question, setQuestion] = useState("");
@@ -272,9 +272,9 @@ function AskBar() {
     <form className="esc-ask" onSubmit={submit} role="search">
       <Icon name="sparkles" />
       <label className="esc-visually-hidden" htmlFor="ask">
-        Pregúntale a Toki
+        Pregúntale a Talia
       </label>
-      <input id="ask" className="esc-ask__input" placeholder="Pregúntale a Toki… ¿cuánto vendí ayer?" value={question} onChange={(e) => setQuestion(e.target.value)} />
+      <input id="ask" className="esc-ask__input" placeholder="Pregúntale a Talia… ¿cuánto vendí ayer?" value={question} onChange={(e) => setQuestion(e.target.value)} />
       <button type="submit" className="esc-button esc-button--small esc-button--primary" aria-label="Preguntar">
         <Icon name="send" size={16} />
       </button>

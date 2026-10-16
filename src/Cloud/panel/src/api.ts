@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
-/** The cloud API (src/Hosts/Toki.Host.Cloud). */
+/** The cloud API (src/Hosts/Abastalia.Host.Cloud). */
 export const apiUrl = (import.meta.env.VITE_API_URL ?? "http://localhost:5100").replace(/\/$/, "");
 
-const refreshKey = "toki.refreshToken";
+const refreshKey = "abastalia.refreshToken";
 
 /** A failed call: `code` is the API's error code (ProblemDetails), `detail` the Spanish text to show. */
 export class ApiError extends Error {
@@ -117,9 +117,9 @@ export async function signIn(email: string, password: string, twoFactorCode?: st
   const response = await send("/api/auth/login", "POST", { email, password, twoFactorCode: twoFactorCode || undefined }, false);
   if (response.status === 401) {
     const problem = await response.json().catch(() => ({}));
-    // R11 B-High1: an unconfirmed e-mail answers "NotAllowed", as a business disabled by Toki staff (TK-189) does.
+    // R11 B-High1: an unconfirmed e-mail answers "NotAllowed", as a business disabled by Abastalia staff (TK-189) does.
     if (problem.detail === "NotAllowed")
-      throw new ApiError(401, "Auth.NotAllowed", "No puede entrar todavía: confirme su correo con el enlace que le enviamos. Si ya lo confirmó, comuníquese con Toki.");
+      throw new ApiError(401, "Auth.NotAllowed", "No puede entrar todavía: confirme su correo con el enlace que le enviamos. Si ya lo confirmó, comuníquese con Abastalia.");
     if (problem.detail === "RequiresTwoFactor") throw new ApiError(401, "Auth.RequiresTwoFactor", "Escriba el código de 6 dígitos de su aplicación de autenticación.");
     if (problem.detail === "LockedOut") throw new ApiError(401, "Auth.LockedOut", "Demasiados intentos. Espere 15 minutos e intente de nuevo.");
     throw new ApiError(401, "Auth.Failed", twoFactorCode ? "El código no es válido. Revise la hora del teléfono e intente de nuevo." : "El correo o la contraseña no coinciden.");
@@ -230,7 +230,7 @@ export function useApi<T>(path: string | null) {
 
 // Shapes returned by the cloud API (camelCase).
 
-/** `isPlatformAdmin`: Toki staff (TK-189), who also see the "Plataforma" area. */
+/** `isPlatformAdmin`: Abastalia staff (TK-189), who also see the "Plataforma" area. */
 /** `role`: in the current tenant (TK-217); a ReadOnly member sees the panel but cannot change anything (the API refuses it anyway). */
 export type MemberRole = "Owner" | "ReadOnly";
 export const roleNames: Record<MemberRole, string> = { Owner: "Dueño", ReadOnly: "Solo lectura" };
@@ -335,7 +335,7 @@ export interface StoreSyncStatus {
   nodes: NodeStatus[];
 }
 
-// Plataforma (Toki staff, TK-189 / TK-190): /api/platform/*.
+// Plataforma (Abastalia staff, TK-189 / TK-190): /api/platform/*.
 
 /** TK-254: a version released on a channel to a share of the stores (Plataforma → Versiones). */
 export type ReleaseChannel = "pilot" | "stable";
@@ -461,7 +461,7 @@ export interface TenantMetrics {
 export type Meter = "AssistantQuestions" | "AssistantTokens" | "SupplierInvoices" | "Emails" | "ArchiveRetrievals" | "AccompanimentRequests" | "Invites";
 export interface Usage { plan: string; addOns: string[]; resetsOn: string; meters: { meter: Meter; used: number; limit: number }[] }
 export interface PlatformUsage { usage: Usage; plans: string[]; addOns: string[] }
-/** TK-249: Paddle Billing. `enabled` false = not set up yet (the page shows the plan and how to ask Toki). */
+/** TK-249: Paddle Billing. `enabled` false = not set up yet (the page shows the plan and how to ask Abastalia). */
 export type SubscriptionStatus = "None" | "Trialing" | "Active" | "PastDue" | "Paused" | "Canceled";
 export type BillingInterval = "Monthly" | "Annual";
 /** A Paddle price: `amount` in the currency's smallest unit, as Paddle sends it ("1000" = US$10.00). */
@@ -514,7 +514,7 @@ export interface PlatformBilling {
   };
   events: { id: string; type: string; occurredUtc: string; receivedUtc: string }[];
 }
-/** TK-255: "Recomiende Toki". `amount` as Paddle takes it: percent, or the currency's smallest unit for "flat". */
+/** TK-255: "Recomiende Abastalia". `amount` as Paddle takes it: percent, or the currency's smallest unit for "flat". */
 export interface ReferralReward { type: "percentage" | "flat"; amount: string; currency: string }
 /** `nextDiscount.fromUtc` = the payment it lowers; null = queued (next cycle or once the payment is up to date). */
 export interface Referrals {

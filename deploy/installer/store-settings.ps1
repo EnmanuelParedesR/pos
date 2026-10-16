@@ -6,11 +6,11 @@
     on another PC is pointed at the main PC when it joins the store ("Unir a una tienda"); that address is kept on the register PC,
     outside the app folder that updates replace.
   - The server uploads to the production cloud.
-  - Both read the update feed, channel and the thumbprints of Toki's code-signing certificate (read by update-service.ps1).
-  - The server's database is the dedicated .\TOKI instance (appsettings.json; R11 C1).
+  - Both read the update feed, channel and the thumbprints of Abastalia's code-signing certificate (read by update-service.ps1).
+  - The server's database is the dedicated .\ABASTALIA instance (appsettings.json; R11 C1).
   The repo's appsettings keep the development values (http://localhost:5000, no cloud).
 #>
-$ProductionCloudUrl = 'https://app-toki-prod-jhzq7n.azurewebsites.net'
+$ProductionCloudUrl = 'https://app-abastalia-prod-jhzq7n.azurewebsites.net'
 $InstalledApiUrl = 'https://localhost:5443'
 
 # Sets "Section:Key" values in a JSON file, creating the sections that are missing and keeping everything else.

@@ -1,12 +1,12 @@
-# Preguntas abiertas de Toki
+# Preguntas abiertas de Abastalia
 
-Un solo lugar con todo lo que falta decidir o confirmar fuera del código, agrupado por quién responde. Cada punto dice qué se pregunta, por qué importa, qué hace Toki hoy mientras tanto y dónde está el detalle. Al tener la respuesta: escribirla en la línea **Respuesta:**, con fecha y quién la dio, y actualizar el ticket o el documento enlazado.
+Un solo lugar con todo lo que falta decidir o confirmar fuera del código, agrupado por quién responde. Cada punto dice qué se pregunta, por qué importa, qué hace Abastalia hoy mientras tanto y dónde está el detalle. Al tener la respuesta: escribirla en la línea **Respuesta:**, con fecha y quién la dio, y actualizar el ticket o el documento enlazado.
 
 Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certificacion.md`, `docs/cuotas.md`, `docs/competencia-*.md`, `docs/despliegue-azure.md`, `docs/instalador-web.md`, `docs/adr/0011-firma-del-receptor-en-la-tienda.md` y `backlog/reviews/`. Si una pregunta se resuelve en su documento de origen, se borra de aquí.
 
 | Grupo | Quién responde | Puntos |
 |---|---|---|
-| 1 | Dueño de Toki | 18 |
+| 1 | Dueño de Abastalia | 18 |
 | 2 | DGII | 35 + pasos de TK-141 |
 | 3 | Contador | 6 |
 | 4 | Abogado | 5 |
@@ -16,7 +16,7 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 
 ---
 
-## 1. Dueño de Toki (decisiones de negocio)
+## 1. Dueño de Abastalia (decisiones de negocio)
 
 ### D1 · Precios y límites de los planes (TK-203, TK-197)
 - **Pregunta:** ¿Cuánto cuestan y qué limita cada plan (Una caja, Varias cajas, Varias sucursales)? ¿Hace falta un plan de entrada para el colmado de una caja frente a Poszy (RD$950 al mes)?
@@ -30,7 +30,7 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Por qué importa:** es uno de los precios pendientes antes de anunciar el sitio.
 - **Hoy:** `prices.installation` en `null`.
 - **Fuente:** `docs/despliegue-azure.md` ("Pendiente del dueño antes de anunciar el sitio"); `config.ts`.
-- **Respuesta:** Sale del análisis de D1. La instalación debe ser fácil para el usuario; el negocio de Toki es la post-instalación, con horas de soporte.
+- **Respuesta:** Sale del análisis de D1. La instalación debe ser fácil para el usuario; el negocio de Abastalia es la post-instalación, con horas de soporte.
 
 ### D3 · Precio y condiciones del acompañamiento en la certificación (TK-236)
 - **Pregunta:** ¿Precio del servicio, cómo se cobra, cuántas reprogramaciones y reintentos incluye y qué se devuelve si la DGII rechaza la certificación de forma definitiva?
@@ -65,10 +65,10 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Por qué importa:** sin dominio no hay URL canónica; el dominio administrado de Azure limita los correos por hora.
 - **Hoy:** `config.ts` → `url` vacío; correo con el dominio administrado de Azure.
 - **Fuente:** TK-197; `docs/despliegue-azure.md` §Pendiente; `config.ts`.
-- **Respuesta:** Un dominio sobre "toki", el que esté disponible, con subdominios (app., api.).
+- **Respuesta:** Un dominio sobre "abastalia", el que esté disponible, con subdominios (app., api.).
 
 ### D8 · Número de WhatsApp
-- **Pregunta:** ¿Qué número de WhatsApp usa Toki para ventas, soporte y el acompañamiento?
+- **Pregunta:** ¿Qué número de WhatsApp usa Abastalia para ventas, soporte y el acompañamiento?
 - **Por qué importa:** "Hablemos" y los mensajes del técnico dependen de él.
 - **Hoy:** `config.ts` → `whatsapp` vacío; los botones van a `/precios#contacto`.
 - **Fuente:** TK-197; `docs/servicio-certificacion.md` §8; `config.ts`.
@@ -111,7 +111,7 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 
 ### D14 · Bloquear la retención del archivo frío (TK-207)
 - **Pregunta:** ¿Se bloquea la política de retención de 10 años del contenedor `ecf-archive`? Es irreversible.
-- **Por qué importa:** bloqueada, nadie (ni Toki) puede borrar un e-CF antes de 10 años.
+- **Por qué importa:** bloqueada, nadie (ni Abastalia) puede borrar un e-CF antes de 10 años.
 - **Hoy:** retención puesta pero sin bloquear.
 - **Fuente:** TK-207; `docs/despliegue-azure.md` ("Bloquear la retención").
 - **Respuesta:** "Debe mantenerse" (por confirmar si significa bloquearla, que es irreversible).
@@ -139,10 +139,10 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 
 ### D18 · Certificado digital: entidad, formato y precio (§11 #4)
 - **Pregunta:** ¿Con quién se compra el certificado de prueba (Avansi o Digifirma), en qué formato (`.p12` exportable, token o nube), a qué precio y con qué vigencia?
-- **Por qué importa:** Toki solo importa `.p12`/`.pfx`; sin certificado no se prueba nada con la DGII (TK-141).
+- **Por qué importa:** Abastalia solo importa `.p12`/`.pfx`; sin certificado no se prueba nada con la DGII (TK-141).
 - **Hoy:** la guía del dueño pide `.p12` o `.pfx`; precio y formato "por confirmar".
 - **Fuente:** `docs/ecf-propio.md` §11 #4 y §12 (TK-141); `docs/servicio-certificacion.md` §5.
-- **Respuesta:** Se hará con la cuenta piloto (Toki no tendrá RNC); investigar cuál entidad es la más económica para nuestros clientes.
+- **Respuesta:** Se hará con la cuenta piloto (Abastalia no tendrá RNC); investigar cuál entidad es la más económica para nuestros clientes.
 
 ### D19 · Referidos: planes que califican y monto del descuento (TK-255)
 - **Pregunta:** ¿Qué planes cuentan para el referido y cuánto se descuenta (porcentaje o monto) en el siguiente pago de quien refirió?
@@ -169,7 +169,7 @@ No están aquí, porque no son preguntas a la DGII: #2, #4 y #12 (decisiones del
 
 Sin esto no se puede probar nada contra la DGII real (todo está probado con una DGII simulada).
 
-1. Elegir el RNC: el de Toki o el de la tienda piloto (decisión del dueño).
+1. Elegir el RNC: el de Abastalia o el de la tienda piloto (decisión del dueño).
 2. Enviar la solicitud FI-GDF-016 desde la OFV de ese RNC; designar al Usuario Administrador e-CF y delegar el rol de Firmante.
 3. Comprar el certificado de persona física del firmante (D18).
 4. Prueba de humo: semilla → token → una 32 por RFCE aceptada.
@@ -180,7 +180,7 @@ Sin esto no se puede probar nada contra la DGII real (todo está probado con una
 
 ### 2.2 Preguntas por escrito
 
-- **#1 · ¿Custodiar certificados y alojar receptores convierte a Toki en "proveedor de servicios de FE" (NG 10-2021)?**
+- **#1 · ¿Custodiar certificados y alojar receptores convierte a Abastalia en "proveedor de servicios de FE" (NG 10-2021)?**
   - Por qué: la respuesta escrita es condición para encender CloudCustody (D10).
   - Mientras: no se custodia; la tienda firma (StoreSigned).
   - Respuesta:
@@ -229,7 +229,7 @@ Sin esto no se puede probar nada contra la DGII real (todo está probado con una
   - Mientras: la pantalla recomienda reemplazar con número nuevo; el 607 lo lista con el e-NCF anulado.
   - Respuesta:
 - **#28 · ¿Dónde trae el certificado el RNC o la cédula del titular, y debe coincidir con el RNC de la empresa?**
-  - Por qué: Toki rechaza certificados de otro RNC al importarlos.
+  - Por qué: Abastalia rechaza certificados de otro RNC al importarlos.
   - Mientras: lee `SERIALNUMBER` u `organizationIdentifier`.
   - Respuesta:
 - **#31 · Regularización de la serie B: ¿la 32 de menos de RD$250,000 va por RFCE o completa? ¿Fecha del NCF B o del día? ¿Cómo se trata un B04?**
@@ -252,7 +252,7 @@ Sin esto no se puede probar nada contra la DGII real (todo está probado con una
   - Por qué: si el primer acuse se perdió, el emisor nunca lo ve.
   - Mientras: Estado 1 motivo 3; como emisor, un motivo 3 se toma como entregado.
   - Respuesta:
-- **#40 · Cambiarse a Toki ya siendo emisor: ¿hay que recertificar? ¿Se sigue la secuencia desde el siguiente número libre? ¿Se avisa el cambio en la OFV?**
+- **#40 · Cambiarse a Abastalia ya siendo emisor: ¿hay que recertificar? ¿Se sigue la secuencia desde el siguiente número libre? ¿Se avisa el cambio en la OFV?**
   - Por qué: TK-221 lo ofrece.
   - Mientras: no recertifica; carga el resto del rango desde el número siguiente; si la DGII pide anular, se anula y se carga una secuencia nueva.
   - Respuesta:
@@ -391,7 +391,7 @@ Sin esto no se puede probar nada contra la DGII real (todo está probado con una
 - **Respuesta:**
 
 ### A5 · Registro del nombre en ONAPI
-- **Pregunta:** ¿Está libre "Toki" para registrarlo como marca?
+- **Pregunta:** ¿Está libre "Abastalia" para registrarlo como marca?
 - **Por qué importa:** el nombre y el logo ya están en el producto y el sitio.
 - **Hoy:** sin búsqueda.
 - **Fuente:** `docs/funcionalidades-v1.md` §9 punto 9.

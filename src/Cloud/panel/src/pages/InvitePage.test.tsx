@@ -61,7 +61,7 @@ it("TK-217 / R8 #12: an invited person (token after #) creates an account with t
 });
 
 it("TK-217: someone already signed in joins with one tap and gets a token for the new business", async () => {
-  localStorage.setItem("toki.refreshToken", "saved");
+  localStorage.setItem("abastalia.refreshToken", "saved");
   const { fetch } = renderInvite((path, method) =>
     path === "/api/invites/preview" ? json(200, preview)
     : path === "/api/invites/accept" && method === "POST" ? json(204)
@@ -87,7 +87,7 @@ it("TK-217: a used, expired or revoked link says so", async () => {
 });
 
 it("TK-217: a wrong account gets the server's message", async () => {
-  localStorage.setItem("toki.refreshToken", "saved");
+  localStorage.setItem("abastalia.refreshToken", "saved");
   renderInvite((path) =>
     path === "/api/invites/preview" ? json(200, preview)
     : path === "/api/invites/accept" ? json(403, { code: "Invites.WrongEmail", detail: "Esta invitación es para contable@example.com. Entre con esa cuenta." })

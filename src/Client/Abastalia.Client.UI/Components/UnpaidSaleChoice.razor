@@ -1,0 +1,42 @@
+@* Leaving (switching user, signing out of the back office) with a sale on the screen: hold it or void it first,
+   or the next user would find it in their register (R7 #26). OnCleared runs once the cart is empty. *@
+@inject AbastaliaApi Api
+@inject Session Session
+@inject Cart Cart
+
+<Notice Kind="Notice.Kinds.Warning" Title="Hay una venta sin cobrar.">Póngala en espera o anúlela antes de salir; si no, el siguiente usuario la encontraría en su caja.</Notice>
+@if (Cart.CheckoutUncertain)
+{
+    <Notice Kind="Notice.Kinds.Warning" Title="El último cobro no recibió respuesta.">Cóbrela de nuevo (F12) antes de salir: no se cobra dos veces.</Notice>
+}
+<div class="esc-col">
+    <Button Wide="true" Disabled="@(Cart.CheckoutUncertain || _sending || Session.Shift is null)" OnClick="HoldAsync">Ponerla en espera y salir</Button>
+    <Button Wide="true" Variant="Button.Variants.Danger" Disabled="@(Cart.CheckoutUncertain || _sending)" OnClick="VoidAsync">Anularla y salir</Button>
+</div>
+@if (_problem is { } p)
+{
+    <Notice Kind="p.Kind" Title="@p.Message" />
+}
+
+@code {
+    [Parameter] public EventCallback OnCleared { get; set; }
+
+    private bool _sending;
+    private Problem? _problem;
+
+    private async Task HoldAsync()
+    {
+        if (_sending || Cart.CheckoutUncertain || Session.Shift is not { } shift) return;
+        _sending = true;
+        _problem = await HeldSalesDialog.HoldAsync(Api, Cart, shift.ShiftId, null);
+        _sending = false;
+        if (_problem is null) await OnCleared.InvokeAsync();
+    }
+
+    private async Task VoidAsync()
+    {
+        if (_sending || Cart.CheckoutUncertain) return;
+        Cart.Clear();
+        await OnCleared.InvokeAsync();
+    }
+}

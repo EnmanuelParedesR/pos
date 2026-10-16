@@ -1,0 +1,127 @@
+@page "/open-register"
+@inject AbastaliaApi Api
+@inject Session Session
+@inject Approver Approver
+@inject NavigationManager Nav
+
+<div class="esc-page" data-keys @onkeydown="KeyAsync">
+    <div class="esc-row" style="justify-content:space-between">
+        <div>
+            <h1 class="esc-title">Abrir caja</h1>
+            <p class="esc-subtitle">Cuente el fondo que hay en la gaveta antes de vender.</p>
+        </div>
+        @if (Session.IsBackOffice)
+        {
+            <a href="admin" class="esc-button">Volver a administración</a>
+        }
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start">
+        <section class="esc-card" style="flex:999 1 480px" aria-label="Fondo por denominación">
+            <div style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr;gap:16px;padding:10px 16px;border-bottom:1px solid var(--card-border)" class="esc-label">
+                <div>Efectivo en pesos</div><div class="esc-num">Cantidad</div><div class="esc-num">Importe RD$</div>
+            </div>
+            @foreach (var d in _denominations)
+            {
+                <label style="display:grid;grid-template-columns:1.2fr 1fr 1.2fr;gap:16px;align-items:center;min-height:48px;padding:0 16px;border-bottom:1px solid var(--card-border)">
+                    <span style="font-size:var(--t-20);font-weight:600">@d.ToString("#,##0")</span>
+                    @* oninput, not onchange: F12 pressed without leaving the last field still counts what it shows. *@
+                    <input class="esc-input esc-num" data-no-scan inputmode="numeric" style="font-size:var(--t-20);font-weight:600" aria-label="@($"Cantidad de {d:#,##0}")"
+                           value="@(_count.GetValueOrDefault(d) is var c and > 0 ? c : "")" @oninput="e => SetCount(d, e.Value)" />
+                    <span class="esc-num" style="font-size:var(--t-20);font-weight:600">@Format.Amount(d * _count.GetValueOrDefault(d))</span>
+                </label>
+            }
+        </section>
+
+        <section class="esc-col" style="flex:1 1 360px;gap:16px">
+            <div class="esc-card esc-card--padded esc-col">
+                <span class="esc-label">Caja</span>
+                @if (_registers is null)
+                {
+                    <span class="esc-muted">Cargando…</span>
+                }
+                else if (_registers.Count == 0)
+                {
+                    <Notice Kind="Notice.Kinds.Warning" Title="No hay cajas libres." >El dueño las crea en Configuración → Cajas.</Notice>
+                }
+                else
+                {
+                    <div class="esc-row">
+                        @foreach (var c in _registers)
+                        {
+                            <button type="button" class="esc-chip" aria-pressed="@(c.Id == _register ? "true" : "false")" @onclick="() => _register = c.Id">@c.Name</button>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="esc-card esc-card--padded esc-col" style="gap:4px">
+                <span class="esc-label">Fondo contado</span>
+                <Money Value="OpeningFloat" Size="52" />
+            </div>
+            @if (_error is not null)
+            {
+                <Notice Kind="_errorKind" Title="@_error" />
+            }
+            <Button Variant="Button.Variants.Primary" Money="true" Shortcut="F12" Disabled="@(_register is null || _sending)" OnClick="OpenAsync">Abrir caja y vender</Button>
+        </section>
+    </div>
+</div>
+
+@code {
+    private List<decimal> _denominations = [];
+    private readonly Dictionary<decimal, int> _count = [];
+    private List<RegisterInfo>? _registers;
+    private Guid? _register;
+    private string? _error;
+    private Notice.Kinds _errorKind;
+    private bool _sending;
+
+    private decimal OpeningFloat => _count.Sum(c => c.Key * c.Value);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var d = await Api.GetAsync<List<decimal>>("/api/cash/denominations");
+        _denominations = d.Value ?? [];
+        var c = await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers");
+        _registers = c.Value?.Where(x => x.IsActive && x.OpenShiftId is null).ToList() ?? [];
+        if (_registers.Count == 1) _register = _registers[0].Id;
+        var p = d.Problem ?? c.Problem;
+        (_errorKind, _error) = (p?.Kind ?? Notice.Kinds.Error, p?.Message);
+    }
+
+    private void SetCount(decimal denomination, object? value) =>
+        _count[denomination] = int.TryParse(value?.ToString(), out var n) && n >= 0 ? n : 0;
+
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "F12") await OpenAsync();
+    }
+
+    private async Task OpenAsync()
+    {
+        if (_register is null || _sending) return;
+        _sending = true;
+        // Without register.open a supervisor who has it authorizes the opening (TK-212); the shift is still this cashier's.
+        var register = _register.Value;
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<ShiftOpened>("/api/cash/shifts", new { RegisterId = register, OpeningFloat, SupervisorApprovalId = id }),
+            register, $"Abrir turno con {Format.WithCurrency(OpeningFloat)}");
+        // A retry after a timeout finds the shift the first try opened on this same register: that is a success.
+        var current = r.Ok || r.Problem!.Code is "CashRegister.RegisterInUse" or "CashRegister.CashierHasShift"
+            ? (await Api.GetAsync<CurrentShift>("/api/cash/shifts/current")).Value : null;
+        if (r.Ok || current?.RegisterId == _register)
+        {
+            Session.Shift = current;
+            Nav.NavigateTo("sale");
+            return;
+        }
+        _sending = false;
+        _errorKind = r.Problem!.Kind;
+        _error = r.Problem.Code switch
+        {
+            "CashRegister.CashierHasShift" => "Usted ya tiene un turno abierto en otra caja.",
+            "CashRegister.RegisterInUse" => "Esa caja ya tiene un turno abierto.",
+            "CashRegister.OtherDevice" => "Esa caja se usa en otro equipo. Un supervisor puede abrirla aquí.",
+            _ => r.Problem.Message,
+        };
+    }
+}

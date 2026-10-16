@@ -1,7 +1,7 @@
 using System.Net;
 using System.Text;
 
-namespace Toki.Tests;
+namespace Abastalia.Tests;
 
 /// <summary>TK-252: the DGII public consultation pages (rnc.aspx, ncf.aspx) from HTML recorded on 2026-10-16 (tests/DgiiPages). Linked into each test
 /// project that needs it; no test ever reaches the real DGII. A lookup nobody programmed answers 503, as a DGII that is down.</summary>

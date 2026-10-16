@@ -2,14 +2,14 @@
 
 > Estado: **propuesta de diseño**, 14 oct 2026. No hay código todavía.
 > Se construye **sobre** `docs/arquitectura-v1.md` (modelo híbrido local-first, ya decidido) y usa `read-v1.md` y `docs/planes.md` como contexto. Aquí no se vuelve a decidir el despliegue: se decide **cómo se organiza el código**.
-> El producto se llama **Toki** (decidido el 14 de octubre de 2026); se usa como prefijo de los proyectos.
+> El producto se llama **Abastalia** (decidido el 14 de octubre de 2026); se usa como prefijo de los proyectos.
 > Las licencias y versiones de paquetes se verificaron en la web en esta fecha. Lo que no se pudo verificar lleva **(verificar)**.
 
 ---
 
 ## 1. Resumen
 
-Toki V1 es un **monolito modular** en **.NET 10 (LTS)**. El mismo conjunto de módulos (Ventas, Caja, Inventario, Compras, Clientes/Fiado, Fiscal, Hardware, Identidad, Configuración/Licencia y Sync) se monta en dos *hosts*: el **host local**, una API ASP.NET Core que corre como servicio de Windows en la PC principal sobre SQL Server Express 2025, y el **host en la nube**, en Azure, que recibe eventos, entrega licencias y catálogo y hace de relevo hacia el proveedor e-CF. Dentro de cada módulo el código se organiza en **vertical slices**: una carpeta por caso de uso con su endpoint Minimal API, su comando o consulta, su validador FluentValidation y su handler, que accede a datos con EF Core directamente. **Toda la lógica de negocio vive en C#**: no hay procedimientos almacenados ni triggers. Los handlers devuelven `Result` en vez de lanzar excepciones. Los módulos se hablan solo por **contratos públicos** (interfaces en proceso para lo que debe ser atómico y eventos de integración para lo demás). Cada módulo tiene su propio esquema de BD y no toca las tablas de otro. Una venta descuenta stock, registra el cobro en el turno, reserva y firma el e-CF y escribe la fila del **outbox** en **una sola transacción**. Unos *workers* en segundo plano reparten después esos eventos a otros módulos, los suben a Azure (donde un **inbox** los aplica de forma idempotente) y envían el e-CF dentro del plazo de 72 h. **No se usa MediatR**: se usan unas interfaces propias de handler con decoradores (Scrutor). Las reglas de dependencia se hacen cumplir con **pruebas de arquitectura** que fallan el *build*.
+Abastalia V1 es un **monolito modular** en **.NET 10 (LTS)**. El mismo conjunto de módulos (Ventas, Caja, Inventario, Compras, Clientes/Fiado, Fiscal, Hardware, Identidad, Configuración/Licencia y Sync) se monta en dos *hosts*: el **host local**, una API ASP.NET Core que corre como servicio de Windows en la PC principal sobre SQL Server Express 2025, y el **host en la nube**, en Azure, que recibe eventos, entrega licencias y catálogo y hace de relevo hacia el proveedor e-CF. Dentro de cada módulo el código se organiza en **vertical slices**: una carpeta por caso de uso con su endpoint Minimal API, su comando o consulta, su validador FluentValidation y su handler, que accede a datos con EF Core directamente. **Toda la lógica de negocio vive en C#**: no hay procedimientos almacenados ni triggers. Los handlers devuelven `Result` en vez de lanzar excepciones. Los módulos se hablan solo por **contratos públicos** (interfaces en proceso para lo que debe ser atómico y eventos de integración para lo demás). Cada módulo tiene su propio esquema de BD y no toca las tablas de otro. Una venta descuenta stock, registra el cobro en el turno, reserva y firma el e-CF y escribe la fila del **outbox** en **una sola transacción**. Unos *workers* en segundo plano reparten después esos eventos a otros módulos, los suben a Azure (donde un **inbox** los aplica de forma idempotente) y envían el e-CF dentro del plazo de 72 h. **No se usa MediatR**: se usan unas interfaces propias de handler con decoradores (Scrutor). Las reglas de dependencia se hacen cumplir con **pruebas de arquitectura** que fallan el *build*.
 
 ---
 
@@ -18,60 +18,60 @@ Toki V1 es un **monolito modular** en **.NET 10 (LTS)**. El mismo conjunto de m�
 ### 2.1 Árbol de la solución
 
 ```
-Toki.slnx
+Abastalia.slnx
 ├─ Directory.Build.props          ← net10.0, Nullable, TreatWarningsAsErrors, analizadores
 ├─ Directory.Packages.props       ← versiones centralizadas (Central Package Management)
 │
 ├─ src/
 │  ├─ Hosts/
-│  │  ├─ Toki.Host.Local/     ← servicio Windows: Kestrel + mTLS, workers, Quartz, health
-│  │  └─ Toki.Host.Cloud/     ← Azure: ingesta (inbox), licencias, catálogo, relevo e-CF, API del panel
+│  │  ├─ Abastalia.Host.Local/     ← servicio Windows: Kestrel + mTLS, workers, Quartz, health
+│  │  └─ Abastalia.Host.Cloud/     ← Azure: ingesta (inbox), licencias, catálogo, relevo e-CF, API del panel
 │  │
 │  ├─ BuildingBlocks/
-│  │  ├─ Toki.SharedKernel/                 ← Result, Error, Entity, AggregateRoot, IDomainEvent,
+│  │  ├─ Abastalia.SharedKernel/                 ← Result, Error, Entity, AggregateRoot, IDomainEvent,
 │  │  │                                            Dinero, Peso (lb), Rnc, Cedula, IClock, TenantId…
-│  │  ├─ Toki.BuildingBlocks.Application/   ← ICommand/IQuery + handlers, decoradores, IEndpoint,
+│  │  ├─ Abastalia.BuildingBlocks.Application/   ← ICommand/IQuery + handlers, decoradores, IEndpoint,
 │  │  │                                            IUserContext, ITenantContext, IFeatureService
-│  │  └─ Toki.BuildingBlocks.Infrastructure/← UnitOfWork (conexión compartida), Outbox, Inbox,
+│  │  └─ Abastalia.BuildingBlocks.Infrastructure/← UnitOfWork (conexión compartida), Outbox, Inbox,
 │  │                                               interceptores EF, auditoría encadenada, health checks
 │  │
 │  ├─ Modules/
-│  │  ├─ Ventas/         Toki.Sales            + Toki.Sales.Contracts
-│  │  ├─ Caja/           Toki.CashRegister              + Toki.CashRegister.Contracts
-│  │  ├─ Inventario/     Toki.Inventory        + Toki.Inventory.Contracts   (incluye catálogo y precios)
-│  │  ├─ Compras/        Toki.Purchasing           + Toki.Purchasing.Contracts
-│  │  ├─ Clientes/       Toki.Customers          + Toki.Customers.Contracts     (clientes y fiado)
-│  │  ├─ Fiscal/         Toki.Fiscal            + Toki.Fiscal.Contracts
-│  │  │                  Toki.Fiscal.Proveedores.EcfSsd   ← adaptador aislado del SDK del proveedor
-│  │  ├─ Hardware/       Toki.Hardware.Config   + Toki.Hardware.Config.Contracts (perfiles por dispositivo)
-│  │  ├─ Identidad/      Toki.Identity         + Toki.Identity.Contracts    (usuarios, PIN, dispositivos)
-│  │  ├─ Configuracion/  Toki.Settings     + Toki.Settings.Contracts (negocio, licencia, marca)
-│  │  ├─ Sync/           Toki.Sync              + Toki.Sync.Contracts          (subida, bajada, ingesta)
-│  │  └─ Reportes/       Toki.Reports          ← solo lectura; vistas SQL (ver 3.4) — añadido a la lista pedida
+│  │  ├─ Ventas/         Abastalia.Sales            + Abastalia.Sales.Contracts
+│  │  ├─ Caja/           Abastalia.CashRegister              + Abastalia.CashRegister.Contracts
+│  │  ├─ Inventario/     Abastalia.Inventory        + Abastalia.Inventory.Contracts   (incluye catálogo y precios)
+│  │  ├─ Compras/        Abastalia.Purchasing           + Abastalia.Purchasing.Contracts
+│  │  ├─ Clientes/       Abastalia.Customers          + Abastalia.Customers.Contracts     (clientes y fiado)
+│  │  ├─ Fiscal/         Abastalia.Fiscal            + Abastalia.Fiscal.Contracts
+│  │  │                  Abastalia.Fiscal.Proveedores.EcfSsd   ← adaptador aislado del SDK del proveedor
+│  │  ├─ Hardware/       Abastalia.Hardware.Config   + Abastalia.Hardware.Config.Contracts (perfiles por dispositivo)
+│  │  ├─ Identidad/      Abastalia.Identity         + Abastalia.Identity.Contracts    (usuarios, PIN, dispositivos)
+│  │  ├─ Configuracion/  Abastalia.Settings     + Abastalia.Settings.Contracts (negocio, licencia, marca)
+│  │  ├─ Sync/           Abastalia.Sync              + Abastalia.Sync.Contracts          (subida, bajada, ingesta)
+│  │  └─ Reportes/       Abastalia.Reports          ← solo lectura; vistas SQL (ver 3.4) — añadido a la lista pedida
 │  │
 │  └─ Client/
-│     ├─ Toki.Client.Wpf/        ← shell WPF + BlazorWebView, DI, arranque
-│     ├─ Toki.Escuadra/          ← Razor Class Library del sistema de diseño: tokens, componentes, íconos, fuentes (ver docs/sistema-de-diseno.md)
-│     ├─ Toki.Client.UI/         ← Razor Class Library: pantallas de caja y administración, construidas con Escuadra
-│     ├─ Toki.Client.Api/        ← cliente HTTP generado del OpenAPI de la API local (Kiota)
-│     ├─ Toki.Hardware/          ← abstracciones: IPrinter, IScale, ICashDrawer, IBarcodeScanner, IPaymentTerminal
-│     ├─ Toki.Hardware.EscPos/   ← impresoras térmicas ESC/POS y gaveta por la impresora
-│     ├─ Toki.Hardware.Zpl/      ← etiquetas de peso (Zebra ZPL)
-│     ├─ Toki.Hardware.Balanzas/ ← un driver por marca de balanza (serial/USB)
-│     └─ Toki.Hardware.Simulados/← balanza, impresora y terminal falsos para desarrollo y demos
+│     ├─ Abastalia.Client.Wpf/        ← shell WPF + BlazorWebView, DI, arranque
+│     ├─ Abastalia.Escuadra/          ← Razor Class Library del sistema de diseño: tokens, componentes, íconos, fuentes (ver docs/sistema-de-diseno.md)
+│     ├─ Abastalia.Client.UI/         ← Razor Class Library: pantallas de caja y administración, construidas con Escuadra
+│     ├─ Abastalia.Client.Api/        ← cliente HTTP generado del OpenAPI de la API local (Kiota)
+│     ├─ Abastalia.Hardware/          ← abstracciones: IPrinter, IScale, ICashDrawer, IBarcodeScanner, IPaymentTerminal
+│     ├─ Abastalia.Hardware.EscPos/   ← impresoras térmicas ESC/POS y gaveta por la impresora
+│     ├─ Abastalia.Hardware.Zpl/      ← etiquetas de peso (Zebra ZPL)
+│     ├─ Abastalia.Hardware.Balanzas/ ← un driver por marca de balanza (serial/USB)
+│     └─ Abastalia.Hardware.Simulados/← balanza, impresora y terminal falsos para desarrollo y demos
 │
 └─ tests/
-   ├─ Toki.Sales.UnitTests/ (… uno por módulo con lógica de dominio)
-   ├─ Toki.IntegrationTests/       ← WebApplicationFactory + Testcontainers (SQL Server) + Respawn
-   ├─ Toki.ArchitectureTests/      ← ArchUnitNET: reglas de dependencia y convenciones
-   ├─ Toki.Fiscal.Tests/           ← XML e-CF: snapshot + validación XSD + verificación de firma
-   ├─ Toki.Hardware.Tests/         ← bytes ESC/POS/ZPL por snapshot, parser de balanzas
-   ├─ Toki.Client.UI.Tests/        ← pantallas Blazor con bUnit
-   ├─ Toki.Escuadra.Tests/         ← componentes del sistema de diseño con bUnit
-   └─ Toki.UiTests/                 ← también las capturas Playwright de Escuadra (EscuadraVisualTests, TK-243)
+   ├─ Abastalia.Sales.UnitTests/ (… uno por módulo con lógica de dominio)
+   ├─ Abastalia.IntegrationTests/       ← WebApplicationFactory + Testcontainers (SQL Server) + Respawn
+   ├─ Abastalia.ArchitectureTests/      ← ArchUnitNET: reglas de dependencia y convenciones
+   ├─ Abastalia.Fiscal.Tests/           ← XML e-CF: snapshot + validación XSD + verificación de firma
+   ├─ Abastalia.Hardware.Tests/         ← bytes ESC/POS/ZPL por snapshot, parser de balanzas
+   ├─ Abastalia.Client.UI.Tests/        ← pantallas Blazor con bUnit
+   ├─ Abastalia.Escuadra.Tests/         ← componentes del sistema de diseño con bUnit
+   └─ Abastalia.UiTests/                 ← también las capturas Playwright de Escuadra (EscuadraVisualTests, TK-243)
 ```
 
-**Dos proyectos por módulo, no cuatro.** El módulo (`Toki.Sales`) contiene sus slices, su dominio y su persistencia, todo `internal`. Su proyecto `Contracts` contiene lo único que otros pueden ver. No se separa cada módulo en Domain/Application/Infrastructure: eso es la arquitectura por capas que VSA reemplaza, y para un desarrollador casi solo multiplica los proyectos sin beneficio. Si un módulo crece mucho (Fiscal es el candidato), se le puede separar el dominio después.
+**Dos proyectos por módulo, no cuatro.** El módulo (`Abastalia.Sales`) contiene sus slices, su dominio y su persistencia, todo `internal`. Su proyecto `Contracts` contiene lo único que otros pueden ver. No se separa cada módulo en Domain/Application/Infrastructure: eso es la arquitectura por capas que VSA reemplaza, y para un desarrollador casi solo multiplica los proyectos sin beneficio. Si un módulo crece mucho (Fiscal es el candidato), se le puede separar el dominio después.
 
 **Qué monta cada host.** Cada módulo expone `AddXxxModule(services, config)` y `MapXxxEndpoints(app)`. El host decide qué módulos y qué slices registra:
 
@@ -90,7 +90,7 @@ Toki.slnx
 ### 2.2 Cómo se ve una slice: `Ventas/RegistrarVenta`
 
 ```
-Toki.Sales/
+Abastalia.Sales/
 ├─ VentasModule.cs                     ← AddVentasModule / MapVentasEndpoints
 ├─ Domain/
 │  ├─ Venta.cs                         ← agregado: líneas, pagos, totales, ITBIS, redondeo
@@ -289,9 +289,9 @@ Esto da la atomicidad que pide `arquitectura-v1.md` sin `TransactionScope` distr
 - **Dinero:** `decimal(19,4)` en BD y `Dinero` (monto + moneda) en el dominio. **Fechas:** `DateTimeOffset` en UTC más la zona `America/Santo_Domingo` para mostrar y para el cierre del día.
 - **Sin procedimientos almacenados ni triggers.** SQL crudo solo en dos lugares: vistas de reporte (módulo Reportes) y unas pocas operaciones atómicas de infraestructura (reservar el siguiente e-NCF, sellar la auditoría), escritas en C# con `ExecuteSqlInterpolatedAsync` y cubiertas por pruebas.
 
-**Options pattern.** Toda configuración entra por `IOptions<T>` con `ValidateDataAnnotations().ValidateOnStart()` (`OutboxOptions`, `EcfOptions`, `RespaldoOptions`, `HardwareOptions`…). En el nodo, `appsettings.json` vive en `C:\ProgramData\Toki\` y **no contiene secretos**: la BD usa autenticación de Windows de la cuenta del servicio, y las claves están en el almacén de certificados de Windows. En la nube: Key Vault e identidad administrada.
+**Options pattern.** Toda configuración entra por `IOptions<T>` con `ValidateDataAnnotations().ValidateOnStart()` (`OutboxOptions`, `EcfOptions`, `RespaldoOptions`, `HardwareOptions`…). En el nodo, `appsettings.json` vive en `C:\ProgramData\Abastalia\` y **no contiene secretos**: la BD usa autenticación de Windows de la cuenta del servicio, y las claves están en el almacén de certificados de Windows. En la nube: Key Vault e identidad administrada.
 
-**Logging y telemetría.** Serilog con salida a archivo rotativo (`C:\ProgramData\Toki\logs`, 14 días) y errores al Visor de eventos. Propiedades fijas: `TenantId`, `BranchId`, `DeviceId`, `CorrelationId` (lo genera la caja y viaja hasta el outbox y la nube). OpenTelemetry para trazas y métricas (`AspNetCore`, `HttpClient`, `SqlClient` o EF Core) y métricas propias: ventas por minuto, edad de la fila más vieja del outbox y de la cola e-CF. El nodo exporta a la nube por OTLP cuando hay internet, por muestreo y **sin datos personales**.
+**Logging y telemetría.** Serilog con salida a archivo rotativo (`C:\ProgramData\Abastalia\logs`, 14 días) y errores al Visor de eventos. Propiedades fijas: `TenantId`, `BranchId`, `DeviceId`, `CorrelationId` (lo genera la caja y viaja hasta el outbox y la nube). OpenTelemetry para trazas y métricas (`AspNetCore`, `HttpClient`, `SqlClient` o EF Core) y métricas propias: ventas por minuto, edad de la fila más vieja del outbox y de la cola e-CF. El nodo exporta a la nube por OTLP cuando hay internet, por muestreo y **sin datos personales**.
 
 ---
 
@@ -310,7 +310,7 @@ flowchart TB
   M --> BB["BuildingBlocks.Application / Infrastructure"]
   CC & IC & FC & VC --> SK[SharedKernel]
   BB --> SK
-  Client["Cliente WPF/Blazor"] --> API["Toki.Client.Api (generado de OpenAPI)"]
+  Client["Cliente WPF/Blazor"] --> API["Abastalia.Client.Api (generado de OpenAPI)"]
 ```
 
 1. Un módulo puede referenciar **solo** `Otro.Contracts`, nunca `Otro`. Todo en el módulo es `internal`; lo público está en `Contracts`.
@@ -364,7 +364,7 @@ public void Ventas_no_depende_de_internos_de_otros_modulos() =>
 
 [Fact]
 public void Contracts_no_dependen_de_EF_ni_AspNetCore() =>
-    Types().That().ResideInNamespace("Toki.*.Contracts", useRegularExpressions: true)
+    Types().That().ResideInNamespace("Abastalia.*.Contracts", useRegularExpressions: true)
         .Should().NotDependOnAny(Types().That().ResideInNamespace("Microsoft.EntityFrameworkCore.*|Microsoft.AspNetCore.*", true))
         .Check(Architecture);
 
@@ -554,7 +554,7 @@ GET /sync/v1/cambios?flujo=licencia|config|catalogo&desde={cursor}&limite=500
 
 ## 6. Hardware
 
-### 6.1 Abstracciones (en `Toki.Hardware`, del lado del cliente)
+### 6.1 Abstracciones (en `Abastalia.Hardware`, del lado del cliente)
 
 ```csharp
 public interface IPrinter
@@ -607,7 +607,7 @@ En **Blazor Hybrid** los componentes Razor corren en .NET dentro del proceso WPF
 var peso = await Balanza.LeerPesoEstableAsync(TimeSpan.FromSeconds(3), ct);
 ```
 
-- Los drivers se registran en `Toki.Client.Wpf` según el perfil que baja del nodo, y los simulados según la configuración de desarrollo.
+- Los drivers se registran en `Abastalia.Client.Wpf` según el perfil que baja del nodo, y los simulados según la configuración de desarrollo.
 - Las lecturas de la balanza se ven con `IObservable` y `InvokeAsync(StateHasChanged)`.
 - Abrir la gaveta **sin venta** es un evento auditado: la caja llama primero a `POST /api/caja/aperturas-gaveta` (que puede pedir supervisor) y solo con un `Result` exitoso abre la gaveta.
 - Una pantalla "Diagnóstico de hardware" en la caja prueba cada periférico; el soporte la usa por WhatsApp o NetBird.
@@ -771,7 +771,7 @@ public interface IFeatureService
 }
 ```
 
-- **Fuente:** una **licencia firmada** (JWS con ECDSA P-256) que emite la nube y baja por Sync. Se verifica con la clave pública embebida en la app y se guarda en `C:\ProgramData\Toki\licencia.jws`. Tiene **15 días de gracia** sin conexión (`read-v1.md` §12). La licencia trae plan, módulos verticales, add-ons, límites y el estado de pago (tabla de `planes.md` §6).
+- **Fuente:** una **licencia firmada** (JWS con ECDSA P-256) que emite la nube y baja por Sync. Se verifica con la clave pública embebida en la app y se guarda en `C:\ProgramData\Abastalia\licencia.jws`. Tiene **15 días de gracia** sin conexión (`read-v1.md` §12). La licencia trae plan, módulos verticales, add-ons, límites y el estado de pago (tabla de `planes.md` §6).
 - **Uso en el servidor:** un filtro de endpoint `.RequiereFuncion(Funcion.ModuloCarniceria)` devuelve 403 con un `ProblemDetails` claro. Los límites se aplican en el slice que corresponde (emparejar una caja revisa `Limite.Cajas`).
 - **Uso en la UI:** `GET /api/configuracion/funciones` al iniciar sesión; los menús se ocultan o muestran "disponible en Negocio". La UI **nunca** es la única barrera.
 - **Lo que nunca pasa por un flag**, según `planes.md` §6: vender (también offline), emitir e-CF y enviar la cola de 72 h, la historia fiscal, exportar, respaldar y restaurar. Una prueba de arquitectura verifica que los slices de Ventas, Fiscal y Respaldo **no** usan `IFeatureService`.

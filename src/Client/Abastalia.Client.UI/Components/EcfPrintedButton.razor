@@ -1,0 +1,23 @@
+@inject AbastaliaApi Api
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+@* TK-148/TK-240: downloads the DGII printed representation (RI) of one e-CF: an A4 page that prints or saves as PDF. *@
+<Button class="esc-button esc-button--small" Disabled="_busy" OnClick="DownloadAsync" title="Representación impresa: ábrala e imprímala o guárdela como PDF">@(_busy ? "…" : "RI (PDF)")</Button>
+@if (_error is not null) { <span class="esc-table__sub esc-error" role="alert">@_error</span> }
+
+@code {
+    [Parameter, EditorRequired] public Guid DocumentId { get; set; }
+
+    private bool _busy;
+    private string? _error;
+
+    private async Task DownloadAsync()
+    {
+        (_busy, _error) = (true, null);
+        var file = await Api.GetAsync<FileDownload>($"/api/fiscal/documents/{DocumentId}/printed");
+        _busy = false;
+        if (file.Value is { } f) await JS.InvokeVoidAsync("escuadra.download", f.FileName, f.ContentType, f.Content);
+        else _error = file.Problem?.Message;
+    }
+}

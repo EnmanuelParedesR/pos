@@ -1,0 +1,53 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/Abastalia.BuildingBlocks/Abastalia.BuildingBlocks.csproj" />
+    <Project Path="src/BuildingBlocks/Abastalia.SharedKernel/Abastalia.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/src/Client/">
+    <Project Path="src/Client/Abastalia.Client.UI/Abastalia.Client.UI.csproj" />
+    <Project Path="src/Client/Abastalia.Client.Web/Abastalia.Client.Web.csproj" />
+    <Project Path="src/Client/Abastalia.Client.Wpf/Abastalia.Client.Wpf.csproj" />
+    <Project Path="src/Client/Abastalia.Escuadra/Abastalia.Escuadra.csproj" />
+  </Folder>
+  <Folder Name="/src/Hardware/">
+    <Project Path="src/Hardware/Abastalia.Hardware/Abastalia.Hardware.csproj" />
+    <Project Path="src/Hardware/Abastalia.Hardware.EscPos/Abastalia.Hardware.EscPos.csproj" />
+    <Project Path="src/Hardware/Abastalia.Hardware.Scales/Abastalia.Hardware.Scales.csproj" />
+    <Project Path="src/Hardware/Abastalia.Hardware.Simulated/Abastalia.Hardware.Simulated.csproj" />
+  </Folder>
+  <Folder Name="/src/Hosts/">
+    <Project Path="src/Hosts/Abastalia.Host.Cloud/Abastalia.Host.Cloud.csproj" />
+    <Project Path="src/Hosts/Abastalia.Host.Local/Abastalia.Host.Local.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/CashRegister/Abastalia.CashRegister.Contracts/Abastalia.CashRegister.Contracts.csproj" />
+    <Project Path="src/Modules/CashRegister/Abastalia.CashRegister/Abastalia.CashRegister.csproj" />
+    <Project Path="src/Modules/Customers/Abastalia.Customers.Contracts/Abastalia.Customers.Contracts.csproj" />
+    <Project Path="src/Modules/Customers/Abastalia.Customers/Abastalia.Customers.csproj" />
+    <Project Path="src/Modules/Purchasing/Abastalia.Purchasing.Contracts/Abastalia.Purchasing.Contracts.csproj" />
+    <Project Path="src/Modules/Purchasing/Abastalia.Purchasing/Abastalia.Purchasing.csproj" />
+    <Project Path="src/Modules/Settings/Abastalia.Settings.Contracts/Abastalia.Settings.Contracts.csproj" />
+    <Project Path="src/Modules/Settings/Abastalia.Settings/Abastalia.Settings.csproj" />
+    <Project Path="src/Modules/Fiscal/Abastalia.Fiscal.Contracts/Abastalia.Fiscal.Contracts.csproj" />
+    <Project Path="src/Modules/Fiscal/Abastalia.Fiscal/Abastalia.Fiscal.csproj" />
+    <Project Path="src/Modules/Identity/Abastalia.Identity.Contracts/Abastalia.Identity.Contracts.csproj" />
+    <Project Path="src/Modules/Identity/Abastalia.Identity/Abastalia.Identity.csproj" />
+    <Project Path="src/Modules/Inventory/Abastalia.Inventory.Contracts/Abastalia.Inventory.Contracts.csproj" />
+    <Project Path="src/Modules/Inventory/Abastalia.Inventory/Abastalia.Inventory.csproj" />
+    <Project Path="src/Modules/Reports/Abastalia.Reports/Abastalia.Reports.csproj" />
+    <Project Path="src/Modules/Sales/Abastalia.Sales.Contracts/Abastalia.Sales.Contracts.csproj" />
+    <Project Path="src/Modules/Sales/Abastalia.Sales/Abastalia.Sales.csproj" />
+    <Project Path="src/Modules/Sync/Abastalia.Sync.Contracts/Abastalia.Sync.Contracts.csproj" />
+    <Project Path="src/Modules/Sync/Abastalia.Sync/Abastalia.Sync.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Abastalia.ArchitectureTests/Abastalia.ArchitectureTests.csproj" />
+    <Project Path="tests/Abastalia.Client.UI.Tests/Abastalia.Client.UI.Tests.csproj" />
+    <Project Path="tests/Abastalia.Cloud.Tests/Abastalia.Cloud.Tests.csproj" />
+    <Project Path="tests/Abastalia.E2ETests/Abastalia.E2ETests.csproj" />
+    <Project Path="tests/Abastalia.Hardware.Tests/Abastalia.Hardware.Tests.csproj" />
+    <Project Path="tests/Abastalia.IntegrationTests/Abastalia.IntegrationTests.csproj" />
+    <Project Path="tests/Abastalia.UnitTests/Abastalia.UnitTests.csproj" />
+  </Folder>
+</Solution>

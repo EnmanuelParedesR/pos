@@ -1,6 +1,6 @@
 # Rename map, phase A: building blocks and Contracts
 
-Spanish → English renames done in `src/BuildingBlocks/**` and `src/Modules/*/Toki.*.Contracts/**`. Module, test, host and client code must update its references with this map. Behavior did not change: only names, comments and log text.
+Spanish → English renames done in `src/BuildingBlocks/**` and `src/Modules/*/Abastalia.*.Contracts/**`. Module, test, host and client code must update its references with this map. Behavior did not change: only names, comments and log text.
 
 Read `docs/glosario-codigo.md` first; this map follows it.
 
@@ -18,10 +18,10 @@ Read `docs/glosario-codigo.md` first; this map follows it.
 - **Error codes**: `Module.Reason`, PascalCase English. Module prefix = the English project name (`Identity`, `Settings`, `Inventory`, `CashRegister`, `Sales`, `Purchasing`, `Customers`, `Fiscal`, `Reports`). Cross-cutting codes have no module (`Validation`, `Concurrency`, `Duplicate`, `Busy`, `Approval.Required`). The `detail` text stays in Spanish.
 - **Audit actions** (first argument of `IAuditLog.RecordAsync`): `<area>.<kebab-verb-or-noun>` in English, lowercase. The area is the module's route prefix (`identity`, `settings`, `inventory`, `cash`, `sales`, `purchasing`, `customers`, `fiscal`). Example: `caja.abrir-turno` → `cash.open-shift`, `ventas.anular` → `sales.void`. The building blocks use `approval.used`.
 - **Kept in Spanish**: `detail`/`Description` texts of `Error`, FluentValidation messages, the `"sistema"` display name in `HttpUserContext`, and the store data the owner sees.
-- **Name clash to watch**: `Toki.BuildingBlocks.Security.Permissions` (static class) has the same name as a `Permissions` property you may give to a role entity. Inside such a class, refer to the static class as `Security.Permissions.X` or add `using Perms = Toki.BuildingBlocks.Security.Permissions;`.
+- **Name clash to watch**: `Abastalia.BuildingBlocks.Security.Permissions` (static class) has the same name as a `Permissions` property you may give to a role entity. Inside such a class, refer to the static class as `Security.Permissions.X` or add `using Perms = Abastalia.BuildingBlocks.Security.Permissions;`.
 - **Enum strings in the database**: modules that store these enums with `HasConversion<string>()` now store the English names. All new names fit the current column lengths. Each module regenerates its initial migration anyway.
 
-## Toki.SharedKernel
+## Abastalia.SharedKernel
 
 ### Files
 
@@ -60,7 +60,7 @@ Read `docs/glosario-codigo.md` first; this map follows it.
 | `Rnc.Normalizar(string? valor)` | `Rnc.Normalize(string? value)` |
 | `ErrorType`, `Error`, `Result`, `Result<T>` | (unchanged) |
 
-## Toki.BuildingBlocks
+## Abastalia.BuildingBlocks
 
 ### Files and folders
 
@@ -78,18 +78,18 @@ Read `docs/glosario-codigo.md` first; this map follows it.
 
 `.editorconfig`: the generated-code glob is now `[**/Persistence/Migrations/*.cs]`, it was `[**/Persistence/Migraciones/*.cs]`. Module migration folders must move to `Persistence/Migrations` too, or analyzers will start checking them.
 
-### TokiServices
+### AbastaliaServices
 
 | Old | New |
 |---|---|
-| `AddToki(services, config, modulos)` | `AddToki(services, config, modules)` |
-| `TokiServices.CrearBaseDeDatosAsync(IServiceProvider, CancellationToken)` | `TokiServices.CreateDatabaseAsync(IServiceProvider, CancellationToken)` |
+| `AddAbastalia(services, config, modulos)` | `AddAbastalia(services, config, modules)` |
+| `AbastaliaServices.CrearBaseDeDatosAsync(IServiceProvider, CancellationToken)` | `AbastaliaServices.CreateDatabaseAsync(IServiceProvider, CancellationToken)` |
 | health check name `"reloj"` | `"clock"` |
 | health check name `"outbox"` | (unchanged) |
 | exception `"Falta Database:ConnectionString."` | `"Missing Database:ConnectionString."` |
 | SQL probe `OBJECT_ID('infra.AuditoriaCabeza')` | `OBJECT_ID('infra.AuditHead')` |
 
-### Endpoints (`Toki.BuildingBlocks.Endpoints`)
+### Endpoints (`Abastalia.BuildingBlocks.Endpoints`)
 
 | Old | New |
 |---|---|
@@ -97,7 +97,7 @@ Read `docs/glosario-codigo.md` first; this map follows it.
 | `EndpointExtensions.Problema(Error error)` | `EndpointExtensions.Problem(Error error)` |
 | `IEndpoint`, `MapEndpoints`, `ToHttp` | (unchanged) |
 
-### Messaging (`Toki.BuildingBlocks.Messaging`)
+### Messaging (`Abastalia.BuildingBlocks.Messaging`)
 
 | Old | New |
 |---|---|
@@ -117,14 +117,14 @@ Read `docs/glosario-codigo.md` first; this map follows it.
 | `AutorizacionDecorator<,>` (internal) | `ApprovalDecorator<,>` |
 | `ICommand<T>`, `ICommandHandler<,>`, `Handle` | (unchanged) |
 
-### Persistence (`Toki.BuildingBlocks.Persistence`)
+### Persistence (`Abastalia.BuildingBlocks.Persistence`)
 
 | Old | New |
 |---|---|
 | `CrearBaseDeDatosAlArrancar` (internal) | `CreateDatabaseOnStartup` |
 | `DisenoDbContext<T>` | `DesignTimeFactory<T>` |
 | `DisenoInfra` (internal) | `InfraDesignTimeFactory` |
-| design-time database name `toki_diseno` | `toki_design` |
+| design-time database name `abastalia_diseno` | `abastalia_design` |
 | `ModuleDbContext.TextoLargo` | `ModuleDbContext.LongText` |
 | `DatabaseOptions.Seccion` | `DatabaseOptions.Section` |
 | `DatabaseOptions.CrearAlIniciar` | `DatabaseOptions.CreateOnStartup` |
@@ -190,10 +190,10 @@ Migration command used (from the repo root):
 
 ```
 dotnet tool restore
-dotnet dotnet-ef migrations add InitialInfra --project src/BuildingBlocks/Toki.BuildingBlocks --startup-project src/BuildingBlocks/Toki.BuildingBlocks --context InfraDbContext --output-dir Persistence/Migrations --no-build
+dotnet dotnet-ef migrations add InitialInfra --project src/BuildingBlocks/Abastalia.BuildingBlocks --startup-project src/BuildingBlocks/Abastalia.BuildingBlocks --context InfraDbContext --output-dir Persistence/Migrations --no-build
 ```
 
-### Security (`Toki.BuildingBlocks.Security`)
+### Security (`Abastalia.BuildingBlocks.Security`)
 
 | Old | New |
 |---|---|
@@ -216,11 +216,11 @@ dotnet dotnet-ef migrations add InitialInfra --project src/BuildingBlocks/Toki.B
 | `IFeatureService.LimiteDe(Limite limite)` | `IFeatureService.LimitOf(Limit limit)` |
 | `Permisos` | `Permissions` |
 | `Permisos.Todos` | `Permissions.All` |
-| `TokiClaims.Usuario` (`"sub"`) | `TokiClaims.User` (`"sub"`) |
-| `TokiClaims.Nombre` (`"name"`) | `TokiClaims.Name` (`"name"`) |
-| `TokiClaims.Dispositivo` (`"dispositivo"`) | `TokiClaims.Device` (`"device"`) |
-| `TokiClaims.Sesion` (`"sesion"`) | `TokiClaims.Session` (`"session"`) |
-| `TokiClaims.Permiso` (`"permiso"`) | `TokiClaims.Permission` (`"permission"`) |
+| `AbastaliaClaims.Usuario` (`"sub"`) | `AbastaliaClaims.User` (`"sub"`) |
+| `AbastaliaClaims.Nombre` (`"name"`) | `AbastaliaClaims.Name` (`"name"`) |
+| `AbastaliaClaims.Dispositivo` (`"dispositivo"`) | `AbastaliaClaims.Device` (`"device"`) |
+| `AbastaliaClaims.Sesion` (`"sesion"`) | `AbastaliaClaims.Session` (`"session"`) |
+| `AbastaliaClaims.Permiso` (`"permiso"`) | `AbastaliaClaims.Permission` (`"permission"`) |
 | `IUserContext.UsuarioId` | `IUserContext.UserId` |
 | `IUserContext.Nombre` | `IUserContext.Name` |
 | `IUserContext.DispositivoId` | `IUserContext.DeviceId` |
@@ -288,12 +288,12 @@ Codes named in Contracts doc comments, for the module agents to use:
 
 | Old | New | Read by |
 |---|---|---|
-| `Database:CrearAlIniciar` | `Database:CreateOnStartup` | `DatabaseOptions.CreateOnStartup` (also set in `src/Hosts/Toki.Host.Local/appsettings.json`) |
+| `Database:CrearAlIniciar` | `Database:CreateOnStartup` | `DatabaseOptions.CreateOnStartup` (also set in `src/Hosts/Abastalia.Host.Local/appsettings.json`) |
 | `Database:Provider`, `Database:ConnectionString` | (unchanged) | `DatabaseOptions` |
 | `Outbox:Procesar` | `Outbox:Process` | `OutboxProcessorWorker` (tests set it to false) |
 | `Outbox:IntervaloSegundos` | `Outbox:IntervalSeconds` | `OutboxProcessorWorker` |
 
-Not in this scope, but asked for by the plan (Settings module / tests): `Auditoria:VerificacionNocturna` → `Audit:NightlyCheck`, `Toki:CarpetaClaves` → `Toki:KeysFolder` (environment variable `Toki__CarpetaClaves` → `Toki__KeysFolder` in `tests/Toki.E2ETests`).
+Not in this scope, but asked for by the plan (Settings module / tests): `Auditoria:VerificacionNocturna` → `Audit:NightlyCheck`, `Abastalia:CarpetaClaves` → `Abastalia:KeysFolder` (environment variable `Abastalia__CarpetaClaves` → `Abastalia__KeysFolder` in `tests/Abastalia.E2ETests`).
 
 ### Log and exception texts (now English)
 
@@ -304,7 +304,7 @@ Not in this scope, but asked for by the plan (Settings module / tests): `Auditor
 - `"La auditoría solo se escribe dentro de un comando."` → `"The audit log is only written inside a command."`
 - `"Esta base se creó antes de las migraciones (TK-090)…"` → `"This database was created before migrations existed (TK-090): back it up and create it again (ADR-0005)."`
 
-## Toki.CashRegister.Contracts
+## Abastalia.CashRegister.Contracts
 
 Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 
@@ -330,7 +330,7 @@ Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 
 The doc comment on `RecordSupplierPaymentAsync` names the withdrawal reason `SupplierPayment` (was `PagoSuplidor`). The CashRegister agent should use that name for the cash-movement reason enum value.
 
-## Toki.Customers.Contracts
+## Abastalia.Customers.Contracts
 
 Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 
@@ -351,7 +351,7 @@ Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 | `IClientesReportes` | `ICustomerReports` |
 | `IClientesReportes.PorCobrarAsync(ct)` | `ICustomerReports.ReceivablesAsync(ct)` |
 
-## Toki.Fiscal.Contracts
+## Abastalia.Fiscal.Contracts
 
 Files: `Contracts.cs` unchanged.
 
@@ -372,7 +372,7 @@ Files: `Contracts.cs` unchanged.
 | `IComprobantesFiscales.EmitirAsync(documento, ct)` | `IFiscalDocuments.IssueAsync(document, ct)` |
 | `ComprobanteEmitidoV1(DocumentoId, ENcf, Tipo, ReferenciaId, Total, Itbis)` | `FiscalDocumentIssuedV1(DocumentId, ENcf, Type, ReferenceId, Total, Itbis)` |
 
-## Toki.Inventory.Contracts
+## Abastalia.Inventory.Contracts
 
 Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 
@@ -401,7 +401,7 @@ Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 | `IInventarioReportes.ValorAsync(ct)` | `IInventoryReports.ValueAsync(ct)` |
 | `IInventarioReportes.CategoriasAsync(ct)` | `IInventoryReports.CategoriesAsync(ct)` |
 
-## Toki.Purchasing.Contracts
+## Abastalia.Purchasing.Contracts
 
 Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 
@@ -444,7 +444,7 @@ Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 | `PropinaLegal` | `LegalTip` |
 | `FormaPago` | `PaymentForm` |
 
-## Toki.Sales.Contracts
+## Abastalia.Sales.Contracts
 
 Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 
@@ -495,7 +495,7 @@ Files: `Reportes.cs` → `Reports.cs`; `Contracts.cs` unchanged.
 | `Permuta` | `Barter` |
 | `OtrasFormas` | `OtherForms` |
 
-## Toki.Settings.Contracts
+## Abastalia.Settings.Contracts
 
 Files: `Contracts.cs` unchanged.
 
@@ -511,6 +511,6 @@ Files: `Contracts.cs` unchanged.
 - **JWT claims**: `dispositivo` / `sesion` / `permiso` → `device` / `session` / `permission`. Old tokens stop working after the upgrade, so users sign in again.
 - **Outbox payloads** now hold `occurredUtc` / `aggregateId` and English event type names. Existing databases start fresh (the initial migrations are regenerated).
 - **Health check** names: `reloj` → `clock`.
-- `src/Hosts/Toki.Host.Local/appsettings.json`: `Database:CrearAlIniciar` → `Database:CreateOnStartup`.
-- `tests/Toki.IntegrationTests/Infra/TokiApp.cs`: `Database:CrearAlIniciar` → `Database:CreateOnStartup`, `Outbox:Procesar` → `Outbox:Process`.
-- `tests/Toki.E2ETests/ServidorToki.cs`: `Database__CrearAlIniciar` → `Database__CreateOnStartup`.
+- `src/Hosts/Abastalia.Host.Local/appsettings.json`: `Database:CrearAlIniciar` → `Database:CreateOnStartup`.
+- `tests/Abastalia.IntegrationTests/Infra/AbastaliaApp.cs`: `Database:CrearAlIniciar` → `Database:CreateOnStartup`, `Outbox:Procesar` → `Outbox:Process`.
+- `tests/Abastalia.E2ETests/ServidorAbastalia.cs`: `Database__CrearAlIniciar` → `Database__CreateOnStartup`.

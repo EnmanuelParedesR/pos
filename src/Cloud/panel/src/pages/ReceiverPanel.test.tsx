@@ -18,7 +18,7 @@ const active: ReceiverData = {
     consentedUtc: "2026-10-15T15:00:00Z",
     ownerName: "Ana Pérez",
     holderName: "Ana Pérez",
-    urls: [{ environment: "ecf", reception: "https://api.toki/ecf/101010101/fe/recepcion/api/ecf", approval: "https://api.toki/a", authentication: "https://api.toki/s" }],
+    urls: [{ environment: "ecf", reception: "https://api.abastalia/ecf/101010101/fe/recepcion/api/ecf", approval: "https://api.abastalia/a", authentication: "https://api.abastalia/s" }],
     signingMode: "StoreSigned",
   },
   signatures: [{ atUtc: "2026-10-15T16:00:00Z", root: "ARECF", eNcf: "E310000000001", sha256: "abc" }],
@@ -43,7 +43,7 @@ it("TK-241: shows the receiver and withdraws it only after two confirmations", a
   render(<ReceiverPanel canEdit />);
 
   expect(await screen.findByText("101010101")).toBeTruthy();
-  expect(screen.getByText("https://api.toki/ecf/101010101/fe/recepcion/api/ecf")).toBeTruthy();
+  expect(screen.getByText("https://api.abastalia/ecf/101010101/fe/recepcion/api/ecf")).toBeTruthy();
   expect(screen.getByText(/ARECF/)).toBeTruthy();
   // TK-246: who signs and the hours without the store
   expect(screen.getByText(/En la PC de la tienda/)).toBeTruthy();

@@ -37,7 +37,7 @@ Dos modos por tenant, elegidos al activar el receptor (pantalla de la tienda; el
 **Decisión:** A por defecto (2 de 3). B queda en el código pero **apagado** por `Fe:AllowCloudCustody` (false; true solo en desarrollo y pruebas): la API se niega a activarlo (`Fe.CloudCustodyUnavailable`) y las pantallas lo muestran como "próximamente". La nube no firma `SemillaModel` en ningún modo; todo lo que va a la DGII sale de la tienda.
 
 **Condiciones para encender B:**
-1. Respuesta escrita de la DGII a §11 pregunta 1 (¿custodiar certificados y alojar receptores hace a Toki "proveedor de servicios de FE"?).
+1. Respuesta escrita de la DGII a §11 pregunta 1 (¿custodiar certificados y alojar receptores hace a Abastalia "proveedor de servicios de FE"?).
 2. Ninguna firma de semillas en la nube (hecho en TK-246).
 3. Un servicio de firma separado de la API, con "Key Vault Crypto User" por llave (no sobre todo el vault), llaves en HSM (Key Vault Premium o Managed HSM) y límite de firmas por tenant.
 4. PIM y alertas en cada asignación de rol sobre el vault.

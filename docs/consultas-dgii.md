@@ -1,6 +1,6 @@
 # Consultas públicas de la DGII (TK-252)
 
-Investigación del 16/10/2026 de las dos páginas públicas de la DGII que Toki puede usar para validar sin cargar el padrón: la de RNC y la de NCF. Todo se consulta desde la PC de la tienda (ADR-0011), nunca desde la nube.
+Investigación del 16/10/2026 de las dos páginas públicas de la DGII que Abastalia puede usar para validar sin cargar el padrón: la de RNC y la de NCF. Todo se consulta desde la PC de la tienda (ADR-0011), nunca desde la nube.
 
 ## Resumen
 
@@ -9,9 +9,9 @@ Investigación del 16/10/2026 de las dos páginas públicas de la DGII que Toki 
 | RNC: `dgii.gov.do/app/WebApps/ConsultasWeb2/ConsultasWeb/consultas/rnc.aspx` | ASP.NET WebForms, un POST con `__VIEWSTATE` | No hay CAPTCHA ni reCAPTCHA | Sí |
 | NCF: `dgii.gov.do/herramientas/consultas/Paginas/NCF-.aspx` | Es una página de SharePoint que incrusta en un `<iframe>` el formulario `…/ConsultasWeb/consultas/ncf.aspx` | No hay CAPTCHA ni reCAPTCHA | Sí, el formulario incrustado |
 
-**Hallazgo sobre protección:** ninguna de las dos tiene CAPTCHA, reCAPTCHA, hCaptcha, Turnstile ni reto de JavaScript. Delante hay un cortafuegos (Azure Front Door, cabecera `x-azure-ref`, y un balanceador NetScaler, cookie `NSC_…`) que **rechaza con 403 "Acceso Denegado"** las peticiones con el User-Agent de `curl` o sin User-Agent, incluso para `robots.txt`. Con un User-Agent propio y honesto (`TokiPOS/x.y.z (+https://github.com/EnmanuelParedesR/pos)`) responde 200. Toki **no se hace pasar por un navegador**: se identifica tal cual. Si un día la DGII bloquea ese User-Agent, agrega un CAPTCHA o cualquier otra detección de bots, Toki no lo esquiva: la consulta queda "sin respuesta" y se usa el padrón cargado (ver *Respaldo*), y esta nota se actualiza.
+**Hallazgo sobre protección:** ninguna de las dos tiene CAPTCHA, reCAPTCHA, hCaptcha, Turnstile ni reto de JavaScript. Delante hay un cortafuegos (Azure Front Door, cabecera `x-azure-ref`, y un balanceador NetScaler, cookie `NSC_…`) que **rechaza con 403 "Acceso Denegado"** las peticiones con el User-Agent de `curl` o sin User-Agent, incluso para `robots.txt`. Con un User-Agent propio y honesto (`AbastaliaPOS/x.y.z (+https://github.com/EnmanuelParedesR/pos)`) responde 200. Abastalia **no se hace pasar por un navegador**: se identifica tal cual. Si un día la DGII bloquea ese User-Agent, agrega un CAPTCHA o cualquier otra detección de bots, Abastalia no lo esquiva: la consulta queda "sin respuesta" y se usa el padrón cargado (ver *Respaldo*), y esta nota se actualiza.
 
-`robots.txt` (con User-Agent honesto): solo prohíbe `/_layouts/`, `/_vti_bin/` y `/_catalogs/` (rutas internas de SharePoint). `/app/WebApps/…` no está prohibido. No encontramos términos de uso que prohíban la consulta automatizada; por cortesía Toki limita cuánto pregunta (ver *Buen ciudadano*).
+`robots.txt` (con User-Agent honesto): solo prohíbe `/_layouts/`, `/_vti_bin/` y `/_catalogs/` (rutas internas de SharePoint). `/app/WebApps/…` no está prohibido. No encontramos términos de uso que prohíban la consulta automatizada; por cortesía Abastalia limita cuánto pregunta (ver *Buen ciudadano*).
 
 ## Página de RNC (`rnc.aspx`)
 
@@ -36,14 +36,14 @@ Investigación del 16/10/2026 de las dos páginas públicas de la DGII que Toki 
    - Encontrado: `cphMain_lblRncCedula`, `cphMain_lblRazonSocial`, `cphMain_lblTipoComprobante` (p. ej. "FACTURA DE CRÉDITO FISCAL"), `cphMain_lblNCF`, **`cphMain_lblEstado`** (`VIGENTE`, `VENCIDO`) y **`cphMain_lblVigencia`** ("Válido hasta", `dd/MM/aaaa`); `cphMain_lblInformacion` = "El NCF digitado es válido."
    - No corresponde: sin tabla; `cphMain_lblInformacion` = "El Número de Comprobante Fiscal ingresado no es correcto o no corresponde a este RNC".
 
-Un NCF `VENCIDO` puede ser un comprobante bueno: lo que importa es que la secuencia estuviera vigente en la fecha de la factura. Toki lo rechaza solo si "Válido hasta" es anterior a la fecha de la factura.
+Un NCF `VENCIDO` puede ser un comprobante bueno: lo que importa es que la secuencia estuviera vigente en la fecha de la factura. Abastalia lo rechaza solo si "Válido hasta" es anterior a la fecha de la factura.
 
-## Lo que hace Toki (TK-252)
+## Lo que hace Abastalia (TK-252)
 
-- `IDgiiPublicLookup` (contrato del módulo Fiscal), implementado por `DgiiPublicSite` (`src/Modules/Fiscal/Toki.Fiscal/Features/DgiiPublicLookup.cs`). El HTML se lee con expresiones regulares tolerantes a espacios, saltos de línea, mayúsculas y atributos extra; las etiquetas se comparan sin tildes.
+- `IDgiiPublicLookup` (contrato del módulo Fiscal), implementado por `DgiiPublicSite` (`src/Modules/Fiscal/Abastalia.Fiscal/Features/DgiiPublicLookup.cs`). El HTML se lee con expresiones regulares tolerantes a espacios, saltos de línea, mayúsculas y atributos extra; las etiquetas se comparan sin tildes.
 - **RNC:** `GET /api/fiscal/taxpayers/{rnc}` pregunta primero a la DGII y devuelve además `status`, `category` y `fromDgii`. Clientes, Suplidores y el diálogo de cliente de la caja muestran una insignia "Activo" (verde) o "Suspendido" / "Dado de baja"… (amarilla) junto al RNC.
 - **NCF de compras y gastos (606):** al guardar un gasto, o una compra cuyo NCF es nuevo o cambió, se consulta el NCF con el RNC del suplidor. Si la DGII dice que no corresponde, o que la secuencia venció antes de la fecha de la factura, se rechaza con "NCF no válido según la DGII…" (`Purchasing.NcfNotValidAtDgii`). La pantalla muestra entonces "Motivo para guardarlo de todas formas"; con un motivo se guarda y queda en la auditoría (`purchasing.ncf-not-valid-at-dgii`, con RNC, NCF, respuesta y motivo).
-- **e-NCF (serie E):** la página pública pide el código de seguridad del QR, que Toki no tiene al escribir la compra; no se consultan ahí. Los e-CF recibidos por el intercambio electrónico (TK-154) ya vienen validados por la DGII, y la compra desde un e-CF recibido (TK-240) los usa tal cual.
+- **e-NCF (serie E):** la página pública pide el código de seguridad del QR, que Abastalia no tiene al escribir la compra; no se consultan ahí. Los e-CF recibidos por el intercambio electrónico (TK-154) ya vienen validados por la DGII, y la compra desde un e-CF recibido (TK-240) los usa tal cual.
 
 ### Buen ciudadano
 

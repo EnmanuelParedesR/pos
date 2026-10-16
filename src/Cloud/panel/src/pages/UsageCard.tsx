@@ -32,7 +32,7 @@ export const withCount = (addOns: string[], code: string, n: number) =>
 export const addOnList = (addOns: string[]) =>
   [...new Set(addOns)].map((a) => `${addOnNames[a] ?? a}${countOf(addOns, a) > 1 ? ` ×${countOf(addOns, a)}` : ""}`).join(", ");
 
-/** A number per add-on (0 = not bought): the owner in "Plan y facturación" and Toki staff in the console. */
+/** A number per add-on (0 = not bought): the owner in "Plan y facturación" and Abastalia staff in the console. */
 export function AddOnQuantities({ codes, value, onChange, note }: { codes: string[]; value: string[]; onChange: (addOns: string[]) => void; note?: (code: string) => string | null }) {
   return (
     <>
@@ -91,7 +91,7 @@ export function UsageCard() {
   );
 }
 
-/** Toki staff (TK-248): the business's usage, and its plan and add-ons, which set its limits at once. */
+/** Abastalia staff (TK-248): the business's usage, and its plan and add-ons, which set its limits at once. */
 export function PlatformUsageCard({ tenantId }: { tenantId: string }) {
   const { data, error, reload } = useApi<PlatformUsage>(`/api/platform/tenants/${tenantId}/usage`);
   const [plan, setPlan] = useState("");

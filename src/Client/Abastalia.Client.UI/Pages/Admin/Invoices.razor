@@ -1,0 +1,213 @@
+@page "/admin/invoices"
+@inject AbastaliaApi Api
+
+<Admin Title="Facturas" Subtitle="Cada venta con su comprobante. Busque por número o e-NCF, o toque una para verla y reimprimirla.">
+    <Actions>
+        <Segmented Label="Periodo" Options="Ranges" Value="@_range" ValueChanged="ChangeRangeAsync" />
+    </Actions>
+    <ChildContent>
+        <form class="esc-row" style="gap:12px" @onsubmit="SearchAsync">
+            <label class="esc-search">
+                <Icon Name="search" Size="18" />
+                <input placeholder="Número de factura o e-NCF (E320000000123)" aria-label="Buscar factura" @bind="_search" @bind:event="oninput" />
+            </label>
+            @if (_range == "custom")
+            {
+                <label class="esc-field" style="flex-direction:row;align-items:center;gap:8px"><span>Desde</span><input class="esc-input" type="date" aria-label="Desde" @bind="_from" @bind:after="LoadAsync" /></label>
+                <label class="esc-field" style="flex-direction:row;align-items:center;gap:8px"><span>Hasta</span><input class="esc-input" type="date" aria-label="Hasta" @bind="_to" @bind:after="LoadAsync" /></label>
+            }
+            <Button Type="submit"><Icon Name="search" Size="18" /> Buscar</Button>
+        </form>
+        <div class="esc-row" style="gap:8px" role="group" aria-label="Estado">
+            @foreach (var (value, text) in Statuses)
+            {
+                <button type="button" class="esc-chip" aria-pressed="@(_status == value ? "true" : "false")" @onclick="() => _status = value">@text</button>
+            }
+            @if (!_loading && _more)
+            {
+                @* Only a page is loaded: its sum would not be the period's. The period's totals are in Reportes. *@
+                <span class="esc-muted">Las @_sales.Count más recientes · los totales del periodo están en Reportes</span>
+            }
+            else if (!_loading && _sales.Count > 0)
+            {
+                var done = _sales.Where(s => s.Status != "Voided").ToList();
+                <span class="esc-muted">@done.Count @(done.Count == 1 ? "venta" : "ventas") · @Format.WithCurrency(done.Sum(s => s.Total))@(_sales.Count - done.Count is var v && v > 0 ? $" · {v} anulada{(v == 1 ? "" : "s")}" : "")</span>
+            }
+        </div>
+
+        <div class="esc-card esc-table-wrap esc-table-wrap--tall">
+            <table class="esc-table esc-table--wide">
+                <thead><tr><th>Factura</th><th class="esc-hide-sm">e-NCF</th><th class="esc-hide-sm">Fecha</th><th class="esc-hide-sm">Cajero</th><th class="esc-hide-sm">Cliente</th><th>Estado</th><th class="esc-num">Total</th></tr></thead>
+                <tbody>
+                    @if (_loading)
+                    {
+                        @for (var i = 0; i < 6; i++)
+                        {
+                            <tr><td><Skeleton Width="60px" /></td><td class="esc-hide-sm"><Skeleton Width="130px" /></td><td class="esc-hide-sm"><Skeleton Width="120px" /></td><td class="esc-hide-sm"><Skeleton Width="100px" /></td><td class="esc-hide-sm"><Skeleton Width="100px" /></td><td><Skeleton Width="80px" /></td><td><Skeleton /></td></tr>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var s in Visible)
+                        {
+                            <tr class="selectable" tabindex="0" @onclick="() => ShowAsync(s.Id)" @onkeydown='e => e.Key == "Enter" ? ShowAsync(s.Id) : Task.CompletedTask'>
+                                <td><span style="font-weight:600">#@s.Number</span><span class="esc-table__sub esc-only-sm esc-muted">@s.ENcf · @Day(s.DateUtc)</span></td>
+                                <td class="esc-hide-sm esc-muted" style="font-variant-numeric:tabular-nums">@s.ENcf</td>
+                                <td class="esc-hide-sm">@Day(s.DateUtc)<span class="esc-table__sub esc-muted">@Format.Time(s.DateUtc)</span></td>
+                                <td class="esc-hide-sm">@s.Cashier</td>
+                                <td class="esc-hide-sm @(s.Customer is null ? "esc-muted" : "")">@(s.Customer ?? "Contado")</td>
+                                <td><span class="esc-pill @(s.Status == "Voided" ? "esc-pill--error" : "esc-pill--success")">@Names.SaleStatus(s.Status)</span></td>
+                                <td class="esc-num" style="font-weight:600;@(s.Status == "Voided" ? "text-decoration:line-through;color:var(--text-3)" : "")">@Format.Amount(s.Total)</td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            @if (!_loading && !Visible.Any())
+            {
+                <EmptyState Icon="receipt" Title="@(string.IsNullOrWhiteSpace(_search) ? "No hay facturas en estos días" : $"No hay una factura “{_search.Trim()}”")">
+                    @(_message ?? (string.IsNullOrWhiteSpace(_search) ? "Pruebe con otro periodo." : "Escriba el número completo (por ejemplo 123) o el e-NCF tal como sale en la factura."))
+                </EmptyState>
+            }
+            @if (_more)
+            {
+                <div class="esc-table-foot"><Button Disabled="_loading" OnClick="MoreAsync">Ver más</Button></div>
+            }
+        </div>
+
+        @if (_receipt is { } receipt)
+        {
+            <ReceiptDialog Receipt="receipt" OnClose="() => _receipt = null" />
+        }
+        else if (_detail is { } d)
+        {
+            <Dialog Title="@($"Factura #{d.Number}")" Subtitle="@($"{d.ENcf} · {Names.DocumentType(d.DocumentType)} · {Format.Date(d.DateUtc)}")" Wide="true" OnClose="() => _detail = null">
+                <ChildContent>
+                    @if (d.Status == "Voided")
+                    {
+                        <Notice Kind="Notice.Kinds.Error" Title="Venta anulada">@(d.VoidReason is { } why ? $"Motivo: {why}" : null)</Notice>
+                    }
+                    <div class="kpis">
+                        <div class="kpi"><span class="esc-label">Total</span><span class="kpi__value">@Format.WithCurrency(d.Total)</span></div>
+                        <div class="kpi"><span class="esc-label">ITBIS</span><span class="kpi__value">@Format.Amount(d.Itbis)</span></div>
+                        @if (d.Discount > 0)
+                        {
+                            <div class="kpi"><span class="esc-label">Descuento</span><span class="kpi__value">@Format.Amount(d.Discount)</span></div>
+                        }
+                    </div>
+                    <dl class="esc-dl">
+                        <dt>Caja</dt><dd>@d.Register · @d.Cashier</dd>
+                        <dt>Cliente</dt><dd>@(d.Customer ?? "Contado")</dd>
+                        <dt>Pagos</dt><dd>@string.Join(" · ", d.Payments.Select(p => $"{Names.PaymentMethod(p.Method)} {Format.Amount(p.Amount)}"))@(d.Change > 0 ? $" · devuelta {Format.Amount(d.Change)}" : "")</dd>
+                    </dl>
+                    <div class="esc-table-wrap">
+                        <table class="esc-table">
+                            <thead><tr><th>Producto</th><th class="esc-num">Cantidad</th><th class="esc-num esc-hide-sm">Precio</th><th class="esc-num">Total</th></tr></thead>
+                            <tbody>
+                                @foreach (var l in d.Lines)
+                                {
+                                    <tr>
+                                        <td><span style="font-weight:600">@l.Description</span>
+                                            @if (l.Discount > 0) { <span class="esc-table__sub esc-muted">Descuento −@Format.Amount(l.Discount)</span> }
+                                            @if (l.ReturnedQuantity > 0) { <span class="esc-table__sub" style="color:var(--warning)">Devuelto: @Format.Quantity(l.ReturnedQuantity, l.Unit)</span> }</td>
+                                        <td class="esc-num">@Format.Quantity(l.Quantity, l.Unit)</td>
+                                        <td class="esc-num esc-hide-sm">@Format.Amount(l.UnitPrice)</td>
+                                        <td class="esc-num" style="font-weight:600">@Format.Amount(l.Total)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    @if (d.Returns.Length > 0)
+                    {
+                        <h3 class="esc-section-title">Devoluciones</h3>
+                        <ul class="esc-col" style="gap:6px;margin:0;padding-left:18px">
+                            @foreach (var r in d.Returns)
+                            {
+                                <li>@Format.Date(r.DateUtc) · @Format.WithCurrency(r.Total) en @Names.PaymentMethod(r.Method).ToLowerInvariant() · nota de crédito @r.ENcf · @r.Reason</li>
+                            }
+                        </ul>
+                    }
+                    @if (_error is not null) { <Notice Title="@_error" /> }
+                </ChildContent>
+                <Footer>
+                    <Button OnClick="() => _detail = null" Shortcut="Esc">Cerrar</Button>
+                    <Button Variant="Button.Variants.Primary" OnClick="() => ReprintAsync(d.Id)"><Icon Name="printer" /> Ver factura para reimprimir</Button>
+                </Footer>
+            </Dialog>
+        }
+    </ChildContent>
+</Admin>
+
+@code {
+    private static readonly IReadOnlyList<(string, string)> Ranges = [("1", "Hoy"), ("7", "7 días"), ("30", "30 días"), ("custom", "Otras fechas")];
+    private static readonly IReadOnlyList<(string, string)> Statuses = [("", "Todas"), ("Completed", "Completadas"), ("Voided", "Anuladas")];
+    private static readonly System.Globalization.CultureInfo Es = System.Globalization.CultureInfo.GetCultureInfo("es-DO");
+
+    private List<SaleSummary> _sales = [];
+    private SaleDetail? _detail;
+    private Receipt? _receipt;
+    private string _range = "7", _status = "";
+    private string? _search, _message, _error;
+    private DateOnly _from = Format.Today.AddDays(-30), _to = Format.Today;
+    private bool _loading = true, _more;
+    private int _page = 1;
+
+    private IEnumerable<SaleSummary> Visible => _status == "" ? _sales : _sales.Where(s => s.Status == _status);
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private Task ChangeRangeAsync(string range)
+    {
+        _range = range;
+        return LoadAsync();
+    }
+
+    /// <summary>A number or e-NCF is looked up in every date: the person has the paper in hand, not the day.</summary>
+    private Task SearchAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _page = 1;
+        _loading = true;
+        _sales = await PageAsync(1);
+        _loading = false;
+    }
+
+    private async Task MoreAsync()
+    {
+        _loading = true;
+        _sales.AddRange(await PageAsync(++_page));
+        _loading = false;
+    }
+
+    private async Task<List<SaleSummary>> PageAsync(int page)
+    {
+        var (from, to) = _range == "custom" ? (_from, _to) : (Format.Today.AddDays(1 - int.Parse(_range)), Format.Today);
+        var search = _search?.Trim().TrimStart('#');
+        var q = string.IsNullOrEmpty(search) ? $"from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}" : $"search={Uri.EscapeDataString(search.ToUpperInvariant())}";
+        var r = await Api.GetAsync<List<SaleSummary>>($"/api/sales?{q}&page={page}");
+        _message = r.Problem?.Message;
+        var items = r.Value ?? [];
+        _more = items.Count == 100; // the API's page size
+        return items;
+    }
+
+    private async Task ShowAsync(Guid id)
+    {
+        var r = await Api.GetAsync<SaleDetail>($"/api/sales/{id}");
+        (_detail, _error, _message) = (r.Value, null, r.Problem?.Message);
+    }
+
+    private async Task ReprintAsync(Guid id)
+    {
+        var r = await Api.GetAsync<Receipt>($"/api/sales/{id}/receipt");
+        (_receipt, _error) = (r.Value, r.Problem?.Message);
+    }
+
+    private static string Day(DateTime utc)
+    {
+        var d = DateOnly.FromDateTime(Format.StoreTime(utc));
+        return d == Format.Today ? "Hoy" : d == Format.Today.AddDays(-1) ? "Ayer" : Format.StoreTime(utc).ToString("d MMM yyyy", Es).Replace(".", "");
+    }
+}

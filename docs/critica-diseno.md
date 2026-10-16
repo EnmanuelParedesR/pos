@@ -1,4 +1,4 @@
-## Crítica de diseño: Toki V1 (caja y administración)
+## Crítica de diseño: Abastalia V1 (caja y administración)
 
 Revisión del canvas de pantallas (Entrar, Abrir caja, Venta y sus 6 excepciones, Cobrar, Venta lista, Cerrar caja,
 Resumen, Turnos, Productos, Inventario, Compra, Conteo, celular y Escuadra) contra el backend V1 ya construido.
@@ -32,7 +32,7 @@ por revendedor y funciones que el backend V1 no tiene, y le faltan las pantallas
   Correcto: es lo que la cajera y el cliente necesitan.
 - **Flujo de lectura**: barra de estado → escáner → mosaicos → carrito → Cobrar. La barra de teclas abajo cierra el
   recorrido sin competir.
-- **Énfasis**: el azul Toki se reserva para la acción principal (Cobrar, Confirmar). En Resumen hay seis tarjetas
+- **Énfasis**: el azul Abastalia se reserva para la acción principal (Cobrar, Confirmar). En Resumen hay seis tarjetas
   del mismo peso; "Para revisar" debería ir antes que las cifras porque es lo que pide acción.
 
 ### Consistencia

@@ -1,0 +1,89 @@
+@using Microsoft.AspNetCore.Components.Forms
+@inject AbastaliaApi Api
+@implements IDisposable
+
+@* TK-162: the DGII registry (~700k rows) is imported in the background on the server; this card uploads it and shows the progress. *@
+<section class="esc-card esc-setting">
+    <div class="esc-setting__about"><h2>Padrón de RNC</h2><p>El archivo del padrón que publica la DGII: el .zip tal como se descarga, o el DGII_RNC.TXT que trae adentro. Con él la caja llena el nombre del cliente al escribir su RNC o cédula. Cárguelo de nuevo cada mes.</p></div>
+    <div class="esc-setting__body">
+        <Field Label="Archivo del padrón" Hint="Puede seguir usando Abastalia mientras se carga.">
+            <InputFile class="esc-input" accept=".txt,.TXT,.zip,.ZIP" OnChange="UploadAsync" disabled="@(_uploading || _status?.Running == true)" />
+        </Field>
+        @if (_uploading)
+        {
+            <Notice Kind="Notice.Kinds.Info" Title="Subiendo el archivo al servidor…" />
+        }
+        else if (_problem is not null)
+        {
+            <Notice Kind="_problem.Kind" Title="@_problem.Message" />
+        }
+        else if (_status is { Running: true } running)
+        {
+            <Notice Kind="Notice.Kinds.Info" Title="@($"Cargando el padrón: {running.Percent} % ({Count(running.Taxpayers)} contribuyentes)…")" />
+        }
+        else if (_status is { Error: { } error })
+        {
+            <Notice Title="@error" />
+        }
+        else if (_status is { FinishedUtc: { } done } finished)
+        {
+            <Notice Kind="Notice.Kinds.Success" Title="@($"Padrón cargado: {Count(finished.Taxpayers)} contribuyentes ({Format.Date(done)}).")" />
+        }
+    </div>
+</section>
+
+@code {
+    private sealed record ImportStatus(bool Running, int Percent, int Taxpayers, string? Error, DateTime? FinishedUtc);
+    private const string StatusUrl = "/api/fiscal/taxpayer-registry/import";
+    private const long MaxFileBytes = 300_000_000;
+    private readonly CancellationTokenSource _closed = new();
+    private ImportStatus? _status;
+    private Problem? _problem;
+    private bool _uploading;
+
+    private static string Count(int n) => n.ToString("#,##0", System.Globalization.CultureInfo.InvariantCulture);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _status = (await Api.GetAsync<ImportStatus>(StatusUrl)).Value;
+        if (_status?.Running == true) _ = FollowAsync();
+    }
+
+    private async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        if (e.File.Size > MaxFileBytes)
+        {
+            _problem = new Problem(0, "", "El archivo pasa de 300 MB: no parece el padrón de la DGII.");
+            return;
+        }
+        (_uploading, _problem) = (true, null);
+        await using (var file = e.File.OpenReadStream(MaxFileBytes, _closed.Token))
+        {
+            // The upload of ~150 MB on the store LAN; the import itself runs on the server after it answers.
+            var r = await Api.PostAsync<ImportStatus>("/api/fiscal/taxpayer-registry", new StreamContent(file), TimeSpan.FromMinutes(10));
+            (_status, _problem) = (r.Value, r.Problem);
+        }
+        _uploading = false;
+        if (_status?.Running == true) _ = FollowAsync();
+    }
+
+    /// <summary>Asks the server every second until the import ends or the owner leaves the screen.</summary>
+    private async Task FollowAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_closed.Token))
+            {
+                var r = await Api.GetAsync<ImportStatus>(StatusUrl);
+                if (r.Value is { } s) _status = s;
+                await InvokeAsync(StateHasChanged);
+                if (_status?.Running != true) return;
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    // Not disposed: a poll may still read its token after the screen closes.
+    public void Dispose() => _closed.Cancel();
+}

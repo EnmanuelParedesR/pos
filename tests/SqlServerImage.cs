@@ -1,4 +1,4 @@
-namespace Toki.Tests;
+namespace Abastalia.Tests;
 
 /// <summary>TK-163: the one SQL Server image every test container uses (linked into each test project that starts one).
 /// A dated CU, never "latest", so CI does not change under us; bump it on purpose (tags: mcr.microsoft.com/v2/mssql/server/tags/list).</summary>

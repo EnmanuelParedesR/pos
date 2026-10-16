@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\SqlServerImage.cs" Link="SqlServerImage.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Only to build the API first: the tests start its real process, they never load it. -->
+    <ProjectReference Include="..\..\src\Hosts\Abastalia.Host.Local\Abastalia.Host.Local.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+</Project>

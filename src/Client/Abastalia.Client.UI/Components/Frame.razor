@@ -1,0 +1,238 @@
+@inherits LayoutComponentBase
+@using Microsoft.Extensions.DependencyInjection
+@implements IDisposable
+@inject Session Session
+@inject AbastaliaApi Api
+@inject NavigationManager Nav
+@inject Peripherals Peripherals
+@inject Cart Cart
+@inject IServiceProvider Services
+
+@if (_ready)
+{
+    @* TK-242: F1 bubbles here from every screen (data-keys-root: escuadra.js sends it here when no screen takes keys). *@
+    <CascadingValue Value="this" IsFixed="true">
+    <div style="min-height:100vh;display:flex;flex-direction:column" data-keys-root @onkeydown="HelpKey">
+        @* The back office has its own shell (Admin.razor); the dark status bar is the register's. *@
+        @if (!IsBackOffice)
+        {
+        <header class="esc-status-bar">
+            <div class="esc-status-bar__group">
+                <Logo OnFrame="true" />
+                @if (Session.Shift is { } s)
+                {
+                    <span style="font-weight:600">@s.Register</span>
+                }
+                @if (Session.Name is { } name)
+                {
+                    <span>@name</span>
+                }
+                @if (Session.Shift is { } shift)
+                {
+                    <span class="muted">Turno abierto @Format.Time(shift.OpenedUtc)</span>
+                }
+            </div>
+            <div class="esc-status-bar__group">
+                @* TK-157: everyone at the register sees that receipts are paper series B (amber: the sale works, principle 3). *@
+                @if (_contingency is { Active: true })
+                {
+                    <span class="esc-offline" role="status">Contingencia: se facturan comprobantes serie B en papel</span>
+                }
+                @if (_queue is { } q)
+                {
+                    @* An e-CF waiting more than 24 h is amber (it must reach the DGII within 72 h); never red: principle 3. *@
+                    <span class="@(Late(q) ? "esc-offline" : "muted")" role="status">e-CF en cola: @q.Pending</span>
+                    @* TK-176: amber from 30 days before the certificate expires (renewing takes days). *@
+                    @if (q.CertificateExpiresUtc is { } expires && expires < DateTime.UtcNow.AddDays(30))
+                    {
+                        <span class="esc-offline" role="status">@(expires < DateTime.UtcNow ? "Certificado digital vencido" : $"Certificado digital vence en {(int)(expires - DateTime.UtcNow).TotalDays} días")</span>
+                    }
+                }
+                @* TK-238: amber for whoever can fix it; the sale goes on. *@
+                @if (_backup is { PassphraseProblem: not null })
+                {
+                    <span class="esc-offline" role="status">Respaldos sin frase: no se están haciendo</span>
+                }
+                @* TK-196/220: the trial is calm (muted) until its last days, then amber; never blocks the sale. *@
+                @if (_license is { } l && Names.LicenseNote(l) is { } note)
+                {
+                    <span class="@(l.Warning is null ? "muted" : "esc-offline")" role="status">@note</span>
+                }
+                @* TK-243: this PC's scale and printer, when it has them; amber when one stops answering (the sale goes on). *@
+                @foreach (var (icon, device, state) in new[] { ("scale", "Balanza", Peripherals.ScaleState), ("printer", "Impresora", Peripherals.PrinterState) })
+                {
+                    if (state is { } st)
+                    {
+                        <span class="esc-status-bar__device @(st == Peripherals.DeviceState.Error ? "esc-offline" : "muted")" role="status">
+                            <Icon Name="@icon" Size="16" />@device @(st switch { Peripherals.DeviceState.Connected => "conectada", Peripherals.DeviceState.Error => "sin respuesta", _ => "configurada" })
+                        </span>
+                    }
+                }
+                @* TK-254: calm, never blocks the sale. *@
+                @if (_pendingVersion is not null)
+                {
+                    <span class="muted" role="status">Hay una actualización; se aplicará al reiniciar</span>
+                }
+                @if (Session.Online)
+                {
+                    <span class="muted">En línea</span>
+                }
+                else
+                {
+                    <span class="esc-offline" role="status">Sin conexión con el servidor · reintentando</span>
+                }
+                <button type="button" class="esc-status-bar__help" @onclick="ShowHelp">Ayuda <Keycap>F1</Keycap></button>
+                <span style="font-weight:600">@Format.Time(DateTimeOffset.UtcNow)</span>
+            </div>
+        </header>
+        }
+        @if (Session.UnknownServer && Session.IsPaired)
+        {
+            @* R8 #9: not "no network". The server's certificate is not the pinned one: nothing was sent; pairing again fixes it. *@
+            <div style="padding:12px 16px" role="alert">
+                <Notice Title="El servidor cambió de certificado: vuelva a unir este equipo">Si nadie reinstaló la PC principal, llame al técnico antes: puede ser otro equipo haciéndose pasar por el servidor.
+                    <div style="margin-top:8px"><Button Variant="Button.Variants.Primary" OnClick="PairAgainAsync">Volver a unir este equipo</Button></div>
+                </Notice>
+            </div>
+        }
+        <main style="flex:1 1 auto;display:flex;flex-direction:column;min-height:0">
+            @* A failure in one screen never freezes the register: the cart lives in a scoped service, so it survives. *@
+            <ErrorBoundary @ref="_boundary">
+                <ChildContent>@Body</ChildContent>
+                <ErrorContent>
+                    <div class="esc-page">
+                        <Notice Title="Algo falló en esta pantalla.">La venta en curso no se perdió.</Notice>
+                        <div><Button Variant="Button.Variants.Primary" OnClick="BackToSale">Volver a la venta</Button></div>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
+        </main>
+    </div>
+    </CascadingValue>
+    <ApprovalDialog />
+    @if (_help)
+    {
+        <HelpPanel Route="@Nav.ToBaseRelativePath(Nav.Uri)" OnClose="() => _help = false" />
+    }
+}
+
+@code {
+    private static readonly string[] Public = ["setup", "sign-in"];
+
+    private bool IsBackOffice => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("admin", StringComparison.Ordinal);
+    private bool _ready;
+    private bool _help;
+
+    /// <summary>The back office's "Ayuda" button opens the same panel (Admin gets this Frame as a cascading value).</summary>
+    public void ShowHelp()
+    {
+        _help = true;
+        StateHasChanged();
+    }
+
+    private void HelpKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "F1") _help = !_help;
+    }
+    private Timer? _clock;
+    private ErrorBoundary? _boundary;
+    private FiscalQueue? _queue;
+    private EcfContingencyStatus? _contingency;
+    private LicenseFeatures? _license;
+    private BackupWarning? _backup;
+
+    /// <summary>The oldest pending e-CF is over 24 h old: its 72-hour deadline is less than 48 h away.</summary>
+    private static bool Late(FiscalQueue q) => q.Overdue > 0 || q.NextDeadlineUtc < DateTime.UtcNow.AddHours(48);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.LoadAsync();
+        await Session.RenewCertificateIfDueAsync(async csr =>
+            (await Api.PostAsync<RenewedCertificate>("/api/identity/devices/current/certificate", new { CertificateRequest = csr })).Value?.Certificate, DateTime.UtcNow);
+        await Peripherals.LoadAsync();
+        Session.Changed += OnSessionChanged;
+        Peripherals.Changed += OnDevicesChanged;
+        Nav.LocationChanged += OnLocationChanged;
+        Guard();
+        _ready = true;
+        // Every 15 s: the clock and whether the store server answers (AbastaliaApi keeps Session.Online; amber, never red: principle 3).
+        _clock = new Timer(_ => InvokeAsync(CheckAsync), null, TimeSpan.Zero, TimeSpan.FromSeconds(15));
+    }
+
+    private async Task CheckAsync()
+    {
+        await Api.PollAsync<Empty>("/health");
+        if (Session.IsOpen) await Peripherals.ReportAsync(Api); // TK-190: at sign-in and after the scale or printer change
+        // The e-CF send queue, only for whoever may manage it (the endpoint needs fiscal.manage); hidden for everyone else.
+        _queue = Session.Can("fiscal.manage") && !IsBackOffice ? (await Api.PollAsync<FiscalQueue>("/api/fiscal/queue")).Value ?? _queue : null;
+        _contingency = Session.IsOpen && !IsBackOffice ? (await Api.PollAsync<EcfContingencyStatus>("/api/fiscal/contingency")).Value ?? _contingency : null;
+        _backup = Session.Can("backups.manage") && !IsBackOffice ? (await Api.PollAsync<BackupWarning>("/api/backups/warning")).Value ?? _backup : null;
+        _license = Session.IsOpen && !IsBackOffice ?(await Api.PollAsync<LicenseFeatures>("/api/settings/features")).Value ?? _license : null;
+        await ReportVersionAsync();
+        StateHasChanged();
+    }
+
+    private IAppUpdater? _updater;
+    private DateTime _lastReport;
+    private string? _pendingVersion;
+    private (string, string?)? _lastPolicy;
+
+    /// <summary>TK-254: every 2 minutes this register tells the server its version. The answer brings the version it gets once Abastalia is closed (the
+    /// setup's SYSTEM task installs it), the store's channel and the cloud's cap (left for that task) and whether the owner asked it to close and
+    /// update: done only with no sale in progress.</summary>
+    private async Task ReportVersionAsync()
+    {
+        _updater ??= Services.GetService<IAppUpdater>();
+        if (_updater is null || !Session.IsOpen || DateTime.UtcNow - _lastReport < TimeSpan.FromMinutes(2)) return;
+        _lastReport = DateTime.UtcNow;
+        if ((await Api.PollPutAsync<RegisterUpdateAnswer>("/api/settings/updates/register", new { _updater.Version })).Value is not { } a) return;
+        _pendingVersion = a.PendingVersion;
+        if (_lastPolicy != (a.Channel, a.AllowedVersion))
+        {
+            _lastPolicy = (a.Channel, a.AllowedVersion);
+            _updater.Follow(a.Channel, a.AllowedVersion);
+        }
+        if (a.RestartRequested && a.PendingVersion is not null && Cart.IsEmpty) _updater.CloseToUpdate();
+    }
+
+    private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(() =>
+    {
+        _boundary?.Recover();
+        Guard();
+    });
+
+    private void Guard()
+    {
+        var route = Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
+        if (!Session.IsPaired && route != "setup") Nav.NavigateTo("setup");
+        else if (Session.IsPaired && !Session.IsOpen && !Public.Contains(route)) Nav.NavigateTo("sign-in");
+    }
+
+    private async Task PairAgainAsync()
+    {
+        await Session.ForgetDeviceAsync();
+        Nav.NavigateTo("setup");
+    }
+
+    private void BackToSale()
+    {
+        _boundary?.Recover();
+        Nav.NavigateTo("sale");
+    }
+
+    private void OnSessionChanged() => InvokeAsync(() =>
+    {
+        if (Session.Expired && !Nav.Uri.Contains("sign-in", StringComparison.Ordinal)) Nav.NavigateTo("sign-in?expired=true");
+        StateHasChanged();
+    });
+
+    private void OnDevicesChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+        Peripherals.Changed -= OnDevicesChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+        _clock?.Dispose();
+    }
+}

@@ -1,6 +1,6 @@
 # Rename map, phase B: Inventory module
 
-Spanish → English renames done in `src/Modules/Inventory/Toki.Inventory/**`. Behavior did not change. Contracts names come from `docs/rename-map.md` (`Toki.Inventory.Contracts` section). The API serializes in camelCase with string enums, so the JSON field is the property name below with a lowercase first letter.
+Spanish → English renames done in `src/Modules/Inventory/Abastalia.Inventory/**`. Behavior did not change. Contracts names come from `docs/rename-map.md` (`Abastalia.Inventory.Contracts` section). The API serializes in camelCase with string enums, so the JSON field is the property name below with a lowercase first letter.
 
 ## Files
 
@@ -21,7 +21,7 @@ Spanish → English renames done in `src/Modules/Inventory/Toki.Inventory/**`. B
 
 ## Routes
 
-OpenAPI tag `Inventario` → `Inventory`. Permissions are the new constants from `Toki.BuildingBlocks.Security.Permissions`; which permission each route needs did not change.
+OpenAPI tag `Inventario` → `Inventory`. Permissions are the new constants from `Abastalia.BuildingBlocks.Security.Permissions`; which permission each route needs did not change.
 
 | Old | New | Permission |
 |---|---|---|
@@ -246,14 +246,14 @@ Migration command used (from the repo root):
 
 ```
 dotnet tool restore
-dotnet dotnet-ef migrations add InitialInventory --project src/Modules/Inventory/Toki.Inventory --startup-project src/Modules/Inventory/Toki.Inventory --context InventoryDbContext --output-dir Persistence/Migrations --no-build
+dotnet dotnet-ef migrations add InitialInventory --project src/Modules/Inventory/Abastalia.Inventory --startup-project src/Modules/Inventory/Abastalia.Inventory --context InventoryDbContext --output-dir Persistence/Migrations --no-build
 ```
 
 ## Internal types other code references
 
-`InternalsVisibleTo` still covers `Toki.UnitTests` and `Toki.IntegrationTests`.
+`InternalsVisibleTo` still covers `Abastalia.UnitTests` and `Abastalia.IntegrationTests`.
 
-### Module and services (`Toki.Inventory`)
+### Module and services (`Abastalia.Inventory`)
 
 | Old | New |
 |---|---|
@@ -267,7 +267,7 @@ dotnet dotnet-ef migrations add InitialInventory --project src/Modules/Inventory
 | `MovimientosInventario.AplicarDiferenciaAsync(tipo, referenciaId, productoId, almacen, diferencia, costo, motivo, ct)` | `StockMovements.ApplyDifferenceAsync(type, referenceId, productId, warehouse, difference, cost, reason, ct)` |
 | private `Registrar`, `CantidadAsync`, `ValidarCantidad`, `Agrupar` | `Record`, `QuantityAsync`, `ValidateQuantity`, `Group` |
 
-### Persistence (`Toki.Inventory.Persistence`)
+### Persistence (`Abastalia.Inventory.Persistence`)
 
 | Old | New |
 |---|---|
@@ -285,7 +285,7 @@ dotnet dotnet-ef migrations add InitialInventory --project src/Modules/Inventory
 | `InventarioConfiguration` | `InventoryConfiguration` |
 | `DisenoInventario` | `InventoryDesignTimeFactory` |
 
-### Domain (`Toki.Inventory.Domain`)
+### Domain (`Abastalia.Inventory.Domain`)
 
 | Old | New |
 |---|---|
@@ -315,13 +315,13 @@ dotnet dotnet-ef migrations add InitialInventory --project src/Modules/Inventory
 | `ConteoFisico` (`Id, AlmacenId, CategoriaId, Estado, UsuarioId, CreadoUtc, AplicadoUtc, Lineas`) | `StockCount` (`Id, WarehouseId, CategoryId, Status, UserId, CreatedUtc, AppliedUtc, Lines`) |
 | `ConteoLinea` (`ConteoId, ProductoId, Contado, SistemaAlContar`) | `StockCountLine` (`StockCountId, ProductId, Counted, SystemAtCount`) |
 
-### Features (`Toki.Inventory.Features`)
+### Features (`Abastalia.Inventory.Features`)
 
 All slice classes are listed above under "Requests and responses"; also `MotivoAjuste` → `AdjustmentReason` (internal enum in `Features/Adjustments.cs`).
 
 ## Notes for other agents
 
-- Tests in `tests/Toki.UnitTests/Inventario/InventarioTests.cs` call `CostoPromedio.Calcular/Revertir` with named arguments: use `stock:`, `currentCost:`, `quantity:`, `inboundCost:` and `stockAfter:`. They assert error code `Inventario.EtiquetaMalLeida` → `Inventory.LabelMisread`.
-- `tests/Toki.IntegrationTests/Infra/TokiApp.cs` (kardex check) reads `db.Stock` / `db.StockMovements` and `ProductId`, `WarehouseId`, `Sequence`, `Quantity`, `ResultingStock`.
+- Tests in `tests/Abastalia.UnitTests/Inventario/InventarioTests.cs` call `CostoPromedio.Calcular/Revertir` with named arguments: use `stock:`, `currentCost:`, `quantity:`, `inboundCost:` and `stockAfter:`. They assert error code `Inventario.EtiquetaMalLeida` → `Inventory.LabelMisread`.
+- `tests/Abastalia.IntegrationTests/Infra/AbastaliaApp.cs` (kardex check) reads `db.Stock` / `db.StockMovements` and `ProductId`, `WarehouseId`, `Sequence`, `Quantity`, `ResultingStock`.
 - Sqlite ignores schemas, so table names must be unique across modules: this module now owns `Categories`, `Products`, `Presentations`, `Barcodes`, `Warehouses`, `Stock`, `StockMovements`, `LabelFormats`, `StockCounts`, `StockCountLines`.
 - The `InvalidQuantity` detail still says "se vende por unidad/libra": it used the enum name before, and now maps `Pound` → `libra`, `Unit` → `unidad` so the Spanish text stays the same.

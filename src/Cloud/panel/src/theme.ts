@@ -2,7 +2,7 @@
  *  theme ("light" or "dark") that escuadra-admin.css reads. "system" follows prefers-color-scheme, also when it changes. */
 export type ThemeChoice = "system" | "light" | "dark";
 
-const key = "toki.theme";
+const key = "abastalia.theme";
 let unsaved: ThemeChoice = "system"; // storage blocked: the choice lasts until the page reloads
 
 const darkQuery = () => (typeof window.matchMedia === "function" ? window.matchMedia("(prefers-color-scheme: dark)") : null);

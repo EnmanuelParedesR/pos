@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Abastalia.Escuadra\Abastalia.Escuadra.csproj" />
+    <ProjectReference Include="..\..\Hardware\Abastalia.Hardware\Abastalia.Hardware.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Abastalia.Client.UI.Tests" />
+  </ItemGroup>
+</Project>

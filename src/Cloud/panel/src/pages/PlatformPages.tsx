@@ -26,7 +26,7 @@ import { PlatformUsageCard } from "./UsageCard";
 import { PlatformBillingCard } from "./BillingPage";
 import { PlatformReferralsCard } from "./ReferralCards";
 
-/** Plataforma (TK-189 / TK-190): Toki staff only. Same Escuadra Admin pieces as the owner's panel. */
+/** Plataforma (TK-189 / TK-190): Abastalia staff only. Same Escuadra Admin pieces as the owner's panel. */
 
 export const stageNames: Record<FunnelStage, string> = {
   account: "Solo la cuenta",
@@ -93,7 +93,7 @@ function PlatformTabs() {
   );
 }
 
-const staffNote = "Solo para el equipo de Toki. Cada consulta queda registrada.";
+const staffNote = "Solo para el equipo de Abastalia. Cada consulta queda registrada.";
 
 /** R11 B-Med6: the console needs two-step verification on, and lasts one access token (30 minutes) after the sign-in with the code. */
 function PlatformError({ error }: { error?: ApiError }) {
@@ -1002,7 +1002,7 @@ function AccompanimentForm({ request: r, onSaved }: { request: PlatformAccompani
   );
 }
 
-/** R11 B-High2: receiver activations with a person's certificate (cédula) for a company's RNC. Support checks outside Toki (the DGII's records)
+/** R11 B-High2: receiver activations with a person's certificate (cédula) for a company's RNC. Support checks outside Abastalia (the DGII's records)
  * that the person signs for the company, then approves or refuses (audited); after an approval the store activates again. */
 export function PlatformDelegationsPage() {
   const { data, error, loading, reload } = useApi<FeDelegation[]>("/api/platform/fe/delegations");

@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\SqlServerImage.cs" Link="SqlServerImage.cs" />
+    <Compile Include="..\FakeDgiiPublic.cs" Link="Infra\FakeDgiiPublic.cs" />
+    <None Include="..\DgiiPages\*.html" Link="DgiiPages\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hosts\Abastalia.Host.Local\Abastalia.Host.Local.csproj" />
+    <!-- Read-only: the register app's wire records and JSON options, for the contract test (TK-124). -->
+    <ProjectReference Include="..\..\src\Client\Abastalia.Client.UI\Abastalia.Client.UI.csproj" />
+  </ItemGroup>
+</Project>

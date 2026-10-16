@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="bunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Client\Abastalia.Client.UI\Abastalia.Client.UI.csproj" />
+    <ProjectReference Include="..\..\src\Hardware\Abastalia.Hardware.Simulated\Abastalia.Hardware.Simulated.csproj" />
+  </ItemGroup>
+</Project>

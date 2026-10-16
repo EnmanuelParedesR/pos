@@ -16,7 +16,7 @@ describe("api", () => {
   });
 
   it("renews the token once on a 401 and retries with the new one", async () => {
-    localStorage.setItem("toki.refreshToken", "old-refresh");
+    localStorage.setItem("abastalia.refreshToken", "old-refresh");
     const fetch = vi.fn(async (url: string, init?: RequestInit) => {
       if (url.endsWith("/api/auth/refresh")) {
         expect(JSON.parse(String(init?.body))).toEqual({ refreshToken: "old-refresh" });
@@ -29,11 +29,11 @@ describe("api", () => {
 
     await expect(api("/api/me")).resolves.toEqual({ tenantName: "Carnicería Central" });
     expect(fetch).toHaveBeenCalledTimes(3);
-    expect(localStorage.getItem("toki.refreshToken")).toBe("new-refresh");
+    expect(localStorage.getItem("abastalia.refreshToken")).toBe("new-refresh");
   });
 
   it("parallel 401s share one renewal", async () => {
-    localStorage.setItem("toki.refreshToken", "r");
+    localStorage.setItem("abastalia.refreshToken", "r");
     let refreshes = 0;
     vi.stubGlobal(
       "fetch",
@@ -52,7 +52,7 @@ describe("api", () => {
   });
 
   it("signs out when the token cannot be renewed", async () => {
-    localStorage.setItem("toki.refreshToken", "expired");
+    localStorage.setItem("abastalia.refreshToken", "expired");
     vi.stubGlobal("fetch", vi.fn(async () => json(401)));
     const { api, setOnSignedOut, hasSession } = await load();
     const signedOut = vi.fn();
@@ -64,7 +64,7 @@ describe("api", () => {
   });
 
   it("keeps the session when the renewal cannot reach the server", async () => {
-    localStorage.setItem("toki.refreshToken", "still-good");
+    localStorage.setItem("abastalia.refreshToken", "still-good");
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
@@ -78,7 +78,7 @@ describe("api", () => {
 
     await expect(api("/api/me")).rejects.toMatchObject({ offline: true });
     expect(signedOut).not.toHaveBeenCalled();
-    expect(localStorage.getItem("toki.refreshToken")).toBe("still-good");
+    expect(localStorage.getItem("abastalia.refreshToken")).toBe("still-good");
   });
 
   it("reads the code and the Spanish detail from ProblemDetails", async () => {

@@ -45,7 +45,7 @@ const page = () =>
     </MemoryRouter>,
   );
 
-it("TK-249: without Paddle set up the owner sees the plan and how to ask Toki, and Paddle.js is not loaded", async () => {
+it("TK-249: without Paddle set up the owner sees the plan and how to ask Abastalia, and Paddle.js is not loaded", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => json(200, { ...billing, enabled: false, environment: null, plans: [], addOnOptions: [] })));
   page();
 
