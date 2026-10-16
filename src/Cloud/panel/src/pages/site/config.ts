@@ -1,7 +1,7 @@
 /** Public site settings (TK-228, was src/Site/site.json). Empty or null = still pending from the owner; the pages say "por confirmar". */
 export const site = {
-  /** Domain without a trailing slash; with it, the pages get canonical and og:url. shortcut: no domain yet. */
-  url: "",
+  /** The canonical origin, without a trailing slash (TK-259): canonical, og:url, og:image, JSON-LD and sitemap.xml are built from it. */
+  url: "https://abastalia.com",
   /** Digits only, with the country code (1809…); with it, "Hablemos" opens WhatsApp. shortcut: no number yet (owner decision). */
   whatsapp: "",
   /** AbastaliaSetup.exe on the release feed (TK-242). shortcut: no hosting yet; /descargar shows "[URL DEL INSTALADOR]". */

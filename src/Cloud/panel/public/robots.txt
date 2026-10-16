@@ -1,3 +1,5 @@
 User-agent: *
 Allow: /
 Disallow: /app
+
+Sitemap: https://abastalia.com/sitemap.xml
