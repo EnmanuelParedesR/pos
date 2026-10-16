@@ -115,6 +115,7 @@
         Session.Open(s, new Me(s.UserId, s.Name, Guid.Empty, []));
         var me = await Api.GetAsync<Me>("/api/identity/me");
         Session.Open(s, me.Value ?? new Me(s.UserId, s.Name, Guid.Empty, []));
+        if (Session.Can("products.manage") && await Session.TakeSampleDataRequestAsync()) await Api.PostAsync<SampleDataStatus>("/api/inventory/sample-data");
         _sending = false;
 
         if (Session.IsBackOffice) { Nav.NavigateTo("admin"); return; }

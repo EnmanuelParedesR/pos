@@ -8,6 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
+using Toki.BuildingBlocks.Security;
 using Toki.CashRegister.Contracts;
 using Toki.Customers.Contracts;
 using Toki.Inventory.Contracts;
@@ -25,7 +26,7 @@ internal static class SendHeartbeat
     internal sealed record Command : ICommand<Ok>;
 
     internal sealed class Handler(SyncDbContext db, InfraDbContext infra, IOutbox outbox, ISalesReports sales, ICashRegisterReports cash,
-        ICustomerReports customers, IInventoryReports inventory, ISettingsQueries settings, IConfiguration config, TimeProvider clock)
+        ICustomerReports customers, IInventoryReports inventory, ISettingsQueries settings, IFeatureService license, IConfiguration config, TimeProvider clock)
         : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
@@ -52,7 +53,7 @@ internal static class SendHeartbeat
                 await infra.Outbox.CountAsync(m => m.UploadedUtc == null, ct), CloudUploader.ErrorCode(connection.LastError),
                 new NodeFeaturesV1((await customers.ReceivablesAsync(ct)).Any(r => r.Total > 0), null, null, config["Fiscal:Provider"] ?? "Simulated"),
                 new NodeSetupV1(!string.IsNullOrWhiteSpace(profile.Name), !string.IsNullOrWhiteSpace(profile.Rnc), (await inventory.ValueAsync(ct)).Count(p => p.IsActive)),
-                days));
+                days, new NodeLicenseV1(license.Status.ToString(), license.EndsUtc)));
             return Ok.Value;
         }
 

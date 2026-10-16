@@ -43,6 +43,11 @@
                         <span class="esc-offline" role="status">@(expires < DateTime.UtcNow ? "Certificado digital vencido" : $"Certificado digital vence en {(int)(expires - DateTime.UtcNow).TotalDays} días")</span>
                     }
                 }
+                @* TK-196/220: the trial is calm (muted) until its last days, then amber; never blocks the sale. *@
+                @if (_license is { } l && Names.LicenseNote(l) is { } note)
+                {
+                    <span class="@(l.Warning is null ? "muted" : "esc-offline")" role="status">@note</span>
+                }
                 @if (Session.Online)
                 {
                     <span class="muted">En línea</span>
@@ -89,6 +94,7 @@
     private ErrorBoundary? _boundary;
     private FiscalQueue? _queue;
     private EcfContingencyStatus? _contingency;
+    private LicenseFeatures? _license;
 
     /// <summary>The oldest pending e-CF is over 24 h old: its 72-hour deadline is less than 48 h away.</summary>
     private static bool Late(FiscalQueue q) => q.Overdue > 0 || q.NextDeadlineUtc < DateTime.UtcNow.AddHours(48);
@@ -111,6 +117,7 @@
         // The e-CF send queue, only for whoever may manage it (the endpoint needs fiscal.manage); hidden for everyone else.
         _queue = Session.Can("fiscal.manage") && !IsBackOffice ? (await Api.GetAsync<FiscalQueue>("/api/fiscal/queue")).Value ?? _queue : null;
         _contingency = Session.IsOpen && !IsBackOffice ? (await Api.GetAsync<EcfContingencyStatus>("/api/fiscal/contingency")).Value ?? _contingency : null;
+        _license = Session.IsOpen && !IsBackOffice ? (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value ?? _license : null;
         StateHasChanged();
     }
 

@@ -302,6 +302,9 @@ export interface PlatformTenant {
   lastActivityUtc: string | null;
   stage: FunnelStage;
   appVersion: string | null;
+  /** TK-196: from the newest heartbeat that carries it (null on older versions). */
+  licenseStatus?: string | null;
+  licenseEndsUtc?: string | null;
 }
 export interface PlatformNode {
   id: string;
@@ -366,7 +369,16 @@ export interface PlatformStoreDetail {
     firstSaleDay: string | null;
     fiscalProvider: string | null;
   };
-  features: { onAccount: boolean; scaleConfigured: boolean | null; printerConfigured: boolean | null; fiscalProvider: string; activeRegisters: number; openShifts: number } | null;
+  features: {
+    onAccount: boolean;
+    scaleConfigured: boolean | null;
+    printerConfigured: boolean | null;
+    fiscalProvider: string;
+    activeRegisters: number;
+    openShifts: number;
+    licenseStatus?: string | null;
+    licenseEndsUtc?: string | null;
+  } | null;
   nodes: PlatformNode[];
   days: { day: string; sales: number; amount: number; reportedSales: number | null; activeCashiers: number | null; voids: number | null }[];
 }

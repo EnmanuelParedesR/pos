@@ -34,6 +34,18 @@ const featureNames: Record<string, string> = {
   printer: "Impresora",
 };
 
+/** TK-196: "Prueba · quedan 5 días", "Restringida", "Activa · vence 12 nov."; "—" from versions that do not report it. */
+export function licenseLabel(status: string | null | undefined, endsUtc: string | null | undefined, now = Date.now()) {
+  if (!status) return "—";
+  if (status === "Trial") {
+    if (!endsUtc) return "Prueba · sin ventas aún";
+    const days = Math.ceil((Date.parse(endsUtc) - now) / 86_400_000);
+    return `Prueba · quedan ${days} ${days === 1 ? "día" : "días"}`;
+  }
+  const names: Record<string, string> = { Active: "Activa", Grace: "En gracia", Restricted: "Restringida" };
+  return status === "Restricted" || !endsUtc ? (names[status] ?? status) : `${names[status] ?? status} · vence ${dayName(endsUtc.slice(0, 10))}`;
+}
+
 const count = (n: number) => n.toLocaleString("en-US");
 /** "50 %"; "—" when nothing reports it (NaN). */
 const percent = (n: number) => (Number.isNaN(n) ? "—" : `${Math.round(n)} %`);
@@ -273,11 +285,12 @@ export function PlatformTenantsPage() {
               <th className="esc-num esc-hide-sm">Cajas</th>
               <th className="esc-hide-sm">Último envío</th>
               <th className="esc-hide-sm">Versión</th>
+              <th className="esc-hide-sm">Licencia</th>
               <th className="esc-table__chev" aria-hidden="true" />
             </tr>
           </thead>
           <tbody>
-            {loading && !data && <SkeletonRows columns={6} />}
+            {loading && !data && <SkeletonRows columns={7} />}
             {data?.map((t) => (
               <tr key={t.id} className="selectable" tabIndex={0} onClick={() => navigate(`/platform/tenants/${t.id}`)} onKeyDown={(e) => e.key === "Enter" && navigate(`/platform/tenants/${t.id}`)}>
                 <td>
@@ -294,6 +307,7 @@ export function PlatformTenantsPage() {
                 <td className="esc-num esc-hide-sm">{t.nodes}</td>
                 <td className="esc-hide-sm">{t.lastActivityUtc ? <SyncPill utc={t.lastActivityUtc} /> : <span className="esc-muted">Nunca</span>}</td>
                 <td className="esc-hide-sm">{t.appVersion ?? "—"}</td>
+                <td className="esc-hide-sm">{licenseLabel(t.licenseStatus, t.licenseEndsUtc)}</td>
                 <td className="esc-table__chev">
                   <Icon name="chevron-right" size={18} />
                 </td>
@@ -522,6 +536,7 @@ export function PlatformStorePage() {
           <Card title="Funciones" aside={s.features ? undefined : "Sin latido"} className="esc-span-6">
             {s.features ? (
               <ul className="platform-kv">
+                <Kv label="Licencia" value={licenseLabel(s.features.licenseStatus, s.features.licenseEndsUtc)} />
                 <Kv label="Cajas con turnos (30 días)" value={count(s.features.activeRegisters)} />
                 <Kv label="Turnos abiertos ahora" value={count(s.features.openShifts)} />
                 <Kv label="Fiado" value={s.features.onAccount ? "Lo usa" : "No"} />

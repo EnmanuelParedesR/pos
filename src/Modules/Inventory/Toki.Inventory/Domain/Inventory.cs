@@ -12,6 +12,8 @@ internal sealed class Category
     /// <summary>Predefined line notes for products of this category ("molida", "sin grasa").</summary>
     public List<string> Notes { get; set; } = [];
     public bool IsActive { get; set; } = true;
+    /// <summary>TK-196: loaded as "datos de ejemplo"; removing them takes it away.</summary>
+    public bool IsSample { get; set; }
 }
 
 internal sealed class Product
@@ -35,6 +37,8 @@ internal sealed class Product
     /// <summary>TK-191: the suggested order fills up to it; 0 = not set (it fills up to the minimum).</summary>
     public decimal MaximumStock { get; set; }
     public bool IsActive { get; set; } = true;
+    /// <summary>TK-196: loaded as "datos de ejemplo" (see Features/SampleData.cs).</summary>
+    public bool IsSample { get; set; }
     public int Version { get; set; }
 }
 

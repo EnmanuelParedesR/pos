@@ -123,6 +123,19 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin)
         return X509CertificateLoader.LoadPkcs12(withKey.Export(X509ContentType.Pfx), null);
     }
 
+    private const string SampleDataKey = "sample-data";
+
+    /// <summary>TK-196: the setup wizard's "datos de ejemplo" box. Loading them needs a session, so the owner's first sign-in does it.</summary>
+    public Task AskForSampleDataAsync() => store.SaveAsync(SampleDataKey, "pending");
+
+    /// <summary>True once, when the wizard asked for sample data.</summary>
+    public async Task<bool> TakeSampleDataRequestAsync()
+    {
+        if (await store.ReadAsync(SampleDataKey) is null) return false;
+        await store.SaveAsync(SampleDataKey, null);
+        return true;
+    }
+
     public void Open(OpenedSession s, Me me)
     {
         (Token, UserId, Name, _permissions, Expired) = (s.Token, s.UserId, s.Name, [.. me.Permissions], false);

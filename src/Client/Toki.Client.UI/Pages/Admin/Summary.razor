@@ -387,6 +387,19 @@
                      .Where(i => i.Code != "sequences" && !(i.Code == "certificate" && (certificateShown || i.Level == "warning"))) ?? [])
             _alerts.Add(new(i.Level, i.Code is "contingency" or "regularize" ? "receipt" : "alert", System.Net.WebUtility.HtmlEncode(i.Title), i.Detail,
                 "Ver comprobantes", "admin/ecf"));
+        // TK-220: the trial's last days (from day 10) and the Restricted mode, with the way out. Only for whoever can install the license.
+        if (Session.Can("settings.manage") && (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value is { Warning: { } warning } license)
+            _alerts.Add(warning == "Ended"
+                ? new("warning", "lock", "La prueba terminó: Toki está en modo <b>Restringido</b>",
+                    "Siguen la venta, el e-CF, los reportes y los respaldos en la PC principal y una caja. Con la licencia vuelve todo, con sus datos.",
+                    "Comprar licencia", "admin/settings?section=license")
+                : new("warning", "clock", $"La prueba gratis termina en <b>{license.TrialDaysLeft} {(license.TrialDaysLeft == 1 ? "día" : "días")}</b>",
+                    "Después Toki sigue vendiendo en modo Restringido. Compre la licencia y siga igual, sin reinstalar ni perder datos.",
+                    "Comprar licencia", "admin/settings?section=license"));
+        // TK-196: sample products still there (they never reach the 606/607/608, but they are not the store's).
+        if (Session.Can("products.manage") && (await Api.GetAsync<SampleDataStatus>("/api/inventory/sample-data")).Value is { Products: > 0 } sample)
+            _alerts.Add(new("info", "package", $"Hay <b>{sample.Products}</b> productos de ejemplo",
+                "Sirven para probar la caja. Quítelos con un clic cuando cargue sus productos.", "Quitar ejemplos", "admin/settings?section=license"));
         _loading = false;
     }
 

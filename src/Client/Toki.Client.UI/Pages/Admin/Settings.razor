@@ -393,8 +393,54 @@
                         <dt>Cajas permitidas</dt><dd>@f.Registers</dd>
                         <dt>Funciones</dt><dd>@(f.Enabled.Length == 0 ? "Las básicas" : string.Join(", ", f.Enabled.Select(Names.Feature)))</dd>
                     </dl>
+                    @if (Names.LicenseNote(f) is { } note)
+                    {
+                        <Notice Kind="@(f.Warning is null ? Notice.Kinds.Info : Notice.Kinds.Warning)" Title="@note">
+                            @(f.Status == "Restricted"
+                                ? "La venta, el e-CF, los reportes y los respaldos siguen en la PC principal y una caja. Ningún dato se pierde."
+                                : "Durante la prueba todo funciona. Al terminar, Toki sigue vendiendo en modo Restringido: nunca se bloquea ni se pierden datos.")
+                        </Notice>
+                    }
                 </div>
             </section>
+            @if (Session.Can("settings.manage"))
+            {
+                @* TK-220: buying is getting the signed license from Toki staff (file or text) and installing it here: no reinstall, no data lost.
+                   shortcut: no payment in the app; the owner pays Toki by WhatsApp or transfer. *@
+                <form class="esc-card esc-setting" @onsubmit="InstallLicenseAsync">
+                    <div class="esc-setting__about"><h2>@(f.Status is "Active" ? "Renovar o ampliar" : "Comprar licencia")</h2>
+                        <p>Escríbale a Toki con el nombre y el RNC de su tienda. Le envían un archivo de licencia o un código: cárguelo aquí y queda activa al momento, con todas sus ventas.</p></div>
+                    <div class="esc-setting__body">
+                        <Field Label="Archivo de licencia (.jws)">
+                            <Microsoft.AspNetCore.Components.Forms.InputFile class="esc-input" accept=".jws,.txt" OnChange="PickLicenseAsync" />
+                        </Field>
+                        <Field Label="O pegue el código de licencia" Error="@Err("license")">
+                            <textarea class="esc-input" rows="3" aria-label="Código de licencia" aria-invalid="@Invalid("license")" @bind="_licenseText" @bind:event="oninput" @onfocus="@(() => Clear("license"))"></textarea>
+                        </Field>
+                        <div><Button Type="submit" Variant="Button.Variants.Primary" Disabled="@(string.IsNullOrWhiteSpace(_licenseText) || _sending)">Activar licencia</Button></div>
+                    </div>
+                </form>
+            }
+            @if (Session.Can("products.manage"))
+            {
+                <section class="esc-card esc-setting">
+                    <div class="esc-setting__about"><h2>Datos de ejemplo</h2>
+                        <p>Productos de muestra para probar la caja. Nunca entran en los reportes 606, 607 ni 608; los que llegue a vender quedan desactivados al quitarlos.</p></div>
+                    <div class="esc-setting__body">
+                        <p>@(_sample is { Products: > 0 } s ? $"Hay {s.Products} productos de ejemplo." : "No hay productos de ejemplo.")</p>
+                        <div class="esc-row">
+                            @if (_sample is { Products: > 0 })
+                            {
+                                <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="RemoveSampleDataAsync">Quitar datos de ejemplo</Button>
+                            }
+                            else
+                            {
+                                <Button Disabled="_sending" OnClick="LoadSampleDataAsync">Cargar datos de ejemplo</Button>
+                            }
+                        </div>
+                    </div>
+                </section>
+            }
             break;
     }
     </div>
@@ -457,6 +503,8 @@
     private List<BackupFile> _backups = [];
     private BackupFile? _restoring;
     private LicenseFeatures? _features;
+    private string? _licenseText;
+    private SampleDataStatus? _sample;
     private SyncStatus? _sync;
     private string? _cloudCode;
     private readonly Dictionary<string, string> _errors = [];
@@ -465,8 +513,12 @@
     private string Invalid(string field) => _errors.ContainsKey(field) ? "true" : "false";
     private void Clear(string field) => _errors.Remove(field);
 
-    protected override Task OnInitializedAsync() =>
-        GoAsync(Requested == "fiscal" && Sections.Contains(Section.FiscalSequences) ? Section.FiscalSequences : Sections[0]);
+    protected override Task OnInitializedAsync() => GoAsync(Requested switch
+    {
+        "fiscal" when Sections.Contains(Section.FiscalSequences) => Section.FiscalSequences,
+        "license" => Section.License, // the Resumen's "Comprar licencia" and "Quitar ejemplos" (TK-196/220)
+        _ => Sections[0],
+    });
 
     private async Task GoAsync(Section section)
     {
@@ -495,7 +547,10 @@
                 _userRole = _roles.Find(r => r.Name == "Cajero")?.Id ?? _roles.FirstOrDefault()?.Id ?? Guid.Empty;
                 break;
             case Section.Backups: _backups = (await Api.GetAsync<List<BackupFile>>("/api/backups")).Value ?? []; break;
-            case Section.License: _features = (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value; break;
+            case Section.License:
+                _features = (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value;
+                _sample = Session.Can("products.manage") ? (await Api.GetAsync<SampleDataStatus>("/api/inventory/sample-data")).Value : null;
+                break;
             case Section.Cloud: _sync = (await Api.GetAsync<SyncStatus>("/api/sync/status")).Value; break;
         }
     }
@@ -582,6 +637,50 @@
         var r = await Api.PostAsync<Empty>("/api/sync/disconnect");
         await GoAsync(Section.Cloud);
         ShowResult(r.Problem, "La tienda ya no sube datos a la nube.");
+    }
+
+    private async Task PickLicenseAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        Clear("license");
+        try
+        {
+            await using var stream = e.File.OpenReadStream(10_000);
+            using var reader = new StreamReader(stream);
+            _licenseText = (await reader.ReadToEndAsync()).Trim();
+        }
+        catch (IOException)
+        {
+            (_licenseText, _errors["license"]) = (null, "Ese archivo es demasiado grande para ser una licencia.");
+        }
+    }
+
+    private async Task InstallLicenseAsync()
+    {
+        _sending = true;
+        var r = await Api.PutAsync<Empty>("/api/settings/license", new { License = _licenseText?.Trim() });
+        _sending = false;
+        if (r.Problem is { Code: "License.Invalid" } p) { _errors["license"] = p.Message; return; }
+        if (r.Problem is null) _licenseText = null;
+        await GoAsync(Section.License);
+        ShowResult(r.Problem, "Licencia activada. Todo sigue igual, con sus datos; las cajas que esperaban ya pueden entrar.");
+    }
+
+    private async Task LoadSampleDataAsync()
+    {
+        _sending = true;
+        var r = await Api.PostAsync<SampleDataStatus>("/api/inventory/sample-data");
+        _sending = false;
+        await GoAsync(Section.License);
+        ShowResult(r.Problem, "Productos de ejemplo cargados. Búsquelos en la caja: dicen \"(ejemplo)\".");
+    }
+
+    private async Task RemoveSampleDataAsync()
+    {
+        _sending = true;
+        var r = await Api.DeleteAsync<SampleDataStatus>("/api/inventory/sample-data");
+        _sending = false;
+        await GoAsync(Section.License);
+        ShowResult(r.Problem, "Datos de ejemplo quitados.");
     }
 
     private void ShowResult(Problem? p, string success) => (_messageKind, _message) = p is null ? (Notice.Kinds.Success, success) : (p.Kind, p.Message);

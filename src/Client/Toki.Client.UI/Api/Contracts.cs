@@ -30,7 +30,12 @@ public sealed record RoleList(Role[] Roles, string[] AvailablePermissions);
 
 // Settings
 public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent);
-public sealed record LicenseFeatures(string Status, string? Plan, DateTime? ExpiresUtc, string[] Enabled, int Registers);
+/// <param name="TrialEndsUtc">TK-196: null until the first sale starts the 14 days (and once a license is installed).</param>
+/// <param name="Warning">TK-220: null, "Soon" (trial day 10 on), "Last" (day 13 on) or "Ended" (Restricted).</param>
+public sealed record LicenseFeatures(string Status, string? Plan, DateTime? ExpiresUtc, string[] Enabled, int Registers,
+    DateTime? TrialEndsUtc = null, int? TrialDaysLeft = null, string? Warning = null);
+/// <summary>TK-196: "datos de ejemplo" still showing.</summary>
+public sealed record SampleDataStatus(int Products, int Categories);
 /// <summary>One action the store may free from the supervisor's PIN (TK-210); the list comes in screen order.</summary>
 public sealed record ApprovalRule(string Permission, bool Required);
 public sealed record ApprovalPolicy(string[] Required);

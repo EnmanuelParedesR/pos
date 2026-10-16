@@ -55,6 +55,8 @@ internal sealed class Business
     public string? BackupKey { get; set; }
     /// <summary>Comma-separated permissions this store asks a supervisor for (TK-210); null until the owner saves it: <see cref="ApprovalPolicy.Defaults"/>.</summary>
     public string? SupervisorApprovals { get; set; }
+    /// <summary>TK-196: the first sale, which starts the 14-day trial; null while the store has not sold.</summary>
+    public DateTime? TrialStartedUtc { get; set; }
 
     public BusinessProfile ToProfile() => new(Name, Rnc, Address, Phone, ReceiptFooter, DiscountCapPercent);
 }

@@ -1087,6 +1087,13 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
 
+                    b.Property<DateTime?>("LicenseEndsUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LicenseStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<bool>("OnAccount")
                         .HasColumnType("bit");
 
