@@ -36,6 +36,13 @@ internal static class PurchaseAttachment
         }
     }
 
+    /// <summary>The file's own name, without a path, at most 200 characters.</summary>
+    internal static string Name(string? fileName)
+    {
+        var name = Path.GetFileName(fileName?.Trim() ?? "");
+        return name.Length == 0 ? "factura" : name.Length > 200 ? name[^200..] : name;
+    }
+
     internal sealed record Body(string? File, string? FileName);
 
     internal sealed class Endpoint : IEndpoint
@@ -50,9 +57,7 @@ internal static class PurchaseAttachment
                     // R10 #11: the type stored is the one the bytes show, whatever the browser guessed from the file's name.
                     if (content is not { Length: > 0 and <= PurchaseFile.MaxBytes } || PurchaseFile.Sniff(content) is not { } type)
                         return EndpointExtensions.Problem(InvalidFile);
-                    var name = Path.GetFileName(b.FileName?.Trim() ?? "");
-                    if (name.Length == 0) name = "factura";
-                    return (await h.Handle(new Command(id, content, type, name.Length > 200 ? name[^200..] : name), ct)).ToHttp(_ => Results.NoContent());
+                    return (await h.Handle(new Command(id, content, type, Name(b.FileName)), ct)).ToHttp(_ => Results.NoContent());
                 })
                 .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
 

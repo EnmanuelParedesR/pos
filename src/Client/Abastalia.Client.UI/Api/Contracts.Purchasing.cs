@@ -66,6 +66,8 @@ public sealed record SupplierFound(Guid Id, string Name);
 public sealed record InvoiceLineRead(string Description, decimal? Quantity, decimal? UnitCost, ItbisRate? ItbisRate, Guid? ProductId, string? ProductName);
 public sealed record InvoiceRead(Guid? SupplierId, string? SupplierRnc, string? SupplierName, string? Ncf, DateOnly? Date, InvoiceLineRead[] Lines,
     decimal? Subtotal, decimal? Itbis, decimal? Total, decimal Confidence, string[] Warnings, string? Source = null);
+/// <summary>TK-224, batch: one invoice saved as a draft (PurchaseId null when no supplier RNC was read; its review fills the form instead).</summary>
+public sealed record InvoiceDraft(Guid? PurchaseId, InvoiceRead Review);
 
 /// <summary>TK-248: the business's invoice readings this month; AddOn = it has the paid add-on.</summary>
 public sealed record InvoiceReadingQuota(int Used, int Limit, DateOnly ResetsOn, bool AddOn)
