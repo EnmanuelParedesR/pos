@@ -36,8 +36,8 @@ TK-244 (issue #214):
 5. ✅ `POST /api/nodes/rekey { publicKey }` (solo con el secreto) guarda la llave; el secreto se borra en la primera llamada firmada del nodo, así una respuesta perdida no deja la tienda fuera. El `CloudUploader` lo llama mientras la credencial no sea de llave. "Tiendas" marca "Con clave compartida". `Nodes:AcceptSharedSecret: true` explícito. Pruebas: `NodeKeyTests`, `SyncTests`.
 6. ✅ `prepare-service` pone ACL protegida en todo `ProgramData\Toki` (SYSTEM y Administradores control total, el servicio modificar); la cuenta de SQL solo en `backups\work`; `keys` igual que antes.
 7. ✅ El texto firmado termina en `Base64Url(SHA-256(cuerpo))` en los dos lados (los nonces en memoria siguen como `shortcut:`).
-8. ⏸️ Pendiente (instalador, sin cambio).
-9. ⏸️ Pendiente.
+8. ✅ `toki.iss` (`SignedByMicrosoft`): antes de ejecutar WebView2 o SQL Express descargados, `Get-AuthenticodeSignature` debe dar `Valid` y un firmante con `O=Microsoft Corporation`; si no, mensaje y la instalación se detiene.
+9. ✅ `remove-data.ps1` copia primero el último `.toki-backup` (cifrado, se abre con la frase de los respaldos) a `-BackupTo` (el instalador pasa el Escritorio), carpeta "Toki - ultimo respaldo", fuera de `ProgramData`; sin respaldo o si la copia falla sale con 2 sin borrar nada, y el desinstalador pregunta si borrar sin respaldo (`-NoFinalBackup`). Al terminar dice dónde quedó. No hay comando de respaldo fuera del servicio, por eso es el último que hizo el servicio.
 10. ✅ `CopyTo` dentro de la carpeta de respaldos o de `ProgramData\Toki` responde `Backup.CopyInsideData`; la pantalla explica los permisos de una carpeta compartida.
-11. ⏸️ Pendiente.
+11. ✅ El tipo declarado se compara con los primeros bytes (`PurchaseFile.Matches`: `%PDF-`, PNG, JPEG, `RIFF…WEBP`, XML que empieza con `<`); si no coincide, `Purchasing.AttachmentTypeMismatch`. Reemplazar exige `?replace=true` (si no, 409 `Purchasing.AttachmentExists`; la pantalla de Compras lo manda porque el dueño eligió el archivo) y la auditoría registra `Replaced`. Prueba en `SupplierEcfPurchaseTests`.
 12. ✅ El `PUT` solo cambia las fechas que trae, exige citas futuras y la segunda después de la primera, e índice único filtrado de una solicitud abierta por tienda (migración `AccompanimentOneOpen`; dos toques a la vez devuelven la misma).

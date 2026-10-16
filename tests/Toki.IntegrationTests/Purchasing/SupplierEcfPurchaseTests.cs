@@ -80,7 +80,7 @@ public sealed class SupplierEcfPurchaseTests(TokiApp app) : IClassFixture<TokiAp
                 total = 999m, confidence = 0.5m, doubtful = new[] { "lines" },
             }),
         };
-        var png = new { File = Convert.ToBase64String([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]), ContentType = "image/png", FileName = "factura.png" };
+        var png = new { File = Convert.ToBase64String([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3]), ContentType = "image/png", FileName = "factura.png" };
         var ai = await (await c.PostAsJsonAsync("/api/purchasing/purchases/read-invoice", png)).Json();
         (ai.GetProperty("source").GetString(), ai.GetProperty("total").GetDecimal()).ShouldBe(("ecf", 1180m));
         ai.GetProperty("lines")[0].GetProperty("quantity").GetDecimal().ShouldBe(10m);
@@ -97,7 +97,15 @@ public sealed class SupplierEcfPurchaseTests(TokiApp app) : IClassFixture<TokiAp
         (await c.GetFromJsonAsync<JsonElement>($"/api/purchasing/purchases/{id}")).GetProperty("attachmentName").GetString().ShouldBe("factura.png");
         var file = await c.GetAsync($"/api/purchasing/purchases/{id}/attachment");
         file.Content.Headers.ContentType!.MediaType.ShouldBe("image/png");
-        (await file.Content.ReadAsByteArrayAsync()).ShouldBe(new byte[] { 0x89, 0x50, 0x4E, 0x47, 1, 2, 3 });
+        (await file.Content.ReadAsByteArrayAsync()).ShouldBe(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3 });
+
+        // R10 #11: the declared type must match the bytes, and a second file replaces the first only when asked.
+        var url = $"/api/purchasing/purchases/{id}/attachment";
+        (await (await c.PutAsJsonAsync(url + "?replace=true", png with { ContentType = "application/pdf" })).ErrorCode()).ShouldBe("Purchasing.AttachmentTypeMismatch");
+        (await (await c.PutAsJsonAsync(url + "?replace=true", xml with { ContentType = "image/jpeg" })).ErrorCode()).ShouldBe("Purchasing.AttachmentTypeMismatch");
+        (await (await c.PutAsJsonAsync(url, xml)).ErrorCode()).ShouldBe("Purchasing.AttachmentExists");
+        (await c.PutAsJsonAsync(url + "?replace=true", xml)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await c.GetAsync(url)).Content.Headers.ContentType!.MediaType.ShouldBe("text/xml");
     }
 
 }

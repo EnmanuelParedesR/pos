@@ -99,6 +99,19 @@ begin
   Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL', 'SQLEXPRESS', Instance);
 end;
 
+{ R10 #8: a downloaded installer runs as administrator only with a valid Authenticode signature from Microsoft. }
+function SignedByMicrosoft(const FileName: String): Boolean;
+var
+  Code: Integer;
+begin
+  Result := Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "$s = Get-AuthenticodeSignature -LiteralPath ''' + FileName + '''; ' +
+    'if ($s.Status -eq ''Valid'' -and $s.SignerCertificate.Subject -match ''O=Microsoft Corporation'') { exit 0 } else { exit 1 }"',
+    '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
+  if not Result then
+    MsgBox('El archivo descargado ' + ExtractFileName(FileName) + ' no tiene una firma válida de Microsoft y no se ejecutó.' + #13#10 +
+      'Intente de nuevo; si se repite, llame al técnico.', mbCriticalError, MB_OK);
+end;
+
 procedure InitializeWizard;
 begin
   DownloadPage := CreateDownloadPage(SetupMessage(msgWizardPreparing), 'Descargando lo que falta de Microsoft...', nil);
@@ -139,10 +152,14 @@ begin
   end;
 
   if FileExists(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe')) then
+  begin
+    if not SignedByMicrosoft(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe')) then begin Result := False; exit; end;
     Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  end;
 
   if FileExists(ExpandConstant('{tmp}\SQLServerExpressSetup.exe')) then
   begin
+    if not SignedByMicrosoft(ExpandConstant('{tmp}\SQLServerExpressSetup.exe')) then begin Result := False; exit; end;
     WizardForm.StatusLabel.Caption := 'Instalando SQL Server Express (puede tardar varios minutos)...';
     { The SSEI bootstrapper: Express only, listening on this PC only (no TCP), the instance the connection string names. }
     if not Exec(ExpandConstant('{tmp}\SQLServerExpressSetup.exe'),
@@ -168,11 +185,21 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Code: Integer;
+  Script: String;
 begin
   if (CurUninstallStep = usUninstall) and not UninstallSilent and
      FileExists(ExpandConstant('{app}\scripts\remove-data.ps1')) and
      (MsgBox('¿Borrar también los datos de la tienda?' + #13#10 + #13#10 +
              'Se borran la base de datos Toki, los respaldos, la licencia y las llaves de C:\ProgramData\Toki. No se puede deshacer.' + #13#10 +
              'Si va a reinstalar o mudarse a otra PC, responda No.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES) then
-    Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\scripts\remove-data.ps1') + '"', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  begin
+    { R10 #9: the script first copies the last backup to the Desktop; exit 2 = no copy, nothing deleted. }
+    Script := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\scripts\remove-data.ps1') + '" -BackupTo "' + ExpandConstant('{userdesktop}') + '"';
+    Exec('powershell.exe', Script, '', SW_HIDE, ewWaitUntilTerminated, Code);
+    if Code = 0 then
+      MsgBox('Datos borrados. El último respaldo quedó en el Escritorio, carpeta "Toki - ultimo respaldo". Se abre con la frase de los respaldos.', mbInformation, MB_OK)
+    else if (Code = 2) and (MsgBox('No hay un respaldo de Toki para guardar en el Escritorio, así que no se borró nada.' + #13#10 +
+             '¿Borrar los datos de todos modos, sin respaldo?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES) then
+      Exec('powershell.exe', Script + ' -NoFinalBackup', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  end;
 end;

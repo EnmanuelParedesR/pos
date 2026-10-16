@@ -80,6 +80,17 @@ internal sealed class PurchaseFile
     public const int MaxBytes = 4_000_000;
     public static readonly IReadOnlyList<string> ContentTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/xml", "text/xml"];
 
+    /// <summary>R10 #11: the declared type must match the file's first bytes, so a download never serves something else under that type.</summary>
+    public static bool Matches(string contentType, ReadOnlySpan<byte> c) => contentType switch
+    {
+        "application/pdf" => c.StartsWith("%PDF-"u8),
+        "image/png" => c.StartsWith((ReadOnlySpan<byte>)[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+        "image/jpeg" => c.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xD8, 0xFF]),
+        "image/webp" => c.Length >= 12 && c.StartsWith("RIFF"u8) && c[8..12].SequenceEqual("WEBP"u8),
+        "application/xml" or "text/xml" => (c.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]) ? c[3..] : c).TrimStart(" \t\r\n"u8).StartsWith("<"u8),
+        _ => false,
+    };
+
     public Guid PurchaseId { get; set; }
     public string FileName { get; set; } = "";
     public string ContentType { get; set; } = "";
