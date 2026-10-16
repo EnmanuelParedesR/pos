@@ -71,6 +71,7 @@ internal sealed class SettingsDbContext(DbContextOptions<SettingsDbContext> opti
 {
     protected override string Schema => "settings";
     public DbSet<Business> Business => Set<Business>();
+    public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
 }
 
 internal sealed class BusinessConfiguration : IEntityTypeConfiguration<Business>

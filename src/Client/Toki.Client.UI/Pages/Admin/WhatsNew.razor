@@ -1,0 +1,18 @@
+@page "/admin/whats-new"
+@using Toki.Client.UI.Help
+
+@* TK-226: every version's notes, newest first. They live in Help/ReleaseNotes.cs. *@
+<Admin Title="Novedades" Subtitle="Lo nuevo en cada versión de Toki.">
+    @foreach (var note in ReleaseNotes.All)
+    {
+        <section class="esc-card esc-card--padded esc-col" style="gap:8px">
+            <h2 class="esc-card__title">Versión @note.Version</h2>
+            <ul class="esc-col" style="gap:4px;margin:0;padding-left:20px">
+                @foreach (var line in note.Highlights.Concat(note.More))
+                {
+                    <li>@line</li>
+                }
+            </ul>
+        </section>
+    }
+</Admin>

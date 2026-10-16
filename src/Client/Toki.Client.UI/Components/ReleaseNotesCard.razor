@@ -1,0 +1,43 @@
+@using Toki.Client.UI.Help
+@inject TokiApi Api
+
+@* TK-226: once per user and version, what is new; closing it is saved on the store's server. The notes live in Help/ReleaseNotes.cs. *@
+@if (_note is { } note)
+{
+    <section class="esc-card esc-card--padded esc-col release-notes" style="gap:8px" aria-labelledby="release-notes-title">
+        <div class="esc-card__head" style="margin:0">
+            <h2 id="release-notes-title" class="esc-card__title">Novedades de la versión @note.Version</h2>
+            <button type="button" class="esc-button esc-button--ghost esc-button--small" @onclick="DismissAsync">Entendido</button>
+        </div>
+        <ul class="esc-col" style="gap:4px;margin:0;padding-left:20px">
+            @foreach (var line in note.Highlights)
+            {
+                <li>@line</li>
+            }
+        </ul>
+        <a href="admin/whats-new" @onclick="DismissAsync">Ver todas las novedades</a>
+    </section>
+}
+
+@code {
+    /// <summary>For tests: the version the app says it is.</summary>
+    [Parameter] public string Version { get; set; } = ReleaseNotes.Current;
+
+    private ReleaseNote? _note;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (ReleaseNotes.For(Version) is not { } note) return;
+        // Anything but a clear answer (offline, old server) keeps it hidden: better skip it than repeat it.
+        if ((await Api.GetAsync<Seen>("/api/settings/release-notes/seen")).Value is { } seen && seen.Version != Version) _note = note;
+    }
+
+    private async Task DismissAsync()
+    {
+        if (_note is null) return;
+        _note = null;
+        await Api.PutAsync<Empty>("/api/settings/release-notes/seen", new Seen(Version));
+    }
+
+    private sealed record Seen(string? Version);
+}

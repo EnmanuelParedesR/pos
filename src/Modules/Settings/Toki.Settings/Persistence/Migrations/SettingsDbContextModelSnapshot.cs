@@ -93,6 +93,20 @@ namespace Toki.Settings.Persistence.Migrations
                             Name = "Mi tienda"
                         });
                 });
+
+            modelBuilder.Entity("Toki.Settings.UserPreference", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ReleaseNotesSeen")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("UserPreferences", "settings");
+                });
 #pragma warning restore 612, 618
         }
     }
