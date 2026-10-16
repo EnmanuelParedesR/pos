@@ -24,8 +24,8 @@ const billing: Billing = {
   manualUntilUtc: null,
   canManage: false,
   plans: [
-    { code: "Default", name: "Una caja", monthly: { priceId: "pri_basic", interval: "Monthly", amount: "1000", currency: "USD" }, annual: null },
-    { code: "MultiRegister", name: "Varias cajas", monthly: { priceId: "pri_registers", interval: "Monthly", amount: "2500", currency: "USD" }, annual: null },
+    { code: "Default", name: "Estándar", monthly: { priceId: "pri_basic", interval: "Monthly", amount: "1000", currency: "USD" }, annual: null },
+    { code: "MultiRegister", name: "Pro", monthly: { priceId: "pri_registers", interval: "Monthly", amount: "2500", currency: "USD" }, annual: null },
   ],
   addOnOptions: [{ code: "SupplierInvoiceReading", name: "Lectura de facturas", monthly: { priceId: "pri_inv", interval: "Monthly", amount: "500", currency: "USD" }, annual: null }],
 };
@@ -50,7 +50,7 @@ it("TK-249: without Paddle set up the owner sees the plan and how to ask Toki, a
   page();
 
   expect(await screen.findByText("El pago en línea todavía no está disponible.")).toBeTruthy();
-  expect(screen.getByText("Una caja")).toBeTruthy();
+  expect(screen.getByText("Estándar")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Elegir plan" })).toBeNull();
   expect(document.querySelector(`script[src="${paddleScript}"]`)).toBeNull();
 });
@@ -63,14 +63,14 @@ it("TK-249: choosing a plan opens Paddle's checkout in the sandbox with the pric
   page();
 
   const buttons = await screen.findAllByRole("button", { name: "Elegir plan" });
-  expect(screen.getByRole("button", { name: "Agregar lectura de facturas" })).toBeTruthy();
+  fireEvent.change(screen.getByRole("spinbutton", { name: /Lectura de facturas/ }), { target: { value: "2" } }); // TK-258: add-ons by quantity
   expect(screen.getByText(/US\$25\.00 al mes/)).toBeTruthy(); // the price as Paddle has it
   expect(screen.getByText(/US\$5\.00 al mes/)).toBeTruthy();
-  fireEvent.click(buttons[1]); // Varias cajas
+  fireEvent.click(buttons[1]); // Pro
 
   await waitFor(() => expect(paddle.Checkout.open).toHaveBeenCalled());
   const [, init] = fetch.mock.calls.find(([, i]) => i?.method === "POST")!;
-  expect(JSON.parse(String(init!.body))).toEqual({ plan: "MultiRegister", addOns: [], interval: "Monthly" });
+  expect(JSON.parse(String(init!.body))).toEqual({ plan: "MultiRegister", addOns: ["SupplierInvoiceReading", "SupplierInvoiceReading"], interval: "Monthly" });
   expect(paddle.Environment.set).toHaveBeenCalledWith("sandbox");
   expect(paddle.Initialize).toHaveBeenCalledWith(expect.objectContaining({ token: "test_token" }));
   expect(paddle.Checkout.open).toHaveBeenCalledWith(

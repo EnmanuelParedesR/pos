@@ -56,8 +56,7 @@ public interface IQuota
 }
 
 /// <summary>Limits come from <see cref="PlanLimits"/> (TK-249): the plan's Paddle product (<c>custom_data.toki.quotas</c>), else
-/// <c>Quotas:&lt;Plan&gt;:&lt;Meter&gt;</c>, else Default's, else 0 (not offered). An add-on the business bought raises the limit to its own when
-/// higher. The plan and add-ons come from its Paddle subscription or from Toki staff in the console (<see cref="Tenant.Plan"/>, <see cref="Tenant.AddOns"/>).</summary>
+/// <c>Quotas:&lt;Plan&gt;:&lt;Meter&gt;</c>, else Default's, else 0 (not offered). Each add-on unit the business bought adds its own (TK-258). The plan and add-ons come from its Paddle subscription or from Toki staff in the console (<see cref="Tenant.Plan"/>, <see cref="Tenant.AddOns"/>).</summary>
 /// <remarks>shortcut: the plan is not read from the store's signed license: the heartbeat only says it, the store could send anything. Staff set it in
 /// the console when they issue the license; send the license (JWS) in the heartbeat and verify it here if keeping both in step becomes a chore.</remarks>
 internal sealed class Quota(CloudDbContext db, PlanLimits limits, TimeProvider clock) : IQuota
@@ -107,13 +106,31 @@ internal sealed class Quota(CloudDbContext db, PlanLimits limits, TimeProvider c
             [.. Enum.GetValues<Meter>().Select(m => new MeterUsage(m, used.GetValueOrDefault(m), limits.MonthlyLimit(plan, addOns, m)))]);
     }
 
-    public static string[] SplitAddOns(string addOns) => addOns.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    /// <summary>Most of one add-on a business can have (Paddle's prices allow up to 50).</summary>
+    public const int MaxAddOnQuantity = 50;
+
+    /// <summary>The add-ons as stored ("ExtraRegister:2,SupplierInvoiceReading"), one entry per unit bought: ["ExtraRegister", "ExtraRegister",
+    /// "SupplierInvoiceReading"]. TK-258: quantity add-ons (extra registers, stores, and later extra cashiers) count their entries.</summary>
+    public static string[] SplitAddOns(string addOns) =>
+        [.. addOns.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).SelectMany(a =>
+            a.Split(':') is [var code, var n] && int.TryParse(n, NumberStyles.None, CultureInfo.InvariantCulture, out var quantity)
+                ? Enumerable.Repeat(code, Math.Clamp(quantity, 0, MaxAddOnQuantity)) : [a])];
+
+    /// <summary>The inverse of <see cref="SplitAddOns"/>: each code once, with ":n" when bought more than once, in code order.</summary>
+    public static string JoinAddOns(IEnumerable<string> addOns) =>
+        string.Join(',', addOns.GroupBy(a => a).OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => g.Count() == 1 ? g.Key : $"{g.Key}:{Math.Min(g.Count(), MaxAddOnQuantity).ToString(CultureInfo.InvariantCulture)}"));
 
     public static string Message(Meter meter, int limit, DateOnly resetsOn)
     {
         var text = $"Este mes ya se usó todo lo incluido en su plan de {Names[meter]} ({limit.ToString("N0", CultureInfo.InvariantCulture)}). " +
                    $"Se renueva el {resetsOn.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture)}.";
-        return meter == Meter.SupplierInvoices ? text + " Para leer más facturas, pida a Toki el servicio adicional de lectura de facturas." : text;
+        return meter switch
+        {
+            Meter.SupplierInvoices => text + " Para leer más facturas, agregue el adicional de lectura de facturas en Plan y facturación.",
+            Meter.AssistantQuestions or Meter.AssistantTokens => text + " Para preguntar más, agregue el adicional del asistente en Plan y facturación.",
+            _ => text,
+        };
     }
 
     private static readonly Dictionary<Meter, string> Names = new()
