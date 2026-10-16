@@ -8,6 +8,9 @@ using Azure.Security.KeyVault.Keys.Cryptography;
 
 namespace Toki.Host.Cloud.Fe;
 
+/// <summary>A tenant's e-CF certificate (public part, shared: do not dispose) and the RS256 signature of a SHA-256 digest with its key.</summary>
+public sealed record FeKey(X509Certificate2 Certificate, Func<byte[], CancellationToken, Task<byte[]>> SignSha256Async);
+
 /// <summary>Where the cloud keeps the stores' e-CF certificates (TK-151). The key is imported non-exportable and never leaves the vault:
 /// signing hands it a SHA-256 digest.</summary>
 public interface IFeCertificateVault
@@ -16,14 +19,18 @@ public interface IFeCertificateVault
     Task<X509Certificate2> ImportAsync(string name, byte[] pfx, string? password, CancellationToken ct);
     /// <summary>Withdrawn consent: the key stops working now (Key Vault keeps it soft-deleted, inaccessible, for its retention period).</summary>
     Task DeleteAsync(string name, CancellationToken ct);
-    /// <summary>The public certificate and an <see cref="RSA"/> that signs with the vault key. Fails when the key was deleted.</summary>
-    Task<(X509Certificate2 Certificate, RSA Key)> KeyAsync(string name, CancellationToken ct);
+    /// <summary>The certificate and its signing key. Fails when the key was deleted.</summary>
+    Task<FeKey> KeyAsync(string name, CancellationToken ct);
 }
 
 /// <summary><c>Fe:Vault</c> = <c>KeyVault</c> (Production; <c>Fe:KeyVaultUri</c>, the app's managed identity with "Key Vault Certificates Officer"
 /// and "Key Vault Crypto User", see deploy/azure/main.bicep) or <c>Local</c> (development and tests only).</summary>
+/// <remarks>R9 #2: the certificate and its <see cref="CryptographyClient"/> are kept per key name, so a signature is one vault call (the sign).
+/// A name belongs to one consent and is never reused; a withdrawn consent is refused by <see cref="FeSigner"/> before the key is asked for.</remarks>
 internal sealed class KeyVaultFeVault(CertificateClient certificates, TokenCredential credential) : IFeCertificateVault
 {
+    private readonly ConcurrentDictionary<string, FeKey> _keys = new();
+
     public async Task<X509Certificate2> ImportAsync(string name, byte[] pfx, string? password, CancellationToken ct)
     {
         using var opened = X509CertificateLoader.LoadPkcs12(pfx, password, X509KeyStorageFlags.EphemeralKeySet);
@@ -41,50 +48,18 @@ internal sealed class KeyVaultFeVault(CertificateClient certificates, TokenCrede
 
     public async Task DeleteAsync(string name, CancellationToken ct)
     {
+        _keys.TryRemove(name, out _);
         try { await certificates.StartDeleteCertificateAsync(name, ct); }
         catch (RequestFailedException e) when (e.Status == 404) { } // already gone
     }
 
-    public async Task<(X509Certificate2 Certificate, RSA Key)> KeyAsync(string name, CancellationToken ct)
+    public async Task<FeKey> KeyAsync(string name, CancellationToken ct)
     {
+        if (_keys.TryGetValue(name, out var cached)) return cached;
         var stored = (await certificates.GetCertificateAsync(name, ct)).Value;
-        var certificate = X509CertificateLoader.LoadCertificate(stored.Cer);
-        return (certificate, new KeyVaultRsa(new CryptographyClient(stored.KeyId, credential), certificate.GetRSAPublicKey()!));
-    }
-}
-
-/// <summary>An <see cref="RSA"/> whose private operation is a Key Vault <c>sign</c> (RS256), so <c>SignedXml</c> signs with a key it never sees.</summary>
-internal sealed class KeyVaultRsa : RSA
-{
-    private readonly CryptographyClient _crypto;
-    private readonly RSA _public;
-
-    public KeyVaultRsa(CryptographyClient crypto, RSA publicKey)
-    {
-        (_crypto, _public) = (crypto, publicKey);
-        KeySizeValue = publicKey.KeySize;
-        LegalKeySizesValue = [new KeySizes(publicKey.KeySize, publicKey.KeySize, 0)];
-    }
-
-    public override byte[] SignHash(byte[] hash, HashAlgorithmName hashAlgorithm, RSASignaturePadding padding)
-    {
-        if (hashAlgorithm != HashAlgorithmName.SHA256 || padding != RSASignaturePadding.Pkcs1)
-            throw new NotSupportedException("The e-CF signature is RSA-SHA256 with PKCS#1 padding.");
-        return _crypto.Sign(Azure.Security.KeyVault.Keys.Cryptography.SignatureAlgorithm.RS256, hash).Signature;
-    }
-
-    public override bool VerifyHash(byte[] hash, byte[] signature, HashAlgorithmName hashAlgorithm, RSASignaturePadding padding) =>
-        _public.VerifyHash(hash, signature, hashAlgorithm, padding);
-
-    public override RSAParameters ExportParameters(bool includePrivateParameters) =>
-        includePrivateParameters ? throw new CryptographicException("The key is not exportable.") : _public.ExportParameters(false);
-
-    public override void ImportParameters(RSAParameters parameters) => throw new NotSupportedException();
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing) _public.Dispose();
-        base.Dispose(disposing);
+        var crypto = new CryptographyClient(stored.KeyId, credential);
+        return _keys.GetOrAdd(name, new FeKey(X509CertificateLoader.LoadCertificate(stored.Cer),
+            async (hash, token) => (await crypto.SignAsync(SignatureAlgorithm.RS256, hash, token)).Signature));
     }
 }
 
@@ -106,8 +81,12 @@ internal sealed class LocalFeVault : IFeCertificateVault
         return Task.CompletedTask;
     }
 
-    public Task<(X509Certificate2 Certificate, RSA Key)> KeyAsync(string name, CancellationToken ct) =>
+    public Task<FeKey> KeyAsync(string name, CancellationToken ct) =>
         _certificates.TryGetValue(name, out var c)
-            ? Task.FromResult((X509CertificateLoader.LoadCertificate(c.RawData), c.GetRSAPrivateKey()!))
+            ? Task.FromResult(new FeKey(X509CertificateLoader.LoadCertificate(c.RawData), (hash, _) =>
+            {
+                using var rsa = c.GetRSAPrivateKey()!;
+                return Task.FromResult(rsa.SignHash(hash, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+            }))
             : throw new InvalidOperationException($"No certificate '{name}' in the local vault.");
 }

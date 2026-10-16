@@ -5,6 +5,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Xml.Linq;
 using Azure.Identity;
 using Azure.Security.KeyVault.Certificates;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Host.Cloud.Accounts;
@@ -28,14 +29,16 @@ public sealed record FeReceiverUrls(string Environment, string Reception, string
 public sealed record FeReceiverStatus(bool Active, string? Rnc = null, string? Subject = null, DateTime? NotAfterUtc = null, DateTime? ConsentedUtc = null,
     string? OwnerName = null, string? HolderName = null, IReadOnlyList<FeReceiverUrls>? Urls = null);
 
+/// <param name="XmlGzip">The document exactly as the supplier sent it (gzip, base64): its encoding is the one it declares.</param>
+/// <param name="Conflict">R9 #1: the same e-NCF arrived with other content too; every version comes, flagged.</param>
 public sealed record FeReceivedItem(long Id, string Environment, string IssuerRnc, string IssuerName, string ENcf, int Type, DateOnly IssuedOn, decimal Total,
     decimal Itbis, DateTime ReceivedUtc, string XmlGzip, string? Approval, string? ApprovalReason, DateTime? ApprovalUtc, DateTime? ApprovalDeliveredUtc,
-    DateTime? ApprovalDgiiUtc, string? ApprovalMessage);
+    DateTime? ApprovalDgiiUtc, string? ApprovalMessage, bool Conflict);
 
 /// <summary>A received e-CF as the panel lists it (no XML).</summary>
 public sealed record FePanelReceived(long Id, string Environment, string IssuerRnc, string IssuerName, string ENcf, int Type, DateOnly IssuedOn, decimal Total,
     decimal Itbis, DateTime ReceivedUtc, string? Approval, string? ApprovalReason, DateTime? ApprovalUtc, DateTime? ApprovalDeliveredUtc, DateTime? ApprovalDgiiUtc,
-    string? ApprovalMessage);
+    string? ApprovalMessage, bool Conflict);
 
 public sealed record FePullRequest(long? After);
 
@@ -50,6 +53,10 @@ internal static class FeErrors
         "No se pudo abrir el certificado. Revise que sea el archivo .p12 o .pfx y que la contraseña sea la correcta.");
     public static readonly Error CertificateWithoutKey = Error.Validation("Fe.CertificateWithoutKey", "Ese archivo no trae la llave privada RSA del certificado.");
     public static readonly Error CertificateExpired = Error.Validation("Fe.CertificateExpired", "Ese certificado ya venció.");
+    public static readonly Error CertificateUntrusted = Error.Validation("Fe.CertificateUntrusted",
+        "Ese certificado no lo emitió una entidad de certificación autorizada por INDOTEL (o está revocado). Use el certificado de firma digital del negocio.");
+    public static readonly Error CertificateRncMismatch = Error.Validation("Fe.CertificateRncMismatch",
+        "Ese certificado no es de este RNC: debe traer el RNC del negocio o la cédula de la persona delegada como firmante.");
     public static readonly Error RncTaken = Error.Conflict("Fe.RncTaken",
         "Ese RNC ya tiene los servicios de receptor activos en otra cuenta de Toki. Escriba a soporte de Toki.");
     public static readonly Error NoConsent = Error.Conflict("Fe.NoConsent", "El receptor de comprobantes no está activo: falta el consentimiento del certificado.");
@@ -66,6 +73,8 @@ internal static class FeServices
     public static IServiceCollection AddFe(this IServiceCollection services, IConfiguration config, IHostEnvironment env)
     {
         services.AddDataProtection();
+        services.AddSingleton<FeTrust>();
+        services.Configure<RateLimiterOptions>(o => o.GlobalLimiter = FeReceiverEndpoints.RateLimiter(config));
         services.AddSingleton<FeTokens>();
         services.AddSingleton<FeDgiiTokenCache>();
         services.AddScoped<FeSigner>();
@@ -99,8 +108,10 @@ internal static class FeServices
     {
         var store = app.MapGroup("/fiscal/v1").RequireAuthorization(CloudAuth.NodePolicy).WithTags("Fe");
 
+        // R9 #6: the receiver URLs are published for the RNC, so the certificate must be of an INDOTEL authority and belong to that RNC (or be the
+        // delegated signer's cédula on a company's RNC); the database keeps one active receiver per RNC. A disputed RNC stays with support (Fe.RncTaken).
         store.MapPost("/receiver/certificate", async (FeConsentRequest r, ClaimsPrincipal user, HttpRequest http, CloudDbContext db, IFeCertificateVault vault,
-            TimeProvider clock, IConfiguration config, CancellationToken ct) =>
+            FeTrust trust, TimeProvider clock, IConfiguration config, CancellationToken ct) =>
         {
             var node = NodeIdentity.From(user);
             var (owner, holder, rnc) = (r.OwnerName?.Trim() ?? "", r.HolderName?.Trim() ?? "", r.Rnc?.Trim() ?? "");
@@ -116,6 +127,8 @@ internal static class FeServices
                 using var key = opened.GetRSAPrivateKey();
                 if (key is null) return EndpointExtensions.Problem(FeErrors.CertificateWithoutKey);
                 if (opened.NotAfter.ToUniversalTime() <= now) return EndpointExtensions.Problem(FeErrors.CertificateExpired);
+                if (!trust.IsTrusted(opened)) return EndpointExtensions.Problem(FeErrors.CertificateUntrusted);
+                if (!FeTrust.BelongsTo(opened, rnc)) return EndpointExtensions.Problem(FeErrors.CertificateRncMismatch);
             }
             catch (CryptographicException) { return EndpointExtensions.Problem(FeErrors.CertificateUnreadable); }
             if (await db.FeCertificates.AnyAsync(c => c.Rnc == rnc && c.RevokedUtc == null && c.TenantId != node.TenantId, ct))
@@ -124,14 +137,31 @@ internal static class FeServices
             var id = Guid.CreateVersion7();
             var name = $"fe-{node.TenantId:N}-{id:N}";
             using var imported = await vault.ImportAsync(name, pfx, r.Password, ct);
-            await RevokeAsync(db, vault, node.TenantId, "Reemplazado por un certificado nuevo", now, ct);
-            db.FeCertificates.Add(new FeCertificate
+            // The old consent ends and the new one starts in one transaction: the old one first, since only one active row per RNC may exist.
+            var replaced = await db.Database.CreateExecutionStrategy().ExecuteAsync<List<string>?>(async () =>
             {
-                Id = id, TenantId = node.TenantId, Rnc = rnc, Subject = Cut(imported.Subject, 500), Thumbprint = imported.Thumbprint,
-                NotAfterUtc = imported.NotAfter.ToUniversalTime(), KeyName = name, OwnerName = owner, HolderName = holder, ConsentVersion = FeConsent.Version,
-                ConsentedByNodeId = node.NodeId, ConsentedUtc = now,
+                db.ChangeTracker.Clear();
+                await using var tx = await db.Database.BeginTransactionAsync(ct);
+                var previous = await db.FeCertificates.Where(c => c.TenantId == node.TenantId && c.RevokedUtc == null).ToListAsync(ct);
+                foreach (var c in previous) (c.RevokedUtc, c.RevokedBy) = (now, "Reemplazado por un certificado nuevo");
+                await db.SaveChangesAsync(ct);
+                db.FeCertificates.Add(new FeCertificate
+                {
+                    Id = id, TenantId = node.TenantId, Rnc = rnc, Subject = Cut(imported.Subject, 500), Thumbprint = imported.Thumbprint,
+                    NotAfterUtc = imported.NotAfter.ToUniversalTime(), KeyName = name, OwnerName = owner, HolderName = holder, ConsentVersion = FeConsent.Version,
+                    ConsentedByNodeId = node.NodeId, ConsentedUtc = now,
+                });
+                try { await db.SaveChangesAsync(ct); }
+                catch (DbUpdateException) { return null; } // another tenant took the RNC a moment ago; the rollback keeps this tenant's old consent
+                await tx.CommitAsync(ct);
+                return previous.Select(c => c.KeyName).ToList();
             });
-            await db.SaveChangesAsync(ct);
+            if (replaced is null)
+            {
+                await vault.DeleteAsync(name, ct);
+                return EndpointExtensions.Problem(FeErrors.RncTaken);
+            }
+            foreach (var old in replaced) await vault.DeleteAsync(old, ct);
             return Results.Ok(await StatusAsync(db, node.TenantId, BaseUrl(http, config), ct));
         });
 
@@ -184,10 +214,15 @@ internal static class FeServices
                 return EndpointExtensions.Problem(Error.Validation("Fe.InvalidApproval", $"La aprobación no cumple el formato de la DGII: {error}"));
             var signed = await signer.SignAsync(certificate, acecf, doc.ENcf, keepXml: false, ct);
             if (signed is null) return EndpointExtensions.Problem(FeErrors.NoConsent);
-            (doc.Approval, doc.ApprovalReason, doc.ApprovalXmlGzip, doc.ApprovalUtc) = (decision, approve ? null : reason, FeXml.Zip(signed), now);
-            await db.SaveChangesAsync(ct);
+            // R9 #10: the panel and the store may decide at the same moment; only the first decision is written, the other reads it.
+            var zipped = FeXml.Zip(signed);
+            var storedReason = approve ? null : reason;
+            await db.FeReceived.Where(d => d.Id == doc.Id && d.ApprovalXmlGzip == null).ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.Approval, decision).SetProperty(d => d.ApprovalReason, storedReason)
+                .SetProperty(d => d.ApprovalXmlGzip, zipped).SetProperty(d => d.ApprovalUtc, now), ct);
+            await db.Entry(doc).ReloadAsync(ct);
         }
-        else if (doc.Approval != decision) return EndpointExtensions.Problem(FeErrors.ApprovalAlreadySigned);
+        if (doc.Approval != decision) return EndpointExtensions.Problem(FeErrors.ApprovalAlreadySigned);
 
         var xml = FeXml.Unzip(doc.ApprovalXmlGzip!);
         var file = $"{doc.BuyerRnc}{doc.ENcf}.xml";
@@ -254,14 +289,14 @@ internal static class FeServices
             var tenant = user.GetTenantId();
             return Results.Ok(await db.FeReceived.AsNoTracking().Where(d => d.TenantId == tenant).OrderByDescending(d => d.Id).Take(200)
                 .Select(d => new FePanelReceived(d.Id, d.Environment, d.IssuerRnc, d.IssuerName, d.ENcf, d.Type, d.IssuedOn, d.Total, d.Itbis, d.ReceivedUtc,
-                    d.Approval, d.ApprovalReason, d.ApprovalUtc, d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage)).ToListAsync(ct));
+                    d.Approval, d.ApprovalReason, d.ApprovalUtc, d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage, d.Conflict)).ToListAsync(ct));
         }).RequireAuthorization(CloudAuth.PanelPolicy).WithTags("Fe");
 
         app.MapGet("/api/panel/fe/received/{id:long}/xml", async (long id, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
         {
             var tenant = user.GetTenantId();
             var xml = await db.FeReceived.AsNoTracking().Where(d => d.Id == id && d.TenantId == tenant).Select(d => d.XmlGzip).SingleOrDefaultAsync(ct);
-            return xml is null ? EndpointExtensions.Problem(FeErrors.NotFound) : Results.Ok(new { xml = FeXml.Unzip(xml) });
+            return xml is null ? EndpointExtensions.Problem(FeErrors.NotFound) : Results.Ok(new { xml = FeXml.ReceivedText(xml) });
         }).RequireAuthorization(CloudAuth.PanelPolicy).WithTags("Fe");
 
         // shortcut: the store learns of a decision taken here only when it tries one itself (the same one is accepted again, another is refused).
@@ -290,7 +325,8 @@ internal static class FeServices
     }
 
     private static FeReceivedItem Item(FeReceivedDocument d) => new(d.Id, d.Environment, d.IssuerRnc, d.IssuerName, d.ENcf, d.Type, d.IssuedOn, d.Total, d.Itbis,
-        d.ReceivedUtc, Convert.ToBase64String(d.XmlGzip), d.Approval, d.ApprovalReason, d.ApprovalUtc, d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage);
+        d.ReceivedUtc, Convert.ToBase64String(d.XmlGzip), d.Approval, d.ApprovalReason, d.ApprovalUtc, d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage,
+        d.Conflict);
 
     private static string BaseUrl(HttpRequest http, IConfiguration config) => (config["Fe:PublicUrl"] ?? $"{http.Scheme}://{http.Host}").TrimEnd('/');
 

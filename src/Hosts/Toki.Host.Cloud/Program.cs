@@ -54,9 +54,13 @@ builder.Services.AddScoped<IUserStore<CloudUser>, CloudUserStore>();
 var registerPerMinute = config.GetValue("Nodes:RegisterPerMinute", 10);
 // R8 #17: the public catalog needs no account either; a customer opens it a few times, a scraper many.
 var catalogPerMinute = config.GetValue("Catalog:RequestsPerMinute", 60);
+var invoicesPerNodeMinute = config.GetValue("Ai:SupplierInvoicesPerMinutePerNode", 10);
+// The e-CF receiver's limits (R9 #2) are the global limiter, set by AddFe.
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy(SupplierInvoiceEndpoint.NodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = invoicesPerNodeMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(CloudAuth.RegisterNodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = registerPerMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(PublicCatalogEndpoints.RateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
@@ -102,9 +106,9 @@ app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
 app.UseCors();
 app.UseRequestDecompression();
-app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter(); // after authorization: the per-PC limit reads the node identity, which the node policy authenticates
 
 if (app.Environment.IsDevelopment())
 {

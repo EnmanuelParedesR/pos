@@ -136,8 +136,8 @@ public sealed class ArchiveAndConfigurationTests(CloudApp app) : IClassFixture<C
         own.Clock.Advance(TimeSpan.FromDays(91));
         (await Move(own)).ShouldBe(2);
         var row = await own.InDbAsync(db => db.EcfRelays.SingleAsync(r => r.ENcf == "E320000000777"));
-        (row.SignedXmlGzip.Length, row.RfceGzip, row.ColdHasRfce, row.ColdKey).ShouldBe((0, null, true, $"{owner.TenantId:N}/E320000000777"));
-        File.Exists(Path.Combine(own.ArchiveFolder, $"{owner.TenantId:N}", "E320000000777.rfce.xml.gz")).ShouldBeTrue();
+        (row.SignedXmlGzip.Length, row.RfceGzip, row.ColdHasRfce, row.ColdKey).ShouldBe((0, null, true, $"{owner.TenantId:N}/eCF/E320000000777"));
+        File.Exists(Path.Combine(own.ArchiveFolder, $"{owner.TenantId:N}", "eCF", "E320000000777.rfce.xml.gz")).ShouldBeTrue();
 
         // A later upload (a status change) keeps the cold copy: the XML there never changes.
         (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { replacedByENcf = (string?)"E320000000778" })).StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -155,6 +155,32 @@ public sealed class ArchiveAndConfigurationTests(CloudApp app) : IClassFixture<C
         (await own.CreateClient().GetAsync("/api/fiscal/archive/E320000000777")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
+    [Fact]
+    public async Task R9_4_the_same_eNCF_in_a_test_environment_and_in_production_are_two_documents_hot_and_cold()
+    {
+        await using var own = new CloudApp(); // moves its own clock
+        var owner = await own.OwnerAsync();
+        var node = await own.StoreWithNodeAsync(owner);
+        var body = new { encf = "E310000000042", environment = "TesteCF", status = "Accepted", signedUtc = DateTime.UtcNow, signedXmlGzip = Gzip("<ECF>prueba</ECF>") };
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { environment = "eCF", signedXmlGzip = Gzip("<ECF>real</ECF>") })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { environment = "CerteCF", signedXmlGzip = Gzip("<ECF>certificacion</ECF>") })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await own.InDbAsync(db => db.EcfRelays.CountAsync(r => r.TenantId == owner.TenantId))).ShouldBe(3);
+
+        async Task<string?> Xml(Owner who, string query = "") =>
+            (await who.Client.GetFromJsonAsync<JsonElement>($"/api/fiscal/archive/E310000000042{query}")).GetProperty("signedXml").GetString();
+        (await Xml(owner)).ShouldBe("<ECF>real</ECF>"); // production first
+        (await Xml(owner, "?environment=TesteCF")).ShouldBe("<ECF>prueba</ECF>");
+
+        own.Clock.Advance(TimeSpan.FromDays(91));
+        (await Move(own)).ShouldBe(3);
+        File.Exists(Path.Combine(own.ArchiveFolder, $"{owner.TenantId:N}", "eCF", "E310000000042.xml.gz")).ShouldBeTrue();
+        File.Exists(Path.Combine(own.ArchiveFolder, $"{owner.TenantId:N}", "TesteCF", "E310000000042.xml.gz")).ShouldBeTrue();
+        var again = await own.SignInAsync(owner.Email);
+        (await Xml(again)).ShouldBe("<ECF>real</ECF>");
+        (await Xml(again, "?environment=certecf")).ShouldBe("<ECF>certificacion</ECF>");
+    }
+
     private static async Task<int> Move(CloudApp app)
     {
         await using var scope = app.Services.CreateAsyncScope();
@@ -165,10 +191,11 @@ public sealed class ArchiveAndConfigurationTests(CloudApp app) : IClassFixture<C
     public async Task The_archive_needs_node_credentials_and_a_gzipped_document()
     {
         var node = await app.StoreWithNodeAsync(await app.OwnerAsync());
-        var body = new { encf = "E310000000001", status = "Accepted", signedXmlGzip = Gzip("<ECF/>") };
+        var body = new { encf = "E310000000001", environment = "eCF", status = "Accepted", signedXmlGzip = Gzip("<ECF/>") };
 
         (await app.CreateClient().PostAsJsonAsync("/fiscal/v1/archive", body)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { environment = "Simulated" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
 
         var notGzip = await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { signedXmlGzip = Convert.ToBase64String("<ECF/>"u8.ToArray()) });
         notGzip.StatusCode.ShouldBe(HttpStatusCode.BadRequest);

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Nodes;
+using Microsoft.AspNetCore.Hosting;
 using Shouldly;
 using Toki.Host.Cloud.Assistant;
 
@@ -27,7 +28,15 @@ public sealed class FakeInvoiceModel : IChatModel
 
 public sealed class InvoiceReaderApp() : CloudApp(new FakeInvoiceModel())
 {
+    public const int PerDay = 3;
+
     public FakeInvoiceModel Model => (FakeInvoiceModel)Services.GetService(typeof(IChatModel))!;
+
+    protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.UseSetting("Ai:SupplierInvoicesPerDay", PerDay.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    }
 }
 
 public sealed class SupplierInvoiceReaderTests(InvoiceReaderApp app) : IClassFixture<InvoiceReaderApp>
@@ -67,6 +76,30 @@ public sealed class SupplierInvoiceReaderTests(InvoiceReaderApp app) : IClassFix
         (await owner.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo())).StatusCode.ShouldBeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden);
         (await app.CreateClient().PostAsJsonAsync("/ai/v1/supplier-invoice", Photo())).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await (await node.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo("text/html"))).ErrorCode()).ShouldBe("Ai.InvalidFile");
+    }
+
+    [Fact]
+    public async Task R9_14_a_tenant_reads_a_limited_number_of_invoices_a_day_and_none_with_a_restricted_license()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        var second = await app.StoreWithNodeAsync(owner, "Sucursal"); // the limit is the business's, not the PC's
+        for (var i = 0; i < InvoiceReaderApp.PerDay; i++)
+            (await (i % 2 == 0 ? node : second).Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo())).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var calls = app.Model.Calls.Count;
+        var over = await second.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo());
+        over.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+        (await over.ErrorCode()).ShouldBe("Ai.DailyLimit");
+        app.Model.Calls.Count.ShouldBe(calls); // the model was not called
+
+        var restricted = await app.StoreWithNodeAsync(await app.OwnerAsync());
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        (await restricted.SendAsync(Events.Envelope(PlatformTests.Heartbeat(license: new Toki.Sync.Contracts.NodeLicenseV1("Restricted", now.AddDays(-1))), now)))
+            .EnsureSuccessStatusCode();
+        await app.ApplyAsync();
+        var refused = await restricted.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo());
+        refused.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await refused.ErrorCode()).ShouldBe("Ai.LicenseRestricted");
     }
 
     [Fact]

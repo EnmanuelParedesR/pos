@@ -60,7 +60,13 @@ public sealed class FeReceivedDocument
     public DateOnly IssuedOn { get; set; }
     public decimal Total { get; set; }
     public decimal Itbis { get; set; }
+    /// <summary>The document exactly as the supplier sent it, in its own encoding (R9 #17), gzip.</summary>
     public byte[] XmlGzip { get; set; } = [];
+    /// <summary>SHA-256 of those bytes: the same e-NCF sent again with the same bytes is a duplicate; with others, a <see cref="Conflict"/>.</summary>
+    public string Sha256 { get; set; } = "";
+    /// <summary>R9 #1: the issuer's e-NCF arrived more than once with different content. Every version is kept and flagged: which one is real is
+    /// for the owner to check with the supplier (or the DGII), not for the first one to arrive.</summary>
+    public bool Conflict { get; set; }
     public DateTime ReceivedUtc { get; set; }
     /// <summary>Commercial approval the owner gave (TK-154): Approved or Rejected; null while none.</summary>
     public string? Approval { get; set; }
@@ -104,7 +110,7 @@ internal static class FeModel
             e.Property(c => c.ConsentVersion).HasMaxLength(20);
             e.Property(c => c.RevokedBy).HasMaxLength(256);
             e.HasIndex(c => c.TenantId);
-            e.HasIndex(c => c.Rnc);
+            e.HasIndex(c => c.Rnc).IsUnique().HasFilter("[RevokedUtc] IS NULL"); // R9 #6: one active receiver per RNC, even when two consents race
         });
         builder.Entity<FeSignature>(e =>
         {
@@ -125,7 +131,9 @@ internal static class FeModel
             e.Property(d => d.Approval).HasMaxLength(10);
             e.Property(d => d.ApprovalReason).HasMaxLength(250);
             e.Property(d => d.ApprovalMessage).HasMaxLength(1000);
-            e.HasIndex(d => new { d.TenantId, d.IssuerRnc, d.ENcf }).IsUnique();
+            e.Property(d => d.Sha256).HasMaxLength(64);
+            // R9 #5: per environment, a TesteCF document never makes the eCF one a duplicate.
+            e.HasIndex(d => new { d.TenantId, d.Environment, d.IssuerRnc, d.ENcf, d.Sha256 }).IsUnique();
             e.HasIndex(d => new { d.TenantId, d.Id });
         });
         builder.Entity<FeApprovalReceived>(e =>

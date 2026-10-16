@@ -74,3 +74,18 @@ Estado de R8: #2 sigue abierta por el hallazgo 7, #4 por el 20 y #11 por el 9; #
 ## Estado de las correcciones
 
 TK-229: nube (#1, #2, #4, #5, #6, #10, #14, #17, #21) y tienda (#3, #7, #8, #9, #11, #12, #13, #15, #16, #18, #19, #20).
+
+### Nube
+
+- **#1 Cerrada, con un pendiente de configuración.** `FeTrust` valida la cadena contra `Fe:TrustedRoots` (CRL u OCSP en línea; un estado desconocido es rechazo) en la recepción, en `validacioncertificado` y en `aprobacioncomercial`. El certificado debe traer `RNCEmisor` (o `RNCComprador` en el ACECF), o una cédula en el documento de una empresa. Sin raíces configuradas no se confía en nadie: falla cerrado. El mismo e-NCF con otro contenido guarda las dos versiones (hasta 3) marcadas `Conflict` y acusa Estado 0. La tienda las muestra juntas, con "Llegó dos veces distinto" y sin "Registrar compra".
+  - **Falta:** cargar las raíces reales de Avansi y Digifirma (no se descargaron; ver docs/ecf-propio.md, TK-152 "Confianza"). Mientras no estén, el receptor rechaza todo.
+  - **shortcut:** sin confirmar con la DGII (`consultaestado`) antes de entregar a la tienda, y sin comprobar que la cédula esté delegada para el RNC (pregunta 34).
+- **#2 Cerrada.** Limitador global del receptor por IP (60/min) y por RNC (600/min), sin distinguir el ambiente ni las mayúsculas. `KeyVaultFeVault` guarda el certificado y el `CryptographyClient` por consentimiento: una sola llamada al vault por firma. La firma es `SignAsync`: `SignedXml` solo calcula el resumen. Los ARECF de rechazo se firman y quedan en el registro sin el XML. La validación XSD corre sin `lock`.
+- **#4 Cerrada.** El índice único del archivo es (tenant, ambiente, e-NCF) y la clave del blob es `{tenant}/{ambiente}/{e-NCF}`. El archivo exige el ambiente (TesteCF, CerteCF o eCF). La consulta devuelve el de eCF, o el ambiente que se pida con `?environment=`. La migración `R9ReceiverAndArchiveFixes` no tiene filas que separar: había una por e-NCF y lo sobrescrito antes no se recupera. Las claves frías viejas siguen sirviendo, porque cada fila guarda la suya. La tienda ya enviaba el ambiente.
+- **#5 Cerrada.** El ambiente está en el índice y en la comprobación de duplicado de `FeReceived`. "Registrar compra" sale solo para `ecf`.
+- **#6 Cerrada.** Índice único filtrado `Rnc` con `RevokedUtc IS NULL`. El consentimiento exige un certificado de una entidad de confianza con ese RNC o la cédula del delegado. El reemplazo del propio va en una transacción. Si una carrera pierde, el certificado importado se borra y responde `Fe.RncTaken` (verificación manual por soporte).
+- **#10 Cerrada.** La decisión se guarda con un `UPDATE` condicional (`ApprovalXmlGzip IS NULL`) y después se relee: la segunda decisión recibe `Fe.ApprovalAlreadySigned`.
+- **#14 Cerrada.** Cuota diaria por negocio (`Ai:SupplierInvoicesPerDay`, 100; tabla `AiUsage`; 429 `Ai.DailyLimit`), límite por PC (`Ai:SupplierInvoicesPerMinutePerNode`, 10) y licencia del último latido (`Restricted` → 403 `Ai.LicenseRestricted`). El limitador va ahora después de la autorización, para leer la identidad del nodo.
+- **#17 Cerrada.** Se guardan los bytes originales en su codificación, con su SHA-256. El panel los muestra con la codificación que declaran.
+- **#21 Cerrada.** Con un enlace que llegó por correo, una cuenta sin confirmar con esa dirección pasa a la persona invitada: contraseña nueva, nuevo sello de seguridad y correo confirmado. Conserva lo que tenía, porque puede ser su propio registro anterior. Una cuenta confirmada, o un enlace que el dueño vio, sigue dando `Invites.AccountExists`.
+  - **shortcut:** el token de acceso que otra persona ya tenía vale hasta su vencimiento (1 hora), sin poder renovarse.

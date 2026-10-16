@@ -219,6 +219,22 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("SentAlerts", "cloud");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Assistant.AiUsage", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<int>("SupplierInvoices")
+                        .HasColumnType("int");
+
+                    b.HasKey("TenantId", "Day");
+
+                    b.ToTable("AiUsage", "cloud");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Catalog.ReplicaCatalogItem", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -393,7 +409,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Rnc");
+                    b.HasIndex("Rnc")
+                        .IsUnique()
+                        .HasFilter("[RevokedUtc] IS NULL");
 
                     b.HasIndex("TenantId");
 
@@ -437,6 +455,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasMaxLength(11)
                         .HasColumnType("nvarchar(11)");
 
+                    b.Property<bool>("Conflict")
+                        .HasColumnType("bit");
+
                     b.Property<string>("ENcf")
                         .IsRequired()
                         .HasMaxLength(13)
@@ -467,6 +488,11 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.Property<DateTime>("ReceivedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -485,7 +511,7 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.HasIndex("TenantId", "Id");
 
-                    b.HasIndex("TenantId", "IssuerRnc", "ENcf")
+                    b.HasIndex("TenantId", "Environment", "IssuerRnc", "ENcf", "Sha256")
                         .IsUnique();
 
                     b.ToTable("FeReceived", "cloud");
@@ -723,7 +749,7 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.HasIndex("ColdUtc", "ReceivedUtc");
 
-                    b.HasIndex("TenantId", "ENcf")
+                    b.HasIndex("TenantId", "Environment", "ENcf")
                         .IsUnique();
 
                     b.ToTable("EcfRelays", "cloud");

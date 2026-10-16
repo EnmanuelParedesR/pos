@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.EntityFrameworkCore;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Host.Cloud.Nodes;
+using Toki.Host.Cloud.Persistence;
 using Toki.Purchasing.Contracts;
 using Toki.SharedKernel;
 
@@ -13,7 +15,7 @@ namespace Toki.Host.Cloud.Assistant;
 /// person as a draft purchase; nothing is saved here and the file is not kept.</summary>
 /// <remarks>gpt-5-nano takes images and PDFs as input. Cost (gpt-5-nano list price, US$0.05 / 1M input and US$0.40 / 1M output tokens): a page is
 /// ~1,500 to 6,000 input tokens and the answer with its reasoning ~1,000 to 5,000 output tokens, so about US$0.001 to US$0.003 per invoice.
-/// shortcut: no per-tenant daily limit yet; add one if a store abuses it.</remarks>
+/// R9 #14: <see cref="SupplierInvoiceEndpoint"/> limits it per business and day, per PC and minute, and refuses a restricted license.</remarks>
 public sealed class SupplierInvoiceReader(IChatModel model)
 {
     public const string ToolName = "supplier_invoice";
@@ -90,11 +92,23 @@ public sealed class SupplierInvoiceReader(IChatModel model)
         : null;
 }
 
+/// <summary>R9 #14: the supplier invoices a business had read on one business day (UTC−4).</summary>
+public sealed class AiUsage
+{
+    public Guid TenantId { get; set; }
+    public DateOnly Day { get; set; }
+    public int SupplierInvoices { get; set; }
+}
+
 internal static class SupplierInvoiceEndpoint
 {
+    /// <summary>Per PC: a burst from one store (a loop, a stuck retry) is cut before it spends the business's day.</summary>
+    public const string NodeRateLimit = "ai-invoice-node";
+
+    /// <summary><c>Ai:SupplierInvoicesPerDay</c> (100 per business) and <c>Ai:SupplierInvoicesPerMinutePerNode</c> (10, see Program).</summary>
     public static void MapSupplierInvoiceReader(this IEndpointRouteBuilder app) =>
-        app.MapPost("/ai/v1/supplier-invoice", async (SupplierInvoiceReadRequest request, ClaimsPrincipal user, IServiceProvider services,
-            ILogger<SupplierInvoiceReader> log, CancellationToken ct) =>
+        app.MapPost("/ai/v1/supplier-invoice", async (SupplierInvoiceReadRequest request, ClaimsPrincipal user, IServiceProvider services, CloudDbContext db,
+            IConfiguration config, TimeProvider clock, ILogger<SupplierInvoiceReader> log, CancellationToken ct) =>
         {
             if (services.GetService<IChatModel>() is not { } model) return Unavailable("Ai.NotConfigured", "La lectura de facturas con IA todavía no está configurada en la nube.");
             var type = request.ContentType?.Trim().ToLowerInvariant();
@@ -105,6 +119,13 @@ internal static class SupplierInvoiceEndpoint
                 return EndpointExtensions.Problem(Error.Validation("Ai.InvalidFile", "Envíe un PDF o una foto (JPG, PNG o WEBP) de hasta 4 MB."));
 
             var node = NodeIdentity.From(user);
+            // The license the store reported last (TK-196): a restricted one does not get the paid extras.
+            if (await db.NodeHeartbeats.Where(h => h.TenantId == node.TenantId && h.LicenseStatus != null).OrderByDescending(h => h.SentUtc)
+                    .Select(h => h.LicenseStatus).FirstOrDefaultAsync(ct) == "Restricted")
+                return Refused("Ai.LicenseRestricted", "La licencia de Toki está restringida: renuévela para leer facturas con IA.", StatusCodes.Status403Forbidden);
+            if (!await TakeAsync(db, node.TenantId, BusinessDay.Of(clock.GetUtcNow().UtcDateTime), config.GetValue("Ai:SupplierInvoicesPerDay", 100), ct))
+                return Refused("Ai.DailyLimit", "Ya se leyeron con IA todas las facturas de hoy. Mañana puede seguir, o escríbala a mano.",
+                    StatusCodes.Status429TooManyRequests);
             try
             {
                 var reading = await new SupplierInvoiceReader(model).ReadAsync(new ChatAttachment(type, data, Path.GetFileName(request.FileName ?? "factura")), ct);
@@ -119,8 +140,33 @@ internal static class SupplierInvoiceEndpoint
                 log.LogWarning(ex, "Chat model call failed reading a supplier invoice");
                 return Unavailable("Ai.Unavailable", "La lectura con IA no está disponible ahora. Intente de nuevo en un momento.");
             }
-        }).RequireAuthorization(CloudAuth.NodePolicy);
+        }).RequireAuthorization(CloudAuth.NodePolicy).RequireRateLimiting(NodeRateLimit);
 
-    private static IResult Unavailable(string code, string detail) =>
-        Results.Problem(detail: detail, statusCode: StatusCodes.Status503ServiceUnavailable, title: code, extensions: new Dictionary<string, object?> { ["code"] = code });
+    /// <summary>One more read for the business today, unless it reached <paramref name="limit"/>. Counts every read the model is asked for.</summary>
+    private static async Task<bool> TakeAsync(CloudDbContext db, Guid tenant, DateOnly day, int limit, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            if (await db.AiUsage.Where(u => u.TenantId == tenant && u.Day == day && u.SupplierInvoices < limit)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.SupplierInvoices, u => u.SupplierInvoices + 1), ct) == 1)
+                return true;
+            if (limit <= 0 || await db.AiUsage.AnyAsync(u => u.TenantId == tenant && u.Day == day, ct)) return false;
+            db.AiUsage.Add(new AiUsage { TenantId = tenant, Day = day, SupplierInvoices = 1 });
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return true;
+            }
+            catch (DbUpdateException)
+            {
+                db.ChangeTracker.Clear(); // another read of the business created today's row: count on it
+            }
+        }
+        return false;
+    }
+
+    private static IResult Unavailable(string code, string detail) => Refused(code, detail, StatusCodes.Status503ServiceUnavailable);
+
+    private static IResult Refused(string code, string detail, int status) =>
+        Results.Problem(detail: detail, statusCode: status, title: code, extensions: new Dictionary<string, object?> { ["code"] = code });
 }

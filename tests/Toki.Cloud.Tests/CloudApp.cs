@@ -42,6 +42,8 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("Archive:MoveInBackground", "false");
         builder.UseSetting("Nodes:RegisterPerMinute", "10000");
         builder.UseSetting("Catalog:RequestsPerMinute", "10000");
+        builder.UseSetting("Fe:RequestsPerMinutePerIp", "10000");
+        builder.UseSetting("Fe:RequestsPerMinutePerRnc", "10000");
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
         builder.UseSetting("Platform:Admins:0", LegacyAdminEmail); // R8 #1: ignored now
         builder.ConfigureTestServices(s =>

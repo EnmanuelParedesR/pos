@@ -88,7 +88,8 @@
                             @foreach (var d in _received)
                             {
                                 <tr><td>@d.IssuerName<span class="esc-table__sub esc-muted">RNC @d.IssuerRnc@(d.Environment == "ecf" ? "" : " · prueba")</span></td>
-                                    <td><span style="font-weight:600;font-variant-numeric:tabular-nums">@d.ENcf</span></td>
+                                    <td><span style="font-weight:600;font-variant-numeric:tabular-nums">@d.ENcf</span>
+                                        @if (InConflict(d)) { <span class="esc-pill esc-pill--danger">Llegó dos veces distinto</span><span class="esc-table__sub esc-muted">Confirme con el suplidor cuál es el verdadero</span> }</td>
                                     <td class="esc-hide-sm">@d.IssuedOn.ToString("dd/MM/yyyy")</td>
                                     <td class="esc-num">@Format.Amount(d.Total)<span class="esc-table__sub esc-muted">ITBIS @Format.Amount(d.Itbis)</span></td>
                                     <td>@switch (d.Approval)
@@ -99,7 +100,8 @@
                                         }
                                         @if (d.ApprovalMessage is { } m) { <span class="esc-table__sub esc-muted">@m</span> }</td>
                                     <td class="esc-num">
-                                        <a class="esc-button esc-button--small" href="admin/purchasing">Registrar compra</a>
+                                        @* R9 #5: a test environment's e-CF is not a purchase; one in conflict waits until the supplier says which is real. *@
+                                        @if (d.Environment == "ecf" && !InConflict(d)) { <a class="esc-button esc-button--small" href="admin/purchasing">Registrar compra</a> }
                                         @if (Session.Can("fiscal.manage") && (d.Approval is null || d.ApprovalMessage is not null))
                                         {
                                             @if (_rejecting == d.Id)
@@ -140,6 +142,10 @@
     private readonly Dictionary<string, string> _errors = [];
 
     private string? Err(string key) => _errors.GetValueOrDefault(key);
+
+    /// <summary>R9 #1: the cloud keeps every version of an e-NCF that arrived with different content; here they show side by side.</summary>
+    private bool InConflict(ReceivedEcf d) =>
+        _received.Any(o => o.Id != d.Id && o.Environment == d.Environment && o.IssuerRnc == d.IssuerRnc && o.ENcf == d.ENcf);
 
     protected override Task OnInitializedAsync() => LoadAsync();
 

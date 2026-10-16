@@ -155,23 +155,32 @@ internal static class MemberEndpoints
                 : InvalidInvite()).AllowAnonymous();
 
         // A new account for the invited e-mail, joined to the tenant in the same SaveChanges (no tenant of its own).
+        // R9 #21: anyone can register any address in /api/auth/register, which used to block the invite. A link that arrived by e-mail proves the
+        // address, so an unconfirmed account with it becomes this person's: new password (a new security stamp: other sessions cannot refresh) and
+        // confirmed. It keeps what it had, since it may be their own earlier sign-up. A confirmed account, or a link the inviter saw, proves nothing.
         invites.MapPost("/register", async (AcceptInviteRegisterRequest request, CloudDbContext db, UserManager<CloudUser> users, TimeProvider clock,
             CancellationToken ct) =>
         {
             var invite = await FindAsync(db, request.Token, clock, ct, tracked: true);
             if (invite is null) return InvalidInvite();
-            if (await users.FindByEmailAsync(invite.Email) is not null)
+            var existing = await users.FindByEmailAsync(invite.Email);
+            if (existing is not null && (existing.EmailConfirmed || invite.LinkShown))
                 return EndpointExtensions.Problem(Error.Conflict("Invites.AccountExists", "Ya existe una cuenta con ese correo. Entre con ella para unirse."));
+            if (existing is not null && await db.TenantMembers.AnyAsync(m => m.TenantId == invite.TenantId && m.UserId == existing.Id, ct))
+                return EndpointExtensions.Problem(Error.Conflict("Members.AlreadyMember", "Usted ya es miembro de este negocio."));
 
             var now = clock.GetUtcNow().UtcDateTime;
             // R8 #1: the e-mail counts as confirmed only when the link reached it by e-mail; a link the inviter saw proves nothing.
-            var account = new CloudUser { UserName = invite.Email, Email = invite.Email, TenantId = invite.TenantId, EmailConfirmed = !invite.LinkShown };
+            var account = existing ?? new CloudUser { UserName = invite.Email, Email = invite.Email };
+            (account.TenantId, account.EmailConfirmed) = (invite.TenantId, !invite.LinkShown);
             db.TenantMembers.Add(new TenantMember { TenantId = invite.TenantId, UserId = account.Id, Role = invite.Role, JoinedUtc = now });
             invite.AcceptedUtc = now;
             IdentityResult result;
             try
             {
-                result = await users.CreateAsync(account, request.Password ?? "");
+                result = existing is null
+                    ? await users.CreateAsync(account, request.Password ?? "")
+                    : await users.ResetPasswordAsync(account, await users.GeneratePasswordResetTokenAsync(account), request.Password ?? "");
             }
             catch (DbUpdateConcurrencyException)
             {
