@@ -5,9 +5,9 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace Toki.Host.Local;
 
-/// <summary>The store server's TLS certificate: self-signed, created once in the machine store and reused until 30 days before it expires.
-/// Registers trust it on first use: they pin the certificate they see when they pair with the one-time code shown on the server.</summary>
-/// <remarks>shortcut: no renewal hand-off to paired registers yet; mutual TLS and re-pinning come with TK-091.</remarks>
+/// <summary>The TLS certificate of stores installed before TK-091: self-signed, in the machine store. Used only in dual mode
+/// (<c>Toki:LegacyDeviceSecrets</c>, ADR-0009), so registers that pinned it keep working until they are paired again.
+/// New installs use a certificate issued by the store CA (<see cref="Toki.Identity.StoreCertificateAuthority"/>).</summary>
 internal static class NodeCertificate
 {
     public const string Subject = "CN=Toki Nodo";

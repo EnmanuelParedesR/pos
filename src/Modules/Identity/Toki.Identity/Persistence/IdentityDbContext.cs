@@ -49,6 +49,8 @@ internal sealed class IdentityConfiguration :
     {
         b.Property(d => d.TokenHash).HasMaxLength(32);
         b.HasIndex(d => d.TokenHash).IsUnique();
+        b.Property(d => d.CertificateThumbprint).HasMaxLength(64);
+        b.HasIndex(d => d.CertificateThumbprint).IsUnique();
     }
 
     public void Configure(EntityTypeBuilder<PairingCode> b)

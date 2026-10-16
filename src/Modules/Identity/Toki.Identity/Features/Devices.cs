@@ -30,7 +30,7 @@ internal static class CreatePairingCode
     {
         public Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            // shortcut: 8 random digits valid 10 minutes, no attempt counter; fine on a shop LAN, replace with mTLS pairing (TK-091).
+            // shortcut: 8 random digits valid 10 minutes, no attempt counter; fine on a shop LAN (what the code unlocks is one client certificate, TK-091).
             var code = Token.ShortCode() + Token.ShortCode()[..2];
             var expires = clock.GetUtcNow().UtcDateTime + Validity;
             db.PairingCodes.Add(new PairingCode
@@ -50,18 +50,46 @@ internal static class CreatePairingCode
     }
 }
 
-/// <summary>The new register sends the code and receives its device secret.</summary>
+/// <summary>What a newly paired device proves itself with (ADR-0009): a client certificate issued by the store CA when it sent a CSR (TK-091),
+/// otherwise a secret (development over http). Its secret is then never revealed: only its hash is kept, to fill the column.</summary>
+internal static class DeviceCredentials
+{
+    public const int MaxRequestLength = 4000;
+
+    public static (string? Token, string? Certificate, string? StoreCa) Issue(Device device, string? certificateRequest, StoreCertificateAuthority ca)
+    {
+        var token = Token.New();
+        device.TokenHash = Token.Hash(token);
+        if (string.IsNullOrWhiteSpace(certificateRequest)) return (token, null, null);
+        var (pem, thumbprint) = ca.IssueDeviceCertificate(certificateRequest, device.Id);
+        device.CertificateThumbprint = thumbprint;
+        return (null, pem, ca.CertificatePem);
+    }
+
+    public static IRuleBuilderOptions<T, string?> ValidCertificateRequest<T>(this IRuleBuilder<T, string?> rule) =>
+        rule.MaximumLength(MaxRequestLength).Must(r => string.IsNullOrWhiteSpace(r) || StoreCertificateAuthority.IsValidRequest(r))
+            .WithMessage("La solicitud de certificado de este equipo no es válida.");
+}
+
+/// <summary>The new register sends the code (and its CSR) and receives its client certificate and the store CA to pin.</summary>
 internal static class PairDevice
 {
-    public sealed record Command(string Code) : ICommand<Response>;
-    public sealed record Response(Guid DeviceId, string Name, string Token);
+    /// <param name="CertificateRequest">PEM CSR of the key the register just made (TK-091); none over plain http (development).</param>
+    public sealed record Command(string Code, string? CertificateRequest = null) : ICommand<Response>;
+    /// <param name="Token">The device secret, only when no CSR was sent.</param>
+    public sealed record Response(Guid DeviceId, string Name, string? Token, string? Certificate, string? StoreCa);
 
     internal sealed class Validator : AbstractValidator<Command>
     {
-        public Validator() => RuleFor(c => c.Code).NotEmpty().MaximumLength(20);
+        public Validator()
+        {
+            RuleFor(c => c.Code).NotEmpty().MaximumLength(20);
+            RuleFor(c => c.CertificateRequest).ValidCertificateRequest();
+        }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IFeatureService license, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IFeatureService license, IAuditLog audit, StoreCertificateAuthority ca, TimeProvider clock)
+        : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -77,11 +105,11 @@ internal static class PairDevice
             if (await db.Devices.CountAsync(d => !d.IsRevoked, ct) - 1 >= license.LimitOf(Limit.Registers))
                 return Error.Forbidden("Identity.RegisterLimitReached", $"La licencia permite {license.LimitOf(Limit.Registers)} cajas. Revoque una que no use o amplíe el plan.");
 
-            var token = Token.New();
-            var device = new Device { Id = Guid.CreateVersion7(), Name = code.DeviceName, TokenHash = Token.Hash(token), CreatedUtc = now };
+            var device = new Device { Id = Guid.CreateVersion7(), Name = code.DeviceName, CreatedUtc = now };
+            var (token, certificate, storeCa) = DeviceCredentials.Issue(device, c.CertificateRequest, ca);
             db.Devices.Add(device);
-            await audit.RecordAsync("identity.pair", "Device", device.Id, new { device.Name }, ct);
-            return new Response(device.Id, device.Name, token);
+            await audit.RecordAsync("identity.pair", "Device", device.Id, new { device.Name, device.CertificateThumbprint }, ct);
+            return new Response(device.Id, device.Name, token, certificate, storeCa);
         }
     }
 
@@ -108,7 +136,7 @@ internal static class ListDevices
     }
 }
 
-/// <summary>Revoking is immediate: its sessions close and its secret stops working.</summary>
+/// <summary>Revoking is immediate: its sessions close and its certificate (or secret) stops working.</summary>
 internal static class RevokeDevice
 {
     public sealed record Command(Guid Id) : ICommand<Ok>;

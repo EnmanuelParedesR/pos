@@ -1,14 +1,12 @@
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using System.Security.Principal;
 using Microsoft.Data.SqlClient;
 
 namespace Toki.Host.Local;
 
 /// <summary>`Toki.Host.Local prepare-service "NT SERVICE\Toki"`, run once by the installer as an administrator, so the service itself
-/// runs with no admin rights: it creates the node certificate and lets the account read its private key, gives the account the data folders,
+/// runs with no admin rights: it gives the account the data folders (the store CA and its TLS certificates live in keys, TK-091),
 /// and creates its SQL Server login (allowed to create the Toki database, which it then owns).</summary>
 [SupportedOSPlatform("windows")]
 internal static class PrepareService
@@ -16,10 +14,6 @@ internal static class PrepareService
     public static async Task RunAsync(string account, string connectionString)
     {
         var identity = new NTAccount(account);
-        var certificate = NodeCertificate.GetOrCreate(StoreLocation.LocalMachine, TimeProvider.System);
-        var key = new FileInfo(PrivateKeyFile(certificate));
-        key.SetAccessControl(Allow(key.GetAccessControl(), identity, FileSystemRights.Read));
-        Console.WriteLine($"Certificado del nodo: {certificate.Subject}, huella {certificate.Thumbprint}, vence {certificate.NotAfter:yyyy-MM-dd}");
 
         var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki");
         var folder = Directory.CreateDirectory(data);
@@ -54,17 +48,5 @@ internal static class PrepareService
         var inheritance = security is DirectorySecurity ? InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit : InheritanceFlags.None;
         security.AddAccessRule(new FileSystemAccessRule(account, rights, inheritance, PropagationFlags.None, AccessControlType.Allow));
         return security;
-    }
-
-    /// <summary>Where Windows keeps the certificate's machine key: CNG keys and the older CSP keys live in different folders.</summary>
-    private static string PrivateKeyFile(X509Certificate2 certificate)
-    {
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Microsoft", "Crypto");
-        return certificate.GetRSAPrivateKey() switch
-        {
-            RSACng cng => Path.Combine(root, "Keys", cng.Key.UniqueName!),
-            RSACryptoServiceProvider csp => Path.Combine(root, "RSA", "MachineKeys", csp.CspKeyContainerInfo.UniqueKeyContainerName),
-            _ => throw new InvalidOperationException("No se encontró la llave privada del certificado del nodo."),
-        };
     }
 }

@@ -24,7 +24,7 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         var cashiers = await Send<List<C.ActiveUser>>(device, HttpMethod.Get, "/api/identity/users/active");
         cashiers.ShouldHaveSingleItem().Name.ShouldBe("Dueña");
         var session = await Send<C.OpenedSession>(device, HttpMethod.Post, "/api/identity/sessions", new { Code = "admin", Pin = TokiApp.AdminPin });
-        var api = app.Client(new UserSession(session.Token, setup.DeviceToken, session.UserId));
+        var api = app.Client(new UserSession(session.Token, setup.DeviceToken!, session.UserId));
         (await Send<C.Me>(api, HttpMethod.Get, "/api/identity/me")).Permissions.ShouldNotBeEmpty();
 
         await Send<C.Empty>(api, HttpMethod.Put, "/api/settings/business", new C.BusinessProfile("Carnicería La Esquina", "131245678", "Calle 1", "809-555-0101", "Gracias", 10));

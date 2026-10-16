@@ -38,6 +38,9 @@ public sealed class TokiApi(HttpClient http, Session session)
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
 
+    /// <summary>The store server runs on this same PC (the main PC): nobody else on the LAN can answer in its place.</summary>
+    public bool ServerIsThisPc => http.BaseAddress?.IsLoopback == true;
+
     public Task<ApiResult<T>> GetAsync<T>(string url) => SendAsync<T>(HttpMethod.Get, url, null, DefaultTimeout);
     /// <param name="timeout">Longer than the 30 s default only for slow commands (a backup).</param>
     public Task<ApiResult<T>> PostAsync<T>(string url, object? body = null, TimeSpan? timeout = null) => SendAsync<T>(HttpMethod.Post, url, body, timeout ?? DefaultTimeout);
@@ -71,10 +74,10 @@ public sealed class TokiApi(HttpClient http, Session session)
         }
         catch (HttpRequestException e) when (e.InnerException is System.Security.Authentication.AuthenticationException)
         {
-            // TK-122: the TLS handshake failed before anything was sent; most likely not the server this PC paired with.
-            session.SetOnline(false);
+            // TK-122, R8 #9: the TLS handshake failed before anything was sent: not the server this PC paired with (or its certificate changed).
+            session.SetOnline(false, unknownServer: true);
             return new(default, new Problem(0, Problem.UnknownServer,
-                "El servidor que respondió no es el de la tienda con el que se unió esta PC, así que no se envió nada. Llame al dueño o al técnico."));
+                "El servidor cambió de certificado o no es el de la tienda, así que no se envió nada. Vuelva a unir este equipo o llame al técnico."));
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
         {

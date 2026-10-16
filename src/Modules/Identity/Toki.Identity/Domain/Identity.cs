@@ -107,7 +107,11 @@ internal sealed class Device
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = "";
+    /// <summary>Hash of the device secret (X-Device). Registers paired with a certificate (TK-091) never receive theirs.</summary>
     public byte[] TokenHash { get; set; } = [];
+    /// <summary>SHA-256 of the client certificate the store CA issued when it paired (TK-091); null for registers paired with a secret.
+    /// Revoking the device denies the certificate too: it is only accepted while its device is not revoked.</summary>
+    public string? CertificateThumbprint { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime CreatedUtc { get; set; }
 }

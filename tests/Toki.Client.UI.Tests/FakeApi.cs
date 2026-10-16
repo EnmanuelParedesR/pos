@@ -84,7 +84,7 @@ internal static class ScreenContext
         ctx.Services.AddSingleton(hardware);
         ctx.Services.AddTokiHardware(hardware);
         var session = ctx.Services.GetRequiredService<Session>();
-        session.PairAsync("device").GetAwaiter().GetResult();
+        session.PairAsync(null, "device").GetAwaiter().GetResult();
         session.Open(new OpenedSession("token", Guid.NewGuid(), "Yudelka M.", DateTime.UtcNow.AddHours(12)), new Me(Guid.NewGuid(), "Yudelka M.", Guid.NewGuid(), permissions));
         session.Shift = Shift;
         return (ctx, api);
