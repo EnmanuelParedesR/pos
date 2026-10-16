@@ -4,6 +4,8 @@ export const site = {
   url: "",
   /** Digits only, with the country code (1809…); with it, "Hablemos" opens WhatsApp. shortcut: no number yet (owner decision). */
   whatsapp: "",
+  /** TokiSetup.exe on the release feed (TK-242). shortcut: no hosting yet; /descargar shows "[URL DEL INSTALADOR]". */
+  installerUrl: "",
   /** Plan and one-off prices (TK-203, TK-219). null = "Precio por confirmar"; never invent one. */
   prices: {
     oneRegister: null as string | null,

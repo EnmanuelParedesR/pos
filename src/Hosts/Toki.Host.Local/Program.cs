@@ -109,6 +109,13 @@ builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Ad
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
+// TK-242: only stores whose appsettings name a release feed look for updates.
+builder.Services.Configure<UpdateSettings>(builder.Configuration.GetSection("Updates"));
+if (!string.IsNullOrWhiteSpace(builder.Configuration["Updates:FeedUrl"]))
+{
+    builder.Services.AddHttpClient();
+    builder.Services.AddHostedService<ServerUpdateCheck>();
+}
 
 var app = builder.Build();
 

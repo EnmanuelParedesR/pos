@@ -90,7 +90,8 @@
         if (e.key === 'F2') e.stopImmediatePropagation();
         return;
       }
-      const owner = overlay || document.querySelector('[data-keys]');
+      // No screen keys (sign-in, setup): the frame still gets F1 for the help (TK-242).
+      const owner = overlay || document.querySelector('[data-keys]') || document.querySelector('[data-keys-root]');
       if (!owner) return;
       e.stopImmediatePropagation();
       owner.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, code: e.code, shiftKey: e.shiftKey, bubbles: true, cancelable: true }));

@@ -19,6 +19,15 @@ internal static class PrepareService
         var folder = Directory.CreateDirectory(data);
         foreach (var sub in new[] { "logs", "backups", "keys" }) folder.CreateSubdirectory(sub);
         folder.SetAccessControl(Allow(folder.GetAccessControl(), identity, FileSystemRights.Modify));
+        // keys holds the store CA and the e-CF key material, protected with machine DPAPI that any local user could open:
+        // only the service, SYSTEM and administrators may enter it (TK-242), not the Users read that C:\ProgramData hands down.
+        var keys = new DirectoryInfo(Path.Combine(data, "keys"));
+        var closed = new DirectorySecurity();
+        closed.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+        Allow(closed, new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), FileSystemRights.FullControl);
+        Allow(closed, new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), FileSystemRights.FullControl);
+        Allow(closed, identity, FileSystemRights.Modify);
+        keys.SetAccessControl(closed);
         Console.WriteLine($"Carpeta de datos: {data}");
 
         // Connect as the administrator running the installer, to the server only (the database does not exist yet).
@@ -43,7 +52,7 @@ internal static class PrepareService
         Console.WriteLine($"SQL Server ({sqlAccount}) puede escribir respaldos en {work.FullName}");
     }
 
-    private static T Allow<T>(T security, NTAccount account, FileSystemRights rights) where T : FileSystemSecurity
+    private static T Allow<T>(T security, IdentityReference account, FileSystemRights rights) where T : FileSystemSecurity
     {
         var inheritance = security is DirectorySecurity ? InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit : InheritanceFlags.None;
         security.AddAccessRule(new FileSystemAccessRule(account, rights, inheritance, PropagationFlags.None, AccessControlType.Allow));

@@ -1,6 +1,8 @@
 using System.IO;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
+using Velopack;
 
 namespace Toki.Client.Wpf;
 
@@ -10,9 +12,13 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Installer hooks first; an update downloaded last time is applied here, before any sale opens (TK-242).
+        VelopackApp.Build().Run();
         // An unexpected failure is written down and explained; the register keeps running instead of closing with the sale on screen.
         DispatcherUnhandledException += OnUnhandled;
         base.OnStartup(e);
+        var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))).RootElement;
+        _ = Task.Run(() => AppUpdates.DownloadAsync(config, Log));
     }
 
     private static void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)

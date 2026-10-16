@@ -1,0 +1,14 @@
+@page "/admin/first-day"
+@using Toki.Client.UI.Help
+
+@* TK-242: what the owner does once, in order, before the first sale. The steps live in Help/HelpContent.cs. *@
+<Admin Title="Primer día" Subtitle="Lo que se hace una sola vez antes de la primera venta. Siga los pasos en orden.">
+    <ol class="esc-card esc-card--padded esc-col" style="gap:16px;padding-left:40px">
+        @foreach (var (title, text, href) in HelpContent.FirstDay)
+        {
+            <li>
+                <b>@title.</b> @text <a href="@href">Ir</a>
+            </li>
+        }
+    </ol>
+</Admin>

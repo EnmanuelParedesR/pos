@@ -47,6 +47,17 @@ it("TK-228: the prices stay as placeholders until the owner confirms them", () =
   expect(screen.getAllByText("Precio por confirmar").length).toBe(3);
 });
 
+it("TK-242: /descargar shows both roles and the installer placeholder until it is hosted; the menu and /certificacion link to it", () => {
+  renderAt("/descargar");
+  expect(screen.getByRole("heading", { name: "PC principal" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Caja" })).toBeTruthy();
+  expect(screen.getByText("[URL DEL INSTALADOR]")).toBeTruthy();
+  expect(screen.getAllByRole("link", { name: "Descargar" })[0].getAttribute("href")).toBe("/descargar");
+  cleanup();
+  renderAt("/certificacion");
+  expect(screen.getByRole("link", { name: "Descargar Toki" }).getAttribute("href")).toBe("/descargar");
+});
+
 it("TK-228: an unknown address shows the site's 404", () => {
   renderAt("/no-existe");
   expect(screen.getByRole("heading", { name: "No encontramos esa página." })).toBeTruthy();
