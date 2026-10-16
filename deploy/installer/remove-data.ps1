@@ -8,26 +8,34 @@
   Backup:Folder of the installed server's settings (as Backups.Folder in the Settings module), C:\ProgramData\Toki\backups by default.
   Exit 2 = no backup to copy or the copy failed, and nothing was deleted. Exit 3 = something could not be deleted.
   -NoFinalBackup deletes without that copy.
+  R11 C9: it also deletes what lives outside that folder: the e-CF certificate and its key (the key of NT SERVICE\Toki, with that account's
+  profile; a certificate imported into a Windows store, by the thumbprint in keys\ecf-certificate.json), the self-signed "CN=Toki Nodo"
+  certificate of stores installed before TK-091, and the service's SQL Server login. R11 C13: a link planted in C:\ProgramData\Toki stops it.
 #>
-param([string] $Server = '.\SQLEXPRESS', [string] $Database = 'Toki',
+param([string] $Server = '', [string] $Database = 'Toki',
     [string] $BackupTo = [Environment]::GetFolderPath('Desktop'), [switch] $NoFinalBackup,
-    [string] $ServerDir = (Join-Path $PSScriptRoot '..\server'))
+    [string] $ServerDir = (Join-Path $PSScriptRoot '..\server'), [string] $Service = 'Toki')
 $ErrorActionPreference = 'Continue'
+. (Join-Path $PSScriptRoot 'remove-tree.ps1')
 $data = Join-Path $env:ProgramData 'Toki'
 $failed = $false
 
-# Same order as the service reads its configuration: appsettings.json, appsettings.Production.json, then the Backup__Folder variable.
-function Get-BackupFolder {
-    $folder = Join-Path $data 'backups'
+# Same order as the service reads its configuration: appsettings.json, appsettings.Production.json, then the Section__Key variable.
+function Get-Setting([string] $Section, [string] $Key, [string] $Default) {
+    $value = $Default
     foreach ($name in 'appsettings.json', 'appsettings.Production.json') {
         $file = Join-Path $ServerDir $name
         if (-not (Test-Path -LiteralPath $file)) { continue }
-        try { $value = (Get-Content -LiteralPath $file -Raw | ConvertFrom-Json).Backup.Folder } catch { $value = $null }
-        if ($value) { $folder = $value }
+        try { $found = (Get-Content -LiteralPath $file -Raw | ConvertFrom-Json).$Section.$Key } catch { $found = $null }
+        if ($found) { $value = $found }
     }
-    $fromVariable = [Environment]::GetEnvironmentVariable('Backup__Folder', 'Machine')
-    if ($fromVariable) { $folder = $fromVariable }
-    $folder
+    $fromVariable = [Environment]::GetEnvironmentVariable("${Section}__$Key", 'Machine')
+    if ($fromVariable) { $value = $fromVariable }
+    $value
+}
+function Get-BackupFolder { Get-Setting 'Backup' 'Folder' (Join-Path $data 'backups') }
+if (-not $Server) {
+    $Server = try { (New-Object System.Data.SqlClient.SqlConnectionStringBuilder (Get-Setting 'Database' 'ConnectionString' 'Server=.\TOKI')).DataSource } catch { '.\TOKI' }
 }
 
 if (-not $NoFinalBackup) {
@@ -48,23 +56,44 @@ if (-not $NoFinalBackup) {
     Write-Host "Último respaldo guardado en $(Join-Path $target $latest.Name). Se abre con la frase de los respaldos."
 }
 
-if (Get-Service Toki -ErrorAction SilentlyContinue) { Stop-Service Toki -Force }
+if (Get-Service $Service -ErrorAction SilentlyContinue) { Stop-Service $Service -Force }
+$account = "NT SERVICE\$Service"
 
 $sql = New-Object System.Data.SqlClient.SqlConnection "Server=$Server;Database=master;Integrated Security=True;TrustServerCertificate=True"
 try {
     $sql.Open()
     $cmd = $sql.CreateCommand()
-    $cmd.CommandText = "IF DB_ID(@db) IS NOT NULL EXEC('ALTER DATABASE ' + QUOTENAME(@db) + ' SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ' + QUOTENAME(@db))"
+    $cmd.CommandText = "IF DB_ID(@db) IS NOT NULL EXEC('ALTER DATABASE ' + QUOTENAME(@db) + ' SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ' + QUOTENAME(@db));" +
+        "IF SUSER_ID(@account) IS NOT NULL EXEC('DROP LOGIN ' + QUOTENAME(@account))"
     [void]$cmd.Parameters.AddWithValue('@db', $Database)
+    [void]$cmd.Parameters.AddWithValue('@account', $account)
     [void]$cmd.ExecuteNonQuery()
 } catch {
-    Write-Warning "No se pudo borrar la base de datos $Database en ${Server}: $_"
+    Write-Warning "No se pudo borrar la base de datos $Database o el login $account en ${Server}: $_"
     $failed = $true
 } finally {
     $sql.Dispose()
 }
 
-Remove-Item -LiteralPath $data -Recurse -Force -ErrorAction SilentlyContinue
+# The e-CF certificate: imported by an older version (or by hand) into a Windows store, its thumbprint is in ecf-certificate.json.
+$ecf = Join-Path $data 'keys\ecf-certificate.json'
+$thumbprint = try { [string](Get-Content -LiteralPath $ecf -Raw | ConvertFrom-Json).Fiscal.Certificate.Thumbprint } catch { '' }
+$certificates = @(Get-ChildItem Cert:\LocalMachine\My | Where-Object { ($thumbprint -and $_.Thumbprint -eq $thumbprint) -or
+    ($_.Subject -eq 'CN=Toki Nodo' -and $_.Issuer -eq 'CN=Toki Nodo') })
+foreach ($certificate in $certificates) {
+    try { Remove-Item -LiteralPath $certificate.PSPath -DeleteKey -ErrorAction Stop }
+    catch { Write-Warning "No se pudo borrar el certificado $($certificate.Subject): $_"; $failed = $true }
+}
+# The service account's own keys and store (the e-CF key since R11 C8, in the TPM or not; CurrentUser\My of older versions) live in its
+# profile: deleting the profile deletes them.
+$sid = ((sc.exe showsid $Service) -match 'S-1-5-80-[\d-]+' | Select-Object -First 1) -replace '.*(S-1-5-80-[\d-]+).*', '$1'
+$serviceProfile = if ($sid) { Get-CimInstance Win32_UserProfile -ErrorAction SilentlyContinue | Where-Object SID -eq $sid }
+if ($serviceProfile) {
+    try { $serviceProfile | Remove-CimInstance -ErrorAction Stop }
+    catch { Write-Warning "No se pudo borrar el perfil de $account (llave de los comprobantes): $_"; $failed = $true }
+}
+
+try { Remove-Tree $data } catch { Write-Warning "$_" }
 if (Test-Path -LiteralPath $data) {
     Write-Warning "No se pudo borrar por completo $data."
     $failed = $true

@@ -406,4 +406,44 @@ public sealed class CertificateRulesTests(TokiApp app) : IClassFixture<TokiApp>
         certificate.Current!.Thumbprint.ShouldBe(cert.Thumbprint);
         certificate.Problem.ShouldBeNull();
     }
+
+    [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    public void R11_C8_on_the_store_PC_the_key_is_non_exportable_and_only_this_account_and_SYSTEM_may_use_it()
+    {
+        var keys = Path.Combine(Path.GetTempPath(), $"toki_keys_{Guid.NewGuid():N}");
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Toki:KeysFolder"] = keys, ["Fiscal:Certificate:ImportTo"] = "Store",
+        }).Build();
+        var env = app.Services.GetRequiredService<IHostEnvironment>();
+        using var cert = TestCertificates.Create(DateTimeOffset.UtcNow.AddYears(1));
+
+        var imported = new EcfCertificate(config, DataProtectionProvider.Create("toki-tests"), env, TimeProvider.System)
+            .Import(cert.Export(X509ContentType.Pkcs12, "k"), "k", DateTime.UtcNow, null);
+        var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(keys, EcfCertificate.FileName))).RootElement.GetProperty("Fiscal").GetProperty("Certificate");
+        var provider = new CngProvider(saved.GetProperty("Provider").GetString()!);
+        try
+        {
+            imported.Value.Store.ShouldBeOneOf("Tpm", "CurrentUser");
+            File.Exists(Path.Combine(keys, EcfCertificate.ProtectedFileName)).ShouldBeFalse(); // nothing a copy of the folder could open
+
+            // After a restart: loaded from the machine key, it signs, and the key never leaves.
+            var reloaded = new EcfCertificate(config, DataProtectionProvider.Create("toki-tests"), env, TimeProvider.System).Current!;
+            reloaded.Thumbprint.ShouldBe(cert.Thumbprint);
+            using var key = reloaded.GetRSAPrivateKey()!;
+            var signature = key.SignData("e-CF"u8.ToArray(), HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            cert.GetRSAPublicKey()!.VerifyData("e-CF"u8.ToArray(), signature, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1).ShouldBeTrue();
+            Should.Throw<CryptographicException>(() => key.ExportParameters(includePrivateParameters: true));
+            using var accountKey = CngKey.Open(saved.GetProperty("KeyName").GetString()!, provider);
+            var acl = new System.Security.AccessControl.RawSecurityDescriptor(accountKey.GetProperty("Security Descr", (CngPropertyOptions)4).GetValue()!, 0);
+            acl.DiscretionaryAcl!.Cast<System.Security.AccessControl.CommonAce>().Select(a => a.SecurityIdentifier.Value)
+                .ShouldBe(["S-1-5-18", System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value], ignoreOrder: true); // no Administrators
+        }
+        finally
+        {
+            CngKey.Open(saved.GetProperty("KeyName").GetString()!, provider).Delete();
+            Directory.Delete(keys, recursive: true);
+        }
+    }
 }

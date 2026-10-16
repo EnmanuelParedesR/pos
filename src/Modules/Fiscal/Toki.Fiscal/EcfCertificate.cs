@@ -1,5 +1,9 @@
+using System.Diagnostics;
+using System.Runtime.Versioning;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Security.Principal;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
@@ -17,17 +21,21 @@ namespace Toki.Fiscal;
 /// <item>The application settings: <c>Fiscal:Certificate:Thumbprint</c> (+ <c>Store</c>, LocalMachine by default) or, for development and tests,
 /// <c>Fiscal:Certificate:Path</c> + <c>Password</c> (a .p12/.pfx file).</item>
 /// </list>
-/// The password is never stored. On the store PC (Production on Windows, or <c>Fiscal:Certificate:ImportTo</c> = <c>Store</c>) the key is imported
-/// non-exportable into <c>LocalMachine\My</c>, or into the service account's <c>CurrentUser\My</c> when it may not write the machine store.
+/// The password is never stored. On the store PC (Production on Windows, or <c>Fiscal:Certificate:ImportTo</c> = <c>Store</c>) the key becomes a
+/// non-exportable key of the account that runs Toki, NT SERVICE\Toki (R11 C2, C8, TK-160): in the TPM (Microsoft Platform Crypto Provider) when
+/// the PC has one that takes it, else in the software provider; its ACL is that account and SYSTEM only, not every administrator. (A CNG machine
+/// key would need the service to be an administrator.) The certificate's public part goes to <c>ecf-certificate.cer</c> in the keys folder.
 /// Anywhere else (<c>ImportTo</c> = <c>KeysFolder</c>: development, tests) it goes to the keys folder, encrypted with Data Protection.</summary>
-/// <remarks>shortcut: the machine key is not restricted to the service account (docs/ecf-propio.md §10.3); the installer runs the service as
-/// NT SERVICE\Toki, which normally cannot write LocalMachine\My, so a store PC ends up with CurrentUser\My until TK-160 grants it.</remarks>
 internal sealed class EcfCertificate : IEcfCertificateHolder
 {
     public string? TaxId => Describe()?.TaxId;
 
     public const string FileName = "ecf-certificate.json";
     public const string ProtectedFileName = "ecf-certificate.pfx.protected";
+    public const string CertificateFileName = "ecf-certificate.cer";
+    public const string TpmProvider = "Microsoft Platform Crypto Provider";
+    private const string AccountKey = "AccountKey";
+    private static readonly CngKeyBlobFormat RsaPrivateBlob = new("RSAPRIVATEBLOB");
 
     private readonly IConfiguration _config;
     private readonly IDataProtector _protector;
@@ -79,6 +87,14 @@ internal sealed class EcfCertificate : IEcfCertificateHolder
         if (imported["Fiscal:Certificate:Store"] == "KeysFolder")
             return (X509CertificateLoader.LoadPkcs12(_protector.Unprotect(File.ReadAllBytes(Path.Combine(_folder, ProtectedFileName))), null,
                 X509KeyStorageFlags.EphemeralKeySet), "KeysFolder");
+        if (imported["Fiscal:Certificate:Store"] == AccountKey && OperatingSystem.IsWindows())
+        {
+            var provider = imported["Fiscal:Certificate:Provider"]!;
+            using var key = CngKey.Open(imported["Fiscal:Certificate:KeyName"]!, new CngProvider(provider));
+            using var rsa = new RSACng(key);
+            using var certificate = X509CertificateLoader.LoadCertificateFromFile(Path.Combine(_folder, CertificateFileName));
+            return (certificate.CopyWithPrivateKey(rsa), provider == TpmProvider ? "Tpm" : "CurrentUser");
+        }
         var source = imported["Fiscal:Certificate:Thumbprint"] is not null ? imported : _config;
         return (LoadConfigured(source), source["Fiscal:Certificate:Path"] is { Length: > 0 } ? "File" : source["Fiscal:Certificate:Store"] ?? "LocalMachine");
     }
@@ -118,45 +134,79 @@ internal sealed class EcfCertificate : IEcfCertificateHolder
                 return FiscalErrors.CertificateWrongRnc(taxId, businessRnc!);
 
             Directory.CreateDirectory(_folder);
-            var (certificate, source) = _toStore ? ToStore(pfx, password) : ToKeysFolder(opened);
-            File.WriteAllText(Path.Combine(_folder, FileName), JsonSerializer.Serialize(new
-            {
-                Fiscal = new { Certificate = new { certificate.Thumbprint, Store = source } },
-            }));
+            var (certificate, source, saved) = _toStore && OperatingSystem.IsWindows() ? ToAccountKey(opened) : ToKeysFolder(opened);
+            File.WriteAllText(Path.Combine(_folder, FileName), JsonSerializer.Serialize(new { Fiscal = new { Certificate = saved } }));
             lock (_lock) (_current, Problem) = ((certificate, source), null);
             return CertificateInfo.Of(certificate, source);
         }
     }
 
-    private static (X509Certificate2, string) ToStore(byte[] pfx, string? password)
+    /// <summary>The key as a named, non-exportable key of this process's account: the TPM first, the software provider when there is no TPM or
+    /// it refuses the key (an old TPM, the key size). Its ACL: SYSTEM and this account only. remove-data.ps1 deletes it with the account's profile.</summary>
+    [SupportedOSPlatform("windows")]
+    private (X509Certificate2, string, object) ToAccountKey(X509Certificate2 opened)
     {
-        try { return (AddTo(StoreLocation.LocalMachine), nameof(StoreLocation.LocalMachine)); }
-        // The service account may not write the machine store: its own store still survives restarts and needs no admin rights.
-        catch (CryptographicException) { return (AddTo(StoreLocation.CurrentUser), nameof(StoreLocation.CurrentUser)); }
-        catch (UnauthorizedAccessException) { return (AddTo(StoreLocation.CurrentUser), nameof(StoreLocation.CurrentUser)); }
-
-        X509Certificate2 AddTo(StoreLocation location)
+        byte[] blob;
+        using (var exportable = opened.GetRSAPrivateKey()!)
+        using (var plain = new RSACng())
         {
-            // Non-exportable: the key can sign but never leave this PC.
-            var flags = X509KeyStorageFlags.PersistKeySet | (location == StoreLocation.LocalMachine ? X509KeyStorageFlags.MachineKeySet : X509KeyStorageFlags.UserKeySet);
-            var certificate = X509CertificateLoader.LoadPkcs12(pfx, password, flags);
-            using var store = new X509Store(StoreName.My, location);
-            store.Open(OpenFlags.ReadWrite);
-            store.Add(certificate);
-            return certificate;
+            var parameters = exportable.ExportParameters(includePrivateParameters: true);
+            plain.ImportParameters(parameters);
+            CryptographicOperations.ZeroMemory(parameters.D);
+            blob = plain.Key.Export(RsaPrivateBlob);
+        }
+        try
+        {
+            var name = $"Toki-ecf-{opened.Thumbprint}";
+            foreach (var provider in new[] { TpmProvider, CngProvider.MicrosoftSoftwareKeyStorageProvider.Provider })
+            {
+                CngKey? key = null;
+                try
+                {
+                    var creation = new CngKeyCreationParameters
+                    {
+                        Provider = new CngProvider(provider),
+                        KeyCreationOptions = CngKeyCreationOptions.OverwriteExistingKey,
+                    };
+                    creation.Parameters.Add(new CngProperty(RsaPrivateBlob.Format, blob, CngPropertyOptions.None));
+                    key = CngKey.Create(CngAlgorithm.Rsa, name, creation);
+                    var acl = new RawSecurityDescriptor($"D:P(A;;GA;;;SY)(A;;GA;;;{WindowsIdentity.GetCurrent().User!.Value})");
+                    var descriptor = new byte[acl.BinaryLength];
+                    acl.GetBinaryForm(descriptor, 0);
+                    key.SetProperty(new CngProperty("Security Descr", descriptor, (CngPropertyOptions)4)); // DACL_SECURITY_INFORMATION
+                    File.WriteAllBytes(Path.Combine(_folder, CertificateFileName), opened.RawData);
+                    using var rsa = new RSACng(key);
+                    using var publicPart = X509CertificateLoader.LoadCertificate(opened.RawData);
+                    return (publicPart.CopyWithPrivateKey(rsa), provider == TpmProvider ? "Tpm" : "CurrentUser",
+                        new { opened.Thumbprint, Store = AccountKey, KeyName = name, Provider = provider });
+                }
+                catch (CryptographicException) when (provider == TpmProvider)
+                {
+                    key?.Delete(); // no TPM, or it does not take this key (or its ACL): the software provider, and no half-made TPM key left
+                }
+                finally
+                {
+                    key?.Dispose();
+                }
+            }
+            throw new UnreachableException();
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(blob);
         }
     }
 
-    private (X509Certificate2, string) ToKeysFolder(X509Certificate2 opened)
+    private (X509Certificate2, string, object) ToKeysFolder(X509Certificate2 opened)
     {
         var bytes = opened.Export(X509ContentType.Pkcs12);
         File.WriteAllBytes(Path.Combine(_folder, ProtectedFileName), _protector.Protect(bytes));
-        return (X509CertificateLoader.LoadPkcs12(bytes, null, X509KeyStorageFlags.EphemeralKeySet), "KeysFolder");
+        return (X509CertificateLoader.LoadPkcs12(bytes, null, X509KeyStorageFlags.EphemeralKeySet), "KeysFolder", new { opened.Thumbprint, Store = "KeysFolder" });
     }
 }
 
 /// <param name="TaxId">RNC or cédula of the holder, from the subject's SERIALNUMBER or organizationIdentifier, when it has one.</param>
-/// <param name="Store">Where it lives: LocalMachine, CurrentUser, KeysFolder or File.</param>
+/// <param name="Store">Where it lives: Tpm, LocalMachine, CurrentUser, KeysFolder or File.</param>
 internal sealed record CertificateInfo(string Subject, string? TaxId, string Issuer, DateTime NotBeforeUtc, DateTime NotAfterUtc, string Thumbprint, string Store)
 {
     /// <summary>The owner is warned this many days before it expires: renewing with the certification authority takes days.</summary>

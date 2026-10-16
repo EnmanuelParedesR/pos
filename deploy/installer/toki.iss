@@ -1,7 +1,9 @@
-; Toki setup (TK-242): ONE .exe with two roles chosen in the wizard.
-;   PC principal: the store server as the "Toki" Windows service (deploy/install.ps1 + prepare-service), SQL Server Express when
-;                 missing, firewall 5443 on private networks, keys folder closed to other users, and the register app.
-;   Caja:         only the register app (Toki.Client.Wpf, installed by its Velopack setup so it can update itself).
+﻿; Toki setup (TK-242): ONE .exe with two roles chosen in the wizard.
+;   PC principal: the store server as the "Toki" Windows service (deploy/install.ps1 + prepare-service), its own SQL Server Express
+;                 instance TOKI when missing (R11 C1), firewall 5443 on private networks, keys folder closed to other users, and the register app.
+;   Caja:         only the register app (Toki.Client.Wpf).
+; R11 C6: the register app goes to Program Files for the whole PC (a cashier cannot change it) and both roles are updated by the
+; "Toki\Actualizar" SYSTEM task (update-service.ps1), which installs only setups signed by Toki (R11 C3).
 ; Both check the WebView2 Evergreen runtime. Both apps are published self-contained: no .NET runtime to install.
 ; SQL Express and the WebView2 bootstrapper are downloaded from Microsoft at install time, on the store PC.
 ; Build with deploy/installer/build.ps1 (it publishes and passes the defines below). Silent: TokiSetup.exe /VERYSILENT /TYPE=server|register
@@ -37,10 +39,12 @@ SolidCompression=yes
 WizardStyle=modern
 UninstallDisplayName=Toki (punto de venta)
 CloseApplications=yes
-; Code signing (Authenticode): the owner buys the certificate. Then, in Inno Setup: Tools > Configure Sign Tools, name "toki" =
-;   signtool sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f "C:\ruta\certificado.pfx" /p $p $f
-; and uncomment the next line (build.ps1 passes /Stoki=... when TOKI_SIGNTOOL is set).
-;SignTool=toki
+; Code signing (Authenticode, R11 C3): build.ps1 passes /Stoki=<TOKI_SIGNTOOL> $f and /DSigned when TOKI_SIGNTOOL is set
+; (docs/instalador-web.md, "Firma de código"). The setup and its uninstaller are then signed.
+#ifdef Signed
+SignTool=toki
+SignedUninstaller=yes
+#endif
 
 [Languages]
 Name: "es"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -57,20 +61,24 @@ Name: "app"; Description: "App de caja"; Types: server register; Flags: fixed
 Source: "{#PublishDir}\server\*"; DestDir: "{app}\server"; Components: server; Flags: recursesubdirs ignoreversion
 Source: "..\install.ps1"; DestDir: "{app}\scripts"; Components: server; Flags: ignoreversion
 Source: "..\uninstall.ps1"; DestDir: "{app}\scripts"; Components: server; Flags: ignoreversion
-Source: "update-service.ps1"; DestDir: "{app}\scripts"; Components: server; Flags: ignoreversion
+Source: "update-service.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "remove-tree.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "remove-data.ps1"; DestDir: "{app}\scripts"; Components: server; Flags: ignoreversion
-; The register app's own Velopack setup (vpk pack): installs per user in %LocalAppData%\Toki and updates itself.
-Source: "{#PublishDir}\app-setup\Toki-Setup.exe"; DestDir: "{tmp}"; Components: app; Flags: deleteafterinstall
+; R11 C6: the register app for the whole PC, in Program Files (only administrators and the SYSTEM update task can change it).
+Source: "{#PublishDir}\app\*"; DestDir: "{app}\app"; Components: app; Flags: recursesubdirs ignoreversion
+
+[Icons]
+Name: "{commonprograms}\Toki"; Filename: "{app}\app\Toki.exe"; Components: app
+Name: "{commondesktop}\Toki"; Filename: "{app}\app\Toki.exe"; Components: app
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\install.ps1"" -Source ""{app}\server"" -Destination ""{app}\server"""; StatusMsg: "Instalando el servicio de Toki..."; Components: server; Flags: runhidden waituntilterminated
-; Hourly: applies a server update when the service says it may (no shift open, or outside business hours).
-Filename: "schtasks.exe"; Parameters: "/Create /F /TN ""Toki\Actualizar servidor"" /SC HOURLY /RU SYSTEM /RL HIGHEST /TR ""powershell.exe -NoProfile -ExecutionPolicy Bypass -File '{app}\scripts\update-service.ps1'"""; Components: server; Flags: runhidden waituntilterminated
-; Per user, as the person who ran the setup (not the elevated account), so the app lands in their profile.
-Filename: "{tmp}\Toki-Setup.exe"; Parameters: "--silent"; StatusMsg: "Instalando la app de caja..."; Components: app; Flags: runasoriginaluser waituntilterminated
+; Hourly as SYSTEM: the server updates when the service says it may (no shift open, or outside business hours); a register while its app is closed.
+Filename: "schtasks.exe"; Parameters: "/Create /F /TN ""Toki\Actualizar"" /SC HOURLY /RU SYSTEM /RL HIGHEST /TR ""powershell.exe -NoProfile -ExecutionPolicy Bypass -File '{app}\scripts\update-service.ps1' -Role {code:Role}"""; Flags: runhidden waituntilterminated
+Filename: "{app}\app\Toki.exe"; Description: "Abrir Toki"; Components: app; Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [UninstallRun]
-Filename: "schtasks.exe"; Parameters: "/Delete /F /TN ""Toki\Actualizar servidor"""; RunOnceId: "task"; Components: server; Flags: runhidden
+Filename: "schtasks.exe"; Parameters: "/Delete /F /TN ""Toki\Actualizar"""; RunOnceId: "task"; Flags: runhidden
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\uninstall.ps1"" -Destination ""{app}\server"""; RunOnceId: "service"; Components: server; Flags: runhidden waituntilterminated
 
 [Code]
@@ -82,6 +90,12 @@ begin
   Result := WizardIsComponentSelected('server');
 end;
 
+{ update-service.ps1 -Role: what this PC is. }
+function Role(Param: String): String;
+begin
+  if IsServerRole then Result := 'server' else Result := 'register';
+end;
+
 function HasWebView2: Boolean;
 var
   Version: String;
@@ -91,12 +105,43 @@ begin
             and (Version <> '') and (Version <> '0.0.0.0');
 end;
 
-{ The server's connection string uses .\SQLEXPRESS (src/Hosts/Toki.Host.Local/appsettings.json): an existing instance is reused. }
-function HasSqlExpress: Boolean;
+{ R11 C1: the server's connection string uses its own instance .\TOKI (src/Hosts/Toki.Host.Local/appsettings.json). Another SQLEXPRESS on
+  the PC is never reused: its administrators and network settings are someone else's. A TOKI instance is this setup's (reinstall or update). }
+function HasTokiInstance: Boolean;
 var
   Instance: String;
 begin
-  Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL', 'SQLEXPRESS', Instance);
+  Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL', 'TOKI', Instance);
+end;
+
+{ Output of a PowerShell expression (one line), or Fallback when it fails. }
+function PowerShellValue(const Expression, Fallback: String): String;
+var
+  Code: Integer;
+  Output: String;
+  Lines: AnsiString;
+begin
+  Result := Fallback;
+  Output := ExpandConstant('{tmp}\toki-value.txt');
+  if Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "' + Expression + ' | Set-Content -Encoding Default -LiteralPath ''' + Output + '''"',
+      '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0) and LoadStringFromFile(Output, Lines) and (Trim(String(Lines)) <> '') then
+    Result := Trim(String(Lines));
+end;
+
+{ R11 C1: SQL Server's administrators are the PC's administrators, not the person who runs the setup day to day. The group's name is
+  translated (BUILTIN\Administradores on a Spanish Windows): it is looked up by its SID. }
+function AdministratorsGroup: String;
+begin
+  Result := PowerShellValue('(New-Object Security.Principal.SecurityIdentifier ''S-1-5-32-544'').Translate([Security.Principal.NTAccount]).Value',
+    'BUILTIN\Administrators');
+end;
+
+{ R11 C2: whether the system drive is protected by BitLocker or Device Encryption (ProtectionStatus 1; Win32_EncryptableVolume needs the
+  administrator rights the setup has). }
+function SystemDriveEncrypted: Boolean;
+begin
+  Result := PowerShellValue('(Get-CimInstance -Namespace root/cimv2/Security/MicrosoftVolumeEncryption -ClassName Win32_EncryptableVolume ' +
+    '-ErrorAction SilentlyContinue | Where-Object DriveLetter -eq $env:SystemDrive).ProtectionStatus', '0') = '1';
 end;
 
 { R10 #8: a downloaded installer runs as administrator only with a valid Authenticode signature (Status Valid: trusted chain, file untouched)
@@ -138,10 +183,20 @@ var
 begin
   Result := True;
   if CurPageID <> wpReady then exit;
+  { R11 C2: a stolen main PC without disk encryption gives away the e-CF key, the store CA and the database. A warning, not a stop. }
+  if IsServerRole and not SystemDriveEncrypted and
+     (SuppressibleMsgBox('El disco de esta PC no está cifrado (BitLocker o Cifrado de dispositivo de Windows).' + #13#10 + #13#10 +
+       'Si se la roban, se pueden leer la base de datos, los respaldos y la llave de los comprobantes electrónicos. Active el cifrado en ' +
+       'Configuración de Windows → Privacidad y seguridad → Cifrado de dispositivo (o BitLocker) y guarde la clave de recuperación fuera de la PC.' + #13#10 + #13#10 +
+       '¿Seguir con la instalación de todos modos?', mbConfirmation, MB_YESNO or MB_DEFBUTTON1, IDYES) = IDNO) then
+  begin
+    Result := False;
+    exit;
+  end;
   DownloadPage.Clear;
   Missing := 0;
   if not HasWebView2 then begin DownloadPage.Add('{#WebView2Url}', 'MicrosoftEdgeWebview2Setup.exe', ''); Missing := Missing + 1; end;
-  if IsServerRole and not HasSqlExpress then begin DownloadPage.Add('{#SqlExpressUrl}', 'SQLServerExpressSetup.exe', ''); Missing := Missing + 1; end;
+  if IsServerRole and not HasTokiInstance then begin DownloadPage.Add('{#SqlExpressUrl}', 'SQLServerExpressSetup.exe', ''); Missing := Missing + 1; end;
   if Missing = 0 then exit;
   DownloadPage.Show;
   try
@@ -172,10 +227,12 @@ begin
   begin
     if not SignedByMicrosoft(ExpandConstant('{tmp}\SQLServerExpressSetup.exe')) then begin Result := False; exit; end;
     WizardForm.StatusLabel.Caption := 'Instalando SQL Server Express (puede tardar varios minutos)...';
-    { The SSEI bootstrapper: Express only, listening on this PC only (no TCP), the instance the connection string names. }
+    { The SSEI bootstrapper: Express only, its own instance TOKI, listening on this PC only (no TCP, no named pipes), Windows logins only,
+      sysadmin = the PC's administrators (R11 C1: never the current user, who would become SYSTEM through SQL Server). }
     if not Exec(ExpandConstant('{tmp}\SQLServerExpressSetup.exe'),
       '/ACTION=Install /QUIET /IACCEPTSQLSERVERLICENSETERMS /HIDEPROGRESSBAR /ENU ' +
-      '/INSTANCENAME=SQLEXPRESS /TCPENABLED=0 /ADDCURRENTUSERASSQLADMIN=True', '', SW_HIDE, ewWaitUntilTerminated, Code) or ((Code <> 0) and (Code <> 3010)) then
+      '/INSTANCENAME=TOKI /TCPENABLED=0 /NPENABLED=0 /SQLSYSADMINACCOUNTS="' + AdministratorsGroup + '"', '', SW_HIDE, ewWaitUntilTerminated, Code)
+      or ((Code <> 0) and (Code <> 3010)) then
     begin
       MsgBox('SQL Server Express no se instaló (código ' + IntToStr(Code) + '). Llame al técnico.', mbCriticalError, MB_OK);
       Result := False;

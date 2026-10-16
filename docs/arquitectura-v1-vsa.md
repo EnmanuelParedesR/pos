@@ -50,7 +50,7 @@ Toki.slnx
 │  │  └─ Reportes/       Toki.Reports          ← solo lectura; vistas SQL (ver 3.4) — añadido a la lista pedida
 │  │
 │  └─ Client/
-│     ├─ Toki.Client.Wpf/        ← shell WPF + BlazorWebView, DI, Velopack, arranque
+│     ├─ Toki.Client.Wpf/        ← shell WPF + BlazorWebView, DI, arranque
 │     ├─ Toki.Escuadra/          ← Razor Class Library del sistema de diseño: tokens, componentes, íconos, fuentes (ver docs/sistema-de-diseno.md)
 │     ├─ Toki.Client.UI/         ← Razor Class Library: pantallas de caja y administración, construidas con Escuadra
 │     ├─ Toki.Client.Api/        ← cliente HTTP generado del OpenAPI de la API local (Kiota)
@@ -851,7 +851,7 @@ Estado verificado en la web el 14 oct 2026. "Mantenido" quiere decir que tuvo pu
 | `ESCPOS_NET` | Impresoras térmicas | MIT **(verificar la licencia y la actividad del repo)** | Si está inactivo, escribir el encoder ESC/POS propio (es acotado) |
 | ~~`MudBlazor` / `Microsoft.FluentUI.AspNetCore.Components`~~ | UI | MIT | **Descartados:** componentes propios Escuadra (`docs/sistema-de-diseno.md`) |
 | `Microsoft.AspNetCore.Components.QuickGrid` | Tablas de administración, envueltas en Escuadra | MIT | |
-| `Velopack` | Instalador y actualizaciones | MIT | |
+| `Velopack` | Quitado (R11 C6): la caja se actualiza con el setup firmado y la tarea de SYSTEM | MIT | |
 | `Mediator.SourceGenerator` + `Mediator.Abstractions` (Martin Othamar) | **Opcional**, solo si se prefiere el estilo mediador | MIT | 3.0.2 estable (mar 2026); 3.1 en RC |
 
 ### 12.2 Pruebas

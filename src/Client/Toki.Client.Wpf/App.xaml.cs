@@ -1,24 +1,20 @@
 using System.IO;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
-using Velopack;
 
 namespace Toki.Client.Wpf;
 
+/// <remarks>R11 C6: installed for the whole PC in Program Files and updated by the setup's SYSTEM task (deploy/installer/update-service.ps1
+/// -Role register) while the app is closed; the app itself never updates its own files.</remarks>
 public partial class App : Application
 {
     private static readonly string Log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Toki", "errors.log");
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // Installer hooks first; an update downloaded last time is applied here, before any sale opens (TK-242).
-        VelopackApp.Build().Run();
         // An unexpected failure is written down and explained; the register keeps running instead of closing with the sale on screen.
         DispatcherUnhandledException += OnUnhandled;
         base.OnStartup(e);
-        var config = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "appsettings.json"))).RootElement;
-        _ = Task.Run(() => AppUpdates.DownloadAsync(config, Log));
     }
 
     private static void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
@@ -26,18 +27,20 @@ internal static class CreatePairingCode
         public Validator() => RuleFor(c => c.DeviceName).NotEmpty().MaximumLength(100);
     }
 
-    internal sealed class Handler(IdentityDbContext db, TimeProvider clock) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, AttemptLimiter limiter, TimeProvider clock) : ICommandHandler<Command, Response>
     {
-        public Task<Result<Response>> Handle(Command c, CancellationToken ct)
+        public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
-            // shortcut: 8 random digits valid 10 minutes, no attempt counter; fine on a shop LAN (what the code unlocks is one client certificate, TK-091).
+            // 8 random digits valid 10 minutes. R11 C12: one code at a time (a new one ends the others) and few wrong tries (PairDevice).
             var code = Token.ShortCode() + Token.ShortCode()[..2];
-            var expires = clock.GetUtcNow().UtcDateTime + Validity;
+            var now = clock.GetUtcNow().UtcDateTime;
+            await db.PairingCodes.Where(x => x.UsedUtc == null && x.ExpiresUtc > now).ExecuteUpdateAsync(s => s.SetProperty(x => x.ExpiresUtc, now), ct);
+            limiter.Clear(PairDevice.WindowKey);
             db.PairingCodes.Add(new PairingCode
             {
-                Id = Guid.CreateVersion7(), DeviceName = c.DeviceName.Trim(), CodeHash = Token.Hash(code), ExpiresUtc = expires,
+                Id = Guid.CreateVersion7(), DeviceName = c.DeviceName.Trim(), CodeHash = Token.Hash(code), ExpiresUtc = now + Validity,
             });
-            return Task.FromResult<Result<Response>>(new Response(code, expires));
+            return new Response(code, now + Validity);
         }
     }
 
@@ -75,9 +78,17 @@ internal static class DeviceCredentials
 internal static class PairDevice
 {
     /// <param name="CertificateRequest">PEM CSR of the key the register just made (TK-091); none over plain http (development).</param>
-    public sealed record Command(string Code, string? CertificateRequest = null) : ICommand<Response>;
+    public sealed record Command(string Code, string? CertificateRequest = null) : ICommand<Response>
+    {
+        /// <summary>Where the request came from, set by the endpoint (R11 C12: wrong codes are limited per address).</summary>
+        public string? Address { get; init; }
+    }
     /// <param name="Token">The device secret, only when no CSR was sent.</param>
     public sealed record Response(Guid DeviceId, string Name, string? Token, string? Certificate, string? StoreCa);
+
+    /// <summary>R11 C12: after this many wrong codes the open code stops working (a new one is needed); per address, a pause.</summary>
+    public const int WrongCodesPerWindow = 5, WrongCodesPerAddress = 10;
+    public const string WindowKey = "pairing";
 
     internal sealed class Validator : AbstractValidator<Command>
     {
@@ -88,18 +99,24 @@ internal static class PairDevice
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IFeatureService license, IAuditLog audit, StoreCertificateAuthority ca, TimeProvider clock)
-        : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IFeatureService license, IAuditLog audit, StoreCertificateAuthority ca, AttemptLimiter limiter,
+        TimeProvider clock) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
+            var address = $"pairing:{c.Address}";
+            if (limiter.IsBlocked(WindowKey, WrongCodesPerWindow) || limiter.IsBlocked(address, WrongCodesPerAddress)) return IdentityErrors.TooManyPairingAttempts;
             var now = clock.GetUtcNow().UtcDateTime;
             var hash = Token.Hash(c.Code.Trim());
             var valid = db.PairingCodes.Where(x => x.CodeHash == hash && x.UsedUtc == null && x.ExpiresUtc > now);
             var code = await valid.AsNoTracking().FirstOrDefaultAsync(ct);
             // Claim it with a conditional update: two registers racing with the same code cannot both pair.
             if (code is null || await valid.ExecuteUpdateAsync(s => s.SetProperty(x => x.UsedUtc, now), ct) == 0)
+            {
+                limiter.Fail(address);
+                limiter.Fail(WindowKey);
                 return IdentityErrors.InvalidPairingCode;
+            }
             // The main PC (paired at setup) is not a register.
             // shortcut: two pairings at the same instant may pass the limit by one; pairing is rare and done by the owner.
             if (await db.Devices.CountAsync(d => !d.IsRevoked, ct) - 1 >= license.LimitOf(Limit.Registers))
@@ -116,8 +133,53 @@ internal static class PairDevice
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/identity/devices/pair", async (Command c, ICommandHandler<Command, Response> h, CancellationToken ct) =>
-                    (await h.Handle(c, ct)).ToHttp())
+            app.MapPost("/api/identity/devices/pair", async (Command c, HttpContext http, ICommandHandler<Command, Response> h, CancellationToken ct) =>
+                    (await h.Handle(c with { Address = http.Connection.RemoteIpAddress?.ToString() }, ct)).ToHttp())
+                .AllowAnonymous().WithTags("Identity");
+    }
+}
+
+/// <summary>R11 C5: a register renews its client certificate (one year) before it expires, proving itself with the current one over mTLS.
+/// The certificate it renews stays accepted until it expires, in case the answer never reaches the register.</summary>
+internal static class RenewDeviceCertificate
+{
+    public sealed record Command(string CertificateRequest) : ICommand<Response>
+    {
+        /// <summary>The paired device and the certificate it connected with, set by the endpoint.</summary>
+        public Guid? DeviceId { get; init; }
+        public string? Presented { get; init; }
+    }
+    public sealed record Response(string Certificate);
+
+    internal sealed class Validator : AbstractValidator<Command>
+    {
+        public Validator() => RuleFor(c => c.CertificateRequest).NotEmpty().ValidCertificateRequest();
+    }
+
+    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, StoreCertificateAuthority ca) : ICommandHandler<Command, Response>
+    {
+        public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
+        {
+            if (c.DeviceId is not { } id || c.Presented is null) return IdentityErrors.DeviceNotPaired;
+            var device = await db.Devices.SingleAsync(d => d.Id == id, ct);
+            var (pem, thumbprint) = ca.IssueDeviceCertificate(c.CertificateRequest, id);
+            (device.PreviousCertificateThumbprint, device.CertificateThumbprint) = (c.Presented, thumbprint);
+            await audit.RecordAsync("identity.renew-certificate", "Device", id, new { device.Name, device.CertificateThumbprint }, ct);
+            return new Response(pem);
+        }
+    }
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapPost("/api/identity/devices/current/certificate", async (Command c, HttpContext http, IdentityDbContext db, IConfiguration config,
+                    ICommandHandler<Command, Response> h, CancellationToken ct) =>
+                {
+                    // Only a client certificate renews one: never a device secret.
+                    if (http.Connection.ClientCertificate is not { } certificate) return EndpointExtensions.Problem(IdentityErrors.DeviceNotPaired);
+                    var command = c with { DeviceId = await db.IdOfAsync(http, config, ct), Presented = StoreCertificateAuthority.Thumbprint(certificate) };
+                    return (await h.Handle(command, ct)).ToHttp();
+                })
                 .AllowAnonymous().WithTags("Identity");
     }
 }

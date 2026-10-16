@@ -23,7 +23,7 @@
 | Local backend | **ASP.NET Core** as a Windows service on the main PC | Registers talk to this API, never to SQL directly. |
 | Local DB | **SQL Server Express** + EF Core | Free, 10 GB per DB. Listens on localhost only. |
 | Cloud | Azure (Azure SQL multi-tenant, API, dashboard) | Paid tiers only. |
-| Updates | Velopack | Silent auto-updates, code-signed. |
+| Updates | Inno Setup + SYSTEM task | Silent updates of server and register, Authenticode-signed (R11 C3, C6). |
 
 **Rejected / considered:**
 - **Electron:** heavier (bundles Chromium + Node), two languages, awkward hardware access. No RAM advantage.
