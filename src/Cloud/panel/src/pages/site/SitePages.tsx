@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { site } from "./config";
 import { usePlanPrices } from "./livePrices";
 import { useReferralLink } from "../../referral";
-import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, Icon, IconTiles, ProductArt, Section, Steps, Tbd, Trial } from "./SiteParts";
+import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, Icon, IconTiles, ProductArt, Render, Section, Steps, Tbd, Trial } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
 export interface SitePage {
@@ -37,7 +37,7 @@ function Home() {
       <Hero
         eyebrow="Punto de venta con e-CF"
         title="Venda, pese y facture. Aunque se vaya el internet."
-        sub="La caja para carnicerías, colmados y delis."
+        sub="Cobre rápido, venda por libra o por unidad y emita el e-CF desde la PC de su tienda."
         cta={both}
         note="Sin tarjeta · Los 14 días empiezan con su primera venta"
         art={<ProductArt />}
@@ -54,7 +54,7 @@ function Home() {
         />
       </Section>
       <Section>
-        <h2>Hecha para su mostrador</h2>
+        <h2>Se adapta a su negocio</h2>
         <BusinessCards />
       </Section>
       <EcfFlow>
@@ -64,6 +64,9 @@ function Home() {
       </EcfFlow>
       <Section>
         <h2>Empiece hoy, en 3 pasos</h2>
+        <div className="counter-render">
+          <Render name="counter" />
+        </div>
         <Steps
           round
           items={[
@@ -761,8 +764,8 @@ export const sitePages: SitePage[] = [
   {
     path: "/",
     nav: "Inicio",
-    title: "Abastalia: punto de venta para carnicerías, colmados y delis",
-    description: "Abastalia vende por libra, cuadra la caja, lleva el fiado y emite e-CF, aunque se vaya el internet. Hecho para el comercio de alimentos en República Dominicana.",
+    title: "Abastalia: punto de venta con e-CF para su negocio",
+    description: "Abastalia cobra rápido, vende por libra o por unidad, cuadra la caja y emite el e-CF con la DGII aunque se vaya el internet. Hecho en República Dominicana.",
     element: <Home />,
   },
   {

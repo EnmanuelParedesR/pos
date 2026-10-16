@@ -123,7 +123,7 @@ export function CtaBand({ title, text = "Sin cupo de e-CF. Nunca queda en solo l
     <section className="band">
       <div className="wrap band__grid">
         <div>
-          <h2>{title ?? (price ? <>Desde {price}</> : <>Desde <Tbd>Precio por confirmar</Tbd> al mes</>)}</h2>
+          <h2>{title ?? (price ? <>Desde {price}</> : <>Pruebe Abastalia 14 días gratis</>)}</h2>
           <p>{text}</p>
         </div>
         <div className="actions">
@@ -164,10 +164,10 @@ export function EcfFlow({ children }: { children?: ReactNode }) {
 }
 
 const lines: [string, string, string][] = [
-  ["Chuleta ahumada", "2.350 lb × 185.00", "434.75"],
-  ["Pechuga de pollo", "3.120 lb × 165.00", "514.80"],
-  ["Salami 1 lb", "2 × 210.00", "420.00"],
-  ["Refresco rojo", "4 × 59.00", "236.00"],
+  ["Arroz selecto 5 lb", "1 × 245.00", "245.00"],
+  ["Queso de freír", "1.250 lb × 220.00", "275.00"],
+  ["Aceite 1 L", "2 × 235.00", "470.00"],
+  ["Refresco 2 L", "3 × 95.00", "285.00"],
 ];
 
 /** Hero art: the register screen (sample sale) overlapped by the owner's phone. Decorative: hidden from screen readers, captioned as an example. */
@@ -196,13 +196,13 @@ export function ProductArt() {
               <div className="mock__box">
                 <small className="label">Balanza</small>
                 <span className="mock__big">
-                  2.350 <small>lb</small>
+                  1.250 <small>lb</small>
                 </span>
                 <small className="ok">Estable</small>
               </div>
               <div className="mock__box mock__box--grow">
                 <small className="label">Total</small>
-                <span className="mock__big">1,605.55</span>
+                <span className="mock__big">1,275.00</span>
                 <small>RD$ · ITBIS incluido</small>
               </div>
               <div className="mock__pay">
@@ -239,44 +239,15 @@ export function ProductArt() {
 
 export type Business = "butcher" | "grocery" | "deli";
 
-/** Line drawings for each business (cut of meat, shelf, deli counter). */
-export function Illustration({ kind }: { kind: Business }) {
-  return (
-    <svg className={`ill ill--${kind}`} aria-hidden="true" width="160" height="140" viewBox="0 0 160 140" fill="none" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round">
-      {kind === "butcher" && (
-        <>
-          <path className="ill__fill" d="M30 70c0-25 20-45 50-45 28 0 50 18 50 42 0 26-24 46-55 46-27 0-45-18-45-43z" />
-          <path className="ill__ink" d="M62 60c8-8 24-8 32 0" />
-          <circle className="ill__fill" cx="98" cy="80" r="10" />
-          <path className="ill__ink" d="M20 120h120" />
-        </>
-      )}
-      {kind === "grocery" && (
-        <>
-          <path d="M20 30h120 M20 70h120 M20 110h120 M25 20v100 M135 20v100" />
-          <rect className="ill__fill" x="36" y="44" width="18" height="26" />
-          <rect className="ill__fill" x="60" y="38" width="18" height="32" />
-          <rect className="ill__fill" x="86" y="48" width="22" height="22" />
-          <rect className="ill__fill" x="40" y="84" width="26" height="26" />
-          <rect className="ill__fill" x="74" y="90" width="16" height="20" />
-          <rect className="ill__fill" x="98" y="80" width="22" height="30" />
-        </>
-      )}
-      {kind === "deli" && (
-        <>
-          <path className="ill__fill" d="M24 64c0-20 26-34 56-34s56 14 56 34z" />
-          <path className="ill__ink" d="M22 76h116 M28 88h104" />
-          <path className="ill__fill" d="M24 100h112c0 8-6 14-14 14H38c-8 0-14-6-14-14z" />
-        </>
-      )}
-    </svg>
-  );
-}
+/** TK-274: Blender renders (design/blender/escenas.py) for each business and the counter. Decorative; width and height are set so nothing shifts while they load. */
+export const Render = ({ name, eager = false }: { name: Business | "counter"; eager?: boolean }) => (
+  <img className="render" src={`/img/site/${name}.webp`} alt="" width={960} height={600} loading={eager ? "eager" : "lazy"} decoding="async" />
+);
 
-/** Hero art for a business page: its illustration on its tinted panel. */
+/** Hero art for a business page: its render on its tinted panel. */
 export const BusinessArt = ({ kind }: { kind: Business }) => (
   <div className={`biz-art biz--${kind}`}>
-    <Illustration kind={kind} />
+    <Render name={kind} eager />
   </div>
 );
 
@@ -291,7 +262,7 @@ export function BusinessCards() {
       {cards.map(([kind, to, name, text]) => (
         <Link className={`biz__card biz--${kind}`} to={to} key={to}>
           <span className="biz__pic">
-            <Illustration kind={kind} />
+            <Render name={kind} />
           </span>
           <span className="biz__text">
             <strong>{name}</strong>
