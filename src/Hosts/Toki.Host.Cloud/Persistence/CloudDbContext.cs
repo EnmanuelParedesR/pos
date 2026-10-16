@@ -60,6 +60,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Quotas.TenantUsage> TenantUsage => Set<Quotas.TenantUsage>();
     public DbSet<Billing.TenantSubscription> TenantSubscriptions => Set<Billing.TenantSubscription>();
     public DbSet<Billing.BillingEvent> BillingEvents => Set<Billing.BillingEvent>();
+    public DbSet<Billing.PaddleProduct> PaddleProducts => Set<Billing.PaddleProduct>();
     public DbSet<Certification.AccompanimentRequest> AccompanimentRequests => Set<Certification.AccompanimentRequest>();
 
     protected override void OnModelCreating(ModelBuilder builder)

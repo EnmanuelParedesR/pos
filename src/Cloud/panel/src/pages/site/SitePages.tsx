@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { site } from "./config";
+import { usePlanPrices } from "./livePrices";
 import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, Icon, IconTiles, ProductArt, Section, Steps, Tbd, Trial } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
@@ -403,7 +404,7 @@ function Plan({ name, note, price, children, brand }: { name: string; note: stri
 }
 
 function Pricing() {
-  const { prices } = site;
+  const prices = usePlanPrices(); // TK-249: from Paddle; "Precio por confirmar" while billing is off
   return (
     <>
       <Hero eyebrow="Precios" title="Pague por el tamaño de su tienda, no por factura." sub="Tres planes según cajas y sucursales. Lo esencial, en todos.">
@@ -412,15 +413,15 @@ function Pricing() {
       <Section>
         <h2>Planes</h2>
         <div className="grid grid--3">
-          <Plan name="Una caja" note="Colmado o tienda con un punto de cobro." price={prices.oneRegister}>
+          <Plan name="Una caja" note="Colmado o tienda con un punto de cobro." price={prices.Default}>
             <li>1 caja</li>
             <li>1 sucursal</li>
           </Plan>
-          <Plan name="Varias cajas" note="Carnicería o deli con fila." price={prices.severalRegisters} brand>
+          <Plan name="Varias cajas" note="Carnicería o deli con fila." price={prices.MultiRegister} brand>
             <li>Varias cajas <Tbd>Cantidad por confirmar</Tbd></li>
             <li>1 sucursal</li>
           </Plan>
-          <Plan name="Varias sucursales" note="Más de un local." price={prices.severalStores}>
+          <Plan name="Varias sucursales" note="Más de un local." price={prices.MultiStore}>
             <li>Cajas por sucursal <Tbd>Cantidad por confirmar</Tbd></li>
             <li>Varias sucursales</li>
           </Plan>

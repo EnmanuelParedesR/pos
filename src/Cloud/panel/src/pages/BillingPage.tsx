@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
-import { api, ApiError, useApi, type Billing, type BillingInterval, type Checkout, type PlatformBilling, type SubscriptionStatus } from "../api";
+import { api, ApiError, priceLabel, useApi, type Billing, type BillingInterval, type Checkout, type PlatformBilling, type SubscriptionStatus } from "../api";
 import { dateTime, dayName } from "../format";
 import { Card, LoadError, Notice, PageHead, Segmented, Skeleton } from "../ui";
 import { addOnNames, planNames } from "./UsageCard";
@@ -69,7 +69,9 @@ export function BillingPage() {
 
   const subscribed = data.status !== "None" && data.status !== "Canceled" && data.canManage;
   const annual = data.plans.some((p) => p.annual);
-  const offersReading = data.addOnOptions.some((a) => a.code === invoiceReading) && !data.addOns.includes(invoiceReading);
+  const readingOption = data.addOnOptions.find((a) => a.code === invoiceReading);
+  const offersReading = !!readingOption && !data.addOns.includes(invoiceReading);
+  const readingPrice = readingOption && ((subscribed && data.interval === "Annual") || (!subscribed && interval === "Annual") ? readingOption.annual : readingOption.monthly);
 
   async function buy(plan: string | null, addOns: string[]) {
     setBusy(true);
@@ -200,9 +202,13 @@ export function BillingPage() {
               .filter((p) => (interval === "Annual" && !subscribed ? p.annual : p.monthly || subscribed))
               .map((p) => {
                 const current = subscribed && p.code === data.plan;
+                const price = (interval === "Annual" && !subscribed ? p.annual : p.monthly) ?? p.monthly ?? p.annual;
                 return (
                   <li key={p.code}>
-                    <span>{planNames[p.code] ?? p.code}</span>
+                    <span>
+                      {planNames[p.code] ?? p.name}
+                      {price && <span className="esc-muted"> · {priceLabel(price)}</span>}
+                    </span>
                     <button type="button" className={current ? "esc-button" : "esc-button esc-button--primary"} disabled={busy || current}
                       onClick={() => buy(p.code, subscribed ? data.addOns : [])}>
                       {current ? "Su plan" : "Elegir plan"}
@@ -216,7 +222,10 @@ export function BillingPage() {
               <button type="button" className="esc-button" disabled={busy} onClick={() => buy(subscribed ? null : data.plan, [...data.addOns, invoiceReading])}>
                 Agregar lectura de facturas
               </button>
-              <span className="esc-muted">Lea con IA hasta 300 facturas de suplidores al mes.</span>
+              <span className="esc-muted">
+                Lea con IA muchas más facturas de suplidores al mes
+                {readingPrice && ` · ${priceLabel(readingPrice)}`}.
+              </span>
             </div>
           )}
         </Card>

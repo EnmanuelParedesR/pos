@@ -19,7 +19,6 @@
     "alertEmail": { "value": "" },
     "paddleEnvironment": { "value": "" },
     "paddleClientToken": { "value": "" },
-    "paddlePrices": { "value": {} },
     "licenseKeyName": { "value": "" }
   }
 }

@@ -13,10 +13,48 @@ using Toki.Host.Cloud.Billing;
 
 namespace Toki.Cloud.Tests;
 
-/// <summary>Paddle's side of the API, in memory: portal sessions and subscription changes.</summary>
+/// <summary>Paddle's side of the API, in memory: the catalog (two pages), portal sessions and subscription changes.</summary>
 public sealed class FakePaddle : HttpMessageHandler
 {
+    public const string Basic = "pri_basic_month", BasicYear = "pri_basic_year", Registers = "pri_registers_month", Invoices = "pri_invoices_month";
+
     public List<(HttpMethod Method, string Path, string? Authorization, JsonElement Body)> Requests { get; } = [];
+
+    private static object Price(string id, string? interval, string amount, string status = "active") => new
+    {
+        id, status, description = id, unit_price = new { amount, currency_code = "USD" },
+        billing_cycle = interval is null ? null : new { interval, frequency = 1 },
+    };
+
+    /// <summary>Toki's products as the owner set them in Paddle (custom_data.toki), and one product that is not Toki's.</summary>
+    public List<object> Products { get; } =
+    [
+        new
+        {
+            id = "pro_basic", name = "Una caja", status = "active",
+            custom_data = new { toki = new { plan = "Default", quotas = new { SupplierInvoices = 25 } } },
+            prices = new[] { Price(Basic, "month", "1000"), Price(BasicYear, "year", "10000"), Price("pri_old", "month", "900", "archived") },
+        },
+        new
+        {
+            id = "pro_registers", name = "Varias cajas", status = "active",
+            custom_data = new { toki = new { plan = "MultiRegister", registers = 4, quotas = new { Invites = 77 } } },
+            prices = new[] { Price(Registers, "month", "2000") },
+        },
+        new
+        {
+            id = "pro_stores", name = "Varias sucursales", status = "active",
+            custom_data = new { toki = new { plan = "MultiStore", rateLimits = new { panelPerMinute = 2 } } },
+            prices = Array.Empty<object>(),
+        },
+        new
+        {
+            id = "pro_invoices", name = "Lectura de facturas", status = "active",
+            custom_data = new { toki = new { addOn = "SupplierInvoiceReading", quotas = new { SupplierInvoices = 300 } } },
+            prices = new[] { Price(Invoices, "month", "500") },
+        },
+        new { id = "pro_other", name = "Otra cosa", status = "active", custom_data = (object?)null, prices = new[] { Price("pri_other", "month", "1") } },
+    ];
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
@@ -24,21 +62,29 @@ public sealed class FakePaddle : HttpMessageHandler
         lock (Requests) Requests.Add((request.Method, request.RequestUri!.AbsolutePath, request.Headers.Authorization?.ToString(), body));
         return request.RequestUri.AbsolutePath switch
         {
+            "/products" when request.RequestUri.Query.Contains("after=", StringComparison.Ordinal) => Json(new { data = Products.Skip(2), meta = new { pagination = new { has_more = false } } }),
+            "/products" => Json(new
+            {
+                data = Products.Take(2),
+                meta = new { pagination = new { has_more = true, next = "https://sandbox-api.paddle.com/products?include=prices&after=pro_registers" } },
+            }),
             var p when p.EndsWith("/portal-sessions", StringComparison.Ordinal) => new HttpResponseMessage(HttpStatusCode.Created)
             {
                 Content = JsonContent.Create(new { data = new { id = "cpls_1", urls = new { general = new { overview = "https://customer-portal.paddle.com/cpl_1?token=x" } } } }),
             },
-            var p when p.StartsWith("/subscriptions/", StringComparison.Ordinal) => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { data = new { } }) },
+            var p when p.StartsWith("/subscriptions/", StringComparison.Ordinal) => Json(new { data = new { } }),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         };
     }
+
+    private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
 }
 
-/// <summary>Billing on, in Paddle's sandbox, with a license key in memory (TK-249).</summary>
+/// <summary>Billing on, in Paddle's sandbox, with a license key in memory (TK-249). The catalog syncs when a test asks (<see cref="SyncCatalogAsync"/>).</summary>
 public sealed class BillingApp : CloudApp
 {
     public const string Secret = "pdl_ntfset_01test_secret";
-    public const string Basic = "pri_basic_month", BasicYear = "pri_basic_year", Registers = "pri_registers_month", Invoices = "pri_invoices_month";
+    public const string Basic = FakePaddle.Basic, BasicYear = FakePaddle.BasicYear, Registers = FakePaddle.Registers, Invoices = FakePaddle.Invoices;
 
     public ECDsa LicenseKey { get; } = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     public FakePaddle Paddle { get; } = new();
@@ -52,12 +98,15 @@ public sealed class BillingApp : CloudApp
         builder.UseSetting("Billing:Paddle:ApiKey", "pdl_sdbx_apikey_test");
         builder.UseSetting("Billing:Paddle:WebhookSecret", Secret);
         builder.UseSetting("Billing:Paddle:ClientToken", "test_client_token");
-        builder.UseSetting("Billing:Paddle:Prices:Default:Monthly", Basic);
-        builder.UseSetting("Billing:Paddle:Prices:Default:Annual", BasicYear);
-        builder.UseSetting("Billing:Paddle:Prices:MultiRegister:Monthly", Registers);
-        builder.UseSetting("Billing:Paddle:Prices:SupplierInvoiceReading:Monthly", Invoices);
+        builder.UseSetting("Billing:Paddle:SyncInBackground", "false");
         builder.UseSetting("Billing:License:PrivateKey", LicenseKey.ExportPkcs8PrivateKeyPem());
         builder.ConfigureTestServices(s => s.AddHttpClient<PaddleApi>().ConfigurePrimaryHttpMessageHandler(() => Paddle));
+    }
+
+    public async Task<int> SyncCatalogAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<PaddleCatalogSync>().SyncAsync(CancellationToken.None);
     }
 
     public Task<HttpResponseMessage> SendAsync(object payload, DateTimeOffset? signedAt = null, string secret = Secret)
@@ -70,8 +119,12 @@ public sealed class BillingApp : CloudApp
     }
 }
 
-public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>
+public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IAsyncLifetime
 {
+    public async ValueTask InitializeAsync() => await app.SyncCatalogAsync();
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
     private static readonly DateTime PeriodEnd = new(2026, 11, 15, 15, 0, 0, DateTimeKind.Utc);
 
     private static object Subscription(string eventId, string type, Guid tenant, string status, DateTime occurred, DateTime periodEnd, params string[] prices) => new
@@ -158,6 +211,7 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>
     {
         // Own app: it moves the clock weeks ahead, which would leave the other tests' fixed periods in the past.
         await using var own = new BillingApp();
+        await own.SyncCatalogAsync();
         var owner = await own.OwnerAsync();
         var node = await own.StoreWithNodeAsync(owner, "Carnicería La Esquina");
         async Task<string?> LicenseAsync() => (await (await node.Client.PostAsync("/api/nodes/license", null)).Json()).GetProperty("license").GetString();
@@ -168,7 +222,7 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>
         using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         Jws.Verify(jws!, other).IsFailure.ShouldBeTrue();
         var license = Jws.Verify(jws!, other, own.LicenseKey).Value; // the store trusts either key
-        (license.Store, license.Plan, license.Limits["Registers"], license.ExpiresUtc).ShouldBe(("Carnicería La Esquina", "Varias cajas", 3, PeriodEnd.AddDays(3)));
+        (license.Store, license.Plan, license.Limits["Registers"], license.ExpiresUtc).ShouldBe(("Carnicería La Esquina", "Varias cajas", 4, PeriodEnd.AddDays(3))); // 4 registers: Paddle's custom_data wins over appsettings (3)
         license.Features.ShouldContain("SupplierInvoiceReading");
         license.Features.ShouldContain("ButcherModule");
         // Same subscription, same issue date: the store does not reinstall it every pull.
@@ -263,6 +317,85 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>
     }
 }
 
+/// <summary>TK-249: the catalog, prices and limits come from Paddle (products' custom_data.toki), merged over appsettings.</summary>
+public sealed class BillingCatalogTests(BillingApp app) : IClassFixture<BillingApp>, IAsyncLifetime
+{
+    public async ValueTask InitializeAsync() => await app.SyncCatalogAsync();
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    [Fact]
+    public async Task The_catalog_syncs_every_page_from_Paddle_and_the_public_prices_show_it()
+    {
+        (await app.SyncCatalogAsync()).ShouldBe(4); // Toki's four products; "Otra cosa" has no custom_data.toki
+        app.Paddle.Requests.Where(r => r.Path == "/products").Select(r => r.Authorization).ShouldAllBe(a => a == "Bearer pdl_sdbx_apikey_test");
+        (await app.InDbAsync(db => db.PaddleProducts.CountAsync())).ShouldBe(5); // both pages stored
+
+        var prices = await app.CreateClient().GetFromJsonAsync<JsonElement>("/api/public/prices"); // no account
+        prices.GetProperty("enabled").GetBoolean().ShouldBeTrue();
+        var plans = prices.GetProperty("plans").EnumerateArray().ToList();
+        plans.Select(p => p.GetProperty("code").GetString()).ShouldBe(["Default", "MultiRegister"]); // MultiStore has no price yet
+        (plans[0].GetProperty("name").GetString(), plans[0].GetProperty("monthly").GetProperty("amount").GetString(),
+            plans[0].GetProperty("monthly").GetProperty("currency").GetString(), plans[0].GetProperty("annual").GetProperty("amount").GetString())
+            .ShouldBe(("Una caja", "1000", "USD", "10000")); // the archived price is not shown
+        plans[1].GetProperty("annual").ValueKind.ShouldBe(JsonValueKind.Null);
+        prices.GetProperty("addOns")[0].GetProperty("monthly").GetProperty("priceId").GetString().ShouldBe(BillingApp.Invoices);
+
+        // A price changed in Paddle: the next sync shows it, nothing in code.
+        app.Paddle.Products[1] = new
+        {
+            id = "pro_registers", name = "Varias cajas", status = "active",
+            custom_data = new { toki = new { plan = "MultiRegister", registers = 4, quotas = new { Invites = 77 } } }, // as before: only the amount changes
+            prices = new[] { new { id = BillingApp.Registers, status = "active", unit_price = new { amount = "2500", currency_code = "USD" }, billing_cycle = new { interval = "month", frequency = 1 } } },
+        };
+        await app.SyncCatalogAsync();
+        (await app.CreateClient().GetFromJsonAsync<JsonElement>("/api/public/prices")).GetProperty("plans")[1].GetProperty("monthly").GetProperty("amount").GetString().ShouldBe("2500");
+    }
+
+    [Fact]
+    public async Task A_product_or_price_webhook_asks_for_a_sync()
+    {
+        var signal = app.Services.GetRequiredService<CatalogSignal>();
+        var before = signal.Requests;
+        (await app.SendAsync(new { event_id = "evt_" + Guid.NewGuid().ToString("N"), event_type = "price.updated", occurred_at = app.Now.ToString("O"), data = new { id = "pri_x" } }))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+        signal.Requests.ShouldBe(before + 1);
+    }
+
+    [Fact]
+    public async Task Quotas_come_from_Paddle_then_appsettings_then_Default()
+    {
+        var owner = await app.OwnerAsync();
+        static int Limit(JsonElement usage, string meter) =>
+            usage.GetProperty("meters").EnumerateArray().Single(m => m.GetProperty("meter").GetString() == meter).GetProperty("limit").GetInt32();
+        var usage = await owner.Client.GetFromJsonAsync<JsonElement>("/api/usage");
+        Limit(usage, "SupplierInvoices").ShouldBe(25); // Paddle's Default product over appsettings' 20
+        Limit(usage, "Invites").ShouldBe(20);          // not in Paddle: appsettings
+
+        var staff = await app.StaffAsync();
+        (await staff.Client.PutAsJsonAsync($"/api/platform/tenants/{owner.TenantId}/plan", new { plan = "MultiRegister", addOns = new[] { "SupplierInvoiceReading" } }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        usage = await owner.Client.GetFromJsonAsync<JsonElement>("/api/usage");
+        Limit(usage, "Invites").ShouldBe(77);              // Paddle's MultiRegister over appsettings' 30
+        Limit(usage, "AssistantQuestions").ShouldBe(600);  // appsettings' MultiRegister
+        Limit(usage, "SupplierInvoices").ShouldBe(300);    // the add-on raises Default's (Paddle) 25
+    }
+
+    [Fact]
+    public async Task Per_minute_limits_follow_the_plan_in_Paddle()
+    {
+        var owner = await app.OwnerAsync();
+        var other = await app.OwnerAsync();
+        var staff = await app.StaffAsync();
+        (await staff.Client.PutAsJsonAsync($"/api/platform/tenants/{owner.TenantId}/plan", new { plan = "MultiStore", addOns = Array.Empty<string>() }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        for (var i = 0; i < 2; i++) (await owner.Client.GetAsync("/api/usage")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await owner.Client.GetAsync("/api/usage")).StatusCode.ShouldBe(HttpStatusCode.TooManyRequests); // MultiStore: panelPerMinute 2
+        for (var i = 0; i < 5; i++) (await other.Client.GetAsync("/api/usage")).StatusCode.ShouldBe(HttpStatusCode.OK); // Default: the setting
+    }
+}
+
 /// <summary>Without <c>Billing:Paddle</c> (the default) billing is off: nothing to buy, no webhook, no license from the cloud.</summary>
 public sealed class BillingOffTests(CloudApp app) : IClassFixture<CloudApp>
 {
@@ -275,6 +408,8 @@ public sealed class BillingOffTests(CloudApp app) : IClassFixture<CloudApp>
         (await (await owner.Client.PostAsJsonAsync("/api/billing/checkout", new { plan = "Default" })).ErrorCode()).ShouldBe("Billing.Off");
         (await (await owner.Client.PostAsync("/api/billing/portal", null)).ErrorCode()).ShouldBe("Billing.Off");
         (await app.CreateClient().PostAsJsonAsync(PaddleWebhook.Path, new { event_id = "evt_1" })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        var prices = await app.CreateClient().GetFromJsonAsync<JsonElement>("/api/public/prices"); // /precios says "Precio por confirmar"
+        (prices.GetProperty("enabled").GetBoolean(), prices.GetProperty("plans").GetArrayLength()).ShouldBe((false, 0));
         var node = await app.StoreWithNodeAsync(owner);
         (await (await node.Client.PostAsync("/api/nodes/license", null)).Json()).GetProperty("license").ValueKind.ShouldBe(JsonValueKind.Null);
     }

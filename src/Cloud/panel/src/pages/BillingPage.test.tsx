@@ -24,10 +24,10 @@ const billing: Billing = {
   manualUntilUtc: null,
   canManage: false,
   plans: [
-    { code: "Default", monthly: true, annual: false },
-    { code: "MultiRegister", monthly: true, annual: false },
+    { code: "Default", name: "Una caja", monthly: { priceId: "pri_basic", interval: "Monthly", amount: "1000", currency: "USD" }, annual: null },
+    { code: "MultiRegister", name: "Varias cajas", monthly: { priceId: "pri_registers", interval: "Monthly", amount: "2500", currency: "USD" }, annual: null },
   ],
-  addOnOptions: [{ code: "SupplierInvoiceReading", monthly: true, annual: false }],
+  addOnOptions: [{ code: "SupplierInvoiceReading", name: "Lectura de facturas", monthly: { priceId: "pri_inv", interval: "Monthly", amount: "500", currency: "USD" }, annual: null }],
 };
 
 const checkout: Checkout = {
@@ -64,6 +64,8 @@ it("TK-249: choosing a plan opens Paddle's checkout in the sandbox with the pric
 
   const buttons = await screen.findAllByRole("button", { name: "Elegir plan" });
   expect(screen.getByRole("button", { name: "Agregar lectura de facturas" })).toBeTruthy();
+  expect(screen.getByText(/US\$25\.00 al mes/)).toBeTruthy(); // the price as Paddle has it
+  expect(screen.getByText(/US\$5\.00 al mes/)).toBeTruthy();
   fireEvent.click(buttons[1]); // Varias cajas
 
   await waitFor(() => expect(paddle.Checkout.open).toHaveBeenCalled());

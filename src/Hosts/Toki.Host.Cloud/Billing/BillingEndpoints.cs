@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Host.Cloud.Accounts;
+using Toki.Host.Cloud.Catalog;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Persistence;
 using Toki.Host.Cloud.Quotas;
@@ -9,8 +10,8 @@ using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Billing;
 
-/// <param name="Monthly">A Paddle price exists for monthly billing; <paramref name="Annual"/> the same for yearly.</param>
-public sealed record BillingOption(string Code, bool Monthly, bool Annual);
+/// <summary>A plan or add-on with its Paddle prices (null = not sold that way). <paramref name="Name"/> is the Paddle product's name.</summary>
+public sealed record BillingOption(string Code, string Name, CatalogPrice? Monthly, CatalogPrice? Annual);
 
 /// <summary>"Plan y facturación" (Owners). <paramref name="Enabled"/> false = Paddle is not set up: the page shows the plan and how to ask Toki.</summary>
 /// <param name="Environment">sandbox or live, for Paddle.js; null when off.</param>
@@ -18,6 +19,9 @@ public sealed record BillingOption(string Code, bool Monthly, bool Annual);
 public sealed record BillingResponse(bool Enabled, string? Environment, string Plan, IReadOnlyList<string> AddOns, SubscriptionStatus Status, BillingInterval? Interval,
     DateTime? PaidThroughUtc, DateTime? NextBilledUtc, DateTime? PastDueSinceUtc, DateTime? ManualUntilUtc, bool CanManage,
     IReadOnlyList<BillingOption> Plans, IReadOnlyList<BillingOption> AddOnOptions);
+
+/// <summary>The public /precios page: the prices as Paddle has them; empty lists with billing off (the page says "Precio por confirmar").</summary>
+public sealed record PublicPricesResponse(bool Enabled, IReadOnlyList<BillingOption> Plans, IReadOnlyList<BillingOption> AddOns);
 
 public sealed record CheckoutRequest(string? Plan, IReadOnlyList<string>? AddOns, BillingInterval Interval = BillingInterval.Monthly);
 
@@ -50,10 +54,21 @@ internal static class BillingEndpoints
     public static void AddBilling(this IServiceCollection services, IConfiguration config, IHostEnvironment environment)
     {
         services.AddSingleton(config.GetSection(PaddleOptions.Section).Get<PaddleOptions>() ?? new PaddleOptions());
+        services.AddSingleton<BillingCatalog>();
+        services.AddSingleton<CatalogSignal>();
+        services.AddSingleton<PlanLimits>();
+        services.AddSingleton<TenantPlans>();
         services.AddScoped<PaddleWebhook>();
+        services.AddScoped<PaddleCatalogSync>();
+        services.AddHostedService<CatalogSyncWorker>();
         services.AddHttpClient<PaddleApi>(c => c.Timeout = TimeSpan.FromSeconds(20));
         CloudLicenses.AddCloudLicenses(services, config, environment);
     }
+
+    /// <summary>Each plan or add-on that has at least one price in Paddle (billing on), in the catalog's order.</summary>
+    private static List<BillingOption> Options(IEnumerable<string> codes, BillingCatalog catalog, PaddleOptions paddle) => !paddle.IsConfigured ? [] :
+        [.. codes.Select(code => catalog.Of(code) is { } e ? new BillingOption(code, e.Name, catalog.PriceOf(code, BillingInterval.Monthly), catalog.PriceOf(code, BillingInterval.Annual)) : null)
+            .OfType<BillingOption>().Where(o => o.Monthly is not null || o.Annual is not null)];
 
     public static void MapBilling(this IEndpointRouteBuilder app)
     {
@@ -67,24 +82,30 @@ internal static class BillingEndpoints
             return Results.Ok(new NodeLicenseResponse(await licenses.IssueAsync(node.TenantId, node.StoreId, ct)));
         }).RequireAuthorization(CloudAuth.NodePolicy);
 
+        // The public /precios page reads the real prices (no account; limited per IP like the public catalog).
+        app.MapGet("/api/public/prices", (BillingCatalog catalog, PaddleOptions paddle, PlanLimits limits) =>
+        {
+            var (plans, addOns) = limits.Catalog();
+            return Results.Ok(new PublicPricesResponse(paddle.IsConfigured, Options(plans, catalog, paddle), Options(addOns, catalog, paddle)));
+        }).AllowAnonymous().RequireRateLimiting(PublicCatalogEndpoints.RateLimit);
+
         var owner = app.MapGroup("/api/billing").RequireAuthorization(CloudAuth.OwnerPolicy).RequireRateLimiting(QuotaRateLimits.PanelUser);
 
-        owner.MapGet("", async (ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, IConfiguration config, CancellationToken ct) =>
+        owner.MapGet("", async (ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, BillingCatalog catalog, PlanLimits limits, CancellationToken ct) =>
         {
             var tenantId = user.GetTenantId();
             var tenant = await db.Tenants.AsNoTracking().SingleAsync(t => t.Id == tenantId, ct);
             var s = await db.TenantSubscriptions.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId, ct) ?? new TenantSubscription();
-            var (plans, addOns) = Quota.Catalog(config);
-            BillingOption Option(string code) => new(code, paddle.PriceOf(code, BillingInterval.Monthly) is not null, paddle.PriceOf(code, BillingInterval.Annual) is not null);
+            var (plans, addOns) = limits.Catalog();
             return Results.Ok(new BillingResponse(paddle.IsConfigured, paddle.IsConfigured ? paddle.Environment : null,
                 string.IsNullOrEmpty(tenant.Plan) ? Quota.DefaultPlan : tenant.Plan, Quota.SplitAddOns(tenant.AddOns), s.Status, s.Interval,
                 s.PaidThroughUtc, s.NextBilledUtc, s.PastDueSinceUtc, s.ManualUntilUtc, paddle.IsConfigured && s.PaddleCustomerId is not null,
-                paddle.IsConfigured ? [.. plans.Select(Option).Where(o => o.Monthly || o.Annual)] : [],
-                paddle.IsConfigured ? [.. addOns.Select(Option).Where(o => o.Monthly || o.Annual)] : []));
+                Options(plans, catalog, paddle), Options(addOns, catalog, paddle)));
         });
 
         // A business without a live subscription buys one with Paddle.js (overlay checkout); one that has it changes its items instead.
-        owner.MapPost("/checkout", async (CheckoutRequest r, ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, IConfiguration config, PaddleApi api, CancellationToken ct) =>
+        owner.MapPost("/checkout", async (CheckoutRequest r, ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, BillingCatalog catalog, PlanLimits limits,
+            PaddleApi api, CancellationToken ct) =>
         {
             if (!paddle.IsConfigured) return EndpointExtensions.Problem(Off);
             var tenantId = user.GetTenantId();
@@ -94,8 +115,9 @@ internal static class BillingEndpoints
             var interval = live && s!.Interval is { } current ? current : r.Interval;
             var plan = r.Plan ?? (string.IsNullOrEmpty(tenant.Plan) ? Quota.DefaultPlan : tenant.Plan);
             var addOns = (r.AddOns ?? Quota.SplitAddOns(tenant.AddOns)).Distinct().ToList();
-            var (plans, offered) = Quota.Catalog(config);
-            List<string?> prices = [plans.Contains(plan) ? paddle.PriceOf(plan, interval) : null, .. addOns.Select(a => offered.Contains(a) ? paddle.PriceOf(a, interval) : null)];
+            var (plans, offered) = limits.Catalog();
+            List<string?> prices = [plans.Contains(plan) ? catalog.PriceOf(plan, interval)?.PriceId : null,
+                .. addOns.Select(a => offered.Contains(a) ? catalog.PriceOf(a, interval)?.PriceId : null)];
             if (prices.Any(p => p is null))
                 return EndpointExtensions.Problem(Error.Validation("Billing.InvalidPlan", "Ese plan o servicio adicional no se vende así. Elija uno de la lista."));
 

@@ -12,9 +12,48 @@ Cómo cobra Toki sus planes en línea: Paddle Billing como **comerciante registr
 
 ## Catálogo
 
-Los códigos son los de `Quotas:<Plan>` en `src/Hosts/Toki.Host.Cloud/appsettings.json` (TK-248, `docs/cuotas.md`). Cada plan y cada adicional es un **producto** en Paddle con un **precio mensual** y, si se ofrece, uno **anual**. Los precios los decide el dueño (TK-203); aquí van como `[PRECIO]`.
+**Paddle es la fuente del catálogo.** Cada plan y cada adicional es un **producto** en Paddle con un **precio mensual** y, si se ofrece, uno **anual**. Precios, moneda, forma de pago, cuotas, límites por minuto, cajas y funciones se editan **en Paddle**; el código no tiene montos ni ids de precio. La nube lee el catálogo (`GET /products?include=prices`, todas las páginas) al iniciar, cada `Billing:Paddle:CatalogSyncMinutes` (60) y en cuanto llega un webhook `product.*` o `price.*`; lo guarda en `cloud.PaddleProducts` (la última lectura buena sigue valiendo si Paddle no responde). El panel ("Plan y facturación") y la página pública **/precios** (`GET /api/public/prices`, sin cuenta) muestran los precios reales; con el cobro apagado, /precios dice "Precio por confirmar".
 
-| Código | Nombre | Qué incluye en la licencia (`Billing:Plans`) | Mensual | Anual |
+Un producto es de Toki solo si su `custom_data` tiene la clave `toki` (los demás se ignoran). Los códigos son los de TK-248 (`docs/cuotas.md`). Los precios los decide el dueño (TK-203); aquí van como `[PRECIO]`.
+
+### Esquema de `custom_data.toki`
+
+```json
+{
+  "toki": {
+    "plan": "MultiRegister",
+    "quotas": { "AssistantQuestions": 600, "AssistantTokens": 6000000, "Emails": 600, "ArchiveRetrievals": 100, "Invites": 30 },
+    "rateLimits": { "panelPerMinute": 120, "assistantPerMinute": 10, "supplierInvoicesPerMinute": 10 },
+    "registers": 3,
+    "features": ["ButcherModule", "WholesaleModule", "CloudBackup", "AiAssistant"]
+  }
+}
+```
+
+| Clave | Qué es |
+|---|---|
+| `plan` **o** `addOn` | El código: `Default`, `MultiRegister`, `MultiStore`; o `SupplierInvoiceReading` |
+| `quotas` | Límites del mes por medidor (`AssistantQuestions`, `AssistantTokens`, `SupplierInvoices`, `Emails`, `ArchiveRetrievals`, `AccompanimentRequests`, `Invites`). En un adicional, suben el límite si es mayor |
+| `rateLimits` | Por minuto: `panelPerMinute` (API del panel, por usuario), `assistantPerMinute` (preguntas al asistente, por usuario), `supplierInvoicesPerMinute` (facturas leídas, por caja) |
+| `registers` | Cajas además de la PC principal que pone la licencia |
+| `features` | Funciones de la licencia (`ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant`, `SupplierInvoiceReading`) |
+
+**Orden:** `custom_data` de Paddle &gt; appsettings (`Quotas:<Plan>`, `Quotas:<Plan>:RateLimits`, `Billing:Plans:<Plan>`) &gt; lo de `Default` (Paddle, luego appsettings) &gt; el valor global (`Panel:RequestsPerMinutePerUser`, `Ai:AssistantQuestionsPerMinutePerUser`, `Ai:SupplierInvoicesPerMinutePerNode`). Lo que falte en Paddle sale de appsettings: se puede empezar solo con `plan` y completar después. Los nombres de las claves no distinguen mayúsculas. Un cambio en Paddle aplica en la siguiente lectura del catálogo (o al instante con el webhook); los límites por minuto de un negocio siguen a su plan en menos de un minuto.
+
+### Catálogo de prueba en sandbox (creado por API el 16/10/2026)
+
+Precios **de mentira** (US$1.00 al mes, nombres con `[SANDBOX]`) para probar el flujo; el `custom_data` copia los valores de appsettings. Los ids no son secretos.
+
+| Producto | `pro_…` | Precio mensual `pri_…` |
+|---|---|---|
+| [SANDBOX] Una caja (`Default`) | `pro_01m52qsss2vbns44aq8tpq86db` | `pri_01m52qst9fkm4a8q7gxapvsky5` |
+| [SANDBOX] Varias cajas (`MultiRegister`) | `pro_01m52qstn30dkwfbw2bgfqht0q` | `pri_01m52qsv39f4v4zb47dq40pbtm` |
+| [SANDBOX] Varias sucursales (`MultiStore`) | `pro_01m52qsvck6hgsdcs0v684t8wk` | `pri_01m52qsvtt6fkzgkd5v02xazw9` |
+| [SANDBOX] Lectura de facturas (`SupplierInvoiceReading`) | `pro_01m52qsw71pk44xk5sbg0w2acw` | `pri_01m52qswns3mx99nfsb6nqn2we` |
+
+### Planes
+
+| Código | Nombre | Qué incluye en la licencia (`custom_data.toki`, si no `Billing:Plans`) | Mensual | Anual |
 |---|---|---|---|---|
 | `Default` | Una caja | 1 caja además de la PC principal; carnicería, mayoreo, respaldo en la nube, asistente | [PRECIO] | [PRECIO] |
 | `MultiRegister` | Varias cajas | Lo mismo con `Registers` = 3 (**provisional**, [CANTIDAD] por confirmar en TK-203) | [PRECIO] | [PRECIO] |
@@ -23,7 +62,7 @@ Los códigos son los de `Quotas:<Plan>` en `src/Hosts/Toki.Host.Cloud/appsetting
 
 - **Cajas adicionales** como adicional (por ejemplo "caja extra" con cantidad): no se construye ahora. Los planes ya fijan las cajas; si el dueño lo quiere, sería un precio con `quantity` y sumar `quantity` a `Registers` al emitir la licencia.
 - **Mensual o anual:** el dueño elige al pagar (el panel muestra "Mensual / Anual" solo si hay algún precio anual). Una suscripción existente conserva su forma de pago; cambiar de plan o agregar un adicional se **prorratea al momento** (`proration_billing_mode: prorated_immediately`).
-- Un precio sin id en `Billing:Paddle:Prices` no se vende de esa forma (el panel no lo muestra).
+- Un plan o adicional sin precio activo en Paddle no se vende de esa forma (el panel no lo muestra; /precios dice "Precio por confirmar").
 
 ## Prueba de 14 días
 
@@ -52,6 +91,7 @@ La prueba de Toki **no** es de Paddle: la tienda empieza sus 14 días con la **p
 - **A qué negocio:** `custom_data.tenantId`, que pone nuestro checkout y Paddle copia a la suscripción; si no viene, el id de suscripción ya conocido.
 - `subscription.created/updated/activated/trialing/past_due/paused/resumed/canceled` → estado, cliente, forma de pago, próximo cobro, "pagado hasta" (solo si está activa o en prueba) y **el plan y los adicionales del negocio** (los mismos campos que pone la consola en TK-248) según los precios de `items[].price.id`.
 - `transaction.completed` → "pagado hasta" = fin de `billing_period` si es mayor, y una suscripción pendiente vuelve a activa.
+- `product.*` y `price.*` → el catálogo se relee enseguida (precios y límites nuevos).
 - Tablas: `cloud.TenantSubscriptions` (una por negocio) y `cloud.BillingEvents` (migración `Billing`).
 
 ### API del panel (solo Dueños)
@@ -105,7 +145,8 @@ Luego desplegar con `licenseKeyName = toki-license` (pone `Billing__License__Key
 | `Billing:Paddle:ApiKey` | Llave de API del servidor (`pdl_sdbx_apikey_…` / `pdl_live_apikey_…`). **Secreto: Key Vault** |
 | `Billing:Paddle:WebhookSecret` | Secreto del destino de notificaciones (`pdl_ntfset_…`). **Secreto: Key Vault** |
 | `Billing:Paddle:ClientToken` | Token del lado del cliente para Paddle.js (`test_…` / `live_…`); no es secreto |
-| `Billing:Paddle:Prices:<Código>:Monthly` / `:Annual` | Id del precio (`pri_…`) de cada plan o adicional |
+| `Billing:Paddle:CatalogSyncMinutes` | Cada cuánto se relee el catálogo de Paddle (60); un webhook `product.*`/`price.*` lo adelanta |
+| `Billing:Paddle:SyncInBackground` | `false` solo en pruebas (sincronizan ellas mismas) |
 | `Billing:License:KeyId` | URI de la llave de licencias en Key Vault; vacío = la nube no emite licencias |
 | `Billing:License:MarginDays` | Días de margen tras "pagado hasta" (3) |
 | `Billing:Plans:<Plan>:Name` / `:Registers` / `:Features` | Lo que la licencia dice de cada plan |
@@ -116,7 +157,7 @@ Sandbox y en vivo son **cuentas separadas** con sus propias llaves, tokens e ids
 
 1. **Cuenta de Paddle:** crear la cuenta de sandbox (`sandbox-vendors.paddle.com`) para probar y solicitar la cuenta en vivo (`vendors.paddle.com`); completar la verificación del negocio y la cuenta de cobro. Confirmar con Paddle el cobro a un banco dominicano.
 2. **Dominio:** en Paddle → Checkout → configuración del checkout, poner el enlace de pago por defecto en el dominio del panel (`https://<panel>/app/billing`) y, en vivo, pedir la aprobación del dominio.
-3. **Productos y precios** (Paddle → Catálogo): un producto por plan (Una caja, Varias cajas, Varias sucursales) y uno por adicional (Lectura de facturas con IA). En cada uno, un precio **mensual** (`month`/1) y, si se ofrece, uno **anual** (`year`/1), en USD, **sin** período de prueba, con el `tax_mode` elegido. Anotar cada `pri_…`. Decidir los precios ([PRECIO], TK-203) y confirmar las cajas de "Varias cajas" y "Varias sucursales" (`Billing:Plans`).
+3. **Productos y precios** (Paddle → Catálogo): un producto por plan (Una caja, Varias cajas, Varias sucursales) y uno por adicional (Lectura de facturas con IA), cada uno con su `custom_data.toki` (esquema arriba). En cada uno, un precio **mensual** (`month`/1) y, si se ofrece, uno **anual** (`year`/1), en USD, **sin** período de prueba, con el `tax_mode` elegido. Decidir los precios ([PRECIO], TK-203), las cajas y las cuotas, y ponerlos **en Paddle** (en sandbox ya están los productos de prueba de arriba: basta cambiar sus precios y su `custom_data`). No hace falta copiar ningún `pri_…` a la configuración.
 4. **Token del cliente** (Paddle → Herramientas para desarrolladores → Autenticación): crear un *client-side token* (`test_…` en sandbox).
 5. **Llave de API** (misma pantalla): crear una con permisos de lectura y escritura de suscripciones y `customer_portal_session.write`. Copiarla una vez.
 6. **Destino de notificaciones** (Paddle → Eventos/Notificaciones → Nuevo destino): URL `https://<api>/billing/paddle/webhook` (salida `apiUrl` del despliegue), tipo webhook, eventos `subscription.*` y `transaction.completed`. **Copiar el secreto (`pdl_ntfset_…`) al crearlo**: Paddle puede no volver a mostrarlo.
@@ -126,6 +167,8 @@ Sandbox y en vivo son **cuentas separadas** con sus propias llaves, tokens e ids
    az keyvault secret set --vault-name $kv --name Billing--Paddle--WebhookSecret --value "<secreto del destino>"
    ```
 8. **Llave de licencias:** los comandos de la sección anterior; pegar el PEM en `TokiCloudPublicKey` y publicar la actualización de la tienda.
-9. **Desplegar** con los parámetros nuevos de `deploy/azure/main.parameters.json`: `paddleEnvironment` (`sandbox` primero), `paddleClientToken`, `paddlePrices` (`{ "Default": { "Monthly": "pri_…", "Annual": "pri_…" }, … }`) y `licenseKeyName`.
+9. **Desplegar** con los parámetros nuevos de `deploy/azure/main.parameters.json`: `paddleEnvironment` (`sandbox` primero), `paddleClientToken` y `licenseKeyName`.
+
+**Hecho ya en sandbox (por API):** los cuatro productos con precio de prueba y su `custom_data`. **Falta en el panel de Paddle (sandbox):** el token del lado del cliente (paso 4), el destino de notificaciones con la URL real de la API y copiar su secreto (paso 6; incluir también `product.*` y `price.*`), el enlace de pago por defecto (paso 2) y guardar los secretos en Key Vault (paso 7). Para desarrollo local, la llave de API de sandbox está en los *user-secrets* de `src/Hosts/Toki.Host.Cloud` de la PC del dueño (nunca en el repositorio).
 10. **Probar en sandbox:** crear una cuenta en el panel, "Plan y facturación" → Elegir plan, pagar con la tarjeta de prueba `4242 4242 4242 4242` (rechazo: `4000 0000 0000 0002`); ver el estado "Al día", el plan en la consola y la licencia en la tienda conectada (Configuración → Licencia). Probar "Administrar pago" y una cancelación.
 11. **Pasar a vivo:** repetir 3 a 7 en la cuenta en vivo y desplegar con `paddleEnvironment = live`.

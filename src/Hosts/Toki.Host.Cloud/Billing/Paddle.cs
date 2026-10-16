@@ -7,6 +7,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 using Toki.Host.Cloud.Persistence;
+using Toki.Host.Cloud.Quotas;
 
 namespace Toki.Host.Cloud.Billing;
 
@@ -46,7 +47,8 @@ public static class PaddleSignature
 
 /// <summary>POST /billing/paddle/webhook. Answers 2xx once the event is stored (Paddle retries anything else), each <c>event_id</c> once.
 /// subscription.* set the subscription and the business's plan and add-ons; transaction.completed records the payment (paid through).</summary>
-internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, IConfiguration config, TimeProvider clock, ILogger<PaddleWebhook> log)
+internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, BillingCatalog catalog, PlanLimits limits, TenantPlans plans, CatalogSignal signal,
+    TimeProvider clock, ILogger<PaddleWebhook> log)
 {
     public const string Path = "/billing/paddle/webhook";
     private const int MaxBody = 512 * 1024;
@@ -80,6 +82,8 @@ internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, ICo
         }
         else if (type.StartsWith("subscription.", StringComparison.Ordinal) || type == "transaction.completed")
             log.LogWarning("Paddle event {EventId} ({Type}) names no business of ours", id, type);
+        // Someone changed a product or a price in Paddle: the catalog (prices, limits) syncs now rather than at the next hour.
+        if (type.StartsWith("product.", StringComparison.Ordinal) || type.StartsWith("price.", StringComparison.Ordinal)) signal.Request();
 
         db.BillingEvents.Add(new BillingEvent { Id = id, Type = type.Length > 100 ? type[..100] : type, OccurredUtc = occurred, ReceivedUtc = now.UtcDateTime, TenantId = tenantId });
         try
@@ -92,6 +96,7 @@ internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, ICo
             db.ChangeTracker.Clear();
             if (!await db.BillingEvents.AsNoTracking().AnyAsync(e => e.Id == id, ct)) throw;
         }
+        if (tenantId is { } changed) plans.Forget(changed); // its per-minute limits follow the new plan at once
         return Results.Ok();
     }
 
@@ -159,7 +164,7 @@ internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, ICo
             var prices = data.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
                 ? items.EnumerateArray().Select(i => i.TryGetProperty("price", out var p) ? Text(p, "id") : Text(i, "price_id")).OfType<string>().ToList()
                 : [];
-            if (prices.Count > 0) (tenant.Plan, tenant.AddOns) = BillingModel.PlanOf(paddle, config, prices);
+            if (prices.Count > 0) (tenant.Plan, tenant.AddOns) = BillingModel.PlanOf(catalog, limits, prices);
         }
         else if (!(s.ManualUntilUtc > now)) (tenant.Plan, tenant.AddOns) = (null, "");
     }
@@ -195,9 +200,30 @@ internal sealed class PaddleApi(HttpClient http, PaddleOptions paddle)
         return response.IsSuccessStatusCode;
     }
 
-    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object body, CancellationToken ct)
+    /// <summary>GET /products?include=prices, every page (<c>meta.pagination.next</c>): all products with their prices.</summary>
+    public async Task<List<JsonElement>> ProductsAsync(CancellationToken ct)
     {
-        using var request = new HttpRequestMessage(method, paddle.ApiUrl + path) { Content = JsonContent.Create(body) };
+        var products = new List<JsonElement>();
+        string? next = paddle.ApiUrl + "/products?include=prices&per_page=200";
+        for (var page = 0; next is not null && page < 50; page++)
+        {
+            using var response = await SendAsync(HttpMethod.Get, next, null, ct);
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+            products.AddRange(json.GetProperty("data").EnumerateArray().Select(p => p.Clone()));
+            next = json.TryGetProperty("meta", out var meta) && meta.TryGetProperty("pagination", out var p) && p.TryGetProperty("has_more", out var more)
+                   && more.ValueKind == JsonValueKind.True && p.TryGetProperty("next", out var n) && n.GetString() is { } url
+                   && url.StartsWith(paddle.ApiUrl + "/", StringComparison.Ordinal) ? url : null; // never follow a link off Paddle's API with our key
+        }
+        return products;
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? body, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, path.StartsWith("https://", StringComparison.Ordinal) ? path : paddle.ApiUrl + path)
+        {
+            Content = body is null ? null : JsonContent.Create(body),
+        };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", paddle.ApiKey);
         request.Headers.Add("Paddle-Version", "1");
         return await http.SendAsync(request, ct);

@@ -33,7 +33,7 @@ internal sealed class LocalLicenseSigner(ECDsa key) : ILicenseSigner
 /// cloud pulls it (POST /api/nodes/license) and installs it when it is newer (TK-249). Offline issuance keeps working beside it.</summary>
 /// <remarks>Expiry = paid until (Paddle or the staff override) + <c>Billing:License:MarginDays</c> (3: the renewal webhook and the store's next
 /// pull have time to arrive), then the store's own 15 days of grace, then Restricted.</remarks>
-internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, TimeProvider clock, ILicenseSigner? signer = null)
+internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, BillingCatalog catalog, TimeProvider clock, ILicenseSigner? signer = null)
 {
     public bool IsConfigured => signer is not null;
 
@@ -62,21 +62,26 @@ internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, Ti
 
         var tenant = await db.Tenants.AsNoTracking().SingleAsync(t => t.Id == tenantId, ct);
         var store = await db.Stores.AsNoTracking().Where(s => s.Id == storeId).Select(s => s.Name).SingleOrDefaultAsync(ct) ?? tenant.Name;
-        var data = Data(config, store, string.IsNullOrEmpty(tenant.Plan) ? Quota.DefaultPlan : tenant.Plan, Quota.SplitAddOns(tenant.AddOns),
+        var data = Data(config, catalog, store, string.IsNullOrEmpty(tenant.Plan) ? Quota.DefaultPlan : tenant.Plan, Quota.SplitAddOns(tenant.AddOns),
             Truncate(subscription.UpdatedUtc), expires);
         var input = Jws.SigningInput(data);
         return Jws.Compose(input, await signer.SignSha256Async(SHA256.HashData(Encoding.ASCII.GetBytes(input)), ct));
     }
 
-    /// <summary><c>Billing:Plans:&lt;Plan&gt;</c>: the name printed on the license and the store's functions and registers, falling back to Default's
-    /// like the quotas. An add-on named like a <see cref="Feature"/> (SupplierInvoiceReading) switches that function on.</summary>
-    public static LicenseData Data(IConfiguration config, string store, string plan, IEnumerable<string> addOns, DateTime issuedUtc, DateTime expiresUtc)
+    /// <summary>What the license says of a plan: the Paddle product's <c>custom_data.toki</c> (<c>registers</c>, <c>features</c>) &gt;
+    /// <c>Billing:Plans:&lt;Plan&gt;</c> &gt; Default's (Paddle, then appsettings). An add-on named like a <see cref="Feature"/>
+    /// (SupplierInvoiceReading) switches that function on.</summary>
+    public static LicenseData Data(IConfiguration config, BillingCatalog catalog, string store, string plan, IEnumerable<string> addOns, DateTime issuedUtc, DateTime expiresUtc)
     {
-        IConfigurationSection Of(string key) =>
-            config.GetSection($"Billing:Plans:{plan}:{key}") is { } own && own.Exists() ? own : config.GetSection($"Billing:Plans:{Quota.DefaultPlan}:{key}");
-        var features = (Of("Features").Get<string[]>() ?? []).Concat(addOns.Where(a => Enum.TryParse<Feature>(a, out _))).Distinct().ToList();
-        var limits = Of("Registers").Get<int?>() is { } registers ? new Dictionary<string, int> { [nameof(Limit.Registers)] = registers } : [];
-        return new LicenseData(store, config[$"Billing:Plans:{plan}:Name"] ?? plan, features, limits, issuedUtc, expiresUtc);
+        var own = catalog.Of(plan)?.Toki;
+        var basic = catalog.Of(Quota.DefaultPlan)?.Toki;
+        string[]? Config(string p) => config.GetSection($"Billing:Plans:{p}:Features").Get<string[]>();
+        int? Registers(string p) => config.GetValue<int?>($"Billing:Plans:{p}:Registers");
+        var features = (own?.Features?.ToArray() ?? Config(plan) ?? basic?.Features?.ToArray() ?? Config(Quota.DefaultPlan) ?? [])
+            .Concat(addOns.Where(a => Enum.TryParse<Feature>(a, out _))).Distinct().ToList();
+        var limits = (own?.Registers ?? Registers(plan) ?? basic?.Registers ?? Registers(Quota.DefaultPlan)) is { } registers
+            ? new Dictionary<string, int> { [nameof(Limit.Registers)] = registers } : [];
+        return new LicenseData(store, config[$"Billing:Plans:{plan}:Name"] ?? catalog.Of(plan)?.Name ?? plan, features, limits, issuedUtc, expiresUtc);
     }
 
     private static DateTime Truncate(DateTime utc) => DateTime.SpecifyKind(new DateTime(utc.Ticks - utc.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);

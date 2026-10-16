@@ -32,14 +32,36 @@ function renderAt(path: string, me?: Me) {
   return fetch;
 }
 
-it.each(sitePages.map((p) => [p.path, p.title]))("TK-228: %s is public: it renders without a session, never calls the API and sets its title", (path, title) => {
+it.each(sitePages.map((p) => [p.path, p.title]))("TK-228: %s is public: it renders without a session, never asks for the account and sets its title", (path, title) => {
   localStorage.setItem("toki.refreshToken", "saved"); // even signed in, the site never asks for the account
   const fetch = renderAt(path);
 
   expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
   expect(screen.getByRole("navigation", { name: "Principal" })).toBeTruthy();
   expect(document.title).toBe(title);
-  expect(fetch).not.toHaveBeenCalled();
+  // TK-249: at most the public prices (no account); never /api/me or anything signed in.
+  expect(fetch.mock.calls.every(([url]) => String(url).endsWith("/api/public/prices"))).toBe(true);
+});
+
+it("TK-249: /precios shows the prices Paddle has, and keeps the placeholder for a plan without one", async () => {
+  const prices = {
+    enabled: true,
+    plans: [
+      { code: "Default", name: "Una caja", monthly: { priceId: "pri_1", interval: "Monthly", amount: "1500", currency: "USD" }, annual: null },
+      { code: "MultiRegister", name: "Varias cajas", monthly: { priceId: "pri_2", interval: "Monthly", amount: "2900", currency: "USD" }, annual: null },
+    ],
+    addOns: [],
+  };
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => (url.endsWith("/api/public/prices") ? json(200, prices) : json(404))));
+  render(
+    <MemoryRouter initialEntries={["/precios"]}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect((await screen.findAllByText("US$15.00 al mes")).length).toBeGreaterThan(0);
+  expect(screen.getByText("US$29.00 al mes")).toBeTruthy();
+  expect(screen.getAllByText("Precio por confirmar").length).toBe(1); // Varias sucursales has no price in Paddle yet
 });
 
 it("TK-228: the prices stay as placeholders until the owner confirms them", () => {

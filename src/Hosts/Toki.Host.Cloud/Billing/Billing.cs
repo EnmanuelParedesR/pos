@@ -18,27 +18,11 @@ public sealed class PaddleOptions
     public string WebhookSecret { get; set; } = "";
     /// <summary>Client-side token for Paddle.js (<c>test_…</c> / <c>live_…</c>). Not secret: it goes to the browser.</summary>
     public string ClientToken { get; set; } = "";
-    /// <summary>Plan (<c>Quotas:&lt;Plan&gt;</c>) or add-on (<c>Quotas:AddOns</c>) code → its Paddle price ids. An empty id = not sold that way.</summary>
-    public Dictionary<string, PaddlePrices> Prices { get; set; } = [];
+    // TK-249: no price ids or amounts here: the products and prices come from Paddle (BillingCatalog), linked by custom_data.toki.
 
     public bool IsConfigured => Environment is "sandbox" or "live" && ApiKey.Length > 0 && WebhookSecret.Length > 0 && ClientToken.Length > 0;
 
     public string ApiUrl => Environment == "live" ? "https://api.paddle.com" : "https://sandbox-api.paddle.com";
-
-    /// <summary>The plan or add-on code and interval a Paddle price id stands for, or null when it is none of ours.</summary>
-    public (string Code, BillingInterval Interval)? Find(string priceId) =>
-        Prices.Where(p => p.Value.Monthly == priceId || p.Value.Annual == priceId)
-            .Select(p => ((string, BillingInterval)?)(p.Key, p.Value.Annual == priceId ? BillingInterval.Annual : BillingInterval.Monthly))
-            .FirstOrDefault();
-
-    public string? PriceOf(string code, BillingInterval interval) =>
-        Prices.GetValueOrDefault(code) is { } p && (interval == BillingInterval.Annual ? p.Annual : p.Monthly) is { Length: > 0 } id ? id : null;
-}
-
-public sealed class PaddlePrices
-{
-    public string Monthly { get; set; } = "";
-    public string Annual { get; set; } = "";
 }
 
 public enum BillingInterval { Monthly, Annual }
@@ -85,6 +69,14 @@ internal static class BillingModel
 {
     public static void Configure(ModelBuilder builder)
     {
+        builder.Entity<PaddleProduct>(e =>
+        {
+            e.ToTable("PaddleProducts");
+            e.Property(p => p.Id).HasMaxLength(100);
+            e.Property(p => p.Name).HasMaxLength(300);
+            e.Property(p => p.TokiJson).HasMaxLength(CloudDbContext.LongText);
+            e.Property(p => p.PricesJson).HasMaxLength(CloudDbContext.LongText);
+        });
         builder.Entity<TenantSubscription>(e =>
         {
             e.ToTable("TenantSubscriptions");
@@ -107,10 +99,10 @@ internal static class BillingModel
     }
 
     /// <summary>The business's plan and add-ons from the subscription's prices, the same fields staff set in the console (TK-248).</summary>
-    public static (string? Plan, string AddOns) PlanOf(PaddleOptions paddle, IConfiguration config, IEnumerable<string> priceIds)
+    public static (string? Plan, string AddOns) PlanOf(BillingCatalog catalog, PlanLimits limits, IEnumerable<string> priceIds)
     {
-        var (plans, addOns) = Quota.Catalog(config);
-        var codes = priceIds.Select(paddle.Find).OfType<(string Code, BillingInterval)>().Select(f => f.Code).ToList();
+        var (plans, addOns) = limits.Catalog();
+        var codes = priceIds.Select(catalog.Find).OfType<(string Code, BillingInterval)>().Select(f => f.Code).ToList();
         var plan = codes.FirstOrDefault(plans.Contains);
         return (plan is null or Quota.DefaultPlan ? null : plan, string.Join(',', codes.Where(addOns.Contains).Distinct().Order(StringComparer.Ordinal)));
     }

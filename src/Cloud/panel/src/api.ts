@@ -411,7 +411,18 @@ export interface PlatformUsage { usage: Usage; plans: string[]; addOns: string[]
 /** TK-249: Paddle Billing. `enabled` false = not set up yet (the page shows the plan and how to ask Toki). */
 export type SubscriptionStatus = "None" | "Trialing" | "Active" | "PastDue" | "Paused" | "Canceled";
 export type BillingInterval = "Monthly" | "Annual";
-export interface BillingOption { code: string; monthly: boolean; annual: boolean }
+/** A Paddle price: `amount` in the currency's smallest unit, as Paddle sends it ("1000" = US$10.00). */
+export interface CatalogPrice { priceId: string; interval: BillingInterval | null; amount: string; currency: string }
+/** A plan or add-on with its Paddle prices (null = not sold that way); `name` is the Paddle product's. */
+export interface BillingOption { code: string; name: string; monthly: CatalogPrice | null; annual: CatalogPrice | null }
+/** GET /api/public/prices: what /precios shows; `enabled` false = "Precio por confirmar". */
+export interface PublicPrices { enabled: boolean; plans: BillingOption[]; addOns: BillingOption[] }
+
+/** "US$10.00 al mes": the price as Paddle has it (two decimals; Paddle sends the smallest unit). */
+export function priceLabel(price: CatalogPrice) {
+  const value = new Intl.NumberFormat("en-US", { style: "currency", currency: price.currency, currencyDisplay: "symbol" }).format(Number(price.amount) / 100);
+  return `${price.currency === "USD" ? "US" : ""}${value}${price.interval === "Annual" ? " al año" : price.interval === "Monthly" ? " al mes" : ""}`;
+}
 export interface Billing {
   enabled: boolean;
   environment: "sandbox" | "live" | null;

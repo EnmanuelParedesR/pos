@@ -262,6 +262,34 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("BillingEvents", "cloud");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Billing.PaddleProduct", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("nvarchar(300)");
+
+                    b.Property<string>("PricesJson")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("SyncedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TokiJson")
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PaddleProducts", "cloud");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Billing.TenantSubscription", b =>
                 {
                     b.Property<Guid>("TenantId")
