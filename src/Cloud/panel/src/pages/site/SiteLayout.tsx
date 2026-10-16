@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { Logo, ThemeToggle } from "../../ui";
-import { contactHref, site } from "./config";
+import { site } from "./config";
+import { Trial } from "./SiteParts";
 import { notFound, sitePages, type SitePage } from "./SitePages";
 
 export const pageFor = (pathname: string): SitePage => sitePages.find((p) => p.path === pathname) ?? notFound;
@@ -29,77 +30,78 @@ function useScrollOnNavigate() {
   }, [pathname, hash]);
 }
 
-function Menu({ withPanel = false }: { withPanel?: boolean }) {
+const header = ["/carniceria", "/colmado", "/deli", "/e-cf", "/precios"];
+const footer = ["/descargar", "/certificacion", "/novedades"];
+
+function Menu({ paths }: { paths: string[] }) {
   return (
     <ul>
-      {sitePages.map((p) => (
-        <li key={p.path}>
-          <NavLink to={p.path} end>
-            {p.nav}
-          </NavLink>
-        </li>
-      ))}
-      {withPanel && (
-        <li>
-          <Link to="/app">Entrar al panel</Link>
-        </li>
-      )}
+      {sitePages
+        .filter((p) => paths.includes(p.path))
+        .map((p) => (
+          <li key={p.path}>
+            <NavLink to={p.path} end>
+              {p.nav}
+            </NavLink>
+          </li>
+        ))}
     </ul>
   );
 }
 
-/** Public site frame (TK-228): brand bar with one call to action, menu that scrolls sideways on a phone, footer with the DGII disclaimer. */
+/** Public site frame (TK-228, TK-245): e-CF deadline banner, brand bar with the trial, menu that scrolls sideways on a phone, slim footer with the DGII disclaimer. */
 export function SiteLayout() {
   const { pathname } = useLocation();
   useHead(pageFor(pathname), pathname);
   useScrollOnNavigate();
-  const external = !contactHref.startsWith("/");
 
   return (
     <div className="site">
       <a className="skip" href="#contenido">
         Saltar al contenido
       </a>
+      <Link className="deadline" to="/e-cf">
+        <strong>15 de noviembre de 2026:</strong> el e-CF llega a los pequeños negocios. <span>¿Ya le toca?</span>
+      </Link>
       <header className="top">
         <div className="wrap top__bar">
           <Link className="brand" to="/">
             <Logo size={32} withName={false} />
             <span aria-hidden="true">toki</span>
           </Link>
+          <nav className="menu" aria-label="Principal">
+            <Menu paths={header} />
+          </nav>
           <div className="top__actions">
-            <Link className="btn btn--ghost btn--small" to="/app">
+            <Link className="top__login" to="/app">
               Entrar
             </Link>
-            {external ? (
-              <a className="btn btn--small" href={contactHref} rel="noopener">
-                Hablemos
-              </a>
-            ) : (
-              <Link className="btn btn--small" to={contactHref}>
-                Hablemos
-              </Link>
-            )}
+            <Trial className="btn btn--small" />
           </div>
         </div>
-        <nav className="wrap menu" aria-label="Principal">
-          <Menu />
-        </nav>
       </header>
       <main id="contenido">
         <Outlet />
       </main>
       <footer className="foot">
         <div className="wrap foot__grid">
-          <p>
-            <strong>Toki</strong> · Punto de venta para carnicerías, colmados y delis en República Dominicana. Vende sin internet y emite e-CF.
-          </p>
+          <span>© 2026 Toki · Hecho en República Dominicana</span>
           <nav aria-label="Pie de página">
-            <Menu withPanel />
+            <ul>
+              {sitePages
+                .filter((p) => footer.includes(p.path))
+                .map((p) => (
+                  <li key={p.path}>
+                    <Link to={p.path}>{p.nav}</Link>
+                  </li>
+                ))}
+              <li>
+                <Link to="/app">Entrar</Link>
+              </li>
+            </ul>
           </nav>
-          <p className="muted">La información sobre la DGII es orientativa y no sustituye la asesoría de su contador ni lo que publique la DGII.</p>
-          <div>
-            <ThemeToggle className="btn btn--ghost btn--small" size={18} />
-          </div>
+          <ThemeToggle className="btn btn--ghost btn--small" size={18} />
+          <p className="muted foot__legal">La información sobre la DGII es orientativa y no sustituye la asesoría de su contador ni lo que publique la DGII.</p>
         </div>
       </footer>
     </div>

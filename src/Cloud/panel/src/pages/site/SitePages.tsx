@@ -1,78 +1,25 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import { contactHref, site } from "./config";
+import { site } from "./config";
+import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, Icon, IconTiles, ProductArt, Section, Steps, Tbd, Trial } from "./SiteParts";
 
-/** The public site (TK-197, TK-198, TK-226, TK-228): one entry per page. `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
+/** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
 export interface SitePage {
   path: string;
-  /** Label in the menu; pages without one (404) are not listed. */
+  /** Label in the menus; pages without one (404) are not listed. */
   nav?: string;
   title: string;
   description: string;
   element: ReactNode;
 }
 
-/** Internal paths through the router, everything else (WhatsApp, DGII) as a plain link. */
-function To({ href, className, children }: { href: string; className?: string; children: ReactNode }) {
-  return href.startsWith("/") ? (
-    <Link className={className} to={href}>
-      {children}
-    </Link>
-  ) : (
-    <a className={className} href={href} rel="noopener">
-      {children}
-    </a>
-  );
-}
-
-const Tbd = ({ children = "Por confirmar" }: { children?: ReactNode }) => <span className="tbd">{children}</span>;
-
 const Price = ({ value }: { value: string | null }) => (value ? <>{value}</> : <Tbd />);
 
-function Hero({ eyebrow, title, children, cta }: { eyebrow?: string; title: string; children?: ReactNode; cta?: ReactNode }) {
-  return (
-    <section className="hero">
-      <div className="wrap">
-        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
-        <h1>{title}</h1>
-        {children}
-        {cta && <div className="actions">{cta}</div>}
-      </div>
-    </section>
-  );
-}
-
-const Section = ({ id, className, children }: { id?: string; className?: string; children: ReactNode }) => (
-  <section id={id} className={className}>
-    <div className="wrap">{children}</div>
-  </section>
-);
-
-const Card = ({ title, children }: { title: string; children: ReactNode }) => (
-  <div className="card">
-    <h3>{title}</h3>
-    <p>{children}</p>
-  </div>
-);
-
-function Faq({ items }: { items: [string, ReactNode][] }) {
-  return (
-    <Section className="faq">
-      <h2>Preguntas frecuentes</h2>
-      {items.map(([q, a]) => (
-        <details key={q}>
-          <summary>{q}</summary>
-          <p>{a}</p>
-        </details>
-      ))}
-    </Section>
-  );
-}
-
-const Contact = ({ children }: { children: string }) => (
-  <To className="btn" href={contactHref}>
-    {children}
-  </To>
+const both = (
+  <>
+    <Trial />
+    <Contact />
+  </>
 );
 
 const switching: [string, ReactNode] = [
@@ -86,47 +33,44 @@ function Home() {
   return (
     <>
       <Hero
-        eyebrow="Punto de venta con facturación electrónica"
-        title="Si se va el internet, su caja sigue vendiendo."
-        cta={
-          <>
-            <Contact>Quiero ver Toki</Contact>
-            <Link className="btn btn--ghost" to="/e-cf">
-              ¿Ya le toca el e-CF?
-            </Link>
-          </>
-        }
-      >
-        <p>Toki es el punto de venta para carnicerías, colmados y delis. Vende por libra, cuadra la caja, lleva el fiado y emite comprobantes fiscales electrónicos (e-CF) desde su propia tienda.</p>
-      </Hero>
-      <Section>
-        <h2>Hecho para el mostrador</h2>
-        <div className="grid grid--3">
-          <Card title="Vende sin internet">La PC principal de la tienda guarda todo y firma cada factura. Sin internet, las cajas siguen vendiendo y los e-CF se envían a la DGII cuando vuelve la conexión, dentro del plazo de 72 horas.</Card>
-          <Card title="Por libra y con balanza">Precios por libra con tres decimales y lectura de las etiquetas que imprime la balanza. El peso y el total se ven grandes en la pantalla.</Card>
-          <Card title="Caja que cuadra">Turno por caja, cuadre ciego por denominaciones y cierre Z. Las diferencias quedan con nombre, hora y quién autorizó.</Card>
-          <Card title="Fiado bajo control">Límite por cliente, antigüedad de la deuda y estado de cuenta en una página para enviarlo por WhatsApp.</Card>
-          <Card title="e-CF directo con la DGII">Consumo, crédito fiscal y notas de crédito. Toki firma en su tienda con su certificado y envía a la DGII sin intermediarios. Reportes 606, 607 y 608 para su contador.</Card>
-          <Card title="Su negocio en el celular">Ventas de hoy, lo más vendido y quién le debe, desde el celular, esté donde esté. Y un asistente al que le pregunta "¿cuánto vendí hoy?".</Card>
-        </div>
+        eyebrow="Punto de venta con e-CF"
+        title="Venda, pese y facture. Aunque se vaya el internet."
+        sub="La caja para carnicerías, colmados y delis."
+        cta={both}
+        note="Sin tarjeta · Los 14 días empiezan con su primera venta"
+        art={<ProductArt />}
+      />
+      <Section className="counter">
+        <IconTiles
+          items={[
+            ["offline", "Sin internet, sigue vendiendo"],
+            ["scale", "Pesa por libra y lee etiquetas"],
+            ["ecf", "e-CF directo con la DGII"],
+            ["register", "La caja cuadra al cerrar"],
+          ]}
+        />
       </Section>
       <Section>
-        <h2>Lo que nunca se detiene</h2>
-        <ul className="checks">
-          <li><strong>Sin cupo de e-CF:</strong> emite los comprobantes que su negocio necesite, sin cobro por documento.</li>
-          <li><strong>Nunca en solo lectura:</strong> aunque se venza la licencia, la tienda sigue vendiendo, emitiendo e-CF, exportando y respaldando.</li>
-          <li><strong>Sus datos son suyos:</strong> los exporta cuando quiera. Su certificado y sus secuencias de e-NCF también son suyos.</li>
-          <li><strong>Permisos finos:</strong> el cajero no ve costos ni ganancias; abrir y cerrar caja, cobrar fiado y anular tienen permisos separados.</li>
-        </ul>
+        <h2>Hecha para su mostrador</h2>
+        <BusinessCards />
       </Section>
+      <EcfFlow>
+        <Link className="night__link" to="/certificacion">
+          ¿Necesita certificarse? Le acompañamos →
+        </Link>
+      </EcfFlow>
       <Section>
-        <h2>Elija su negocio</h2>
-        <div className="grid grid--3">
-          <Link className="card" to="/carniceria"><h3>Carnicería</h3><p className="muted">Balanza, etiquetas de peso, encargos con abono.</p></Link>
-          <Link className="card" to="/colmado"><h3>Colmado</h3><p className="muted">Fiado, venta rápida y pedidos por WhatsApp.</p></Link>
-          <Link className="card" to="/deli"><h3>Deli</h3><p className="muted">Por libra y por unidad, encargos y cotizaciones.</p></Link>
-        </div>
+        <h2>Empiece hoy, en 3 pasos</h2>
+        <Steps
+          round
+          items={[
+            ["Descargue Toki", <>En la PC de la tienda. <Link to="/descargar">Descargar</Link></>],
+            ["Cargue sus productos", "O empiece con los de ejemplo."],
+            ["Venda", "Y vea el día desde el celular."],
+          ]}
+        />
       </Section>
+      <CtaBand />
     </>
   );
 }
@@ -134,38 +78,33 @@ function Home() {
 function Butcher() {
   return (
     <>
-      <Hero eyebrow="Carnicería" title="Cada libra cobrada, cada caja cuadrada." cta={<Contact>Quiero ver Toki en mi carnicería</Contact>}>
-        <p>En una carnicería con fila, cada segundo en la caja cuenta. Toki lee la etiqueta de la balanza, suma y cobra, y sigue facturando aunque se caiga el internet.</p>
-      </Hero>
-      <Section>
-        <h2>Lo que resuelve</h2>
-        <div className="grid grid--2">
-          <Card title="Etiquetas de peso">El cajero escanea la etiqueta que imprime la balanza (EAN-13 con el peso o el precio) y la línea entra con las libras exactas. Si la etiqueta se escanea dos veces, Toki avisa.</Card>
-          <Card title="Encargos con abono">"Guárdame 10 libras de costilla para el sábado": fecha y hora de entrega, abono que entra a la caja y, al entregar, se cobra con el peso real.</Card>
-          <Card title="Inventario por libra">Compras, mermas, conteos y mínimos por producto. El pedido sugerido calcula cuánto pedir y a qué suplidor, según su último costo.</Card>
-          <Card title="Varias cajas, una sola tienda">Todas las cajas comparten existencias y precios a través de la PC principal, con internet o sin él.</Card>
-        </div>
+      <Hero eyebrow="Carnicería" title="Cada libra cobrada, cada caja cuadrada." sub="Lee la etiqueta de la balanza, cobra y factura, aunque se caiga el internet." cta={both} art={<BusinessArt kind="butcher" />} />
+      <Section className="counter">
+        <IconTiles
+          items={[
+            ["tag", "Etiquetas de peso", "EAN-13 con peso o precio. Avisa si se escanea dos veces."],
+            ["calendar", "Encargos con abono", "Fecha de entrega, abono a la caja y cobro con el peso real."],
+            ["box", "Inventario por libra", "Compras, mermas, conteos y pedido sugerido."],
+            ["stores", "Varias cajas", "Existencias y precios compartidos, con o sin internet."],
+          ]}
+        />
       </Section>
       <Faq
         items={[
-          ["¿Qué pasa si se va el internet?", "Las cajas siguen vendiendo contra la PC principal de la tienda, que firma cada e-CF. Cuando vuelve la conexión, Toki los envía a la DGII; el plazo que da la DGII es de 72 horas."],
-          ["¿Funciona con mi balanza?", "Toki lee las etiquetas EAN-13 con peso o precio que imprimen las balanzas etiquetadoras. La conexión directa de la balanza a la caja está en desarrollo; mientras tanto, el peso también se puede escribir. Antes de instalar revisamos su modelo."],
+          ["¿Qué pasa si se va el internet?", "Las cajas siguen vendiendo contra la PC principal, que firma cada e-CF. Al volver la conexión los envía a la DGII, que da 72 horas."],
+          ["¿Funciona con mi balanza?", "Lee las etiquetas EAN-13 con peso o precio de las balanzas etiquetadoras. La conexión directa de la balanza a la caja está en desarrollo; mientras tanto, el peso se puede escribir. Antes de instalar revisamos su modelo."],
           ["¿Puedo vender con tres decimales?", "Sí. Las libras se guardan con tres decimales y el total se redondea al centavo."],
           [
             "¿Sirve para el e-CF?",
             <>
-              Sí: factura de consumo, crédito fiscal y notas de crédito, firmadas en la tienda con su certificado digital. Vea <Link to="/e-cf">¿Ya le toca el e-CF?</Link> y <Link to="/certificacion">Certifíquese con Toki</Link>.
+              Sí: consumo, crédito fiscal y notas de crédito, firmadas en la tienda con su certificado. Vea <Link to="/e-cf">¿Ya le toca el e-CF?</Link> y <Link to="/certificacion">Certifíquese con Toki</Link>.
             </>,
           ],
-          [
-            "Ya tengo otro sistema. ¿Puedo cambiarme?",
-            <>
-              Sí. Si ya emite e-CF con otro programa, no hace falta empezar de cero: vea <Link to="/certificacion#ya-emito">"Ya emito e-CF con otro programa"</Link>.
-            </>,
-          ],
-          ["¿El cajero puede ver mis costos?", "No, salvo que le des ese permiso. Costos, ganancias y valor del inventario solo los ve quien tenga permiso para verlos."],
+          switching,
+          ["¿El cajero puede ver mis costos?", "No, salvo que usted le dé ese permiso."],
         ]}
       />
+      <CtaBand />
     </>
   );
 }
@@ -173,23 +112,22 @@ function Butcher() {
 function Grocery() {
   return (
     <>
-      <Hero eyebrow="Colmado" title="El fiado claro y la caja al día." cta={<Contact>Quiero ver Toki en mi colmado</Contact>}>
-        <p>En el colmado se vende rápido, se fía a los clientes de siempre y se pide por teléfono. Toki lleva las tres cosas sin cuadernos y emite el e-CF de cada venta.</p>
-      </Hero>
-      <Section>
-        <h2>Lo que resuelve</h2>
-        <div className="grid grid--2">
-          <Card title="Venta rápida">Escáner siempre listo, teclas visibles para todo y el total grande. La venta por libra (arroz, habichuelas, queso) también.</Card>
-          <Card title="Fiado con límite">Cada cliente con su límite, sus abonos y la antigüedad de su deuda. El estado de cuenta sale en una página para mandarlo por WhatsApp.</Card>
-          <Card title="Pedidos por WhatsApp">Un catálogo público con sus productos y precios, con un código QR para pegar en el mostrador. El cliente elige y le escribe por WhatsApp. No muestra costos ni existencias.</Card>
-          <Card title="Reponer a tiempo">Mínimos y máximos por producto y un pedido sugerido con el último suplidor y su costo.</Card>
-        </div>
+      <Hero eyebrow="Colmado" title="El fiado claro y la caja al día." sub="Venta rápida, fiado sin cuaderno y el e-CF de cada venta." cta={both} art={<BusinessArt kind="grocery" />} />
+      <Section className="counter">
+        <IconTiles
+          items={[
+            ["bolt", "Venta rápida", "Escáner siempre listo y el total grande. Por libra también."],
+            ["people", "Fiado con límite", "Abonos, antigüedad y estado de cuenta para WhatsApp."],
+            ["qr", "Pedidos por WhatsApp", "Catálogo con QR para el mostrador, sin costos ni existencias."],
+            ["box", "Reponer a tiempo", "Mínimos, máximos y pedido sugerido con el último suplidor."],
+          ]}
+        />
       </Section>
       <Faq
         items={[
           ["Tengo una sola caja. ¿Necesito una PC aparte?", "No. En una tienda de una caja, la misma PC es la caja y la principal."],
-          ["¿Qué pasa si se va el internet o la luz?", "Sin internet sigue vendiendo y los e-CF se envían cuando vuelve la conexión (la DGII da 72 horas). Si la PC no puede emitir e-CF (por ejemplo, se venció el certificado), Toki lo guía para declarar la contingencia y facturar con comprobantes serie B, y luego regularizarlos."],
-          ["¿El fiado sale en el cuadre de la caja?", "Sí. Lo que se vende a crédito y lo que se cobra de fiado salen separados en el cierre de cada turno."],
+          ["¿Qué pasa si se va el internet o la luz?", "Sin internet sigue vendiendo y los e-CF salen al volver la conexión (la DGII da 72 horas). Si la PC no puede emitir e-CF (por ejemplo, se venció el certificado), Toki lo guía para declarar la contingencia, facturar con serie B y luego regularizar."],
+          ["¿El fiado sale en el cuadre de la caja?", "Sí. Lo vendido a crédito y lo cobrado de fiado salen separados en el cierre de cada turno."],
           ["¿Hay un límite de facturas al mes?", "No. Toki no cobra por documento ni detiene la facturación por volumen."],
           [
             "¿Cuándo me toca el e-CF?",
@@ -200,6 +138,7 @@ function Grocery() {
           switching,
         ]}
       />
+      <CtaBand />
     </>
   );
 }
@@ -207,27 +146,27 @@ function Grocery() {
 function Deli() {
   return (
     <>
-      <Hero eyebrow="Deli" title="Del picadero a la factura, sin enredos." cta={<Contact>Quiero ver Toki en mi deli</Contact>}>
-        <p>Quesos y embutidos por libra, panes por unidad, bandejas por encargo. Toki maneja las dos formas de vender en la misma factura y lleva los encargos con su abono.</p>
-      </Hero>
-      <Section>
-        <h2>Lo que resuelve</h2>
-        <div className="grid grid--2">
-          <Card title="Por libra y por unidad">Cada producto se vende como se vende de verdad. La factura muestra "0.750 lb" o "3 unidades", y los reportes también.</Card>
-          <Card title="Encargos y bandejas">Fecha y hora de entrega, abono como anticipo y la lista de los encargos de hoy y mañana a la vista en la caja.</Card>
-          <Card title="Cotizaciones">Una cotización con vigencia para el cliente que pide precio para un evento. Al aceptarla, se cobra como venta con los precios del día.</Card>
-          <Card title="Ventas por hora">Cuánto vende en cada hora del día comparado con la semana pasada, para saber cuándo reforzar el mostrador.</Card>
-        </div>
+      <Hero eyebrow="Deli" title="Del picadero a la factura, sin enredos." sub="Por libra y por unidad en la misma factura, y los encargos con su abono." cta={both} art={<BusinessArt kind="deli" />} />
+      <Section className="counter">
+        <IconTiles
+          items={[
+            ["scale", "Por libra y por unidad", "La factura dice \"0.750 lb\" o \"3 unidades\"."],
+            ["calendar", "Encargos y bandejas", "Entrega, abono y los encargos de hoy y mañana a la vista."],
+            ["quote", "Cotizaciones", "Con vigencia; al aceptarla se cobra con los precios del día."],
+            ["clock", "Ventas por hora", "Comparadas con la semana pasada."],
+          ]}
+        />
       </Section>
       <Faq
         items={[
-          ["¿Puedo cobrar el encargo con el peso real?", "Sí. Al cobrar, el encargo se carga a la caja, se ajusta el peso y se descuenta lo que el cliente abonó."],
-          ["¿Una cotización mueve el inventario?", "No. La cotización no toca el inventario ni la caja hasta que se convierte en venta."],
+          ["¿Puedo cobrar el encargo con el peso real?", "Sí. Se ajusta el peso y se descuenta lo que el cliente abonó."],
+          ["¿Una cotización mueve el inventario?", "No. No toca el inventario ni la caja hasta que se convierte en venta."],
           ["¿Puedo darle crédito fiscal a una empresa?", "Sí. Con el RNC del cliente, Toki emite el e-CF de crédito fiscal (tipo 31) y, si la empresa es emisora electrónica, se lo entrega directamente."],
-          ["¿Qué pasa si se va el internet?", "Sigues vendiendo. Los e-CF se firman en la tienda y se envían a la DGII cuando vuelve la conexión, dentro de las 72 horas que da la DGII."],
+          ["¿Qué pasa si se va el internet?", "Sigue vendiendo. Los e-CF se firman en la tienda y se envían al volver la conexión, dentro de las 72 horas que da la DGII."],
           switching,
         ]}
       />
+      <CtaBand />
     </>
   );
 }
@@ -235,52 +174,56 @@ function Deli() {
 function Ecf() {
   return (
     <>
-      <Hero eyebrow="Facturación electrónica" title="¿Ya le toca el e-CF?">
-        <p>La Ley 32-23 de Facturación Electrónica obliga a los contribuyentes a emitir comprobantes fiscales electrónicos (e-CF) por etapas. Para los pequeños, micro y no clasificados, la fecha publicada por la DGII es:</p>
+      <Hero eyebrow="Facturación electrónica" title="¿Ya le toca el e-CF?" sub="Pequeños, micro y no clasificados (Ley 32-23), según la DGII:">
         <p className="date">15/11/2026</p>
         <p className="muted">La DGII dio una prórroga de seis meses en mayo de 2026. Confirme su clasificación y su fecha en la Oficina Virtual de la DGII o con su contador.</p>
       </Hero>
-      <Section>
-        <h2>En tres preguntas</h2>
-        <div className="grid grid--3">
-          <Card title="¿Qué es un e-CF?">Es la factura con número e-NCF, firmada digitalmente y enviada a la DGII. Al cliente le entregas la representación impresa con un código QR para verificarla.</Card>
-          <Card title="¿Me toca a mí?">La obligación entra por grupos según la clasificación de cada contribuyente. Si es pequeño, micro o no clasificado, su fecha es el 15 de noviembre de 2026.</Card>
-          <Card title="¿Y si no cumplo?">La Ley 32-23 (artículo 27) y el Código Tributario (artículo 257) prevén sanciones. Su contador le puede decir cuáles aplican a su caso.</Card>
-        </div>
+      <Section className="counter">
+        <IconTiles
+          cols={3}
+          items={[
+            ["ecf", "¿Qué es un e-CF?", "La factura con e-NCF, firmada y enviada a la DGII. El cliente recibe una versión impresa con QR."],
+            ["calendar", "¿Me toca a mí?", "Entra por grupos. Pequeño, micro o no clasificado: 15 de noviembre de 2026."],
+            ["shield", "¿Y si no cumplo?", "La Ley 32-23 (art. 27) y el Código Tributario (art. 257) prevén sanciones. Pregunte a su contador."],
+          ]}
+        />
       </Section>
       <Section>
         <h2>Qué necesita</h2>
-        <ul className="checks">
-          <li>RNC activo y al día, y acceso a la Oficina Virtual (OFV) de la DGII.</li>
-          <li>Un <strong>certificado digital</strong> de persona física para procedimientos tributarios, a nombre de quien firma por el negocio. Lo venden las entidades autorizadas por INDOTEL (Avansi y la Cámara de Comercio y Producción de Santo Domingo con Digifirma). El precio lo fija la entidad.</li>
-          <li>Un programa de facturación electrónica <strong>certificado ante la DGII para su RNC</strong>. Ese es el proceso de <Link to="/certificacion">certificación</Link>.</li>
-          <li>Las secuencias de e-NCF que autoriza la DGII en la OFV.</li>
-        </ul>
-        <p className="muted">La DGII no cobra por certificarte ni por cada documento enviado.</p>
+        <IconTiles
+          items={[
+            ["key", "RNC y Oficina Virtual", "RNC activo y al día, con acceso a la OFV."],
+            ["lock", "Certificado digital", "De persona física, de Avansi o la Cámara de Comercio y Producción de Santo Domingo (Digifirma), autorizadas por INDOTEL. Precio de la entidad."],
+            ["pc", "Programa certificado", <>Certificado ante la DGII para su RNC: la <Link to="/certificacion">certificación</Link>.</>],
+            ["tag", "Secuencias e-NCF", "Las autoriza la DGII en la OFV."],
+          ]}
+        />
+        <p className="muted">La DGII no cobra por certificarle ni por cada documento enviado.</p>
       </Section>
+      <EcfFlow />
       <Section>
-        <h2>Cómo factura Toki, con internet o sin él</h2>
+        <h2>Con internet o sin él</h2>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Situación</th><th>Qué hace Toki</th><th>Plazo de la DGII</th></tr></thead>
             <tbody>
-              <tr><td>Hay internet</td><td>Firma el e-CF en su tienda y lo envía a la DGII al momento.</td><td>—</td></tr>
-              <tr><td>Se fue el internet</td><td>Sigue firmando y entregando la factura con la leyenda de contingencia; envía todo cuando vuelve la conexión.</td><td>72 horas desde la emisión</td></tr>
-              <tr><td>No se puede emitir e-CF (certificado vencido, PC dañada)</td><td>Lo guía para declarar la contingencia en la OFV y facturar con comprobantes serie B, y luego emite los e-CF que los reemplazan.</td><td>Hasta 15 días de contingencia; 30 días para regularizar</td></tr>
+              <tr><td>Hay internet</td><td>Firma en su tienda y envía al momento.</td><td>—</td></tr>
+              <tr><td>Se fue el internet</td><td>Sigue firmando con la leyenda de contingencia; envía al volver la conexión.</td><td>72 horas desde la emisión</td></tr>
+              <tr><td>No se puede emitir e-CF (certificado vencido, PC dañada)</td><td>Lo guía para declarar la contingencia en la OFV, facturar con serie B y luego emitir los e-CF que los reemplazan.</td><td>Hasta 15 días de contingencia; 30 días para regularizar</td></tr>
               <tr><td>La DGII no responde</td><td>Guarda los e-CF y los envía cuando vuelve el servicio.</td><td>Si pasa de 15 días hábiles, la OFV habilita otra forma de reportar</td></tr>
             </tbody>
           </table>
         </div>
-        <p>La factura de consumo de menos de RD$250,000 se reporta con un resumen firmado; Toki guarda el e-CF completo, como pide la DGII, durante 10 años.</p>
+        <p className="muted">La factura de consumo de menos de RD$250,000 se reporta con un resumen firmado; Toki guarda el e-CF completo 10 años, como pide la DGII.</p>
       </Section>
       <Faq
         items={[
-          ["¿Hay una opción gratis de la DGII?", "Sí. La DGII tiene un Facturador Gratuito, pensado para negocios con poco volumen. Sirve para emitir e-CF, pero no es un punto de venta con caja, inventario ni balanza."],
+          ["¿Hay una opción gratis de la DGII?", "Sí, el Facturador Gratuito, para negocios con poco volumen. Emite e-CF, pero no es un punto de venta con caja, inventario ni balanza."],
           ["¿Puedo usar el certificado que regala la DGII?", "No con Toki. Ese certificado solo sirve para el Facturador Gratuito de la DGII."],
           [
             "¿Cuánto tarda la certificación?",
             <>
-              Depende en buena parte de la DGII, que responde cada solicitud. La parte técnica (set de pruebas y simulación) la hace Toki. Vea <Link to="/certificacion">Certifíquese con Toki</Link>.
+              Depende en buena parte de la DGII. La parte técnica (set de pruebas y simulación) la hace Toki. Vea <Link to="/certificacion">Certifíquese con Toki</Link>.
             </>,
           ],
           ["¿Por cuánto tiempo hay que guardar los e-CF?", "Diez años. Toki los guarda en la tienda y una copia en la nube."],
@@ -291,7 +234,7 @@ function Ecf() {
           <p>Esta guía resume lo publicado por la DGII y no es asesoría legal. Las normas que mandan son la Ley 32-23, el Decreto 587-24 y las normas generales de la DGII. Ante cualquier duda, consulte a su contador o a la DGII.</p>
         </div>
         <div className="actions">
-          <Contact>Quiero facturar con Toki</Contact>
+          <Contact className="btn">Quiero facturar con Toki</Contact>
           <a className="btn btn--ghost" href="https://dgii.gov.do/" rel="noopener">
             Ir a la DGII
           </a>
@@ -300,13 +243,6 @@ function Ecf() {
     </>
   );
 }
-
-const Step = ({ title, children }: { title: string; children: ReactNode }) => (
-  <li>
-    <h3>{title}</h3>
-    <p>{children}</p>
-  </li>
-);
 
 /** TK-235: what the owner prepares (docs/servicio-certificacion.md §5); the session-1 e-mail sends the same list (AccompanimentChecklist). */
 export const preparation = [
@@ -322,36 +258,38 @@ export const preparation = [
 function Certification() {
   return (
     <>
-      <Hero eyebrow="Certificación e-CF" title="Certifíquese con Toki." cta={<Contact>Quiero certificarme</Contact>}>
-        <p>
-          Para emitir e-CF, la DGII certifica su RNC con el programa que va a usar. Toki hace la parte técnica: arma, firma y envía las pruebas. Usted hace los pasos que piden su clave de la Oficina Virtual. <strong>Toki nunca le pide esa clave.</strong>
+      <Hero eyebrow="Certificación e-CF" title="Certifíquese con Toki." sub="Toki arma, firma y envía las pruebas. Usted hace los pasos con su clave de la Oficina Virtual." cta={<Contact className="btn">Quiero certificarme</Contact>}>
+        <p className="hero__key">
+          <strong>Toki nunca le pide esa clave.</strong>
         </p>
       </Hero>
       <Section id="preparacion">
         <h2>Antes de empezar</h2>
-        <p>Tenga esto listo antes de la primera cita (con acompañamiento, se lo enviamos también en el correo que la confirma):</p>
+        <p className="muted">Con acompañamiento, se lo enviamos también en el correo que confirma la primera cita.</p>
         <ul className="checks">
           <li>
-            Toki instalado en la PC principal de tu tienda. <Link to="/descargar">Descargar Toki</Link>
+            Toki instalado en la PC principal de su tienda. <Link to="/descargar">Descargar Toki</Link>
           </li>
           {preparation.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
       </Section>
-      <Section>
+      <Section className="counter">
         <h2>Las etapas</h2>
-        <ol className="steps">
-          <Step title="Solicitud">Envías el formulario FI-GDF-016 desde la OFV. La DGII responde por el buzón con el acceso al portal de certificación.</Step>
-          <Step title="Pruebas libres">Toki emite facturas de prueba de cada tipo en el ambiente de pruebas de la DGII, para llegar a la certificación sin sorpresas.</Step>
-          <Step title="Postulación">Registra el programa y las direcciones de su negocio en el portal. Toki se las muestra y firma el archivo que pide la DGII.</Step>
-          <Step title="Set de pruebas">Descarga el Excel de la DGII y lo sube a Toki. Toki arma cada comprobante, lo firma, lo envía y sigue cada respuesta.</Step>
-          <Step title="Simulación">Vendes en la caja como un día normal, en el ambiente de certificación. Toki envía cada comprobante y prepara lo que se sube al portal.</Step>
-          <Step title="Comunicación">La DGII envía comprobantes a su negocio y espera el acuse de recibo. Lo responde la nube de Toki, las 24 horas.</Step>
-          <Step title="Declaración jurada">La descarga, Toki la firma con su certificado y usted la sube. La acepta usted: es su declaración.</Step>
-          <Step title="Producción">La DGII verifica su RNC y lo habilita. Pide sus secuencias de e-NCF en la OFV, las carga en Toki y empieza a facturar.</Step>
-        </ol>
-        <p className="muted">Los tiempos de respuesta entre una etapa y otra los pone la DGII.</p>
+        <Steps
+          items={[
+            ["Solicitud", "Usted envía el formulario FI-GDF-016 desde la OFV."],
+            ["Pruebas libres", "Toki emite facturas de prueba de cada tipo."],
+            ["Postulación", "Registra el programa y sus direcciones; Toki firma el archivo."],
+            ["Set de pruebas", "Sube el Excel de la DGII; Toki arma, firma y envía cada comprobante."],
+            ["Simulación", "Vende como un día normal, en el ambiente de certificación."],
+            ["Comunicación", "La nube de Toki responde los acuses, las 24 horas."],
+            ["Declaración jurada", "Toki la firma con su certificado; la acepta y la sube usted."],
+            ["Producción", "La DGII lo habilita; carga sus secuencias e-NCF y factura."],
+          ]}
+        />
+        <p className="muted">Los tiempos entre una etapa y otra los pone la DGII.</p>
       </Section>
       <Section>
         <h2>Quién hace qué</h2>
@@ -371,19 +309,21 @@ function Certification() {
             </tbody>
           </table>
         </div>
-        <p className="muted">El certificado digital no está incluido: lo compras directamente a la entidad certificadora.</p>
+        <p className="muted">El certificado digital no está incluido: se compra directamente a la entidad certificadora.</p>
       </Section>
-      <Section id="ya-emito">
+      <Section id="ya-emito" className="counter">
         <h2>Ya emito e-CF con otro programa</h2>
         <p>
-          Si su RNC ya es emisor electrónico, no debería tener que repetir la certificación: cambia el programa que firma, envía y recibe. <Tbd>Por confirmar con la DGII</Tbd>
+          Si su RNC ya es emisor electrónico, no debería repetir la certificación: solo cambia el programa. <Tbd>Por confirmar con la DGII</Tbd>
         </p>
-        <ol className="steps">
-          <Step title="Su certificado">Importa en Toki el mismo archivo .p12 que usaba, si sigue vigente.</Step>
-          <Step title="Las direcciones de su negocio">En la OFV, en "Mantenimiento Directorio FE", cambia las direcciones del otro programa por las de Toki. Cópielas completas: el error más común es escribir solo el dominio.</Step>
-          <Step title="Los números que quedan">Escribes en Toki el último e-NCF que emitió el otro programa y Toki sigue desde el siguiente. Si la DGII pide anular los números sobrantes y usar una secuencia nueva, Toki los anula.</Step>
-          <Step title="El cambio">Dejas de facturar con el otro programa (dos programas con la misma secuencia repiten números), pasas Toki a producción y revisas que la DGII acepte la primera venta.</Step>
-        </ol>
+        <Steps
+          items={[
+            ["Su certificado", "Importe en Toki el mismo .p12, si sigue vigente."],
+            ["Las direcciones", "En la OFV, \"Mantenimiento Directorio FE\": ponga las de Toki completas, no solo el dominio."],
+            ["Los números que quedan", "Escriba el último e-NCF emitido; Toki sigue desde el siguiente (o anula los sobrantes si la DGII lo pide)."],
+            ["El cambio", "Deje el otro programa (la misma secuencia repetiría números), pase a producción y revise la primera venta."],
+          ]}
+        />
       </Section>
     </>
   );
@@ -394,7 +334,8 @@ function Download() {
     <>
       <Hero
         eyebrow="Descargar"
-        title="Instala Toki en tu tienda."
+        title="Instale Toki en su tienda."
+        sub="Un instalador para todas las PC. La prueba de 14 días empieza con su primera venta."
         cta={
           site.installerUrl ? (
             <a className="btn" href={site.installerUrl}>
@@ -404,37 +345,46 @@ function Download() {
             <Tbd>[URL DEL INSTALADOR]</Tbd>
           )
         }
-      >
-        <p>Un solo instalador para todas las PC de la tienda. Al abrirlo eliges qué es esa PC. La prueba de 14 días empieza con tu primera venta, sin pedir código.</p>
-      </Hero>
-      <Section>
-        <h2>Elige el papel de cada PC</h2>
-        <div className="grid grid--2">
-          <Card title="PC principal">
-            La que guarda las ventas y atiende a las demás cajas. Instala el servidor de Toki, la base de datos (SQL Server Express, si no la tiene) y la app de caja. Instálala primero.
-          </Card>
-          <Card title="Caja">Cada PC de cobro adicional. Instala solo la app de caja y se une a la PC principal con un código que ves en Configuración → Equipos.</Card>
+        note="Sin código ni tarjeta"
+      />
+      <Section className="counter">
+        <h2>Elija el papel de cada PC</h2>
+        <div className="tiles tiles--2">
+          <div className="tile">
+            <Icon name="pc" />
+            <h3>PC principal</h3>
+            <p>Guarda las ventas y atiende a las cajas: servidor, base de datos (SQL Server Express si no la tiene) y caja. Instálela primero.</p>
+          </div>
+          <div className="tile">
+            <Icon name="register" />
+            <h3>Caja</h3>
+            <p>Cada PC de cobro adicional: solo la app de caja, unida con el código de Configuración → Equipos.</p>
+          </div>
         </div>
       </Section>
       <Section>
         <h2>Requisitos</h2>
-        <ul className="checks">
-          <li>Windows 10 u 11 de 64 bits.</li>
-          <li>PC principal: 8 GB de RAM y 10 GB libres en disco. Caja: 4 GB de RAM y 2 GB libres.</li>
-          <li>Internet durante la instalación: el instalador baja de Microsoft lo que falte (SQL Server Express y WebView2).</li>
-          <li>Todas las PC en la misma red de la tienda.</li>
-        </ul>
+        <IconTiles
+          items={[
+            ["pc", "Windows 10 u 11", "De 64 bits."],
+            ["data", "Memoria y disco", "Principal: 8 GB de RAM y 10 GB libres. Caja: 4 GB y 2 GB."],
+            ["download", "Internet al instalar", "Baja de Microsoft lo que falte (SQL Server Express y WebView2)."],
+            ["stores", "Misma red", "Todas las PC en la red de la tienda."],
+          ]}
+        />
       </Section>
-      <Section>
+      <Section className="counter">
         <h2>Pasos</h2>
-        <ol className="steps">
-          <Step title="Descarga">Baja el instalador en la PC principal y ábrelo. Windows pide permiso de administrador una sola vez.</Step>
-          <Step title="En la PC principal">Elige "PC principal". Al terminar se abre Toki en "Primera instalación": escribe los datos de tu negocio y crea tu usuario.</Step>
-          <Step title="En cada caja">En cada caja abre el mismo instalador, elige "Caja" y une la PC con el código de Configuración → Equipos.</Step>
-          <Step title="Actualizaciones">Toki se actualiza solo: la caja al volver a abrirse y el servidor cuando no hay turnos abiertos o fuera del horario.</Step>
-        </ol>
+        <Steps
+          items={[
+            ["Descargue", "Abra el instalador en la PC principal; Windows pide permiso una vez."],
+            ["En la PC principal", "Elija \"PC principal\" y complete \"Primera instalación\" con su negocio y su usuario."],
+            ["En cada caja", "Mismo instalador, elija \"Caja\" y únala con el código de Configuración → Equipos."],
+            ["Actualizaciones", "Solas: la caja al abrir, el servidor sin turnos abiertos o fuera de horario."],
+          ]}
+        />
         <p className="muted">
-          ¿Quieres que lo instalemos por ti? <Contact>Hablemos</Contact> · ¿Te vas a certificar para el e-CF? Mira <Link to="/certificacion">Certifícate con Toki</Link>.
+          ¿Quiere que lo instalemos por usted? <Contact className="">Hablemos</Contact> · ¿Se va a certificar para el e-CF? Vea <Link to="/certificacion">Certifíquese con Toki</Link>.
         </p>
       </Section>
     </>
@@ -456,40 +406,41 @@ function Pricing() {
   const { prices } = site;
   return (
     <>
-      <Hero eyebrow="Precios" title="Paga por el tamaño de su tienda, no por factura.">
-        <p>Tres planes según cuántas cajas y sucursales tiene. Lo esencial para vender y facturar está en todos.</p>
+      <Hero eyebrow="Precios" title="Pague por el tamaño de su tienda, no por factura." sub="Tres planes según cajas y sucursales. Lo esencial, en todos.">
         <p className="note">Estamos cerrando los precios. Los publicamos aquí en cuanto estén aprobados; mientras tanto, escríbanos y le damos una cotización.</p>
       </Hero>
       <Section>
         <h2>Planes</h2>
         <div className="grid grid--3">
-          <Plan name="Una caja" note="Para el colmado o la tienda con un solo punto de cobro." price={prices.oneRegister}>
+          <Plan name="Una caja" note="Colmado o tienda con un punto de cobro." price={prices.oneRegister}>
             <li>1 caja</li>
             <li>1 sucursal</li>
           </Plan>
-          <Plan name="Varias cajas" note="Para la carnicería o el deli con fila y más de una caja." price={prices.severalRegisters} brand>
+          <Plan name="Varias cajas" note="Carnicería o deli con fila." price={prices.severalRegisters} brand>
             <li>Varias cajas <Tbd>Cantidad por confirmar</Tbd></li>
             <li>1 sucursal</li>
           </Plan>
-          <Plan name="Varias sucursales" note="Para el negocio con más de un local." price={prices.severalStores}>
+          <Plan name="Varias sucursales" note="Más de un local." price={prices.severalStores}>
             <li>Cajas por sucursal <Tbd>Cantidad por confirmar</Tbd></li>
             <li>Varias sucursales</li>
           </Plan>
         </div>
-        <p className="muted">Entre un plan y otro cambian las cajas, las sucursales y el acceso desde el celular del dueño.</p>
+        <p className="muted">Entre planes cambian las cajas, las sucursales y el acceso desde el celular del dueño.</p>
       </Section>
-      <Section>
+      <Section className="counter">
         <h2>En todos los planes</h2>
-        <ul className="checks">
-          <li>Venta por libra y por unidad, con escáner, etiquetas de balanza, impresora y gaveta, con internet o sin él.</li>
-          <li>e-CF de consumo, crédito fiscal y notas de crédito, <strong>sin cupo y sin cobro por documento</strong>.</li>
-          <li>Inventario completo: compras, mermas, conteos, mínimos y pedido sugerido.</li>
-          <li>Turnos con cuadre ciego y cierre Z; autorización de supervisor con PIN.</li>
-          <li>Clientes y fiado con límite y estado de cuenta.</li>
-          <li>Reportes 606, 607 y 608 para su contador.</li>
-          <li>Usuarios, roles, permisos por acción y registro de auditoría.</li>
-          <li>Respaldo y exportación completa de sus datos cuando quiera.</li>
-        </ul>
+        <IconTiles
+          items={[
+            ["scale", "Venta por libra y unidad", "Escáner, balanza, impresora y gaveta, con o sin internet."],
+            ["ecf", "e-CF sin cupo", "Consumo, crédito fiscal y notas de crédito, sin cobro por documento."],
+            ["box", "Inventario completo", "Compras, mermas, conteos, mínimos y pedido sugerido."],
+            ["register", "Cuadre ciego y cierre Z", "Autorización de supervisor con PIN."],
+            ["people", "Clientes y fiado", "Con límite y estado de cuenta."],
+            ["quote", "606, 607 y 608", "Para su contador."],
+            ["lock", "Permisos por acción", "Usuarios, roles y registro de auditoría."],
+            ["data", "Sus datos", "Respaldo y exportación completa cuando quiera."],
+          ]}
+        />
       </Section>
       <Section>
         <h2>Pagos únicos</h2>
@@ -509,18 +460,24 @@ function Pricing() {
         </div>
         <p className="muted">El certificado digital para el e-CF se compra directamente a la entidad certificadora; no lo vende Toki.</p>
       </Section>
-      <Section>
+      <Section className="counter">
         <h2>Reglas que no cambian</h2>
-        <ul className="checks">
-          <li><strong>La venta nunca se detiene:</strong> ni por volumen de facturas ni por un pago atrasado.</li>
-          <li><strong>Nunca en solo lectura:</strong> si la licencia vence, la tienda sigue vendiendo, emitiendo e-CF, exportando y respaldando; solo se apagan funciones adicionales.</li>
-          <li><strong>Sus datos, su certificado y sus secuencias son suyos</strong>, también si se va.</li>
-        </ul>
+        <IconTiles
+          cols={3}
+          items={[
+            ["bolt", "La venta nunca se detiene", "Ni por volumen de facturas ni por un pago atrasado."],
+            ["shield", "Nunca en solo lectura", "Si la licencia vence, sigue vendiendo, emitiendo e-CF, exportando y respaldando; solo se apagan funciones adicionales."],
+            ["key", "Todo es suyo", "Sus datos, su certificado y sus secuencias, también si se va."],
+          ]}
+        />
       </Section>
       <Section id="contacto">
         <h2>Hablemos</h2>
-        <p>Cuéntenos qué vende y cuántas cajas tiene, y le preparamos una propuesta.</p>
-        <p>{site.whatsapp ? <Contact>Escríbanos por WhatsApp</Contact> : <Tbd>Canal de contacto por confirmar</Tbd>}</p>
+        <p>Díganos qué vende y cuántas cajas tiene, y le preparamos una propuesta.</p>
+        <div className="actions">
+          <Trial />
+          {site.whatsapp ? <Contact className="btn btn--ghost">Escríbanos por WhatsApp</Contact> : <Tbd>Canal de contacto por confirmar</Tbd>}
+        </div>
       </Section>
     </>
   );
@@ -536,24 +493,23 @@ const News = ({ title, children }: { title: string; children: ReactNode }) => (
 function WhatsNew() {
   return (
     <>
-      <Hero eyebrow="Novedades" title="Lo nuevo en Toki">
-        <p>Lo que cambió, en pocas palabras. Lo más reciente va primero.</p>
-      </Hero>
+      <Hero eyebrow="Novedades" title="Lo nuevo en Toki" sub="Lo más reciente va primero." />
       <Section>
         <h2>Octubre de 2026</h2>
         <ul className="log">
-          <News title="Facturación electrónica directa con la DGII">Toki firma en la tienda y envía a la DGII sin intermediarios. Si la DGII rechaza un comprobante, se reemplaza con uno nuevo con los mismos datos. Los números que sobran se anulan desde la pantalla. Cada e-CF se guarda 10 años en la nube.</News>
-          <News title="Asistente de certificación y cambio desde otro programa">Los pasos de la certificación con la DGII en una lista, el set de pruebas que se sube y se envía solo, y un camino para quien ya emite e-CF con otro programa.</News>
-          <News title="Contingencia sin internet o sin certificado">Sin internet, los e-CF esperan y salen solos dentro de las 72 horas. Si no se puede firmar, Toki guía la contingencia con comprobantes serie B y su regularización.</News>
-          <News title="Comprobantes de sus suplidores">La nube recibe los e-CF que le envían sus suplidores, los acusa las 24 horas y los muestra en Compras. Las facturas de crédito fiscal que emite llegan solas al comprador que es emisor electrónico.</News>
-          <News title="Encargos y cotizaciones">Encargos con fecha, hora y abono, que se cobran con el peso real. Cotizaciones con vigencia que se convierten en venta.</News>
-          <News title="Catálogo con QR y pedido por WhatsApp">Una página pública con sus productos y precios, sin costos ni existencias, y un QR para el mostrador.</News>
-          <News title="Pedido sugerido">Mínimos y máximos por producto; Toki calcula cuánto pedir, a qué suplidor y crea la compra en borrador.</News>
-          <News title="Permisos más finos">Abrir caja, cerrar caja, cobrar fiado, ver costos y pagar a suplidores son permisos separados. Roles de partida para cajero, inventario y contador. Nadie puede dar un permiso que no tiene.</News>
-          <News title="Reportes y documentos">Reporte 608 de comprobantes anulados, ventas por medio de pago y por hora, y el cierre Z y el estado de cuenta del fiado en una página para guardar como PDF.</News>
-          <News title="Panel del dueño">Quién le debe, por nombre; lo más vendido en libras o unidades; más de una persona con acceso (dueño o solo lectura) por invitación; modo oscuro.</News>
+          <News title="Facturación electrónica directa con la DGII">Firma en la tienda y envía sin intermediarios. Un rechazo se reemplaza con un e-CF nuevo; los números sobrantes se anulan desde la pantalla. Cada e-CF se guarda 10 años en la nube.</News>
+          <News title="Asistente de certificación y cambio desde otro programa">Las etapas en una lista, el set de pruebas que se envía solo y un camino para quien ya emite e-CF.</News>
+          <News title="Contingencia sin internet o sin certificado">Sin internet, los e-CF salen solos dentro de las 72 horas. Si no se puede firmar, Toki guía la contingencia con serie B y su regularización.</News>
+          <News title="Comprobantes de sus suplidores">La nube recibe y acusa los e-CF de sus suplidores las 24 horas y los muestra en Compras. Su crédito fiscal llega solo al comprador emisor electrónico.</News>
+          <News title="Encargos y cotizaciones">Encargos con fecha, hora y abono, cobrados con el peso real. Cotizaciones con vigencia que se convierten en venta.</News>
+          <News title="Catálogo con QR y pedido por WhatsApp">Sus productos y precios en una página pública, sin costos ni existencias, con un QR para el mostrador.</News>
+          <News title="Pedido sugerido">Mínimos y máximos; Toki calcula cuánto pedir, a qué suplidor y crea la compra en borrador.</News>
+          <News title="Permisos más finos">Abrir caja, cerrar caja, cobrar fiado, ver costos y pagar a suplidores son permisos separados. Nadie da un permiso que no tiene.</News>
+          <News title="Reportes y documentos">Reporte 608, ventas por medio de pago y por hora, y el cierre Z y el estado de cuenta del fiado en una página para PDF.</News>
+          <News title="Panel del dueño">Quién le debe, lo más vendido, más de una persona con acceso por invitación y modo oscuro.</News>
         </ul>
       </Section>
+      <CtaBand />
     </>
   );
 }
@@ -607,7 +563,7 @@ export const sitePages: SitePage[] = [
   },
   {
     path: "/e-cf",
-    nav: "¿Ya le toca el e-CF?",
+    nav: "e-CF",
     title: "¿Ya le toca el e-CF? · Plazo del 15 de noviembre de 2026",
     description: "Guía corta sobre la facturación electrónica (e-CF) en República Dominicana: a quién le toca el 15 de noviembre de 2026, qué necesita y cómo Toki factura sin internet.",
     element: <Ecf />,

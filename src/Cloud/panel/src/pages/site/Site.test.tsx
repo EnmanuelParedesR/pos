@@ -87,3 +87,32 @@ it("TK-235: /certificacion lists everything the owner prepares before the first 
   expect(list.textContent).toContain(".p12 o .pfx");
   expect(list.textContent).toContain("Toki nunca le pide esa clave");
 });
+
+it("TK-245: the home page shows the product: deadline banner, trial and contact calls to action, decorative art and the price placeholder", () => {
+  renderAt("/");
+  expect(screen.getByRole("heading", { level: 1, name: "Venda, pese y facture. Aunque se vaya el internet." })).toBeTruthy();
+  expect(screen.getByRole("link", { name: /15 de noviembre de 2026/ }).getAttribute("href")).toBe("/e-cf");
+  const trials = screen.getAllByRole("link", { name: "Probar 14 días gratis" });
+  expect(trials.length).toBe(3); // header, hero, price band
+  for (const trial of trials) expect(trial.getAttribute("href")).toBe("/descargar");
+  expect(screen.getByRole("link", { name: "Hablemos" }).getAttribute("href")).toBe("/precios#contacto"); // no WhatsApp number yet
+  expect(document.querySelector(".art__stage")!.getAttribute("aria-hidden")).toBe("true");
+  expect(screen.getByText(/cifras son ilustrativas/)).toBeTruthy();
+  expect(screen.getByText("Precio por confirmar")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "¿Necesita certificarse? Le acompañamos →" }).getAttribute("href")).toBe("/certificacion");
+  for (const [name, href] of [["Carnicería", "/carniceria"], ["Colmado", "/colmado"], ["Deli", "/deli"]])
+    expect(screen.getAllByRole("link", { name: new RegExp(`^${name}`) }).some((a) => a.getAttribute("href") === href)).toBe(true);
+});
+
+it.each(["/carniceria", "/colmado", "/deli"])("TK-245: %s keeps both calls to action", (path) => {
+  renderAt(path);
+  expect(screen.getAllByRole("link", { name: "Probar 14 días gratis" }).length).toBeGreaterThan(1);
+  expect(screen.getByRole("link", { name: "Hablemos" })).toBeTruthy();
+});
+
+it("TK-245: /e-cf keeps the date, the extension note and the legal disclaimer", () => {
+  renderAt("/e-cf");
+  expect(screen.getByText("15/11/2026")).toBeTruthy();
+  expect(screen.getByText(/prórroga de seis meses/)).toBeTruthy();
+  expect(screen.getByText(/no es asesoría legal/)).toBeTruthy();
+});
