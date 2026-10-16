@@ -194,7 +194,7 @@
 @code {
     private sealed class LineForm
     {
-        public Guid ProductId; public string Name = "", Unit = "Unit"; public string? Quantity, Cost, Error; public ItbisRate Rate = ItbisRate.General18;
+        public Guid ProductId; public Guid? PresentationId; public string Name = "", Unit = "Unit"; public string? Quantity, Cost, Error; public ItbisRate Rate = ItbisRate.General18;
         public decimal Subtotal => Math.Round((Format.ParseNumber(Quantity) ?? 0) * (Format.ParseNumber(Cost) ?? 0), 2, MidpointRounding.AwayFromZero);
         public decimal Itbis => Math.Round(Subtotal * (Rate switch { ItbisRate.General18 => 0.18m, ItbisRate.Reduced16 => 0.16m, _ => 0m }), 2, MidpointRounding.AwayFromZero);
     }
@@ -262,7 +262,7 @@
             Warehouse = (d.WarehouseId ?? _warehouses.Find(w => w.IsMain)?.Id)?.ToString(), Notes = d.Notes,
             // A draft from the DGII Excel (TK-223) has the invoice total and no products yet.
             InvoiceTotal = d.Lines.Length == 0 && d.Total > 0 ? AdminNames.Number(d.Total) : null,
-            Lines = [.. d.Lines.Select(l => new LineForm { ProductId = l.ProductId, Name = l.Description, Quantity = AdminNames.Number(l.Quantity), Cost = AdminNames.Number(l.UnitCost), Rate = l.ItbisRate })],
+            Lines = [.. d.Lines.Select(l => new LineForm { ProductId = l.ProductId, PresentationId = l.PresentationId, Name = l.Description, Quantity = AdminNames.Number(l.Quantity), Cost = AdminNames.Number(l.UnitCost), Rate = l.ItbisRate })],
         };
     }
 
@@ -329,7 +329,7 @@
         if (_errors.Count > 0 || f.Lines.Any(l => l.Error is not null)) return;
 
         var body = new SavePurchase(f.SupplierId!.Value, (f.Ncf ?? "").Trim().ToUpperInvariant(), f.Date, f.Terms,
-            [.. f.Lines.Select(l => new PurchaseLineInput(l.ProductId, null, Format.ParseNumber(l.Quantity)!.Value, Format.ParseNumber(l.Cost)!.Value, l.Rate))],
+            [.. f.Lines.Select(l => new PurchaseLineInput(l.ProductId, l.PresentationId, Format.ParseNumber(l.Quantity)!.Value, Format.ParseNumber(l.Cost)!.Value, l.Rate))],
             Guid.TryParse(f.Warehouse, out var w) ? w : null, days, string.IsNullOrWhiteSpace(f.Notes) ? null : f.Notes.Trim(), null, invoiceTotal,
             f.Saved ? null : f.Id, f.Terms == PaymentTerms.Cash ? f.Method : null);
         _sending = true;

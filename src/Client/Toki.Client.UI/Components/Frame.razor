@@ -114,6 +114,7 @@
     private async Task CheckAsync()
     {
         await Api.GetAsync<Empty>("/health");
+        if (Session.IsOpen) await Peripherals.ReportAsync(Api); // TK-190: at sign-in and after the scale or printer change
         // The e-CF send queue, only for whoever may manage it (the endpoint needs fiscal.manage); hidden for everyone else.
         _queue = Session.Can("fiscal.manage") && !IsBackOffice ? (await Api.GetAsync<FiscalQueue>("/api/fiscal/queue")).Value ?? _queue : null;
         _contingency = Session.IsOpen && !IsBackOffice ? (await Api.GetAsync<EcfContingencyStatus>("/api/fiscal/contingency")).Value ?? _contingency : null;

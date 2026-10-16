@@ -85,7 +85,7 @@ internal static class SavePurchase
                 if (!products.TryGetValue((l.ProductId, l.PresentationId), out var p)) return PurchasingErrors.ProductNotFound;
                 lines.Add(new PurchaseLine
                 {
-                    Id = Guid.CreateVersion7(), PurchaseId = purchase.Id, LineNumber = i + 1, ProductId = p.ProductId, Description = p.Name, Quantity = l.Quantity,
+                    Id = Guid.CreateVersion7(), PurchaseId = purchase.Id, LineNumber = i + 1, ProductId = p.ProductId, PresentationId = p.PresentationId, Description = p.Name, Quantity = l.Quantity,
                     Factor = p.Factor, UnitCost = l.UnitCost, ItbisRate = l.ItbisRate ?? p.ItbisRate,
                 });
             }

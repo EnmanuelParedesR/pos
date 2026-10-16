@@ -66,6 +66,44 @@ public sealed class SuggestedOrderTests(TokiApp app) : IClassFixture<TokiApp>
         (await c.StockAsync(ribs)).ShouldBe(50.5m);
         (await c.GetFromJsonAsync<JsonElement>("/api/purchasing/suggested-order")).EnumerateArray()
             .SelectMany(g => g.GetProperty("lines").EnumerateArray()).ShouldNotContain(l => l.GetProperty("productId").GetGuid() == ribs);
+
+        // Bought by the box: ordered by the box. 1 box of 12 in stock, maximum 40: 28 missing → 3 boxes (36 units) at the box's last cost.
+        var beer = await ProductAsync(c, cat, "Cerveza", "Unit", minimum: 20, maximum: 40);
+        var box = (await (await c.PostAsJsonAsync($"/api/inventory/products/{beer}/presentations", new { Name = "Caja 12", Factor = 12m, Price = 1300m })).Json())
+            .GetProperty("id").GetGuid();
+        var bought = await c.PostAsJsonAsync("/api/purchasing/purchases", new
+        {
+            SupplierId = agro, Ncf = "B0100000888", InvoiceDate = Today(), Terms = "Cash",
+            Lines = new[] { new { ProductId = beer, PresentationId = box, Quantity = 1m, UnitCost = 600m, ItbisRate = "Exempt" } },
+        });
+        bought.StatusCode.ShouldBe(HttpStatusCode.Created, await bought.Content.ReadAsStringAsync());
+        (await c.PostAsync($"/api/purchasing/purchases/{(await bought.Json()).GetProperty("id").GetGuid()}/post", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+
+        var agroNow = (await c.GetFromJsonAsync<JsonElement>("/api/purchasing/suggested-order")).EnumerateArray().First(g => g.GetProperty("supplierId").GetGuid() == agro);
+        var beerLine = agroNow.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("productId").GetGuid() == beer);
+        (beerLine.GetProperty("presentationId").GetGuid(), beerLine.GetProperty("presentation").GetString(), beerLine.GetProperty("factor").GetDecimal())
+            .ShouldBe((box, "Caja 12", 12m));
+        (beerLine.GetProperty("quantity").GetDecimal(), beerLine.GetProperty("suggested").GetDecimal(), beerLine.GetProperty("lastCost").GetDecimal())
+            .ShouldBe((3m, 36m, 600m));
+        agroNow.GetProperty("subtotal").GetDecimal().ShouldBe(6 * 30m + 3 * 600m);
+
+        // The draft keeps the box: reopened and received, it adds 36 units, not 3.
+        var order = await c.PostAsJsonAsync("/api/purchasing/purchases", new
+        {
+            Id = Guid.CreateVersion7(), SupplierId = agro, Ncf = "", InvoiceDate = Today(), Terms = "Credit", Notes = "Pedido sugerido",
+            Lines = new[] { new { ProductId = beer, PresentationId = (Guid?)box, Quantity = 3m, UnitCost = 600m } },
+        });
+        order.StatusCode.ShouldBe(HttpStatusCode.Created, await order.Content.ReadAsStringAsync());
+        var orderId = (await order.Json()).GetProperty("id").GetGuid();
+        var line = (await c.GetFromJsonAsync<JsonElement>($"/api/purchasing/purchases/{orderId}")).GetProperty("lines")[0];
+        (line.GetProperty("presentationId").GetGuid(), line.GetProperty("quantity").GetDecimal(), line.GetProperty("factor").GetDecimal()).ShouldBe((box, 3m, 12m));
+        (await c.PutAsJsonAsync($"/api/purchasing/purchases/{orderId}", new
+        {
+            SupplierId = agro, Ncf = "B0100000889", InvoiceDate = Today(), Terms = "Credit",
+            Lines = new[] { new { ProductId = beer, PresentationId = line.GetProperty("presentationId").GetGuid(), Quantity = 3m, UnitCost = 600m, ItbisRate = "Exempt" } },
+        })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await c.PostAsync($"/api/purchasing/purchases/{orderId}/post", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await c.StockAsync(beer)).ShouldBe(48m);
     }
 
     private DateOnly Today() => DateOnly.FromDateTime(app.Clock.GetUtcNow().UtcDateTime.AddHours(-4));

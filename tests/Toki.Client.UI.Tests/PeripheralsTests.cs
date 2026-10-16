@@ -190,4 +190,23 @@ public sealed class PeripheralsTests
         allowed.WaitForAssertion(() => hw2.Printer.DrawerOpenings.ShouldBe(1));
         allowed.Markup.ShouldContain("Gaveta abierta.");
     }
+
+    [Fact]
+    public async Task The_register_reports_only_the_kind_of_scale_and_printer_once_per_change()
+    {
+        var (ctx, api, _) = Create(new(Printer: new("EPSON TM-T20", 58), Scale: new("COM3", ScaleProtocol.Cas)));
+        using var _ = ctx;
+        api.Respond("PUT", "/api/identity/devices/current/peripherals", _ => new HttpResponseMessage(HttpStatusCode.NoContent));
+        var peripherals = ctx.Services.GetRequiredService<Peripherals>();
+        var client = ctx.Services.GetRequiredService<TokiApi>();
+        List<string> Reports() => [.. api.Requests.Where(r => r.Route == "/api/identity/devices/current/peripherals").Select(r => r.Body)];
+
+        await peripherals.ReportAsync(client);
+        await peripherals.ReportAsync(client); // nothing changed: not sent again
+        Reports().ShouldHaveSingleItem().ShouldBe("{\"scaleProtocol\":\"Cas\",\"printerWidth\":58}"); // never the port or the printer's name
+
+        await peripherals.SaveAsync(new());
+        await peripherals.ReportAsync(client);
+        Reports().Last().ShouldBe("{\"scaleProtocol\":null,\"printerWidth\":null}");
+    }
 }

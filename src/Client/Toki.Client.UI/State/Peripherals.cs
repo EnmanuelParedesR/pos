@@ -39,6 +39,18 @@ public sealed class Peripherals : IDisposable
         Apply(settings);
     }
 
+    private (string?, int?)? _reported;
+
+    /// <summary>TK-190: tells the store server whether this register has a scale and a printer (only the kind, never the port), once per
+    /// change; the heartbeat counts them. Called while a session is open; a failure is simply retried on the next call.</summary>
+    public async Task ReportAsync(TokiApi api)
+    {
+        (string?, int?) now = (Settings.Scale?.Protocol.ToString(), Settings.Printer is { } p ? (p.Width == 58 ? 58 : 80) : null);
+        if (_reported == now) return;
+        if ((await api.PutAsync<Empty>("/api/identity/devices/current/peripherals", new { ScaleProtocol = now.Item1, PrinterWidth = now.Item2 })).Problem is null)
+            _reported = now;
+    }
+
     /// <summary>Prints and opens the drawer as asked; false when it failed or there is no printer. A failed print never undoes the sale.</summary>
     public async Task<bool> TryAsync(Func<IReceiptPrinter, Task> job)
     {

@@ -13,3 +13,11 @@ public interface IUserDirectory
 {
     Task<IReadOnlyList<UserName>> AllAsync(CancellationToken ct);
 }
+
+/// <summary>TK-190: how many active registers reported their peripherals, and how many have a scale or a printer.</summary>
+public sealed record PeripheralsSummary(int Reported, int WithScale, int WithPrinter);
+
+public interface IDevicePeripherals
+{
+    Task<PeripheralsSummary> SummaryAsync(CancellationToken ct);
+}

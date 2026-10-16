@@ -314,6 +314,15 @@ public sealed class HeartbeatTests(TokiApp app) : IClassFixture<TokiApp>
         await app.UploadAsync();
         app.Cloud.To(CloudUploader.IngestPath).SelectMany(r => r.Body.GetProperty("events").EnumerateArray())
             .Count(e => e.GetProperty("type").GetString() == typeof(Toki.Sync.Contracts.NodeHeartbeatV1).FullName).ShouldBe(1);
+
+        // The register reports its scale and printer (only the kind, never the port); the next heartbeat says whether some register has one.
+        (await (await admin.PutAsJsonAsync("/api/identity/devices/current/peripherals", new { ScaleProtocol = "Cas", PrinterWidth = 76 })).ErrorCode())
+            .ShouldBe("Identity.InvalidPeripherals");
+        (await admin.PutAsJsonAsync("/api/identity/devices/current/peripherals", new { ScaleProtocol = "Cas", PrinterWidth = (int?)null }))
+            .StatusCode.ShouldBe(System.Net.HttpStatusCode.NoContent);
+        await SendAsync();
+        features = JsonDocument.Parse((await HeartbeatsAsync()).Last()).RootElement.GetProperty("features");
+        (features.GetProperty("scaleConfigured").GetBoolean(), features.GetProperty("printerConfigured").GetBoolean()).ShouldBe((true, false));
     }
 
     [Fact]

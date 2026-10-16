@@ -44,6 +44,16 @@ namespace Toki.Identity.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<DateTime?>("PeripheralsReportedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("PrinterWidth")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ScaleProtocol")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<byte[]>("TokenHash")
                         .IsRequired()
                         .HasMaxLength(32)

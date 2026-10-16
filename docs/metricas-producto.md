@@ -22,7 +22,7 @@ Lo escribe el módulo Sync en el outbox (`SendHeartbeat`, `HeartbeatWorker`, `Sy
 | `outboxBacklog` | Eventos que la nube todavía no confirmó |
 | `lastErrorCode` | Tipo del último error al subir: `http_503`, `unreachable` u `other`; nunca el texto. `null` después de una subida buena |
 | `features.onAccount` | Algún cliente debe fiado |
-| `features.scaleConfigured`, `features.printerConfigured` | `null` por ahora: lo sabe la caja (cliente), no el servidor de la tienda |
+| `features.scaleConfigured`, `features.printerConfigured` | Alguna caja activa tiene balanza o impresora. Cada caja informa al servidor de la tienda al entrar y cuando cambia (`PUT /api/identity/devices/current/peripherals`, solo el tipo: protocolo de la balanza y ancho del papel, nunca el puerto ni el nombre). `null` mientras ninguna caja lo haya informado |
 | `features.fiscalProvider` | `Fiscal:Provider`: `Simulated` o `Relay` (e-CF por la nube) |
 | `setup.businessNameSet`, `setup.rncSet` | Si el negocio tiene nombre y RNC guardados (solo sí/no; el RNC no viaja) |
 | `setup.activeProducts` | Cantidad de productos activos |
@@ -41,7 +41,7 @@ Lo escribe el módulo Sync en el outbox (`SendHeartbeat`, `HeartbeatWorker`, `Sy
   4. Primera venta (algún día activo).
   5. 7 días con ventas (7 días de la tienda distintos con actividad, no necesariamente seguidos).
 - **Retención por semana de registro**: los clientes se agrupan por la semana (lunes a domingo, días de la tienda) en que crearon la cuenta. La columna `+k` es el porcentaje de ese grupo con alguna tienda activa en la semana `k` después del registro.
-- **Uso de funciones**: entre las tiendas con latido en los últimos 7 días (se toma el latido más reciente de la tienda), cuántas usan fiado, más de una caja, e-CF por la nube, balanza e impresora. El denominador es cuántas tiendas reportan el dato; balanza e impresora salen "sin datos" hasta que la caja lo envíe.
+- **Uso de funciones**: entre las tiendas con latido en los últimos 7 días (se toma el latido más reciente de la tienda), cuántas usan fiado, más de una caja, e-CF por la nube, balanza e impresora. El denominador es cuántas tiendas reportan el dato; balanza e impresora salen "sin datos" en las tiendas donde ninguna caja lo ha informado.
 - **Salud**:
   - *Cajas en línea*: nodos no revocados de clientes activos que subieron algo en las últimas 24 horas. *Cajas sin datos en 24 h* es el resto.
   - *Cajas con error al subir*: su latido más reciente (últimos 7 días) trae `lastErrorCode`.
@@ -74,6 +74,5 @@ Todo bajo `/api/platform`, con la política `PlatformAdmin` y auditado:
 
 ## Pendiente
 
-- Balanza e impresora configuradas: las conoce la caja (cliente), no el servidor de la tienda; hace falta que la caja se las informe al servidor.
 - Plan o licencia del cliente: la nube no la conoce todavía (la licencia vive en la tienda).
 - Cálculo en memoria sobre todas las ventas: está bien para las primeras decenas de tiendas; con más hace falta un resumen diario en SQL (`shortcut:` en `ProductMetrics`).

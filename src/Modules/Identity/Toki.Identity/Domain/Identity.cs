@@ -114,6 +114,12 @@ internal sealed class Device
     public string? CertificateThumbprint { get; set; }
     public bool IsRevoked { get; set; }
     public DateTime CreatedUtc { get; set; }
+    /// <summary>TK-190: when the register last reported its scale and printer (kept on the PC itself); null if it never did.</summary>
+    public DateTime? PeripheralsReportedUtc { get; set; }
+    /// <summary>The scale's protocol (Cas, Toledo8217…); null without a scale. Never its port.</summary>
+    public string? ScaleProtocol { get; set; }
+    /// <summary>The receipt printer's paper width (58 or 80 mm); null without a printer. Never its name or port.</summary>
+    public int? PrinterWidth { get; set; }
 }
 
 internal sealed class PairingCode
