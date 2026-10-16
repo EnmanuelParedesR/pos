@@ -12,6 +12,7 @@ Cómo se crea y se publica la nube de Toki (ADR-0008): la API `Toki.Host.Cloud`,
 | Log Analytics + Application Insights | Logs y trazas de la API (agente automático de App Service). | Según el volumen |
 | Static Web App (Free) | El panel del dueño (React). | Gratis |
 | Azure OpenAI (S0) + despliegue `chat` | El asistente. El modelo se elige por precio. | Solo por uso |
+| Storage Account (StorageV2, LRS, Cool) + contenedor `ecf-archive` | Archivo frío de los e-CF firmados (TK-207): 10 años, escritura única, pasa a Archive a los 180 días. Solo la identidad de la API entra. | Centavos (ver abajo) |
 
 La API no consulta la base cuando no hay tiendas subiendo datos: el chequeo de salud de App Service (`/health`) no la toca y el aplicador del inbox solo trabaja cuando llega un lote. Así la base se pausa de noche. `/health/ready` sí prueba la base.
 
@@ -56,9 +57,19 @@ Precios de pago por uso (GlobalStandard, eastus2, API pública de precios de Azu
 | SQL despierta: 0.626 por vCore-hora, mínimo 0.5 vCore (~0.31/h). Cada arranque de la API la despierta al menos 1 h | ~0.30 por despertar |
 | Key Vault, Log Analytics (5 GB/mes gratis), Static Web App Free | ~0 |
 | Azure OpenAI | Solo por uso (~0.0005 por pregunta) |
+| Archivo frío de e-CF (Blob Cool → Archive) | ~0.01–0.25 por tienda (ver abajo) |
 | **Total en reposo** | **~13–15** |
 
-Con tiendas sincronizando todo el día la base no se pausa y sube a ~0.31/h mientras haya actividad (unos 7–8 USD por día con actividad continua). La suscripción MPN trae 150 USD de crédito al mes.
+Cada tienda conectada manda un latido cada 4 horas (`Sync:HeartbeatMinutes`, 240; R8 #21): con uno por hora la base no se pausaba nunca. Con tiendas sincronizando todo el día la base no se pausa y sube a ~0.31/h mientras haya actividad (unos 7–8 USD por día con actividad continua). La suscripción MPN trae 150 USD de crédito al mes.
+
+### Archivo frío de e-CF (TK-207)
+
+La tienda sube cada e-CF firmado (XML, RFCE y respuesta de la DGII) a `POST /fiscal/v1/archive`; la nube lo guarda primero en SQL. Pasados `Archive:HotDays` (90) días, la API mueve el XML al contenedor `ecf-archive` (`{negocio}/{e-NCF}.xml.gz` y `.rfce.xml.gz`, en Cool) y deja la fila en SQL como índice (estado, respuesta de la DGII, dónde quedó). Lo hace después de recibir una subida y como mucho una vez al día, así que nunca despierta la base por su cuenta. El dueño o el contador lo buscan por e-NCF en el panel (Ventas → "Buscar un comprobante electrónico", `GET /api/fiscal/archive/{eNCF}`). Si ya pasó a Archive, la primera búsqueda pide sacarlo (prioridad estándar, hasta 15 horas) y el panel dice que vuelva más tarde.
+
+- **Reglas del contenedor:** retención de 10 años desde la subida (`immutabilityPolicies`, gratis): nada se cambia ni se borra antes. La regla de ciclo de vida pasa a Archive a los 180 días (el mínimo de Archive, sin cargo por borrado temprano) y borra a los 3,660 días. Uno que se sacó de Archive queda en Cool 7 días antes de volver.
+- **Bloquear la retención** (irreversible; hacerlo cuando el dueño lo apruebe): `az storage container immutability-policy lock --account-name <cuenta> -c ecf-archive --if-match <etag>` (el `etag` sale de `az storage container immutability-policy show`).
+- **Costo** (precios de lista eastus2, LRS, USD; revisar en la calculadora): un e-CF comprimido pesa unos 3–5 KB. Una tienda con 300 facturas al día junta ~0.5 GB por año. Guardar: Cool ~0.01/GB-mes y Archive ~0.002/GB-mes, o sea centavos aun con 10 años acumulados. Lo que más pesa son las operaciones: ~0.10 por 10,000 escrituras en Cool y otro tanto al pasar a Archive, unos 0.10–0.25 USD al mes por tienda con ese volumen. Sacar uno de Archive cuesta ~0.02/GB más la lectura: nada para unos pocos documentos. En SQL, el mismo volumen costaría ~0.138/GB-mes y crecería sin parar.
+- **Sin Azure** (desarrollo): `Archive:Folder` guarda los archivos en una carpeta; sin `Archive:Folder` ni `Archive:Blob:ServiceUri` los XML se quedan en SQL.
 
 ### Prueba de humo (2026-10-15)
 
@@ -123,6 +134,7 @@ Las salidas dan el nombre de la Web App, su identidad, el servidor SQL y la URL 
    Al arrancar crea las tablas. Si la base estaba en pausa, el primer arranque tarda hasta un minuto más.
 3. **Publicar el panel** en la Static Web App con su token de despliegue (`az staticwebapp secrets list -n <nombre del panel>`), como dice la sección siguiente. El origen del panel ya está permitido en CORS (`Panel__Origins__0`). Si se le pone un dominio propio, se agrega como `Panel__Origins__1`.
 4. Revisar `https://<api>/health/ready`: tiene que responder `Healthy`.
+5. **Equipo de Toki (consola Plataforma):** cada cuenta se registra en el panel y luego `dotnet run --project src/Hosts/Toki.Host.Cloud -- grant-platform-admin <correo>` contra la base de producción. La lista `Platform__Admins` ya no da el rol (R8 #1): si estaba en la configuración de la Web App, se borra.
 
 ## Publicar el panel (Static Web App)
 

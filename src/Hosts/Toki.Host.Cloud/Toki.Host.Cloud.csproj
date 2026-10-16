@@ -11,6 +11,8 @@
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Scalar.AspNetCore" />
     <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Azure.Storage.Blobs" />
+    <PackageReference Include="Azure.Identity" />
   </ItemGroup>
   <ItemGroup>
     <!-- Read-only: the event payloads the stores upload (deserialized with the same JSON options as the node outbox). -->

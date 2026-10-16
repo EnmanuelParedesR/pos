@@ -63,6 +63,17 @@ export function MembersPage({ me }: { me: Me }) {
                       </option>
                     ))}
                   </select>
+                  {/* TK-201: an Owner always sees cost and profit; a Solo lectura member (the accountant) only if allowed here. */}
+                  {m.role === "ReadOnly" && (
+                    <label className="esc-row" style={{ gap: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={m.canViewCosts ?? false}
+                        onChange={(e) => run(api(`/api/members/${encodeURIComponent(m.userId)}/costs`, "PUT", { canViewCosts: e.target.checked }))}
+                      />
+                      Ve costos y ganancias
+                    </label>
+                  )}
                   <ConfirmButton
                     label="Quitar"
                     danger
@@ -128,7 +139,7 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
 
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(created!.link);
+      await navigator.clipboard.writeText(created!.link ?? "");
       setCopied(true);
     } catch {
       // No clipboard (old browser, no permission): the link stays selectable on screen.
@@ -153,15 +164,21 @@ function InviteForm({ onInvited }: { onInvited: () => void }) {
             <Icon name="plus" size={18} /> {busy ? "Un momento…" : "Invitar"}
           </button>
         </div>
-        {created && (
-          <Notice kind="success" title={`Invitación lista para ${created.invite.email}.`}>
-            {/* shortcut: no e-mail is sent yet (no provider wired); the owner sends this link by WhatsApp or e-mail. */}
-            Todavía no enviamos el correo: copie este enlace y envíeselo. <code style={{ overflowWrap: "anywhere" }}>{created.link}</code>{" "}
-            <button type="button" className="esc-button esc-button--small" onClick={copy}>
-              {copied ? "Copiado" : "Copiar enlace"}
-            </button>
-          </Notice>
-        )}
+        {created &&
+          (created.link === null ? (
+            // R8 #1: with an e-mail provider the link goes only to the invited address.
+            <Notice kind="success" title={`Le enviamos la invitación a ${created.invite.email}.`}>
+              El enlace llega a ese correo y sirve una sola vez.
+            </Notice>
+          ) : (
+            <Notice kind="success" title={`Invitación lista para ${created.invite.email}.`}>
+              {/* shortcut: no e-mail is sent yet (no provider wired); the owner sends this link by WhatsApp or e-mail. */}
+              Todavía no enviamos el correo: copie este enlace y envíeselo. <code style={{ overflowWrap: "anywhere" }}>{created.link}</code>{" "}
+              <button type="button" className="esc-button esc-button--small" onClick={copy}>
+                {copied ? "Copiado" : "Copiar enlace"}
+              </button>
+            </Notice>
+          ))}
       </div>
     </form>
   );

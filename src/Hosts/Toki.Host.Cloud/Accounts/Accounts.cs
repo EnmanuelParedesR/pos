@@ -41,34 +41,42 @@ internal sealed class CloudUserStore(CloudDbContext db, TimeProvider clock, Iden
     }
 }
 
-/// <summary>Puts the tenant in the bearer token, and the platform role (TK-189) for the e-mails in <c>Platform:Admins</c>.
-/// Accounts granted with the CLI carry it as a stored user claim, which the base factory already adds.</summary>
-/// <remarks>TK-217: if the user is no longer a member of their current tenant, the token takes another tenant they belong to (when there is one).
-/// The role is not in the token: the policies read it from the database on every call, so a change or a removal counts at once.</remarks>
-internal sealed class CloudClaimsFactory(UserManager<CloudUser> users, IOptions<IdentityOptions> options, IConfiguration config, CloudDbContext db)
+/// <summary>Puts the tenant in the bearer token. The platform role (TK-189) is only the stored user claim that <c>grant-platform-admin</c> adds
+/// (the base factory copies it); R8 #1 removed the <c>Platform:Admins</c> e-mail list, since anyone could register one of those e-mails.</summary>
+/// <remarks>TK-217 / R8 #18: the token takes the current tenant if the user is still its member and it is active, else the first active tenant they
+/// belong to. The role is not in the token: the policies read it from the database on every call, so a change or a removal counts at once.</remarks>
+internal sealed class CloudClaimsFactory(UserManager<CloudUser> users, IOptions<IdentityOptions> options, CloudDbContext db)
     : UserClaimsPrincipalFactory<CloudUser>(users, options)
 {
     protected override async Task<ClaimsIdentity> GenerateClaimsAsync(CloudUser user)
     {
         var identity = await base.GenerateClaimsAsync(user);
-        var tenants = await db.TenantMembers.AsNoTracking().Where(m => m.UserId == user.Id).OrderBy(m => m.JoinedUtc).Select(m => m.TenantId).ToListAsync();
-        var tenantId = tenants.Count == 0 || tenants.Contains(user.TenantId) ? user.TenantId : tenants[0];
+        var active = await CloudSignInManager.ActiveTenantsAsync(db, user.Id);
+        var tenantId = active.Count == 0 || active.Contains(user.TenantId) ? user.TenantId : active[0];
         identity.AddClaim(new Claim(TenantClaims.TenantId, tenantId.ToString()));
-        var admins = config.GetSection("Platform:Admins").Get<string[]>() ?? [];
-        if (!identity.HasClaim(PlatformAuth.RoleClaim, PlatformAuth.Admin) && admins.Contains(user.Email, StringComparer.OrdinalIgnoreCase))
-            identity.AddClaim(new Claim(PlatformAuth.RoleClaim, PlatformAuth.Admin));
         return identity;
     }
 }
 
-/// <summary>A disabled tenant's users cannot sign in (TK-189); the login answers 401 "NotAllowed".</summary>
+/// <summary>A user signs in while at least one of their tenants is active (TK-189, R8 #18); otherwise the login answers 401 "NotAllowed".
+/// An account with no membership left (removed everywhere) keeps the old rule: its own tenant must be active (the panel then refuses every call).</summary>
 internal sealed class CloudSignInManager(UserManager<CloudUser> users, IHttpContextAccessor http, IUserClaimsPrincipalFactory<CloudUser> claims,
     IOptions<IdentityOptions> options, ILogger<SignInManager<CloudUser>> logger, IAuthenticationSchemeProvider schemes, IUserConfirmation<CloudUser> confirmation,
     CloudDbContext db)
     : SignInManager<CloudUser>(users, http, claims, options, logger, schemes, confirmation)
 {
-    public override async Task<bool> CanSignInAsync(CloudUser user) =>
-        await base.CanSignInAsync(user) && !await db.Tenants.AnyAsync(t => t.Id == user.TenantId && t.DisabledUtc != null);
+    public override async Task<bool> CanSignInAsync(CloudUser user)
+    {
+        if (!await base.CanSignInAsync(user)) return false;
+        if (await db.TenantMembers.AnyAsync(m => m.UserId == user.Id)) return (await ActiveTenantsAsync(db, user.Id)).Count > 0;
+        return !await db.Tenants.AnyAsync(t => t.Id == user.TenantId && t.DisabledUtc != null);
+    }
+
+    /// <summary>The user's tenants that are not disabled, oldest membership first.</summary>
+    public static Task<List<Guid>> ActiveTenantsAsync(CloudDbContext db, string userId) =>
+        db.TenantMembers.AsNoTracking().Where(m => m.UserId == userId)
+            .Join(db.Tenants.Where(t => t.DisabledUtc == null), m => m.TenantId, t => t.Id, (m, t) => new { m.TenantId, m.JoinedUtc })
+            .OrderBy(x => x.JoinedUtc).Select(x => x.TenantId).ToListAsync();
 }
 
 /// <summary>The panel policies, checked against the database on every call: the token's tenant must be active (TK-189: a token issued before
@@ -78,6 +86,13 @@ internal static class PanelAccess
     public static Task<bool> IsMemberAsync(AuthorizationHandlerContext context) => HasRoleAsync(context, ownerOnly: false);
 
     public static Task<bool> IsOwnerAsync(AuthorizationHandlerContext context) => HasRoleAsync(context, ownerOnly: true);
+
+    /// <summary>TK-201: Owners, and ReadOnly members an Owner allowed. Without it the panel and the assistant get no cost or profit.</summary>
+    public static Task<bool> CanViewCostsAsync(ClaimsPrincipal user, CloudDbContext db, CancellationToken ct)
+    {
+        var (tenantId, userId) = (user.GetTenantId(), user.FindFirstValue(ClaimTypes.NameIdentifier));
+        return db.TenantMembers.AnyAsync(m => m.TenantId == tenantId && m.UserId == userId && (m.Role == MemberRole.Owner || m.CanViewCosts), ct);
+    }
 
     private static async Task<bool> HasRoleAsync(AuthorizationHandlerContext context, bool ownerOnly)
     {
@@ -98,7 +113,9 @@ public sealed record MyTenant(Guid TenantId, string Name, MemberRole Role);
 /// <param name="IsPlatformAdmin">Toki staff (TK-189): the panel shows the "Plataforma" area.</param>
 /// <param name="Role">In the current tenant (TK-217): the panel hides what a ReadOnly member cannot do (the API refuses it anyway).</param>
 /// <param name="Tenants">Every tenant the user belongs to; with more than one the panel lets them switch.</param>
-public sealed record MeResponse(string? Email, Guid TenantId, string TenantName, bool IsPlatformAdmin, MemberRole Role, IReadOnlyList<MyTenant> Tenants);
+/// <param name="CanViewCosts">TK-201: cost and profit are shown (the API leaves them null otherwise).</param>
+public sealed record MeResponse(string? Email, Guid TenantId, string TenantName, bool IsPlatformAdmin, MemberRole Role, IReadOnlyList<MyTenant> Tenants,
+    bool CanViewCosts);
 public sealed record SwitchTenantRequest(Guid TenantId);
 
 internal static class StoreEndpoints
@@ -118,7 +135,7 @@ internal static class StoreEndpoints
                 .ToListAsync(ct);
             var current = tenants.Single(t => t.TenantId == tenantId); // the panel policy already checked the membership
             return Results.Ok(new MeResponse(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, tenantId, current.Name, user.IsPlatformAdmin(), current.Role,
-                [.. tenants.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)]));
+                [.. tenants.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)], await PanelAccess.CanViewCostsAsync(user, db, ct)));
         });
 
         // TK-217: the panel then renews its token (POST /api/auth/refresh), which takes the new tenant.

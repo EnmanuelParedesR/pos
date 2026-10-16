@@ -35,6 +35,8 @@ public sealed record PublicCatalogPage(string StoreName, string? WhatsApp, IRead
 
 internal static class PublicCatalogEndpoints
 {
+    public const string RateLimit = "public-catalog";
+
     public static void Configure(ModelBuilder builder)
     {
         builder.Entity<ReplicaCatalogItem>(e =>
@@ -56,12 +58,14 @@ internal static class PublicCatalogEndpoints
     }
 
     /// <summary>No sign-in: the page a store's customers open from the QR or a shared link. The store id is the fixed address,
-    /// so the QR never changes. Cached a minute by browsers and proxies.</summary>
+    /// so the QR never changes. Cached a minute by browsers and proxies; at most <c>Catalog:RequestsPerMinute</c> (60) per IP address (R8 #17).</summary>
     // shortcut: the address uses the store id (not a readable slug); add a slug the owner picks in the panel if stores ask to share a short link.
     public static void MapPublicCatalog(this IEndpointRouteBuilder app) =>
         app.MapGet("/api/public/catalog/{storeId:guid}", async (Guid storeId, CloudDbContext db, HttpContext http, CancellationToken ct) =>
             {
-                var store = await db.Stores.AsNoTracking().FirstOrDefaultAsync(s => s.Id == storeId, ct);
+                // R8 #17: a business disabled by Toki staff (TK-189) has no public catalog either.
+                var store = await db.Stores.AsNoTracking().Where(s => s.Id == storeId && !db.Tenants.Any(t => t.Id == s.TenantId && t.DisabledUtc != null))
+                    .FirstOrDefaultAsync(ct);
                 if (store is null) return EndpointExtensions.Problem(Error.NotFound("Catalog.NotFound", "Este catálogo no existe."));
                 var whatsApp = await db.CatalogSettings.AsNoTracking().Where(s => s.StoreId == storeId).Select(s => s.WhatsApp).FirstOrDefaultAsync(ct);
                 var items = await db.CatalogItems.AsNoTracking().Where(i => i.StoreId == storeId && i.Visible)
@@ -69,5 +73,5 @@ internal static class PublicCatalogEndpoints
                 http.Response.Headers.CacheControl = "public, max-age=60";
                 return Results.Ok(new PublicCatalogPage(store.Name, whatsApp, [.. items.OrderBy(i => i.Category).ThenBy(i => i.Name)]));
             })
-            .AllowAnonymous().RequireCors(p => p.AllowAnyOrigin().WithMethods("GET")).WithTags("Catalog");
+            .AllowAnonymous().RequireCors(p => p.AllowAnyOrigin().WithMethods("GET")).RequireRateLimiting(RateLimit).WithTags("Catalog");
 }

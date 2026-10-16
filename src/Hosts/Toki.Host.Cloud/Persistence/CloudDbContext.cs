@@ -113,6 +113,8 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(r => r.ReplacesENcf).HasMaxLength(13);
             e.Property(r => r.ReplacedByENcf).HasMaxLength(13);
             e.HasIndex(r => new { r.TenantId, r.ENcf }).IsUnique();
+            e.Property(r => r.ColdKey).HasMaxLength(100);
+            e.HasIndex(r => new { r.ColdUtc, r.ReceivedUtc });
         });
         builder.Entity<PlatformAuditRecord>(e =>
         {
@@ -314,6 +316,8 @@ public sealed class TenantMember
     public string UserId { get; set; } = "";
     public MemberRole Role { get; set; }
     public DateTime JoinedUtc { get; set; }
+    /// <summary>TK-201: a ReadOnly member sees cost and profit only when an Owner allows it (an accountant). Owners always see them.</summary>
+    public bool CanViewCosts { get; set; }
 }
 
 /// <summary>A single-use link to join a tenant (TK-217). Only the SHA-256 of the token is kept.</summary>
@@ -330,6 +334,8 @@ public sealed class TenantInvite
     public DateTime ExpiresUtc { get; set; }
     public DateTime? AcceptedUtc { get; set; }
     public DateTime? RevokedUtc { get; set; }
+    /// <summary>R8 #1: the inviter was shown the link (no e-mail provider). An account made from it is then not e-mail-confirmed.</summary>
+    public bool LinkShown { get; set; }
 }
 
 public sealed class Tenant
@@ -418,6 +424,12 @@ public sealed class EcfRelayRecord
     public string ReplacesENcf { get; set; } = "";
     public string ReplacedByENcf { get; set; } = "";
     public DateTime? UpdatedUtc { get; set; }
+    /// <summary>TK-207: where the XML went once it moved to cold storage (<see cref="Relay.IColdArchive"/>): the blob name without extension.
+    /// Empty while it is still in <see cref="SignedXmlGzip"/>.</summary>
+    public string ColdKey { get; set; } = "";
+    /// <summary>When the XML (and the RFCE, if <see cref="ColdHasRfce"/>) moved to cold storage; the two XML columns are then empty.</summary>
+    public DateTime? ColdUtc { get; set; }
+    public bool ColdHasRfce { get; set; }
 }
 
 /// <summary>An event as a node uploaded it. Received cheaply; applied later by <see cref="Ingest.InboxApplier"/>.</summary>

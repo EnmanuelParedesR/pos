@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useApi, type CashierSales, type DaySales, type ProductSales } from "../api";
 import { usePanel } from "../App";
 import { addDays, cashierLabel, dayName, money, quantity, rangeLabel, storeDay } from "../format";
+import { EcfLookup } from "./EcfLookup";
 import { BarChart, BarList, Card, Delta, EmptyState, Legend, LoadError, PageHead, RangePicker, SkeletonRows, StoreSelect, lastDays, previousRange } from "../ui";
 
 export function SalesPage() {
@@ -87,7 +88,7 @@ export function SalesPage() {
       </Card>
 
       <div className="esc-grid">
-        <Card title="Lo más vendido" aside="Con ITBIS · ganancia sin ITBIS" className="esc-span-6">
+        <Card title="Lo más vendido" aside={products.data?.some((p) => p.profit !== null) ? "Con ITBIS · ganancia sin ITBIS" : "Con ITBIS"} className="esc-span-6">
           {products.data?.length === 0 ? (
             <EmptyState icon="package" title="Sin ventas en estas fechas" />
           ) : (
@@ -95,7 +96,8 @@ export function SalesPage() {
               items={(products.data ?? []).map((p) => ({
                 key: p.productId,
                 name: p.description,
-                detail: `${quantity(p.quantity, p.unit)} · gana ${money(p.profit)}`,
+                // TK-201: without permission to see costs the API sends no profit.
+                detail: p.profit === null ? quantity(p.quantity, p.unit) : `${quantity(p.quantity, p.unit)} · gana ${money(p.profit)}`,
                 value: p.total,
                 share: productMax === 0 ? 0 : p.total / productMax,
               }))}
@@ -169,6 +171,8 @@ export function SalesPage() {
           {days.data && current.length === 0 && <EmptyState icon="chart" title="Sin ventas en estas fechas" />}
         </div>
       </section>
+
+      <EcfLookup />
     </>
   );
 }

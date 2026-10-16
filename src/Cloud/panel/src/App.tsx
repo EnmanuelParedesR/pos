@@ -6,6 +6,7 @@ import { SignIn } from "./pages/SignIn";
 import { SummaryPage } from "./pages/SummaryPage";
 import { SalesPage } from "./pages/SalesPage";
 import { ShiftsPage } from "./pages/ShiftsPage";
+import { ShiftReportPage } from "./pages/ShiftReportPage";
 import { StoresPage } from "./pages/StoresPage";
 import { AssistantPage } from "./pages/AssistantPage";
 import { PlatformMetricsPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
@@ -28,8 +29,8 @@ export function App() {
   // The public catalog (TK-195) needs no session: a store's customers open it from a QR.
   const { pathname } = useLocation();
   const isPublic = pathname.startsWith("/c/");
-  // TK-217: the invite link works signed in or not; the page itself asks for the account.
-  const isInvite = pathname.startsWith("/invite/");
+  // TK-217: the invite link works signed in or not; the page itself asks for the account. R8 #12: the token is after "#" (/invite#token).
+  const isInvite = pathname === "/invite" || pathname.startsWith("/invite/");
   // undefined = checking a saved session, null = signed out.
   const [me, setMe] = useState<Me | null | undefined>(hasSession() && !isPublic && !isInvite ? undefined : null);
 
@@ -49,6 +50,7 @@ export function App() {
   if (isInvite)
     return (
       <Routes>
+        <Route path="/invite" element={<InvitePage onJoined={setMe} />} />
         <Route path="/invite/:token" element={<InvitePage onJoined={setMe} />} />
       </Routes>
     );
@@ -67,6 +69,7 @@ export function App() {
         <Route index element={<SummaryPage />} />
         <Route path="sales" element={<SalesPage />} />
         <Route path="shifts" element={<ShiftsPage />} />
+        <Route path="shifts/:shiftId" element={<ShiftReportPage />} />
         <Route path="stores" element={<StoresPage />} />
         <Route path="assistant" element={<AssistantPage />} />
         {me.role === "Owner" && <Route path="members" element={<MembersPage me={me} />} />}

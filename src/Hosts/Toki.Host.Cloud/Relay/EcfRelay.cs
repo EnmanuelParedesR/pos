@@ -17,13 +17,15 @@ public sealed record ArchiveEcfRequest(string? Encf, string? Environment, EcfRel
 /// <summary>The e-CF archive (docs/ecf-propio.md §10.4; replaces the ADR-0008 relay). The store talks to the DGII itself and, once a document has
 /// its final result, uploads the signed XML, the RFCE and the DGII answer here: the 10-year copy outside the store and the panel's fiscal status.
 /// Nothing is sent to the DGII from here. The e-NCF is the natural key: a later upload (a rejection that got its replacement) updates the row.</summary>
-/// <remarks>shortcut: stored in the SQL database (table <c>EcfRelays</c>, kept from the relay); cold storage (Blob cool/archive) is still to do.</remarks>
+/// <remarks>The table keeps the relay's name (<c>EcfRelays</c>). After <c>Archive:HotDays</c> the XML moves to cold storage (TK-207, <see cref="ColdArchiver"/>)
+/// and the row stays as the index. shortcut: a later upload of a document already in cold storage updates the status only; its XML is immutable
+/// there (the RFCE is signed with the e-CF, so it always comes in the first upload).</remarks>
 internal static class EcfArchiveEndpoint
 {
     public const int MaxXmlBytes = 1_000_000;
 
     public static void MapEcfArchive(this IEndpointRouteBuilder app) =>
-        app.MapPost("/fiscal/v1/archive", async (ArchiveEcfRequest request, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
+        app.MapPost("/fiscal/v1/archive", async (ArchiveEcfRequest request, ClaimsPrincipal user, CloudDbContext db, ColdArchiveSignal cold, TimeProvider clock, CancellationToken ct) =>
         {
             var node = NodeIdentity.From(user);
             var encf = request.Encf?.Trim() ?? "";
@@ -38,13 +40,15 @@ internal static class EcfArchiveEndpoint
                 var row = await db.EcfRelays.SingleOrDefaultAsync(r => r.TenantId == node.TenantId && r.ENcf == encf, ct);
                 if (row is null)
                     db.EcfRelays.Add(row = new EcfRelayRecord { Id = Guid.CreateVersion7(), TenantId = node.TenantId, ENcf = encf, EcfType = type, ReceivedUtc = now });
-                (row.StoreId, row.NodeId, row.SignedXmlGzip, row.RfceGzip, row.Status, row.TrackId, row.DgiiCode, row.Message) =
-                    (node.StoreId, node.NodeId, gzip, rfce, request.Status.Value, Cut(request.TrackId, 100), request.DgiiCode, Cut(request.Messages, 1000));
+                if (row.ColdUtc is null) (row.SignedXmlGzip, row.RfceGzip) = (gzip, rfce);
+                (row.StoreId, row.NodeId, row.Status, row.TrackId, row.DgiiCode, row.Message) =
+                    (node.StoreId, node.NodeId, request.Status.Value, Cut(request.TrackId, 100), request.DgiiCode, Cut(request.Messages, 1000));
                 (row.Environment, row.SignedUtc, row.ReplacesENcf, row.ReplacedByENcf, row.UpdatedUtc) =
                     (Cut(request.Environment, 10), request.SignedUtc, Cut(request.ReplacesENcf, 13), Cut(request.ReplacedByENcf, 13), now);
                 try
                 {
                     await db.SaveChangesAsync(ct);
+                    cold.Notify();
                     return Results.Ok();
                 }
                 catch (DbUpdateException) when (attempt == 1)

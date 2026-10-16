@@ -113,14 +113,17 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
     /// <summary>One snapshot of everything the product metrics read.</summary>
     public async Task<ProductMetrics> MetricsAsync(CancellationToken ct)
     {
+        // R8 #10: summed in SQL by store and store day (UTC−4), one row per store and day instead of one per sale.
         var voided = db.SaleVoids.Select(v => new { v.TenantId, v.SaleId });
+        var offsetHours = BusinessDay.Offset.TotalHours;
         var sales = await db.Sales.AsNoTracking().Where(s => !voided.Any(v => v.TenantId == s.TenantId && v.SaleId == s.Id))
-            .Select(s => new { s.TenantId, s.StoreId, s.SoldUtc, s.Total }).ToListAsync(ct);
+            .GroupBy(s => new { s.TenantId, s.StoreId, Day = s.SoldUtc.AddHours(offsetHours).Date })
+            .Select(g => new { g.Key.TenantId, g.Key.StoreId, g.Key.Day, Count = g.Count(), Total = g.Sum(s => s.Total) }).ToListAsync(ct);
         var types = Projectors.ByType.Keys.ToList();
         var failed = await db.Inbox.CountAsync(i => i.AppliedUtc == null && i.Attempts >= InboxApplier.MaxAttempts && types.Contains(i.Type), ct);
         return new ProductMetrics(
             await db.Tenants.AsNoTracking().ToListAsync(ct), await db.Stores.AsNoTracking().ToListAsync(ct), await db.Nodes.AsNoTracking().ToListAsync(ct),
-            [.. sales.Select(s => new SaleFact(s.TenantId, s.StoreId, BusinessDay.Of(s.SoldUtc), s.Total))],
+            [.. sales.Select(s => new SaleFact(s.TenantId, s.StoreId, DateOnly.FromDateTime(s.Day), s.Total, s.Count))],
             await db.NodeHeartbeats.AsNoTracking().ToListAsync(ct), await db.DailyUsage.AsNoTracking().ToListAsync(ct), failed, clock.GetUtcNow().UtcDateTime);
     }
 

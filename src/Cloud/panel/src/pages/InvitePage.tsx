@@ -1,20 +1,22 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate, useParams } from "react-router";
-import { api, ApiError, hasSession, identityMessages, registerByInvite, renewSession, roleNames, signIn, signOut, useApi, type InvitePreview, type Me } from "../api";
+import { useEffect, useState, type FormEvent } from "react";
+import { useLocation, useNavigate, useParams } from "react-router";
+import { api, ApiError, hasSession, identityMessages, registerByInvite, renewSession, roleNames, signIn, signOut, type InvitePreview, type Me } from "../api";
 import { Logo, Notice, Segmented, Skeleton } from "../ui";
 
-/** /invite/:token (TK-217): the invited person creates an account, or signs in, and joins the business. The link works once. */
+/** /invite#token (TK-217; R8 #12: after "#" the token never reaches a server log; /invite/:token still opens older links): the invited person creates an account, or signs in, and joins the business. The link works once. */
 export function InvitePage({ onJoined }: { onJoined: (me: Me) => void }) {
-  const { token = "" } = useParams();
+  const params = useParams();
+  const { hash } = useLocation();
+  const token = hash.length > 1 ? decodeURIComponent(hash.slice(1)) : (params.token ?? "");
   const navigate = useNavigate();
-  const invite = useApi<InvitePreview>(`/api/invites/${encodeURIComponent(token)}`);
+  const invite = usePreview(token);
   const [signedIn, setSignedIn] = useState(hasSession);
   const [mode, setMode] = useState<"create" | "in">("create");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<ApiError | null>(null);
 
-  const accept = () => api(`/api/invites/${encodeURIComponent(token)}/accept`, "POST").then(renewSession);
+  const accept = () => api("/api/invites/accept", "POST", { token }).then(renewSession);
 
   async function join(e?: FormEvent) {
     e?.preventDefault();
@@ -108,4 +110,20 @@ export function InvitePage({ onJoined }: { onJoined: (me: Me) => void }) {
       </form>
     </main>
   );
+}
+
+/** The invitation behind the token; POST so the token travels in the body (R8 #12). */
+function usePreview(token: string) {
+  const [state, setState] = useState<{ data?: InvitePreview; error?: ApiError; loading: boolean }>({ loading: true });
+  useEffect(() => {
+    let live = true;
+    api<InvitePreview>("/api/invites/preview", "POST", { token }).then(
+      (data) => live && setState({ data, loading: false }),
+      (error) => live && setState({ error: error instanceof ApiError ? error : new ApiError(0, "Unknown", String(error)), loading: false }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [token]);
+  return state;
 }

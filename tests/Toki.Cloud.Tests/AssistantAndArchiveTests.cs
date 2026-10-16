@@ -116,6 +116,52 @@ public sealed class ArchiveAndConfigurationTests(CloudApp app) : IClassFixture<C
     }
 
     [Fact]
+    public async Task After_90_days_the_xml_moves_to_cold_storage_and_the_owner_still_gets_it_back_by_its_eNCF()
+    {
+        await using var own = new CloudApp(); // moves its own clock
+        var owner = await own.OwnerAsync();
+        var node = await own.StoreWithNodeAsync(owner);
+        var body = new
+        {
+            encf = "E320000000777", environment = "eCF", status = "Accepted", signedUtc = DateTime.UtcNow, signedXmlGzip = Gzip("<ECF>firmado</ECF>"),
+            rfceGzip = (string?)Gzip("<RFCE>firmado</RFCE>"), replacedByENcf = (string?)null,
+        };
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { encf = "E310000000001", rfceGzip = (string?)null })).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        (await Move(own)).ShouldBe(0); // still hot
+        var hot = await owner.Client.GetFromJsonAsync<JsonElement>("/api/fiscal/archive/E320000000777");
+        (hot.GetProperty("cold").GetBoolean(), hot.GetProperty("signedXml").GetString()).ShouldBe((false, "<ECF>firmado</ECF>"));
+
+        own.Clock.Advance(TimeSpan.FromDays(91));
+        (await Move(own)).ShouldBe(2);
+        var row = await own.InDbAsync(db => db.EcfRelays.SingleAsync(r => r.ENcf == "E320000000777"));
+        (row.SignedXmlGzip.Length, row.RfceGzip, row.ColdHasRfce, row.ColdKey).ShouldBe((0, null, true, $"{owner.TenantId:N}/E320000000777"));
+        File.Exists(Path.Combine(own.ArchiveFolder, $"{owner.TenantId:N}", "E320000000777.rfce.xml.gz")).ShouldBeTrue();
+
+        // A later upload (a status change) keeps the cold copy: the XML there never changes.
+        (await node.Client.PostAsJsonAsync("/fiscal/v1/archive", body with { replacedByENcf = (string?)"E320000000778" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await Move(own)).ShouldBe(0);
+
+        var owner2 = await own.SignInAsync(owner.Email); // the old token expired with the clock
+        var cold = await owner2.Client.GetFromJsonAsync<JsonElement>("/api/fiscal/archive/e320000000777");
+        (cold.GetProperty("cold").GetBoolean(), cold.GetProperty("ready").GetBoolean()).ShouldBe((true, true));
+        (cold.GetProperty("signedXml").GetString(), cold.GetProperty("rfceXml").GetString(), cold.GetProperty("replacedByENcf").GetString())
+            .ShouldBe(("<ECF>firmado</ECF>", "<RFCE>firmado</RFCE>", "E320000000778"));
+        (await owner2.Client.GetFromJsonAsync<JsonElement>("/api/fiscal/archive/E310000000001")).GetProperty("rfceXml").ValueKind.ShouldBe(JsonValueKind.Null);
+
+        var stranger = await own.OwnerAsync();
+        (await stranger.Client.GetAsync("/api/fiscal/archive/E320000000777")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await own.CreateClient().GetAsync("/api/fiscal/archive/E320000000777")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    private static async Task<int> Move(CloudApp app)
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<Toki.Host.Cloud.Relay.ColdArchiver>().MoveAsync(CancellationToken.None);
+    }
+
+    [Fact]
     public async Task The_archive_needs_node_credentials_and_a_gzipped_document()
     {
         var node = await app.StoreWithNodeAsync(await app.OwnerAsync());

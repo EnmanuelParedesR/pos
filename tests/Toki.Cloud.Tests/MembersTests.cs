@@ -5,7 +5,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.TestHost;
 using Shouldly;
+using Toki.Host.Cloud.Accounts;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Persistence;
 
@@ -22,12 +25,12 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         r.StatusCode.ShouldBe(HttpStatusCode.OK);
         var json = await r.Json();
         var link = json.GetProperty("link").GetString()!;
-        link.ShouldContain("/invite/");
-        return (json.GetProperty("invite").GetProperty("id").GetGuid(), link[(link.LastIndexOf('/') + 1)..]);
+        link.ShouldContain("/invite#"); // R8 #12: after "#", never sent to a server
+        return (json.GetProperty("invite").GetProperty("id").GetGuid(), link[(link.IndexOf('#') + 1)..]);
     }
 
     private Task<HttpResponseMessage> RegisterAsync(string token) =>
-        app.CreateClient().PostAsJsonAsync($"/api/invites/{token}/register", new { password = CloudApp.Password });
+        app.CreateClient().PostAsJsonAsync("/api/invites/register", new { token, password = CloudApp.Password });
 
     /// <summary>A new account that joined <paramref name="owner"/>'s tenant through an invite, signed in.</summary>
     private async Task<Owner> MemberAsync(Owner owner, string role = "ReadOnly")
@@ -37,6 +40,8 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         (await RegisterAsync(token)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         return await app.SignInAsync(email);
     }
+
+    private static Task<HttpResponseMessage> Preview(HttpClient client, string token) => client.PostAsJsonAsync("/api/invites/preview", new { token });
 
     private static async Task<JsonElement> MembersAsync(Owner owner) => await owner.Client.GetFromJsonAsync<JsonElement>("/api/members");
 
@@ -51,7 +56,7 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         var (_, token) = await InviteAsync(owner, email);
         (await app.InDbAsync(db => db.TenantInvites.SingleAsync(i => i.Email == email))).TokenHash.Length.ShouldBe(32); // only the hash is kept
 
-        var preview = await app.CreateClient().GetFromJsonAsync<JsonElement>($"/api/invites/{token}");
+        var preview = await (await Preview(app.CreateClient(), token)).Json();
         (preview.GetProperty("email").GetString(), preview.GetProperty("role").GetString()).ShouldBe((email, "ReadOnly"));
 
         (await RegisterAsync(token)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
@@ -60,6 +65,8 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         var me = await member.Client.GetFromJsonAsync<JsonElement>("/api/me");
         me.GetProperty("role").GetString().ShouldBe("ReadOnly");
         (await app.InDbAsync(db => db.Tenants.CountAsync(t => t.Name == email))).ShouldBe(0); // no tenant of their own
+        // R8 #1: without an e-mail provider the owner saw the link, so the address is not taken as confirmed.
+        (await app.InDbAsync(db => db.Users.SingleAsync(u => u.Email == email))).EmailConfirmed.ShouldBeFalse();
 
         var members = (await MembersAsync(owner)).GetProperty("members").EnumerateArray().Select(m => (m.GetProperty("email").GetString(), m.GetProperty("role").GetString())).ToList();
         members.ShouldBe([(owner.Email, "Owner"), (email, "ReadOnly")]);
@@ -72,10 +79,10 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         var (_, token) = await InviteAsync(owner, NewEmail());
         (await RegisterAsync(token)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
 
-        (await app.CreateClient().GetAsync($"/api/invites/{token}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await Preview(app.CreateClient(), token)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
         var again = await RegisterAsync(token);
         (again.StatusCode, await again.ErrorCode()).ShouldBe((HttpStatusCode.NotFound, "Invites.Invalid"));
-        (await (await app.OwnerAsync()).Client.PostAsync($"/api/invites/{token}/accept", null)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await (await app.OwnerAsync()).Client.PostAsJsonAsync("/api/invites/accept", new { token })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -87,11 +94,11 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         var (revokedId, revoked) = await InviteAsync(owner, NewEmail());
 
         (await owner.Client.DeleteAsync($"/api/members/invites/{revokedId}")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await own.CreateClient().PostAsJsonAsync($"/api/invites/{revoked}/register", new { password = CloudApp.Password })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await own.CreateClient().PostAsJsonAsync("/api/invites/register", new { token = revoked, password = CloudApp.Password })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
 
         own.Clock.Advance(TimeSpan.FromDays(7) + TimeSpan.FromMinutes(1));
-        (await own.CreateClient().GetAsync($"/api/invites/{late}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        (await own.CreateClient().PostAsJsonAsync($"/api/invites/{late}/register", new { password = CloudApp.Password })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await Preview(own.CreateClient(), late)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await own.CreateClient().PostAsJsonAsync("/api/invites/register", new { token = late, password = CloudApp.Password })).StatusCode.ShouldBe(HttpStatusCode.NotFound);
         (await MembersAsync(await own.SignInAsync(owner.Email))).GetProperty("invites").GetArrayLength().ShouldBe(0); // the old token expired too
     }
 
@@ -103,12 +110,12 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         var stranger = await app.OwnerAsync();
         var (_, token) = await InviteAsync(owner, other.Email.ToUpperInvariant());
 
-        var wrong = await stranger.Client.PostAsync($"/api/invites/{token}/accept", null);
+        var wrong = await stranger.Client.PostAsJsonAsync("/api/invites/accept", new { token });
         (wrong.StatusCode, await wrong.ErrorCode()).ShouldBe((HttpStatusCode.Forbidden, "Invites.WrongEmail"));
-        (await app.CreateClient().PostAsync($"/api/invites/{token}/accept", null)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await app.CreateClient().PostAsJsonAsync("/api/invites/accept", new { token })).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await RegisterAsync(token)).StatusCode.ShouldBe(HttpStatusCode.Conflict); // the account exists: sign in instead
 
-        (await other.Client.PostAsync($"/api/invites/{token}/accept", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await other.Client.PostAsJsonAsync("/api/invites/accept", new { token })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         var joined = await app.SignInAsync(other.Email);
         joined.TenantId.ShouldBe(owner.TenantId);
         var me = await joined.Client.GetFromJsonAsync<JsonElement>("/api/me");
@@ -161,6 +168,7 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
             ("POST /api/members/invites", c => c.PostAsJsonAsync("/api/members/invites", new { email = NewEmail(), role = "Owner" })),
             ("DELETE /api/members/invites/{id}", c => c.DeleteAsync($"/api/members/invites/{inviteId}")),
             ("PUT /api/members/{userId}/role", c => c.PutAsJsonAsync($"/api/members/{ownerId}/role", new { role = "ReadOnly" })),
+            ("PUT /api/members/{userId}/costs", c => c.PutAsJsonAsync($"/api/members/{ownerId}/costs", new { canViewCosts = false })),
             ("DELETE /api/members/{userId}", c => c.DeleteAsync($"/api/members/{ownerId}")),
         };
         foreach (var (name, call) in writes)
@@ -207,6 +215,49 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         (await owner.Client.GetAsync("/api/me")).StatusCode.ShouldBe(HttpStatusCode.Forbidden); // removed: the old token is refused
     }
 
+    /// <summary>The TK-217 shortcut: two Owners demoting or removing each other at the same instant could leave the tenant with none.</summary>
+    [Fact]
+    public async Task Two_owners_demoting_or_removing_each_other_at_once_leave_exactly_one_owner()
+    {
+        for (var round = 0; round < 6; round++)
+        {
+            var a = await app.OwnerAsync();
+            var b = await MemberAsync(a, "Owner");
+            var (aId, bId) = (await UserIdAsync(a, a.Email), await UserIdAsync(a, b.Email));
+            var results = round % 2 == 0
+                ? await Task.WhenAll(
+                    a.Client.PutAsJsonAsync($"/api/members/{bId}/role", new { role = "ReadOnly" }),
+                    b.Client.PutAsJsonAsync($"/api/members/{aId}/role", new { role = "ReadOnly" }))
+                : await Task.WhenAll(a.Client.DeleteAsync($"/api/members/{bId}"), b.Client.DeleteAsync($"/api/members/{aId}"));
+
+            results.Count(r => r.StatusCode == HttpStatusCode.NoContent).ShouldBe(1, $"round {round}");
+            (await app.InDbAsync(db => db.TenantMembers.CountAsync(m => m.TenantId == a.TenantId && m.Role == MemberRole.Owner))).ShouldBe(1, $"round {round}");
+        }
+    }
+
+    [Fact]
+    public async Task A_read_only_member_sees_profit_only_when_an_owner_allows_it()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        var member = await MemberAsync(owner);
+        (await node.SendAsync(Events.Envelope(PanelTests.Sale(500, Guid.CreateVersion7(), Guid.CreateVersion7(), "Bistec de res"), app.Clock.GetUtcNow().UtcDateTime)))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+        await app.ApplyAsync();
+        static async Task<JsonValueKind> Profit(Owner who) =>
+            (await who.Client.GetFromJsonAsync<JsonElement>("/api/panel/sales/top-products")).EnumerateArray().Single().GetProperty("profit").ValueKind;
+        static async Task<bool> CanViewCosts(Owner who) => (await who.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("canViewCosts").GetBoolean();
+
+        ((await Profit(owner)), await CanViewCosts(owner)).ShouldBe((JsonValueKind.Number, true));
+        ((await Profit(member)), await CanViewCosts(member)).ShouldBe((JsonValueKind.Null, false));
+
+        var memberId = await UserIdAsync(owner, member.Email);
+        (await member.Client.PutAsJsonAsync($"/api/members/{memberId}/costs", new { canViewCosts = true })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await owner.Client.PutAsJsonAsync($"/api/members/{memberId}/costs", new { canViewCosts = true })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        ((await Profit(member)), await CanViewCosts(member)).ShouldBe((JsonValueKind.Number, true));
+        (await MembersAsync(owner)).GetProperty("members").EnumerateArray().ShouldAllBe(m => m.GetProperty("canViewCosts").GetBoolean());
+    }
+
     [Fact]
     public async Task A_disabled_tenant_blocks_its_members_and_its_invites()
     {
@@ -249,5 +300,77 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
 
         await app.InDbAsync(async db => { await CreateCloudDatabaseOnStartup.PrepareAsync(db, CancellationToken.None); return 0; });
         (await member.Client.GetAsync("/api/me")).StatusCode.ShouldBe(HttpStatusCode.Forbidden); // a removed member is never brought back
+    }
+}
+
+/// <summary>An e-mail provider that delivers (R8 #1): tests read the invite link from the message.</summary>
+public sealed class RecordingEmailSender : IEmailSender
+{
+    public bool Delivers => true;
+
+    public List<(string To, string Body)> Sent { get; } = [];
+
+    public Task SendAsync(string to, string subject, string body, CancellationToken ct)
+    {
+        lock (Sent) Sent.Add((to, body));
+        return Task.CompletedTask;
+    }
+}
+
+public sealed class MailingCloudApp : CloudApp
+{
+    public RecordingEmailSender Mail { get; } = new();
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        base.ConfigureWebHost(builder);
+        builder.ConfigureTestServices(s => s.AddSingleton<IEmailSender>(Mail));
+    }
+}
+
+/// <summary>R8 #1, #12, #18.</summary>
+public sealed class InviteSecurityTests(CloudApp app) : IClassFixture<CloudApp>
+{
+    [Fact]
+    public async Task With_an_email_provider_the_link_travels_only_by_email_and_confirms_the_address()
+    {
+        await using var mailing = new MailingCloudApp();
+        var owner = await mailing.OwnerAsync();
+        var email = $"member{Guid.NewGuid():N}@example.com";
+        var r = await owner.Client.PostAsJsonAsync("/api/members/invites", new { email, role = "ReadOnly" });
+        r.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await r.Json()).GetProperty("link").ValueKind.ShouldBe(JsonValueKind.Null); // the inviter cannot take over that address
+
+        var body = mailing.Mail.Sent.Single(m => m.To == email).Body;
+        body.ShouldContain("/invite#");
+        var token = body[(body.IndexOf('#') + 1)..];
+        (await mailing.CreateClient().PostAsJsonAsync("/api/invites/register", new { token, password = CloudApp.Password })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await mailing.InDbAsync(db => db.Users.SingleAsync(u => u.Email == email))).EmailConfirmed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task An_email_in_the_old_Platform_Admins_setting_gets_no_platform_role()
+    {
+        var account = await app.OwnerAsync(CloudApp.LegacyAdminEmail);
+        (await account.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("isPlatformAdmin").GetBoolean().ShouldBeFalse();
+        (await account.Client.GetAsync("/api/platform/tenants")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task A_member_of_several_tenants_signs_in_to_an_active_one_and_is_refused_only_when_all_are_disabled()
+    {
+        var first = await app.OwnerAsync();
+        var second = await app.OwnerAsync();
+        var invite = await (await second.Client.PostAsJsonAsync("/api/members/invites", new { email = first.Email, role = "ReadOnly" })).Json();
+        var link = invite.GetProperty("link").GetString()!;
+        (await first.Client.PostAsJsonAsync("/api/invites/accept", new { token = link[(link.IndexOf('#') + 1)..] })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await first.Client.PostAsJsonAsync("/api/me/tenant", new { tenantId = first.TenantId })).StatusCode.ShouldBe(HttpStatusCode.NoContent); // back to its own
+
+        var staff = await app.StaffAsync();
+        (await staff.Client.PostAsync($"/api/platform/tenants/{first.TenantId}/disable", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await app.SignInAsync(first.Email)).TenantId.ShouldBe(second.TenantId);
+
+        (await staff.Client.PostAsync($"/api/platform/tenants/{second.TenantId}/disable", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await app.CreateClient().PostAsJsonAsync("/api/auth/login", new { email = first.Email, password = CloudApp.Password })).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 }

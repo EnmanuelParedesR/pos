@@ -12,7 +12,7 @@ Qué mide el equipo de Toki sobre el uso del producto, de dónde sale cada núme
 
 ### El latido (`Toki.Sync.Contracts.NodeHeartbeatV1`)
 
-Lo escribe el módulo Sync en el outbox (`SendHeartbeat`, `HeartbeatWorker`, `Sync:HeartbeatMinutes`, 60 por defecto) y sube con los demás eventos, así que si no hay internet llega después y nunca se pierde. Si la tienda no está conectada a la nube, no se escribe. La nube se queda con el más reciente por `occurredUtc`: uno viejo que llega tarde no deshace uno nuevo.
+Lo escribe el módulo Sync en el outbox (`SendHeartbeat`, `HeartbeatWorker`, `Sync:HeartbeatMinutes`, 240 por defecto: cada 4 horas, para que el SQL serverless de la nube se pueda pausar, R8 #21) y sube con los demás eventos, así que si no hay internet llega después y nunca se pierde. Si la tienda no está conectada a la nube, no se escribe. La nube se queda con el más reciente por `occurredUtc`: uno viejo que llega tarde no deshace uno nuevo.
 
 | Campo | Qué es |
 |---|---|

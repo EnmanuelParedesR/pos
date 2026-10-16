@@ -60,3 +60,17 @@ html, body { background: #F6F5F2; }
 .catalog__bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--line); }
 .catalog__send { flex: 1 1 auto; justify-content: center; min-height: 52px; }
+
+/* TK-200: a closed shift (Z) on one printable page. */
+.z-sheet { display: grid; gap: 16px; max-width: 720px; }
+.z-sheet__grid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 24px; margin: 0; }
+.z-sheet__grid dt { color: var(--text-3); }
+.z-sheet__grid dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+@media print {
+  @page { size: A4; margin: 15mm; }
+  .esc-side, .esc-topbar, .esc-tabbar, .esc-ask, .esc-no-print { display: none !important; }
+  .esc-shell { display: block !important; }
+  .esc-main { padding: 0 !important; overflow: visible !important; }
+  .z-sheet { box-shadow: none; border: none; max-width: none; }
+}

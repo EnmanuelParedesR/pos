@@ -4,8 +4,9 @@ using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Platform;
 
-/// <summary>A completed (not voided) sale, reduced to what the metrics need.</summary>
-public sealed record SaleFact(Guid TenantId, Guid StoreId, DateOnly Day, decimal Total);
+/// <summary>A store's completed (not voided) sales of one store day.</summary>
+/// <param name="Count">How many sales (R8 #10: the database sums them by store and day; tests may pass one sale per fact).</param>
+public sealed record SaleFact(Guid TenantId, Guid StoreId, DateOnly Day, decimal Total, int Count = 1);
 
 /// <summary>Funnel stages, in order. <c>SevenDays</c> = 7 different store days with sales.</summary>
 public static class FunnelStages
@@ -42,7 +43,8 @@ public sealed record TenantMetrics(Guid TenantId, string Stage, int DaysWithSale
 /// <summary>Product metrics (TK-190, docs/metricas-producto.md) over one snapshot of the cloud: accounts, stores, nodes, the replica's sales
 /// and the nodes' heartbeats. Pure: tests feed it fixtures. A store is <b>active</b> on a store day when it has a completed sale that day in the
 /// replica, or its heartbeat reported sales for that day (the store's own count, in case some sale has not been applied yet).</summary>
-/// <remarks>shortcut: everything in memory from one load (like PanelQueries); move to SQL rollups when there are more than ~100 stores.</remarks>
+/// <remarks>Sales arrive summed by store and day (R8 #10); the rest is one row per tenant, store, node or heartbeat.
+/// shortcut: those rows are loaded whole on every call; cache or roll up when there are thousands of stores.</remarks>
 public sealed class ProductMetrics
 {
     public static readonly TimeSpan DisconnectedAfter = TimeSpan.FromDays(3);
@@ -79,7 +81,7 @@ public sealed class ProductMetrics
         return new MetricsOverview(
             _today, _tenants.Count, _stores.Count, liveNodes.Count, liveNodes.Count(n => !Stale(n.LastSyncUtc)),
             ActiveStores(_today, _today), ActiveStores(_today.AddDays(-6), _today), ActiveStores(_today.AddDays(-29), _today),
-            month.Count, month.Sum(s => s.Total),
+            month.Sum(s => s.Count), month.Sum(s => s.Total),
             [.. FunnelStages.All.Select(stage => new FunnelStep(stage, _tenants.Count(t => Reached(Stage(t.Id), stage))))],
             Features(recent),
             new HealthMetrics(liveNodes.Count, liveNodes.Count(n => Stale(n.LastSyncUtc)),
@@ -92,7 +94,7 @@ public sealed class ProductMetrics
         [.. Enumerable.Range(0, days).Select(i => _today.AddDays(i - days + 1)).Select(day =>
         {
             var sold = _sales.Where(s => s.Day == day).ToList();
-            return new DailyActivity(day, ActiveStores(day, day), sold.Count, sold.Sum(s => s.Total));
+            return new DailyActivity(day, ActiveStores(day, day), sold.Sum(s => s.Count), sold.Sum(s => s.Total));
         })];
 
     public IReadOnlyList<RetentionCohort> Retention(int weeks)
@@ -113,7 +115,7 @@ public sealed class ProductMetrics
         var stores = _stores.Where(s => s.TenantId == tenantId).Select(s => s.Id).ToHashSet();
         var days = stores.SelectMany(s => _activeDays[s]).Distinct().ToList();
         var month = _sales.Where(s => s.TenantId == tenantId && s.Day > _today.AddDays(-30)).ToList();
-        return new TenantMetrics(tenantId, Stage(tenantId), days.Count(d => d > _today.AddDays(-30)), month.Count, month.Sum(s => s.Total),
+        return new TenantMetrics(tenantId, Stage(tenantId), days.Count(d => d > _today.AddDays(-30)), month.Sum(s => s.Count), month.Sum(s => s.Total),
             days.Count == 0 ? null : days.Min(), days.Count == 0 ? null : days.Max());
     }
 

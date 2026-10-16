@@ -72,6 +72,8 @@ Los nombres propios no se traducen: Toki, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), 
 | e-CF anulado sin enviar (ANECF de un número firmado) | `SubmissionStatus.Voided`, `VoidDocument` |
 | certificado digital (importar, vence) | `EcfCertificate`, `ImportCertificate`, `CertificateStatus` (`ExpiresSoon`) |
 | cliente de los servicios de la DGII, semilla, archivo e-CF en la nube | `DgiiClient`, seed, `/fiscal/v1/archive` |
+| archivo frío (Blob Cool/Archive), índice, sacar del archivo | `IColdArchive`, `ColdArchiver`, `EcfRelayRecord.ColdKey`, rehydrate (`GET /api/fiscal/archive/{eNCF}`) |
+| ver costos y ganancias en el panel, Z en el panel | `TenantMember.CanViewCosts`, `ShiftReport` (`GET /api/panel/shifts/{id}`) |
 | leyenda de contingencia | `ContingencyLegend` |
 | padrón, contribuyente, carga del padrón | `TaxpayerRegistry`, `Taxpayer`, `TaxpayerImport` |
 | usuario, rol, permiso | `User`, `Role`, `Permission` |
@@ -123,5 +125,5 @@ Roles de partida (M16): Administrador, Supervisor, Cajero, Cajero con apertura, 
 - Códigos de error: `Modulo.Motivo` en inglés, por ejemplo `Sales.TotalChanged` (antes `Ventas.TotalCambio`) y `Approval.Required` (antes `Autorizacion.Requerida`).
 - Comandos de consola: `prepare-service` y `decrypt-backup` (tienda); `grant-platform-admin` y `revoke-platform-admin` (nube).
 - Equipo de Toki en la nube (TK-189): superadministrador = `PlatformAdmin` (claim `platform_role`), consola = `/api/platform`, cliente = `Tenant`, desactivar = `disable`, revocar caja = `revoke`. Latido del nodo (TK-190) = `NodeHeartbeatV1`.
-- Miembros del panel en la nube (TK-217): miembro = `TenantMember`, rol = `MemberRole` (Dueño = `Owner`, Solo lectura = `ReadOnly`), invitación = `TenantInvite` (enlace de un solo uso, `/invite/{token}` en el panel), equipo = `/api/members`, cambiar de negocio = `POST /api/me/tenant`, política de escritura = `PanelOwner`. Correo saliente = `IEmailSender`.
+- Miembros del panel en la nube (TK-217): miembro = `TenantMember`, rol = `MemberRole` (Dueño = `Owner`, Solo lectura = `ReadOnly`), invitación = `TenantInvite` (enlace de un solo uso, `/invite#{token}` en el panel), equipo = `/api/members`, cambiar de negocio = `POST /api/me/tenant`, política de escritura = `PanelOwner`. Correo saliente = `IEmailSender`.
 - Datos que ve el dueño, como los nombres de los roles sembrados (Administrador, Supervisor, Cajero), siguen en español: son contenido, no código. En el código, las constantes que los identifican van en inglés (`RoleIds.Administrator`).
