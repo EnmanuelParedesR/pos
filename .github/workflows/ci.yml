@@ -30,15 +30,23 @@ jobs:
           # Run as a store PC would (UTC-4) so time-zone bugs show up in CI.
           TZ: America/Santo_Domingo
 
-  site:
-    name: Sitio público (compila y revisa enlaces)
+  web:
+    # TK-228: the public site and the owner's panel are one React app (src/Cloud/panel).
+    name: Sitio y panel (pruebas y compilación)
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/Cloud/panel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node src/Site/build.mjs
+          cache: npm
+          cache-dependency-path: src/Cloud/panel/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
 
   ui:
     name: Pruebas de interfaz (Playwright)

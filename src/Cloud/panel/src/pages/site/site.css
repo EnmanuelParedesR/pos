@@ -1,0 +1,114 @@
+/* Toki public site (TK-228, was src/Site/assets/site.css). Brand fixed (docs/sistema-de-diseno.md §2): Azul Toki, Tinta, Papel, Mostrador, Azul claro;
+   Azul noche in dark mode. Everything under .site so nothing leaks into the panel; IBM Plex Sans ("Toki Sans") comes from escuadra.css. Mobile first. */
+.site {
+  --brand: #0B5CAD;
+  --brand-strong: #094B8E;
+  --brand-soft: #E4EFFA;
+  --on-brand: #FFFFFF;
+  --ink: #14181D;
+  --muted: #4A525B;
+  --bg: #FFFFFF;
+  --counter: #EEF0F2;
+  --line: #C9CED4;
+  --warn-bg: #FCF1DD;
+  --warn-ink: #8C4A06;
+  --ok-ink: #16663A;
+  --radius: 10px;
+  --radius-card: 16px;
+  --focus: 0 0 0 3px var(--bg), 0 0 0 6px var(--brand);
+  color-scheme: light;
+}
+/* Dark: the device's choice (theme.ts sets data-theme), or the system's before the script runs on a prerendered page. */
+:root[data-theme="dark"] .site { --brand: #6DB3F5; --brand-strong: #9CCBF8; --brand-soft: #16263A; --on-brand: #14181D; --ink: #F1F3F5; --muted: #B4BCC4;
+  --bg: #14181D; --counter: #1C2128; --line: #3A424B; --warn-bg: #3A2A12; --warn-ink: #F5C98A; --ok-ink: #8FD8AB; color-scheme: dark; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .site { --brand: #6DB3F5; --brand-strong: #9CCBF8; --brand-soft: #16263A; --on-brand: #14181D; --ink: #F1F3F5; --muted: #B4BCC4;
+    --bg: #14181D; --counter: #1C2128; --line: #3A424B; --warn-bg: #3A2A12; --warn-ink: #F5C98A; --ok-ink: #8FD8AB; color-scheme: dark; }
+}
+
+.site { min-height: 100vh; display: flex; flex-direction: column; font: 400 17px/1.6 "Toki Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--ink); background: var(--bg); -webkit-text-size-adjust: 100%; }
+.site main { flex: 1 0 auto; }
+.site img, .site svg { max-width: 100%; }
+.site a { color: var(--brand); text-underline-offset: 3px; }
+.site a:hover { color: var(--brand-strong); }
+.site :focus-visible { outline: none; box-shadow: var(--focus); border-radius: 4px; }
+.site h1, .site h2, .site h3 { line-height: 1.2; margin: 0 0 12px; }
+.site h1 { font-size: clamp(32px, 7vw, 52px); font-weight: 700; letter-spacing: -0.01em; }
+.site h2 { font-size: clamp(24px, 4.5vw, 32px); font-weight: 700; margin-top: 8px; }
+.site h3 { font-size: 20px; font-weight: 600; }
+.site p, .site ul, .site ol { margin: 0 0 16px; }
+.site .muted { color: var(--muted); }
+.site .wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+.site .skip { position: absolute; left: -9999px; }
+.site .skip:focus { left: 16px; top: 8px; z-index: 10; background: var(--bg); padding: 8px 12px; }
+
+/* Header: brand + calls to action; the menu scrolls sideways on a phone instead of hiding behind a button. */
+.site .top { border-bottom: 1px solid var(--line); background: var(--bg); }
+.site .top__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; padding-bottom: 8px; }
+.site .top__actions { display: flex; gap: 8px; }
+.site .brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 24px; color: var(--ink); text-decoration: none; }
+.site .menu ul { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0 0 8px; overflow-x: auto; scrollbar-width: thin; }
+.site .menu a { display: block; white-space: nowrap; padding: 10px 12px; min-height: 44px; border-radius: var(--radius); color: var(--ink); text-decoration: none; font-size: 15px; }
+.site .menu a:hover { background: var(--counter); }
+.site .menu a[aria-current="page"] { background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+
+.site .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 12px 20px; border-radius: var(--radius);
+  background: var(--brand); color: var(--on-brand); font: inherit; font-weight: 600; text-decoration: none; border: 1px solid var(--brand); cursor: pointer; }
+.site .btn:hover { background: var(--brand-strong); color: var(--on-brand); }
+.site .btn--ghost { background: transparent; color: var(--brand); }
+.site .btn--ghost:hover { background: var(--brand-soft); color: var(--brand); }
+.site .btn--small { min-height: 44px; padding: 8px 14px; font-size: 15px; }
+.site .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0 0; }
+
+.site section { padding: 40px 0; }
+.site section + section { border-top: 1px solid var(--line); }
+.site .hero { padding: 48px 0 40px; background: var(--counter); }
+.site .hero p { font-size: 19px; max-width: 46em; }
+.site .eyebrow { display: inline-block; font-size: 15px; font-weight: 600; color: var(--brand); margin-bottom: 8px; }
+
+.site .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+@media (min-width: 720px) { .site .grid--2 { grid-template-columns: repeat(2, 1fr); } .site .grid--3 { grid-template-columns: repeat(3, 1fr); } }
+.site .card { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius-card); padding: 20px; }
+.site .card h3 { margin-bottom: 8px; }
+.site .card p:last-child, .site .card ul:last-child { margin-bottom: 0; }
+.site a.card { display: block; color: var(--ink); text-decoration: none; }
+.site a.card:hover { border-color: var(--brand); color: var(--ink); }
+.site a.card h3 { color: var(--brand); }
+.site .card--brand { border: 2px solid var(--brand); }
+
+.site .checks { list-style: none; padding: 0; }
+.site .checks li { position: relative; padding-left: 28px; margin-bottom: 8px; }
+.site .checks li::before { content: ""; position: absolute; left: 4px; top: 8px; width: 12px; height: 7px; border-left: 2.5px solid var(--ok-ink); border-bottom: 2.5px solid var(--ok-ink); transform: rotate(-45deg); }
+
+.site .date { font-size: clamp(40px, 10vw, 72px); font-weight: 700; color: var(--brand); line-height: 1; font-variant-numeric: tabular-nums; margin: 8px 0 12px; }
+.site .note { background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius); padding: 12px 16px; }
+.site .note p:last-child { margin: 0; }
+.site .tbd { display: inline-block; background: var(--warn-bg); color: var(--warn-ink); border-radius: 999px; padding: 2px 12px; font-size: 15px; font-weight: 600; }
+.site .price { font-size: 28px; font-weight: 700; margin: 8px 0; }
+
+.site .steps { counter-reset: step; list-style: none; padding: 0; display: grid; gap: 12px; }
+.site .steps > li { counter-increment: step; position: relative; padding: 16px 16px 16px 60px; border: 1px solid var(--line); border-radius: var(--radius-card); }
+.site .steps > li::before { content: counter(step); position: absolute; left: 16px; top: 16px; width: 32px; height: 32px; border-radius: 50%; background: var(--brand-soft);
+  color: var(--brand); font-weight: 700; display: grid; place-items: center; }
+.site .steps p:last-child { margin: 0; }
+
+.site .table-wrap { overflow-x: auto; }
+.site table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 16px; }
+.site th, .site td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.site th { font-weight: 600; background: var(--counter); }
+
+.site .faq details { border-bottom: 1px solid var(--line); }
+.site .faq summary { cursor: pointer; padding: 14px 0; font-weight: 600; min-height: 44px; }
+.site .faq details > *:not(summary) { margin-top: 0; }
+
+.site .log { list-style: none; padding: 0; }
+.site .log > li { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.site .log h3 { margin-bottom: 4px; }
+
+.site .foot { background: var(--counter); padding: 32px 0; margin-top: 40px; font-size: 15px; }
+.site .foot__grid { display: grid; gap: 12px; }
+.site .foot ul { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; }
+.site .foot a:not(.btn) { color: var(--ink); }
+
+@media (prefers-reduced-motion: no-preference) { .site a, .site .btn { transition: background-color 120ms, color 120ms; } }

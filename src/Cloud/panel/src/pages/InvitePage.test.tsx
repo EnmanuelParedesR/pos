@@ -21,20 +21,19 @@ function renderInvite(routes: (url: string, method: string) => Response | undefi
     return routes(path, init?.method ?? "GET") ?? json(404, { code: "NotMocked", detail: path });
   });
   vi.stubGlobal("fetch", fetch);
-  const onJoined = vi.fn();
   render(
     <MemoryRouter initialEntries={["/invite#tok"]}>
       <Routes>
-        <Route path="/invite" element={<InvitePage onJoined={onJoined} />} />
-        <Route path="/" element={<p>Panel</p>} />
+        <Route path="/invite" element={<InvitePage />} />
+        <Route path="/app" element={<p>Panel</p>} />
       </Routes>
     </MemoryRouter>,
   );
-  return { fetch, onJoined };
+  return { fetch };
 }
 
 it("TK-217 / R8 #12: an invited person (token after #) creates an account with the invited e-mail and lands in the panel", async () => {
-  const { fetch, onJoined } = renderInvite((path, method) =>
+  const { fetch } = renderInvite((path, method) =>
     path === "/api/invites/preview" ? json(200, preview)
     : path === "/api/invites/register" && method === "POST" ? json(204)
     : path === "/api/auth/login" ? json(200, tokens)
@@ -48,7 +47,6 @@ it("TK-217 / R8 #12: an invited person (token after #) creates an account with t
   fireEvent.click(screen.getByRole("button", { name: "Crear cuenta y unirme" }));
 
   expect(await screen.findByText("Panel")).toBeTruthy();
-  expect(onJoined).toHaveBeenCalledWith(me);
   // R8 #12: the token is only ever in a request body.
   expect(fetch.mock.calls.every(([url]) => !String(url).includes("tok"))).toBe(true);
   const previewCall = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/invites/preview"))!;
@@ -61,7 +59,7 @@ it("TK-217 / R8 #12: an invited person (token after #) creates an account with t
 
 it("TK-217: someone already signed in joins with one tap and gets a token for the new business", async () => {
   localStorage.setItem("toki.refreshToken", "saved");
-  const { fetch, onJoined } = renderInvite((path, method) =>
+  const { fetch } = renderInvite((path, method) =>
     path === "/api/invites/preview" ? json(200, preview)
     : path === "/api/invites/accept" && method === "POST" ? json(204)
     : path === "/api/auth/refresh" ? json(200, tokens)
@@ -72,7 +70,6 @@ it("TK-217: someone already signed in joins with one tap and gets a token for th
   fireEvent.click(await screen.findByRole("button", { name: "Unirme a Carnicería La Esquina" }));
 
   expect(await screen.findByText("Panel")).toBeTruthy();
-  expect(onJoined).toHaveBeenCalledWith(me);
   expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/auth/refresh"))).toBe(true);
 });
 

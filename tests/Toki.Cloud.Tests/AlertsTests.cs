@@ -48,7 +48,7 @@ public sealed class AlertsTests(MailingCloudApp app) : IClassFixture<MailingClou
         sent.ShouldContain(m => m.Subject.Contains("Carnicería La Esquina") && m.Body.Contains("rechazó 2 comprobantes"));
         sent.ShouldContain(m => m.Body.Contains($"vence el {Now.AddDays(10).AddHours(-4):dd/MM/yyyy}")); // store day (UTC-4); the test clock starts from the real date
         sent.ShouldContain(m => m.Body.Contains("desde hace 30 horas"));
-        sent.ShouldAllBe(m => m.Body.Contains("/unsubscribe#"));
+        sent.ShouldAllBe(m => m.Body.Contains("/unsubscribe#") && m.Body.Contains("/app/notifications")); // TK-228: the panel lives under /app
         Alerts(member).ShouldBeEmpty();
 
         // The same trouble later the same day: nothing new. The next day: again.

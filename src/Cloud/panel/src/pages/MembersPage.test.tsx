@@ -93,7 +93,7 @@ it("TK-217: a read-only member has no Equipo section, not even by its address", 
 });
 
 it("TK-217: a member of two businesses can switch between them", async () => {
-  renderApp({ ...owner, tenants: [...owner.tenants, { tenantId: "t1", name: "Colmado La Fe", role: "ReadOnly" }] }, "/");
+  renderApp({ ...owner, tenants: [...owner.tenants, { tenantId: "t1", name: "Colmado La Fe", role: "ReadOnly" }] }, "/app");
 
   const select = await screen.findByLabelText("Negocio");
   expect(within(select).getByText("Colmado La Fe")).toBeTruthy();

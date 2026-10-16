@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router";
 import "../../../Client/Toki.Escuadra/wwwroot/escuadra.css";
 import "../../../Client/Toki.Escuadra/wwwroot/escuadra-admin.css";
 import "./panel.css";
+import "./pages/site/site.css";
 import { App } from "./App";
 import { startTheme } from "./theme";
 

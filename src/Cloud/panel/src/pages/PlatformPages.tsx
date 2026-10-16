@@ -61,10 +61,10 @@ function PlatformTabs() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const tabs: [string, string][] = [
-    ["/platform", "Métricas"],
-    ["/platform/tenants", "Clientes"],
+    ["/app/platform", "Métricas"],
+    ["/app/platform/tenants", "Clientes"],
   ];
-  const current = pathname === "/platform" ? "/platform" : "/platform/tenants";
+  const current = pathname === "/app/platform" ? "/app/platform" : "/app/platform/tenants";
   return (
     <div className="esc-tabs" role="tablist" aria-label="Plataforma">
       {tabs.map(([to, label]) => (
@@ -191,7 +191,7 @@ export function PlatformMetricsPage() {
                             .join(" · ")}
                         </div>
                       </div>
-                      <Link className="esc-button esc-button--small" to={`/platform/stores/${c.storeId}`}>
+                      <Link className="esc-button esc-button--small" to={`/app/platform/stores/${c.storeId}`}>
                         Ver tienda <Icon name="chevron-right" size={16} />
                       </Link>
                     </li>
@@ -233,7 +233,7 @@ function Certification({ rows }: { rows: CertificationProgress[] }) {
           {rows.map((c) => (
             <tr key={c.storeId}>
               <td>
-                <Link to={`/platform/stores/${c.storeId}`}>{c.storeName}</Link>
+                <Link to={`/app/platform/stores/${c.storeId}`}>{c.storeName}</Link>
                 <span className="esc-table__sub">{c.tenantName}</span>
               </td>
               <td>{stepLabel(c)}</td>
@@ -342,9 +342,9 @@ export function PlatformTenantsPage() {
           <tbody>
             {loading && !data && <SkeletonRows columns={7} />}
             {data?.map((t) => (
-              <tr key={t.id} className="selectable" tabIndex={0} onClick={() => navigate(`/platform/tenants/${t.id}`)} onKeyDown={(e) => e.key === "Enter" && navigate(`/platform/tenants/${t.id}`)}>
+              <tr key={t.id} className="selectable" tabIndex={0} onClick={() => navigate(`/app/platform/tenants/${t.id}`)} onKeyDown={(e) => e.key === "Enter" && navigate(`/app/platform/tenants/${t.id}`)}>
                 <td>
-                  <Link to={`/platform/tenants/${t.id}`} onClick={(e) => e.stopPropagation()}>
+                  <Link to={`/app/platform/tenants/${t.id}`} onClick={(e) => e.stopPropagation()}>
                     {t.ownerEmail ?? t.name}
                   </Link>
                   <span className="esc-table__sub">Desde {dayName(t.createdUtc.slice(0, 10))}</span>
@@ -390,7 +390,7 @@ export function PlatformTenantPage() {
         title={t?.members.find((m) => m.role === "Owner")?.email ?? t?.name ?? "Cliente"}
         subtitle={
           <>
-            <Link to="/platform/tenants">Clientes</Link>
+            <Link to="/app/platform/tenants">Clientes</Link>
             {t && ` · cliente desde ${dayName(t.createdUtc.slice(0, 10))}`}
           </>
         }
@@ -471,14 +471,14 @@ export function PlatformTenantPage() {
                 </span>
                 <div style={{ flex: "1 1 auto", minWidth: 0 }}>
                   <h2 className="store__name">
-                    <Link to={`/platform/stores/${s.id}`}>{s.name}</Link>
+                    <Link to={`/app/platform/stores/${s.id}`}>{s.name}</Link>
                   </h2>
                   <span className="esc-muted">
                     {s.registers} {s.registers === 1 ? "caja" : "cajas"} · {s.users} {s.users === 1 ? "usuario" : "usuarios"} ·{" "}
                     {s.firstSaleDay ? `vende desde ${dayName(s.firstSaleDay)}, última ${dayName(s.lastSaleDay!)}` : "sin ventas todavía"}
                   </span>
                 </div>
-                <Link className="esc-button esc-button--small" to={`/platform/stores/${s.id}`}>
+                <Link className="esc-button esc-button--small" to={`/app/platform/stores/${s.id}`}>
                   Ver tienda <Icon name="chevron-right" size={16} />
                 </Link>
               </div>
@@ -559,7 +559,7 @@ export function PlatformStorePage() {
         subtitle={
           s && (
             <>
-              <Link to={`/platform/tenants/${s.tenantId}`}>{s.tenantName}</Link> · creada {dayName(s.createdUtc.slice(0, 10))}
+              <Link to={`/app/platform/tenants/${s.tenantId}`}>{s.tenantName}</Link> · creada {dayName(s.createdUtc.slice(0, 10))}
             </>
           )
         }

@@ -55,7 +55,7 @@ export function ShiftsPage() {
               <tr key={s.shiftId}>
                 <td>
                   {/* TK-200: the Z on one printable page. */}
-                  <Link to={`/shifts/${s.shiftId}`} title="Ver e imprimir el Z">
+                  <Link to={`/app/shifts/${s.shiftId}`} title="Ver e imprimir el Z">
                     {dateTime(s.closedUtc)}
                   </Link>
                   <span className="esc-table__sub esc-only-sm">

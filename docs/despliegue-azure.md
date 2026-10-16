@@ -10,7 +10,7 @@ Cómo se crea y se publica la nube de Toki (ADR-0008): la API `Toki.Host.Cloud`,
 | Azure SQL serverless (Gen5, 1 vCore, mínimo 0.5, pausa a los 60 min) | Esquemas `cloud`, `ingest` y `replica`. Solo cuentas de Entra ID: no hay usuario ni contraseña de SQL. | Casi nada mientras está en pausa; se cobra el almacenamiento |
 | Key Vault (RBAC) | La clave de Azure OpenAI. La API la lee con su identidad administrada (referencia `@Microsoft.KeyVault(...)`). | Centavos |
 | Log Analytics + Application Insights | Logs y trazas de la API (agente automático de App Service). | Según el volumen |
-| Static Web App (Free) | El panel del dueño (React). | Gratis |
+| Static Web App (Free) | El sitio público y el panel del dueño: una sola app React (TK-228). | Gratis |
 | Azure OpenAI (S0) + despliegue `chat` | El asistente. El modelo se elige por precio. | Solo por uso |
 | Storage Account (StorageV2, LRS, Cool) + contenedor `ecf-archive` | Archivo frío de los e-CF firmados (TK-207): 10 años, escritura única, pasa a Archive a los 180 días. Solo la identidad de la API entra. | Centavos (ver abajo) |
 
@@ -138,7 +138,7 @@ Las salidas dan el nombre de la Web App, su identidad, el servidor SQL y la URL 
 4. Revisar `https://<api>/health/ready`: tiene que responder `Healthy`.
 5. **Equipo de Toki (consola Plataforma):** cada cuenta se registra en el panel y luego `dotnet run --project src/Hosts/Toki.Host.Cloud -- grant-platform-admin <correo>` contra la base de producción. La lista `Platform__Admins` ya no da el rol (R8 #1): si estaba en la configuración de la Web App, se borra.
 
-## Publicar el panel (Static Web App)
+## Publicar el sitio y el panel (Static Web App)
 
 El panel (`src/Cloud/panel`, React + Vite) es un sitio estático: se compila con la URL de la API y se sube la carpeta `dist`. Necesita Node 18 o más nuevo (Vite 6); se recomienda Node 22 LTS.
 
@@ -153,31 +153,25 @@ npx @azure/static-web-apps-cli deploy dist --env production
 
 El token va en una variable de entorno, nunca en el repositorio. El panel importa el CSS del sistema de diseño desde `src/Client/Toki.Escuadra/wwwroot`, así que si se compila desde una copia (por ejemplo `git archive HEAD src/Cloud/panel src/Client/Toki.Escuadra/wwwroot`) hay que incluir esa carpeta.
 
-`public/staticwebapp.config.json` va dentro de `dist` y manda toda ruta del panel (`/sales`, `/stores`…) a `index.html`, así que recargar la página no da 404.
+### Una sola app: sitio público y panel (TK-228)
 
-## Sitio público (TK-197, TK-198, TK-226)
+La misma Static Web App sirve el sitio de Toki y el panel del dueño, porque son una sola app React:
 
-`src/Site` es el sitio de Toki: HTML y CSS sin JavaScript ni dependencias. Las páginas están en `src/Site/pages` (cada una empieza con un comentario JSON con `title`, `description` y, si va, `nav`); `build.mjs` les pone el encabezado y el pie, copia `assets/` y las fuentes IBM Plex Sans de `Toki.Escuadra`, y falla si hay un enlace interno roto. CI lo compila en el trabajo "Sitio público".
+| Dirección | Qué es | Sesión |
+|---|---|---|
+| `/`, `/carniceria`, `/colmado`, `/deli`, `/e-cf`, `/certificacion`, `/precios`, `/novedades` | Sitio público (`src/pages/site/`) | No |
+| `/c/{tienda}` | Catálogo público de una tienda (TK-195) | No |
+| `/invite#token` (y la vieja `/invite/{token}`), `/unsubscribe#token` | Invitación y baja de avisos (enlaces de los correos) | No |
+| `/app`, `/app/sales`, `/app/shifts/{id}`, `/app/platform`… | Panel del dueño; sin sesión muestra Entrar / Crear cuenta | Sí |
+| `/sales`, `/shifts/…`, `/stores`, `/notifications`, `/members`, `/platform/…`… | Direcciones viejas del panel: redirigen a `/app/…` | — |
 
-```
-node src/Site/build.mjs            # deja el sitio en src/Site/dist
-node src/Site/build.mjs --serve    # además, vista previa en http://localhost:4173
-```
+`npm run build` compila la app y después **pre-renderiza** las páginas públicas (`src/prerender.tsx` + `scripts/prerender.mjs`): cada una queda en `dist` como HTML de verdad (`index.html`, `precios.html`…, más `404.html`) con su `<title>`, descripción y etiquetas `og:`, para buscadores y vistas previas de enlaces; en el navegador, React toma el control. La app vacía queda en `dist/shell.html`. El script completa `staticwebapp.config.json`: cada ruta pública sirve su HTML, cualquier otra dirección (`/app/…`, `/c/…`, `/invite`) va a `shell.html` (recargar no da 404) y lo que falte bajo `/assets` da `404.html`. Una dirección pública que no existe muestra la página "No encontramos esa página." pero con estado 200 (shortcut: aceptable sin dominio propio). `robots.txt` excluye `/app`.
 
-Páginas: inicio, Carnicería, Colmado, Deli, "¿Ya te toca el e-CF?", "Certifícate con Toki", Precios y Novedades (más `404.html`).
+Las rutas viven en `src/App.tsx`; los textos del sitio en `src/pages/site/SitePages.tsx` y sus ajustes (dominio, WhatsApp, precios) en `src/pages/site/config.ts`.
 
-**Pendiente del dueño antes de publicar:** los precios y los límites de cada plan (TK-203; hoy dicen "Precio por confirmar"), el precio de la instalación y del acompañamiento en la certificación (TK-219), el dominio y el número de WhatsApp. Los dos últimos van en `src/Site/site.json` (`url` sin barra final, `whatsapp` solo dígitos con el código de país): con `url` salen `canonical` y `og:url`; con `whatsapp`, los botones "Hablemos" abren WhatsApp. Las novedades se escriben a mano en `pages/novedades.html` (en lenguaje del cliente, no los textos del backlog). Que un contador revise "¿Ya te toca el e-CF?" antes de publicarla (TK-198).
+**Pendiente del dueño antes de anunciar el sitio:** los precios y los límites de cada plan (TK-203; hoy dicen "Precio por confirmar"), el precio de la instalación y del acompañamiento en la certificación (TK-219), el dominio y el número de WhatsApp. Todo va en `config.ts` (`url` sin barra final, `whatsapp` solo dígitos con el código de país, `prices` con el texto a mostrar): con `url` salen `canonical` y `og:url`; con `whatsapp`, los botones "Hablemos" abren WhatsApp. Las novedades se escriben a mano en `SitePages.tsx` (en lenguaje del cliente, no los textos del backlog). Que un contador revise "¿Ya te toca el e-CF?" antes de anunciarla (TK-198).
 
-**Desplegar en Azure Static Web Apps (no se ha hecho).** Una Static Web App aparte del panel, plan Free:
-
-```
-az staticwebapp create -n stapp-toki-site -g rg-toki-prod -l eastus2 --sku Free
-node src/Site/build.mjs
-$env:SWA_CLI_DEPLOYMENT_TOKEN = az staticwebapp secrets list -n stapp-toki-site -g rg-toki-prod --query properties.apiKey -o tsv
-npx @azure/static-web-apps-cli deploy src/Site/dist --env production
-```
-
-`assets/staticwebapp.config.json` va dentro de `dist`: manda las rutas que no existen a `404.html`, guarda en caché las fuentes un año y pone los encabezados de seguridad (CSP sin scripts, `nosniff`, sin marcos). El dominio propio se agrega con `az staticwebapp hostname set -n stapp-toki-site --hostname <dominio>` después de crear el CNAME (o el registro TXT para el dominio raíz) en el DNS; Azure emite el certificado solo.
+**Dominio propio (después):** un solo dominio para sitio y panel. Se agrega con `az staticwebapp hostname set -n stapp-toki-prod --hostname <dominio>` después de crear el CNAME (o el registro TXT para el dominio raíz) en el DNS; Azure emite el certificado solo. Luego: `url` en `config.ts`, `Panel__Origins__1` en la API (CORS) y `Panel:Url` para los enlaces de los correos.
 
 ## Volver a publicar la API
 
@@ -244,5 +238,5 @@ WhatsApp queda como complemento pagado futuro (solo la interfaz `IWhatsAppSender
 ## Pendiente
 
 - Leer Azure OpenAI con la identidad administrada en vez de la clave.
-- Un dominio propio para la API y el panel.
+- Un dominio propio para la API y para el sitio con el panel.
 - Alertas de Application Insights (errores 5xx y eventos del inbox que no se pudieron aplicar).

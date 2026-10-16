@@ -48,7 +48,7 @@ public sealed class PanelSmokeTests
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.LaunchAsync();
             var page = await browser.NewPageAsync(new() { BaseURL = origin });
-            await page.GotoAsync("/");
+            await page.GotoAsync("/app"); // TK-228: the site is at the root, the panel under /app
             await page.GetByLabel("Correo").FillAsync("duena@esquina.do");
             await page.GetByLabel("Contraseña").FillAsync("Carniceria2026");
             await page.GetByLabel("Contraseña").PressAsync("Enter");

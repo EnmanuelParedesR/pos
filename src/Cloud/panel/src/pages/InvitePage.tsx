@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
-import { api, ApiError, hasSession, identityMessages, registerByInvite, renewSession, roleNames, signIn, signOut, type InvitePreview, type Me } from "../api";
+import { api, ApiError, hasSession, identityMessages, registerByInvite, renewSession, roleNames, signIn, signOut, type InvitePreview } from "../api";
 import { Logo, Notice, Segmented, Skeleton } from "../ui";
 
 /** /invite#token (TK-217; R8 #12: after "#" the token never reaches a server log; /invite/:token still opens older links): the invited person creates an account, or signs in, and joins the business. The link works once. */
-export function InvitePage({ onJoined }: { onJoined: (me: Me) => void }) {
+export function InvitePage() {
   const params = useParams();
   const { hash } = useLocation();
   const token = hash.length > 1 ? decodeURIComponent(hash.slice(1)) : (params.token ?? "");
@@ -30,8 +30,7 @@ export function InvitePage({ onJoined }: { onJoined: (me: Me) => void }) {
         await signIn(invite.data.email, password);
         await accept();
       }
-      onJoined(await api<Me>("/api/me"));
-      navigate("/");
+      navigate("/app"); // the panel loads the account (and the new business) itself
     } catch (err) {
       setError(err instanceof ApiError ? err : new ApiError(0, "Unknown", "No se pudo completar la operación."));
       setBusy(false);
@@ -49,7 +48,7 @@ export function InvitePage({ onJoined }: { onJoined: (me: Me) => void }) {
           <>
             <h1>Invitación no válida</h1>
             <Notice kind={invite.error.offline ? "warning" : "error"} title={invite.error.detail} />
-            <a className="esc-button esc-button--wide" href="/">
+            <a className="esc-button esc-button--wide" href="/app">
               Ir al panel
             </a>
           </>
