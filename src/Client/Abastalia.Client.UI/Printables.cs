@@ -14,7 +14,7 @@ public static class Printables
 {
     /// <summary>Logo C5 (the tag with the winking eye), as in Escuadra's Logo component.</summary>
     private const string Logo =
-        """<svg width="44" height="44" viewBox="0 0 120 120" role="img" aria-label="Abastalia"><path d="M44 24 H96 Q104 24 104 32 V88 Q104 96 96 96 H44 L16 60 Z" fill="#0B5CAD" stroke="#0B5CAD" stroke-width="6" stroke-linejoin="round"/><circle cx="35" cy="60" r="8" fill="#FFFFFF"/><circle cx="32.5" cy="60" r="3.8" fill="#14181D"/><path d="M70 36 V76 Q70 84 78 84 H86 M58 50 H86" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></svg>""";
+        """<svg width="44" height="44" viewBox="0 0 120 120" role="img" aria-label="Abastalia"><path d="M44 24 H96 Q104 24 104 32 V88 Q104 96 96 96 H44 L16 60 Z" fill="#0B5CAD" stroke="#0B5CAD" stroke-width="6" stroke-linejoin="round"/><circle cx="35" cy="60" r="8" fill="#FFFFFF"/><circle cx="32.5" cy="60" r="3.8" fill="#14181D"/><path d="M60 50 Q63 44 72 44 Q84 44 84 56 V84 M84 64 H71 Q59 64 59 74 Q59 84 71 84 Q80 84 84 76" fill="none" stroke="#FFFFFF" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></svg>""";
 
     private const string Style = """
         @page { size: A4; margin: 14mm; }

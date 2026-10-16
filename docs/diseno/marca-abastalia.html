@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marca Abastalia · pruebas</title>
+<style>
+  @font-face { font-family: "IBM Plex Sans"; font-weight: 700; src: url("../../src/Client/Abastalia.Escuadra/wwwroot/fonts/IBMPlexSans-Bold-Latin1.woff2") format("woff2"); }
+  @font-face { font-family: "IBM Plex Sans"; font-weight: 400; src: url("../../src/Client/Abastalia.Escuadra/wwwroot/fonts/IBMPlexSans-Regular-Latin1.woff2") format("woff2"); }
+  :root { --brand: #0B5CAD; --ink: #14181D; --paper: #FFFFFF; --counter: #EEF0F2; }
+  body { margin: 0; padding: 24px; font-family: "IBM Plex Sans", system-ui, sans-serif; background: var(--counter); color: var(--ink); }
+  h1 { font-size: 20px; margin: 0 0 4px; } p { margin: 0 0 20px; color: #55606B; font-size: 14px; }
+  .row { display: grid; grid-template-columns: 110px repeat(3, 1fr); gap: 12px; align-items: center; margin-bottom: 12px; }
+  .label { font-weight: 700; font-size: 14px; }
+  .cell { display: flex; align-items: flex-end; gap: 14px; padding: 14px; border-radius: 10px; background: var(--paper); min-height: 120px; }
+  .cell.dark { background: var(--ink); }
+  .cell.brand { background: var(--brand); }
+  .word { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: -0.02em; font-size: 22px; }
+  .dark .word { color: #F1F3F5; }
+  .head { font-size: 12px; color: #55606B; text-transform: uppercase; letter-spacing: .06em; }
+</style>
+</head>
+<body>
+<h1>Abastalia · monograma dentro de la etiqueta</h1>
+<p>La etiqueta con el ojo que guiña (C5) se mantiene; cambia la letra blanca. Tamaños 120, 48, 32 y 16 px.</p>
+<div class="row"><span></span><span class="head">Claro</span><span class="head">Oscuro (marco)</span><span class="head">Sobre azul</span></div>
+<div id="rows"></div>
+<script>
+const tag = "M44 24 H96 Q104 24 104 32 V88 Q104 96 96 96 H44 L16 60 Z";
+const glyphs = {
+  "Actual (t)": "M70 36 V76 Q70 84 78 84 H86 M58 50 H86",
+  "A1 · a simple": "M71 54 a13 13 0 1 0 0.01 0 M84 50 V84",
+  "A2 · a doble": "M60 50 Q63 44 72 44 Q84 44 84 56 V84 M84 64 H71 Q59 64 59 74 Q59 84 71 84 Q80 84 84 76",
+  "A3 · a con cola": "M70 54 a13 13 0 1 0 0.01 0 M83 50 V78 Q83 86 91 84",
+};
+const svg = (g, size, v) => {
+  const [t, e, p, s] = v === "light" ? ["#0B5CAD", "#FFFFFF", "#14181D", "#FFFFFF"] : ["#FFFFFF", "#14181D", "#FFFFFF", "#0B5CAD"];
+  return `<svg width="${size}" height="${size}" viewBox="0 0 120 120" role="img" aria-label="Abastalia"><path d="${tag}" fill="${t}" stroke="${t}" stroke-width="6" stroke-linejoin="round"/><circle cx="35" cy="60" r="8" fill="${e}"/><circle cx="32.5" cy="60" r="3.8" fill="${p}"/><path d="${g}" fill="none" stroke="${s}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+};
+const cell = (g, cls, v) => `<div class="cell ${cls}">${[120, 48, 32, 16].map(n => svg(g, n, v)).join("")}<span class="word">${svg(g, 28, v)}abastalia</span></div>`;
+document.getElementById("rows").innerHTML = Object.entries(glyphs).map(([name, g]) =>
+  `<div class="row"><span class="label">${name}</span>${cell(g, "", "light")}${cell(g, "dark", "light")}${cell(g, "brand", "on-dark")}</div>`).join("");
+</script>
+</body>
+</html>

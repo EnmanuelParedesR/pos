@@ -45,7 +45,7 @@ Que todas las pantallas (caja, administración, celular del dueño, reportes y t
 Decisión del 15 de octubre de 2026: **no es marca blanca a nivel visual**. Los colores y el logo son siempre los de Abastalia. Un revendedor solo aparece como "Vendido por …" en la factura y en la pantalla de ayuda.
 
 - Colores de marca: Azul Abastalia `#0B5CAD`, Tinta `#14181D`, Papel `#FFFFFF`, Mostrador `#EEF0F2`, Azul claro `#E4EFFA`, Azul noche `#6DB3F5` (tema oscuro).
-- Logo: **C5, la etiqueta con el ojo que guiña** (símbolo azul #0B5CAD con la "t" blanca y el ojo a la izquierda, junto a "abastalia" en IBM Plex Sans 700). Variantes: ícono de app (fondo azul, símbolo blanco), 16 px y una tinta para la impresora térmica. Fuente: artboard `CaraGuino` del canvas del logo. Los estados de la mascota (contento, pensando, atento) cambian solo el ojo.
+- Logo: **C5, la etiqueta con el ojo que guiña** (símbolo azul #0B5CAD con la "a" blanca de dos pisos (la misma de IBM Plex del nombre; TK-267, antes la "t" de Toki) y el ojo a la izquierda, junto a "abastalia" en IBM Plex Sans 700). Variantes: ícono de app (fondo azul, símbolo blanco), 16 px y una tinta para la impresora térmica. Fuente: artboard `CaraGuino` del canvas del logo. Los estados de la mascota (contento, pensando, atento) cambian solo el ojo.
 - La marca nunca se usa para estados.
 
 ### 3. Componentes
@@ -127,3 +127,10 @@ La caja se opera; la administración se **revisa**. Por eso la administración d
 - Nombre del producto (afecta el nombre del paquete y la galería).
 - Color de marca propio del producto (la interfaz usa azul por defecto).
 - Validar el tema claro con luz fuerte en una tienda real y en una pantalla barata.
+
+### Marca Abastalia (TK-267, 16 oct 2026)
+
+- Se mantienen la etiqueta con el ojo que guiña, la paleta (Azul Abastalia #0B5CAD, Tinta #14181D) y la tipografía. Solo cambió la letra del símbolo: de la "t" de Toki a una **"a" de dos pisos**, la misma forma de la "a" de IBM Plex del nombre `abastalia`.
+- Variantes probadas en `docs/diseno/marca-abastalia.html` (a simple, a doble y a con cola, de 16 a 120 px, en claro, oscuro y sobre azul). Crítica de diseño: la "a" simple se confunde con "d" u "o" a 16–32 px y la cola se pierde a 16 px. La "a" doble se lee en todos los tamaños.
+- El color no cambia: "abasto" no pide otro color, y el azul conserva la confianza y la continuidad (blanco sobre azul 6.6:1, AA). El nombre de 9 letras entra en la cabecera del sitio y del panel a 320 px sin desborde.
+- Imágenes para buscadores y redes: `src/Cloud/panel/public/og/abastalia.png` (1200×630) y `og/logo.png` (512×512), generadas con Edge headless a partir del mismo SVG.
