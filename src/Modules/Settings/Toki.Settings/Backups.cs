@@ -451,7 +451,7 @@ internal static class BackupSettings
         public Validator()
         {
             RuleFor(c => c.CopyTo).MaximumLength(260).Must(p => Path.IsPathFullyQualified(p!)).When(c => !string.IsNullOrWhiteSpace(c.CopyTo))
-                .WithMessage("Escriba la carpeta completa, por ejemplo E:\\Respaldos o \\\\servidor\\respaldos.");
+                .WithMessage("Escriba la carpeta completa, por ejemplo E:\\Respaldos.");
             RuleFor(c => c.Time).Must(t => TimeOnly.TryParseExact(t, "HH:mm", out _)).WithMessage("Escriba la hora como 23:30.");
             RuleFor(c => c.Keep).InclusiveBetween(1, 365).WithMessage("Guarde entre 1 y 365 respaldos.");
         }
@@ -469,11 +469,31 @@ internal static class BackupSettings
             .Any(f => copy.Equals(f, StringComparison.OrdinalIgnoreCase) || copy.StartsWith(f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
     }
 
-    internal sealed class Handler(SettingsDbContext db, BackupStatus status, Backups backups, IAuditLog audit) : ICommandHandler<Command, Ok>
+    public static readonly Error CopyNotAllowed = Error.Validation("Backup.CopyNotAllowed",
+        "La copia va a un disco de esta PC (otro disco o una memoria USB). Una carpeta de red la agrega el técnico en la configuración de Toki.");
+
+    /// <summary>R11 C14: from the screen (backups.manage) the copy goes to a local drive (another disk, a USB stick), never to a share someone
+    /// could own. A network folder (\\server\share or a mapped drive) only when an administrator listed it in appsettings: <c>Backup:CopyTo</c>
+    /// or <c>Backup:AllowedCopyFolders</c>.</summary>
+    public static bool CopyAllowed(string copyTo, IConfiguration config)
+    {
+        static string Full(string p) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(p));
+        var copy = Full(copyTo);
+        var listed = (config.GetSection("Backup:AllowedCopyFolders").Get<string[]>() ?? []).Append(config["Backup:CopyTo"])
+            .Where(f => !string.IsNullOrWhiteSpace(f) && Path.IsPathFullyQualified(f)).Select(f => Full(f!));
+        if (listed.Any(f => copy.Equals(f, StringComparison.OrdinalIgnoreCase) || copy.StartsWith(f + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)))
+            return true;
+        if (copy.StartsWith(@"\\", StringComparison.Ordinal) || Path.GetPathRoot(copy) is not { Length: > 0 } root) return false;
+        try { return new DriveInfo(root).DriveType is DriveType.Fixed or DriveType.Removable; }
+        catch (ArgumentException) { return false; }
+    }
+
+    internal sealed class Handler(SettingsDbContext db, BackupStatus status, Backups backups, IAuditLog audit, IConfiguration config) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
             if (c.CopyTo is { } copy && !string.IsNullOrWhiteSpace(copy) && InsideData(copy.Trim(), backups.Folder)) return CopyInsideData;
+            if (c.CopyTo is { } target && !string.IsNullOrWhiteSpace(target) && !CopyAllowed(target.Trim(), config)) return CopyNotAllowed;
             var b = await db.Business.SingleAsync(ct);
             b.BackupCopyTo = c.CopyTo?.Trim() ?? "";
             b.BackupTime = TimeOnly.ParseExact(c.Time, "HH:mm").ToTimeSpan();

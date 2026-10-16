@@ -15,7 +15,8 @@ public sealed class StoreCertificateAuthority : IDisposable
 {
     private const string ServerAuth = "1.3.6.1.5.5.7.3.1";
     private const string ClientAuth = "1.3.6.1.5.5.7.3.2";
-    public static readonly TimeSpan DeviceValidity = TimeSpan.FromDays(3650);
+    /// <summary>R11 C5: one year; the register renews it over mTLS in its last 30 days (<c>/api/identity/devices/current/certificate</c>).</summary>
+    public static readonly TimeSpan DeviceValidity = TimeSpan.FromDays(365);
     public static readonly TimeSpan ServerValidity = TimeSpan.FromDays(365);
 
     private readonly string _folder;

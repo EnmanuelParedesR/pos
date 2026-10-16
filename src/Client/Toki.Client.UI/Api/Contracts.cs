@@ -18,6 +18,8 @@ public sealed record SetupRequest(string AdministratorName, string Administrator
 /// <summary>A client certificate and the store CA when a CSR was sent (TK-091), else the device secret (plain http).</summary>
 public sealed record SetupResult(Guid UserId, Guid DeviceId, string? DeviceToken, string? Certificate, string? StoreCa);
 public sealed record Paired(Guid DeviceId, string Name, string? Token, string? Certificate, string? StoreCa);
+/// <summary>R11 C5: the renewed client certificate (PEM).</summary>
+public sealed record RenewedCertificate(string Certificate);
 public sealed record PairingCode(string Code, DateTime ExpiresUtc);
 public sealed record ActiveUser(Guid Id, string Name, string Code);
 public sealed record OpenedSession(string Token, Guid UserId, string Name, DateTime ExpiresUtc);

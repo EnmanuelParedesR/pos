@@ -16,9 +16,12 @@ internal sealed class UpdateSettings
     public TimeOnly OpensAt { get; set; } = new(7, 0);
     public TimeOnly ClosesAt { get; set; } = new(22, 0);
     public int CheckEveryMinutes { get; set; } = 30;
-    /// <summary>Read by update-service.ps1, not by the service: thumbprints of Toki's Authenticode certificate. Empty until it exists;
-    /// meanwhile the setup must match the SHA-256 published in the feed (TokiSetup-{version}.exe.sha256, R10 #1).</summary>
+    /// <summary>Read by update-service.ps1, not by the service: thumbprints of Toki's Authenticode certificate (R11 C3). Without one, no
+    /// update is installed (docs/instalador-web.md, "Firma de código").</summary>
     public string[] SignerThumbprints { get; set; } = [];
+    /// <summary>Read by update-service.ps1: pilot only, before the certificate exists. Then the feed's SHA-256 is enough, which does not
+    /// protect against someone who controls the feed.</summary>
+    public bool AllowUnsignedUpdates { get; set; }
 }
 
 internal static class UpdateWindow
@@ -28,7 +31,7 @@ internal static class UpdateWindow
     public static bool CanApply(int openShifts, TimeOnly now, TimeOnly opensAt, TimeOnly closesAt) =>
         openShifts == 0 || !now.IsBetween(opensAt, closesAt);
 
-    /// <summary>The newest full release in a Velopack feed (releases.{channel}.json), or null if the feed has none.</summary>
+    /// <summary>The newest full release in the feed's releases.{channel}.json (build.ps1 writes it), or null if the feed has none.</summary>
     public static Version? Newest(JsonElement feed) =>
         feed.TryGetProperty("Assets", out var assets)
             ? assets.EnumerateArray()
@@ -52,7 +55,7 @@ internal sealed record UpdateMarker(string Version, string SetupUrl, string Sha2
     public string ToJson() => JsonSerializer.Serialize(this);
 }
 
-/// <summary>TK-242: the store server cannot update itself in place (it is a Windows service, Velopack only updates per-user apps).
+/// <summary>TK-242: the store server cannot update itself in place (it is a Windows service, with no rights over its own files).
 /// It checks the feed, logs "Hay una actualización" and writes C:\ProgramData\Toki\update.json; a scheduled task applies it when allowed.</summary>
 internal sealed class ServerUpdateCheck(IHttpClientFactory http, IServiceScopeFactory scopes, IOptions<UpdateSettings> options, TimeProvider clock,
     ILogger<ServerUpdateCheck> log) : BackgroundService

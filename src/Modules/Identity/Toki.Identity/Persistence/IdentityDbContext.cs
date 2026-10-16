@@ -51,6 +51,7 @@ internal sealed class IdentityConfiguration :
         b.HasIndex(d => d.TokenHash).IsUnique();
         b.Property(d => d.CertificateThumbprint).HasMaxLength(64);
         b.HasIndex(d => d.CertificateThumbprint).IsUnique();
+        b.Property(d => d.PreviousCertificateThumbprint).HasMaxLength(64);
         b.Property(d => d.ScaleProtocol).HasMaxLength(20);
     }
 

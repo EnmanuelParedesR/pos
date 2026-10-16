@@ -26,10 +26,12 @@ internal static class StoreHealth
         ["ecf-operations"] = ("Comprobantes electrónicos", "Algo impide o pone en riesgo la facturación electrónica.", "Abra Comprobantes electrónicos y siga lo que indica."),
         ["audit"] = ("Auditoría", "La cadena de auditoría está rota: alguien cambió datos por fuera de Toki.", "Llame al soporte de Toki y no borre nada."),
         ["sync"] = ("Nube", "Hay datos sin subir a la nube.", "Revise el internet de la PC principal; los datos suben solos al volver."),
+        ["disk-encryption"] = ("Cifrado del disco", "El disco de la PC principal no está cifrado: si la roban, se leen las ventas, los respaldos y la llave de los comprobantes.",
+            "Active BitLocker o el Cifrado de dispositivo de Windows en la PC principal y guarde la clave de recuperación fuera de la PC (guía \"PC robada\")."),
     };
 
     /// <summary>The checks whose own descriptions are not written for the owner (English, for the logs).</summary>
-    private static readonly HashSet<string> TechnicalDescriptions = ["outbox", "clock", "ecf-queue"];
+    private static readonly HashSet<string> TechnicalDescriptions = ["outbox", "clock", "ecf-queue", "disk-encryption"];
 
     public static Check Describe(string name, HealthReportEntry e)
     {
@@ -46,5 +48,38 @@ internal static class StoreHealth
                     Results.Ok((await health.CheckHealthAsync(ct)).Entries.Select(e => Describe(e.Key, e.Value))
                         .OrderBy(c => c.Status == "Healthy").ThenBy(c => c.Title).ToList()))
                 .RequirePermission(Permissions.SettingsManage).WithTags("Settings");
+    }
+}
+
+/// <summary>R11 C2: Degraded when the main PC's system drive is not protected by BitLocker or Device Encryption. Windows only tells an
+/// administrator, so the hourly SYSTEM task (deploy/installer/update-service.ps1) writes <c>disk-encryption.json</c> and this reads it.
+/// No file (development, another OS, the task has not run yet): nothing to say.</summary>
+internal sealed class DiskEncryptionHealthCheck : IHealthCheck
+{
+    public static string StatusFile => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Toki", "disk-encryption.json");
+
+    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        string? json = null;
+        try { if (OperatingSystem.IsWindows() && File.Exists(StatusFile)) json = File.ReadAllText(StatusFile); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        return Task.FromResult(Evaluate(json));
+    }
+
+    /// <summary>ProtectionStatus of Win32_EncryptableVolume: 1 = protected; 0, missing (no BitLocker on this Windows) or anything else = not.</summary>
+    internal static HealthCheckResult Evaluate(string? json)
+    {
+        if (json is null) return HealthCheckResult.Healthy();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            return doc.RootElement.TryGetProperty("ProtectionStatus", out var s) && s.ValueKind == System.Text.Json.JsonValueKind.Number && s.GetInt32() == 1
+                ? HealthCheckResult.Healthy()
+                : HealthCheckResult.Degraded("The system drive is not encrypted (BitLocker or Device Encryption).");
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return HealthCheckResult.Healthy(); // half-written by the task: it is written again within the hour
+        }
     }
 }

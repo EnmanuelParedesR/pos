@@ -100,6 +100,7 @@ public sealed class SessionsTests(TokiApp app) : IClassFixture<TokiApp>
         (await app.VerifyAuditAsync()).ShouldBeNull();
         var sequences = await app.InScopeAsync(sp => sp.GetRequiredService<InfraDbContext>().AuditRecords.Select(a => a.Sequence).OrderBy(s => s).ToListAsync());
         sequences.ShouldBe(Enumerable.Range(1, sequences.Count).Select(i => (long)i));
+        app.Clock.Advance(TimeSpan.FromMinutes(16)); // R11 C12: after so many wrong PINs this register waits; the other tests use it
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -155,6 +156,43 @@ public sealed class DeviceCertificateTests
             },
         }) { BaseAddress = address };
         await Should.ThrowAsync<HttpRequestException>(() => impostor.GetAsync("/api/identity/users/active"));
+    }
+
+    [Fact]
+    public async Task R11_C5_a_register_renews_its_one_year_certificate_over_mTLS_and_the_old_one_lasts_until_it_expires()
+    {
+        await using var app = new TlsTokiApp();
+        await using var main = await InstallAsync(app);
+        var old = main.Pin.ClientCertificate!;
+        (old.NotAfter - old.NotBefore).TotalDays.ShouldBeLessThan(400);
+        async Task<string?> Renew(string csr) =>
+            (await main.Api.PostAsync<C.RenewedCertificate>("/api/identity/devices/current/certificate", new { CertificateRequest = csr })).Value?.Certificate;
+
+        await main.Session.RenewCertificateIfDueAsync(Renew, DateTime.UtcNow);
+        main.Pin.ClientCertificate.ShouldBeSameAs(old); // not due yet
+
+        await main.Session.RenewCertificateIfDueAsync(Renew, old.NotAfter.ToUniversalTime().AddDays(-10));
+        var renewed = main.Pin.ClientCertificate!;
+        renewed.Thumbprint.ShouldNotBe(old.Thumbprint);
+        Convert.ToHexString(renewed.GetPublicKey()).ShouldNotBe(Convert.ToHexString(old.GetPublicKey())); // a new key too
+        await main.RestartAsync(app.Address); // kept: read back from its store
+        main.Pin.ClientCertificate!.Thumbprint.ShouldBe(renewed.Thumbprint);
+        await SignInAsync(main);
+
+        // The answer may not have reached the register: the certificate it renewed still works until it expires.
+        using var ca = X509Certificate2.CreateFromPem(app.Services.GetRequiredService<StoreCertificateAuthority>().CertificatePem);
+        using var withOld = new HttpClient(new SocketsHttpHandler
+        {
+            SslOptions =
+            {
+                RemoteCertificateValidationCallback = (_, server, _, _) => server is not null && NodeCertificatePin.IssuedBy(server, ca),
+                LocalCertificateSelectionCallback = (_, _, _, _, _) => old,
+            },
+        }) { BaseAddress = app.Address };
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var again = await withOld.PostAsJsonAsync("/api/identity/devices/current/certificate",
+            new { CertificateRequest = new CertificateRequest("CN=Toki Caja", key, HashAlgorithmName.SHA256).CreateSigningRequestPem() });
+        again.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]
