@@ -55,7 +55,7 @@ public static class Printables
         Kpi(b, "Diferencia", z.Difference is { } d ? (d == 0 ? "Cuadró" : $"{(d < 0 ? "Faltaron" : "Sobraron")} {Format.WithCurrency(Math.Abs(d))}") : "—",
             z.Difference is < 0 ? "bad" : z.Difference == 0 ? "good" : null);
         b.Append("</div>");
-        b.Append("<table><thead><tr><th>Forma de pago</th><th class=\"num\">Cobros</th><th class=\"num\">Anulaciones</th><th class=\"num\">Reembolsos</th><th class=\"num\">Abonos de fiado</th><th class=\"num\">Neto</th></tr></thead><tbody>");
+        b.Append("<table><thead><tr><th>Forma de pago</th><th class=\"num\">Cobros</th><th class=\"num\">Anulaciones</th><th class=\"num\">Reembolsos</th><th class=\"num\">Abonos</th><th class=\"num\">Neto</th></tr></thead><tbody>");
         foreach (var m in z.ByMethod)
             b.Append($"<tr><td>{E(Names.PaymentMethod(m.Method))}</td><td class=\"num\">{Format.Amount(m.SalePayments)}</td><td class=\"num\">{Format.Amount(m.Voids)}</td><td class=\"num\">{Format.Amount(m.Refunds)}</td><td class=\"num\">{Format.Amount(m.CustomerPayments)}</td><td class=\"num\"><strong>{Format.Amount(m.Net)}</strong></td></tr>");
         b.Append("</tbody></table>");
@@ -63,6 +63,7 @@ public static class Printables
         Row(b, "Fondo inicial", Format.Amount(z.OpeningFloat));
         Row(b, "Ventas", $"{z.SaleCount} ({z.VoidedCount} anuladas)");
         Row(b, "Abonos de fiado", Format.Amount(z.CustomerPayments));
+        Row(b, "Abonos de pedidos", Format.Amount(z.OrderDeposits));
         Row(b, "Entradas de efectivo", Format.Amount(z.CashIn));
         Row(b, "Retiros", Format.Amount(z.Withdrawals));
         Row(b, "Gastos pagados de la caja", Format.Amount(z.Expenses));

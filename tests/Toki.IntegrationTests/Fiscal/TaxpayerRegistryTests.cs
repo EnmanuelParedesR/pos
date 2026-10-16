@@ -8,8 +8,14 @@ using Toki.IntegrationTests.Infra;
 
 namespace Toki.IntegrationTests.Fiscal;
 
+/// <summary>A store whose registry files are small test ones (the real one has ~700k taxpayers).</summary>
+public sealed class SmallRegistryApp : TokiApp
+{
+    protected override IReadOnlyDictionary<string, string> Settings => new Dictionary<string, string> { ["Fiscal:RegistryMinimumTaxpayers"] = "1" };
+}
+
 /// <summary>DGII RNC registry (TK-053). Own app: the import replaces the whole table.</summary>
-public sealed class TaxpayerRegistryTests(TokiApp app) : IClassFixture<TokiApp>
+public sealed class TaxpayerRegistryTests(SmallRegistryApp app) : IClassFixture<SmallRegistryApp>
 {
     private const string RegistryFile =
         "RNC|RAZÓN SOCIAL|NOMBRE COMERCIAL|ACTIVIDAD|||||FECHA|ESTADO|REGIMEN\r\n" +
@@ -83,5 +89,45 @@ public sealed class TaxpayerRegistryTests(TokiApp app) : IClassFixture<TokiApp>
         if (second.StatusCode == HttpStatusCode.Conflict) (await second.ErrorCode()).ShouldBe("Fiscal.RegistryImportRunning");
         else second.StatusCode.ShouldBe(HttpStatusCode.Accepted);
         status.GetProperty("taxpayers").GetInt32().ShouldBe(second.StatusCode == HttpStatusCode.Conflict ? 12_345 : 2);
+    }
+}
+
+/// <summary>A store that rejects registry files under 50 taxpayers (the real minimum, 100,000, would make the test slow).</summary>
+public sealed class RegistryGuardApp : TokiApp
+{
+    protected override IReadOnlyDictionary<string, string> Settings => new Dictionary<string, string> { ["Fiscal:RegistryMinimumTaxpayers"] = "50" };
+}
+
+/// <summary>R8 #8: a wrong file never empties the registry, and the .zip as DGII publishes it is accepted. Own app.</summary>
+public sealed class TaxpayerRegistryGuardTests(RegistryGuardApp app) : IClassFixture<RegistryGuardApp>
+{
+    private static async Task<JsonElement> ImportAsync(HttpClient admin, byte[] file)
+    {
+        (await admin.PostAsync("/api/fiscal/taxpayer-registry", new ByteArrayContent(file))).StatusCode.ShouldBe(HttpStatusCode.Accepted);
+        JsonElement status;
+        while ((status = await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/taxpayer-registry/import")).GetProperty("running").GetBoolean()) await Task.Delay(50);
+        return status;
+    }
+
+    [Fact]
+    public async Task A_file_too_small_to_be_the_registry_leaves_the_previous_one_and_the_DGII_zip_is_read()
+    {
+        var admin = app.Client(await app.AdminAsync());
+        var text = new StringBuilder("RNC|RAZÓN SOCIAL\r\n");
+        for (var i = 0; i < 60; i++) text.Append($"{100_000_000 + i}|CONTRIBUYENTE {i}||||||||ACTIVO|\r\n");
+        using var zipped = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(zipped, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        await using (var entry = zip.CreateEntry("TMP/DGII_RNC.TXT").Open())
+            await entry.WriteAsync(Encoding.Latin1.GetBytes(text.ToString()));
+
+        var loaded = await ImportAsync(admin, zipped.ToArray());
+        (loaded.GetProperty("error").ValueKind, loaded.GetProperty("taxpayers").GetInt32()).ShouldBe((JsonValueKind.Null, 60));
+        (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/taxpayers/100000007")).GetProperty("name").GetString().ShouldBe("CONTRIBUYENTE 7");
+
+        // Some other file: rejected before the swap.
+        var wrong = await ImportAsync(admin, Encoding.Latin1.GetBytes("131245678|COLMADO EL SOL SRL||||||||ACTIVO|\r\n"));
+        wrong.GetProperty("error").GetString().ShouldStartWith("El archivo no parece el padrón de la DGII");
+        (await admin.GetAsync("/api/fiscal/taxpayers/100000007")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await admin.GetAsync("/api/fiscal/taxpayers/131245678")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
 }

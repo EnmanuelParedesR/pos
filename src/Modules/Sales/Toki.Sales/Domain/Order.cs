@@ -62,5 +62,6 @@ internal static class OrdersErrors
     public static readonly Error NotAnOrder = Error.Conflict("Orders.NotAnOrder", "Solo un pedido se puede marcar listo o cancelar.");
     public static readonly Error DepositNeedsShift = Error.Validation("Orders.DepositNeedsShift", "Devolver el abono necesita una caja abierta.");
     public static readonly Error PastPickup = Error.Validation("Orders.PastPickup", "La fecha de entrega ya pasó.");
-    public static readonly Error DepositTooBig = Error.Validation("Orders.DepositTooBig", "El abono es mayor que el total del pedido.");
+    public static readonly Error OtherCustomer = Error.Conflict("Orders.OtherCustomer", "Ese pedido es de otro cliente: cóbrelo con el cliente del pedido.");
+    public static readonly Error DepositTooBig =Error.Validation("Orders.DepositTooBig", "El abono es mayor que el total del pedido.");
 }

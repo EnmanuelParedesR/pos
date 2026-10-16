@@ -255,7 +255,7 @@ internal static class CloseShift
     }
 
     internal sealed class Handler(CashRegisterDbContext db, InfraDbContext infra, ICashRegisterOperations operations, IUserContext user, IOutbox outbox, IAuditLog audit,
-        ISupervisorApprovals approvals, IApprovalPolicy policy, TimeProvider clock) : ICommandHandler<Command, ZReport>
+        ISupervisorApprovals approvals, IApprovalPolicy policy, BlindCloseAttempts attempts, TimeProvider clock) : ICommandHandler<Command, ZReport>
     {
         public async Task<Result<ZReport>> Handle(Command c, CancellationToken ct)
         {
@@ -270,9 +270,12 @@ internal static class CloseShift
 
             // The approval is checked here, not in the pipeline: only the count tells whether there is a difference.
             // One approval at most: register.approve-close also covers closing without register.close (it closes other registers' shifts).
-            // shortcut: "needs a supervisor" tells the cashier the count is off (not by how much); add a retry limit if stores report probing.
+            // R8 #19: "needs a supervisor" tells the cashier the count is off (not by how much). After MaxMisses such answers, every count of
+            // the shift needs one, right or not, so trying counts until one passes stops working.
             var approver = user.Has(Permissions.RegisterApproveClose);
-            var needed = counted != expected && !approver && await policy.RequiresSupervisorAsync(Permissions.RegisterApproveClose, ct) ? Permissions.RegisterApproveClose
+            var off = (counted != expected || attempts.Exhausted(c.ShiftId)) && !approver && await policy.RequiresSupervisorAsync(Permissions.RegisterApproveClose, ct);
+            if (off && c.SupervisorApprovalId is null && counted != expected) attempts.Miss(c.ShiftId);
+            var needed = off ? Permissions.RegisterApproveClose
                 : !approver && !user.Has(Permissions.RegisterClose) ? Permissions.RegisterClose
                 : null;
             if (needed is not null)
@@ -300,8 +303,22 @@ internal static class CloseShift
             await audit.RecordAsync("cash.close-shift", "Shift", shift.Id,
                 new { shift.ZNumber, shift.ExpectedCash, shift.CountedCash, shift.Difference }, ct);
             shift.AuditChainHead = await AuditHead.TextAsync(infra, ct); // read after our own audit record: it includes the closing
+            attempts.Forget(c.ShiftId);
             return ZReport.Build(shift, open.Value.Register, movements, count, shift.AuditChainHead);
         }
+    }
+
+    /// <summary>R8 #19: counts with a difference sent without a supervisor, per open shift.</summary>
+    /// <remarks>shortcut: in memory (a failed close rolls its transaction back, so it cannot be a column): a restart of the server gives the
+    /// cashier <see cref="MaxMisses"/> more tries, which is fine for a store.</remarks>
+    internal sealed class BlindCloseAttempts
+    {
+        public const int MaxMisses = 3;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, int> _misses = new();
+
+        public void Miss(Guid shiftId) => _misses.AddOrUpdate(shiftId, 1, (_, n) => n + 1);
+        public bool Exhausted(Guid shiftId) => _misses.TryGetValue(shiftId, out var n) && n >= MaxMisses;
+        public void Forget(Guid shiftId) => _misses.TryRemove(shiftId, out _);
     }
 
     internal sealed record Body(IReadOnlyList<DenominationCount> CashCount, Guid? SupervisorApprovalId);

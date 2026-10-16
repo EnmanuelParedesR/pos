@@ -25,6 +25,12 @@ internal sealed class SalesDbContext(DbContextOptions<SalesDbContext> options) :
         return await Orders.FirstOrDefaultAsync(o => o.Id == id, ct);
     }
 
+    /// <summary>R8 #7: deposits of the customer's open orders other than <paramref name="except"/>. They sit in the credit balance but are
+    /// reserved for their order: no other sale spends them.</summary>
+    public async Task<decimal> ReservedDepositsAsync(Guid customerId, Guid? except, CancellationToken ct) =>
+        (await Orders.Where(o => o.CustomerId == customerId && o.Id != except && (o.Status == OrderStatus.Pending || o.Status == OrderStatus.Ready))
+            .Select(o => o.Deposit).ToListAsync(ct)).Sum(); // summed here: SQLite cannot sum decimals
+
     public Task<Sale?> FullSaleAsync(Guid id, CancellationToken ct) =>
         Sales.Include(s => s.Lines.OrderBy(l => l.Position)).Include(s => s.Payments).FirstOrDefaultAsync(s => s.Id == id, ct);
 

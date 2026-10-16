@@ -145,6 +145,28 @@ public sealed class InventoryTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task An_update_without_the_maximum_keeps_it()
+    {
+        // R8 #22: a client that does not know the maximum (older register, other screen) no longer erases it.
+        var admin = await Admin();
+        var category = await admin.CategoryAsync();
+        var id = (await (await admin.PostAsJsonAsync("/api/inventory/products", new
+        {
+            Name = "Aceite", CategoryId = category, Unit = "Unit", ItbisRate = "General18", Price = 300m, Cost = 0m, MinimumStock = 5m, MaximumStock = 20m,
+        })).Json()).GetProperty("id").GetGuid();
+        object Change(int version, decimal minimum) => new
+        {
+            Version = version, Name = "Aceite de soya", CategoryId = category, Unit = "Unit", ItbisRate = "General18", Price = 300m, SellWithoutStock = false,
+            MinimumStock = minimum, IsActive = true,
+        };
+
+        (await admin.PutAsJsonAsync($"/api/inventory/products/{id}", Change(0, 6m))).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var saved = await admin.GetFromJsonAsync<JsonElement>($"/api/inventory/products/{id}");
+        (saved.GetProperty("minimumStock").GetDecimal(), saved.GetProperty("maximumStock").GetDecimal()).ShouldBe((6m, 20m));
+        (await (await admin.PutAsJsonAsync($"/api/inventory/products/{id}", Change(1, 25m))).ErrorCode()).ShouldBe("Validation"); // over the kept maximum
+    }
+
+    [Fact]
     public async Task Transferring_moves_stock_between_warehouses()
     {
         var c = await Admin();

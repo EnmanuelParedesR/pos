@@ -17,8 +17,8 @@ using Toki.Sales.Domain;
 namespace Toki.Sales.Features;
 
 /// <summary>Creates an order (TK-193) or a quote (TK-194) priced at today's prices for its customer. Nothing moves in stock or fiscal.
-/// An order's deposit goes into the register now (as a customer payment, so the Z counts it) and into the customer's credit balance;
-/// the register later charges the order as a normal sale paying that part with "Saldo a favor". <see cref="Command.OrderId"/> is the idempotency key.</summary>
+/// An order's deposit goes into the register now (its own line of the Z) and into the customer's credit balance, reserved for this order
+/// (R8 #7: no other sale spends it); the register later charges the order as a normal sale paying that part with "Saldo a favor". <see cref="Command.OrderId"/> is the idempotency key.</summary>
 internal static class CreateOrder
 {
     public sealed record Line(Guid ProductId, Guid? PresentationId, decimal Quantity, string? Note = null);
@@ -54,6 +54,9 @@ internal static class CreateOrder
             RuleFor(c => c.Deposit!.Amount).GreaterThan(0).PrecisionScale(19, 2, true).When(c => c.Deposit is not null);
             RuleFor(c => c.Deposit!.Method).Must(m => m is PaymentMethod.Cash or PaymentMethod.Card or PaymentMethod.Transfer).When(c => c.Deposit is not null)
                 .WithMessage("El abono se cobra en efectivo, con tarjeta o por transferencia.");
+            // R8 #6: as RecordCustomerPayment, so the drawer and the Z match to the peso.
+            RuleFor(c => c.Deposit!.Amount).Must(a => a == Math.Truncate(a)).When(c => c.Deposit is { Method: PaymentMethod.Cash })
+                .WithMessage("El efectivo se recibe en pesos enteros.");
         }
     }
 
@@ -97,7 +100,7 @@ internal static class CreateOrder
             {
                 if (d.Amount > total) return OrdersErrors.DepositTooBig;
                 // Lock order as in a sale: shift, then customer.
-                var inRegister = await cash.RecordCustomerPaymentAsync(d.ShiftId, order.Id, d.Method, d.Amount, 0, ct);
+                var inRegister = await cash.RecordOrderDepositAsync(d.ShiftId, order.Id, d.Method, d.Amount, ct);
                 if (inRegister.IsFailure) return inRegister.Error!;
                 var balance = await customers.AddDepositAsync(customer!.Id, order.Id, d.Amount, ct);
                 if (balance.IsFailure) return balance.Error!;
@@ -187,14 +190,18 @@ internal static class MarkOrderReady
 }
 
 /// <summary>Calls an order off. Needs sales.void or a supervisor. A deposit goes back from the given shift by the method it came in,
-/// and leaves the customer's credit balance (fails if the customer already spent it).</summary>
+/// and leaves the customer's credit balance. R8 #7: a deposit the customer already spent (before deposits were reserved for their order, or
+/// through the order's sale, voided later) does not block the cancellation: what is left goes back and the reason notes the rest.</summary>
 internal static class CancelOrder
 {
-    public sealed record Command(Guid OrderId, Guid? ShiftId, string Reason, Guid? SupervisorApprovalId) : ICommand<Ok>, IRequiresApproval
+    public sealed record Command(Guid OrderId, Guid? ShiftId, string Reason, Guid? SupervisorApprovalId) : ICommand<Response>, IRequiresApproval
     {
         public string Permission => Permissions.SalesVoid;
         public Guid ResourceId => OrderId;
     }
+
+    /// <param name="Refunded">What the cashier hands back: the deposit, or less when part of it was already spent.</param>
+    public sealed record Response(decimal Refunded);
 
     internal sealed class Validator : AbstractValidator<Command>
     {
@@ -202,25 +209,39 @@ internal static class CancelOrder
     }
 
     internal sealed class Handler(SalesDbContext db, ICashRegisterOperations cash, ICustomerAccounts customers, IAuditLog audit, TimeProvider clock)
-        : ICommandHandler<Command, Ok>
+        : ICommandHandler<Command, Response>
     {
-        public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
+        public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             var order = await db.LockOrderAsync(c.OrderId, ct);
             if (order is null) return OrdersErrors.NotFound;
             if (order.Kind != OrderKind.Order) return OrdersErrors.NotAnOrder;
             if (!order.IsOpen) return OrdersErrors.Closed;
+            var reason = c.Reason.Trim();
+            var refunded = 0m;
             if (order.Deposit > 0)
             {
-                if (c.ShiftId is not { } shiftId) return OrdersErrors.DepositNeedsShift;
-                var refund = await cash.RecordRefundAsync(shiftId, order.Id, order.DepositMethod!.Value, order.Deposit, 0, ct);
-                if (refund.IsFailure) return refund.Error!;
-                var balance = await customers.RefundDepositAsync(order.CustomerId!.Value, order.Id, order.Deposit, ct);
-                if (balance.IsFailure) return balance.Error!;
+                var customerId = order.CustomerId!.Value;
+                var left = ((await customers.GetAsync(customerId, ct))?.CreditBalance ?? 0) - await db.ReservedDepositsAsync(customerId, order.Id, ct);
+                refunded = Math.Clamp(left, 0, order.Deposit);
+                if (order.DepositMethod == PaymentMethod.Cash) refunded = Math.Truncate(refunded); // cash goes back in whole pesos
+                if (refunded > 0)
+                {
+                    if (c.ShiftId is not { } shiftId) return OrdersErrors.DepositNeedsShift;
+                    var refund = await cash.RecordRefundAsync(shiftId, order.Id, order.DepositMethod!.Value, refunded, 0, ct);
+                    if (refund.IsFailure) return refund.Error!;
+                    var balance = await customers.RefundDepositAsync(customerId, order.Id, refunded, ct);
+                    if (balance.IsFailure) return balance.Error!;
+                }
+                if (refunded < order.Deposit)
+                {
+                    var note = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"Abono ya usado: se devolvieron RD$ {refunded:N2} de RD$ {order.Deposit:N2}. {reason}");
+                    reason = note.Length > 200 ? note[..200] : note;
+                }
             }
-            (order.Status, order.CancelReason, order.ClosedUtc) = (OrderStatus.Cancelled, c.Reason.Trim(), clock.GetUtcNow().UtcDateTime);
-            await audit.RecordAsync("orders.cancel", nameof(Order), order.Id, new { order.CustomerName, order.Deposit, c.Reason }, ct);
-            return Ok.Value;
+            (order.Status, order.CancelReason, order.ClosedUtc) = (OrderStatus.Cancelled, reason, clock.GetUtcNow().UtcDateTime);
+            await audit.RecordAsync("orders.cancel", nameof(Order), order.Id, new { order.CustomerName, order.Deposit, Refunded = refunded, c.Reason }, ct);
+            return new Response(refunded);
         }
     }
 
@@ -229,8 +250,8 @@ internal static class CancelOrder
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/orders/{id:guid}/cancel", async (Guid id, Body b, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
-                    (await h.Handle(new Command(id, b.ShiftId, b.Reason, b.SupervisorApprovalId), ct)).ToHttp(_ => Results.NoContent()))
+            app.MapPost("/api/orders/{id:guid}/cancel", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
+                    (await h.Handle(new Command(id, b.ShiftId, b.Reason, b.SupervisorApprovalId), ct)).ToHttp(Results.Ok))
                 .RequirePermission(Permissions.SalesCreate).WithTags("Orders");
     }
 }

@@ -65,7 +65,7 @@ public sealed record DenominationCount(decimal Denomination, int Quantity);
 public sealed record MethodTotal(PaymentMethod Method, decimal SalePayments, decimal Voids, decimal Refunds, decimal CustomerPayments, decimal Net);
 public sealed record ZReport(Guid ShiftId, long? ZNumber, string Register, string Cashier, DateTime OpenedUtc, DateTime? ClosedUtc, decimal OpeningFloat,
     MethodTotal[] ByMethod, int SaleCount, int VoidedCount, decimal CustomerPayments, decimal Rounding, decimal CashIn, decimal Withdrawals, decimal Expenses,
-    decimal ExpectedCash, decimal? CountedCash, decimal? Difference, Guid? ClosingSupervisorId = null, string? AuditChainHead = null);
+    decimal ExpectedCash, decimal? CountedCash, decimal? Difference, Guid? ClosingSupervisorId = null, string? AuditChainHead = null, decimal OrderDeposits = 0);
 
 // Sales
 public sealed record Discount(bool IsPercentage, decimal Value);

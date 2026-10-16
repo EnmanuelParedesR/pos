@@ -23,7 +23,8 @@ internal static class SuggestedOrder
         decimal Suggested, decimal? LastCost);
 
     /// <param name="SupplierId">Null for products never bought from an active supplier.</param>
-    public sealed record Group(Guid? SupplierId, string? Supplier, IReadOnlyList<Line> Lines, decimal Subtotal);
+    /// <param name="Subtotal">Null, like every <see cref="Line.LastCost"/>, without costs.view (R8 #16, TK-201).</param>
+    public sealed record Group(Guid? SupplierId, string? Supplier, IReadOnlyList<Line> Lines, decimal? Subtotal);
 
     /// <summary>Up to the maximum (or the minimum without one), never less than one whole pound or unit.</summary>
     public static decimal Suggest(decimal stock, decimal minimum, decimal maximum) => Math.Max(1, Math.Ceiling((maximum > 0 ? maximum : minimum) - stock));
@@ -31,8 +32,9 @@ internal static class SuggestedOrder
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/purchasing/suggested-order", async (ICatalogQueries catalog, PurchasingDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/purchasing/suggested-order", async (ICatalogQueries catalog, PurchasingDbContext db, IUserContext user, CancellationToken ct) =>
                 {
+                    var costs = user.Has(Permissions.CostsView);
                     var products = await catalog.BelowMinimumAsync(ct);
                     var ids = products.Select(p => p.ProductId).ToList();
                     var history = await (from l in db.Set<PurchaseLine>()
@@ -47,12 +49,12 @@ internal static class SuggestedOrder
                     {
                         var lines = g.Select(p =>
                         {
-                            var cost = last.TryGetValue(p.ProductId, out var h) ? Math.Round(h.UnitCost / h.Factor, 4) : (decimal?)null;
+                            var cost = costs && last.TryGetValue(p.ProductId, out var h) ? Math.Round(h.UnitCost / h.Factor, 4) : (decimal?)null;
                             return new Line(p.ProductId, p.Name, p.Unit, p.ItbisRate, p.Stock, p.MinimumStock, p.MaximumStock,
                                 Suggest(p.Stock, p.MinimumStock, p.MaximumStock), cost);
                         }).ToList();
                         return new Group(g.Key, g.Key is null ? null : last[g.First().ProductId].Supplier, lines,
-                            Money.Round(lines.Sum(l => l.Suggested * (l.LastCost ?? 0))));
+                            costs ? Money.Round(lines.Sum(l => l.Suggested * (l.LastCost ?? 0))) : null);
                     });
                     return Results.Ok(groups.OrderBy(g => g.SupplierId is null).ThenBy(g => g.Supplier, StringComparer.CurrentCulture).ToList());
                 })

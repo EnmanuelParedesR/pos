@@ -96,6 +96,8 @@ internal static class RegisterSale
                 customer = await customers.GetAsync(customerId, ct);
                 if (customer is not { IsActive: true }) return Error.NotFound("Customers.CustomerNotFound", "El cliente no existe o está desactivado.");
             }
+            // R8 #14: an order is charged to its own customer (its deposit and prices are theirs).
+            if (order?.CustomerId is { } orderCustomer && orderCustomer != c.CustomerId) return OrdersErrors.OtherCustomer;
             var rnc = Rnc.Normalize(c.CustomerRnc) ?? customer?.TaxId;
             var customerName = c.CustomerName?.Trim() ?? customer?.Name;
 
@@ -177,7 +179,9 @@ internal static class RegisterSale
             if (document.IsFailure) return document.Error!;
 
             // The customer's limit is re-checked under the customer's lock.
-            if (creditBalance > 0 && await customers.UseCreditBalanceAsync(customer!.Id, c.SaleId, creditBalance, ct) is { IsFailure: true } noBalance) return noBalance.Error!;
+            if (creditBalance > 0 && await customers.UseCreditBalanceAsync(customer!.Id, c.SaleId, creditBalance,
+                    await db.ReservedDepositsAsync(customer.Id, c.OrderId, ct), ct) is { IsFailure: true } noBalance)
+                return noBalance.Error!;
             if (onAccount > 0 && await customers.ChargeOnAccountAsync(customer!.Id, c.SaleId, document.Value.ENcf, onAccount,
                     allowOverLimit: permissions.Contains(Permissions.CreditExceedLimit), ct) is { IsFailure: true } limit)
                 return limit.Error!;

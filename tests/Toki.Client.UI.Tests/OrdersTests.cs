@@ -51,6 +51,24 @@ public sealed class OrdersTests
     }
 
     [Fact]
+    public void A_cash_deposit_with_centavos_is_not_sent()
+    {
+        // R8 #6: the drawer takes whole pesos, as in a payment on credit.
+        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
+        using var _ = ctx;
+        var cart = ctx.Services.GetRequiredService<Cart>();
+        cart.Add(RegisterTests.Salami, null, 2);
+        cart.Customer = AnaDetail;
+        var dialog = ctx.Render<OrdersDialog>(p => p.Add(x => x.ShiftId, ScreenContext.Shift.ShiftId));
+
+        dialog.Find("input[data-no-scan]").Input("200.50");
+        dialog.Find(".esc-button--primary").Click();
+
+        dialog.WaitForAssertion(() => dialog.Markup.ShouldContain("El efectivo se recibe en pesos enteros."));
+        api.Requests.ShouldNotContain(r => r.Method == "POST");
+    }
+
+    [Fact]
     public void Charging_an_order_loads_it_at_todays_price_and_the_checkout_takes_the_deposit_first()
     {
         var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");

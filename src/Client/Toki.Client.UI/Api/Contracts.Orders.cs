@@ -10,6 +10,8 @@ public sealed record DepositInput(Guid ShiftId, PaymentMethod Method, decimal Am
 public sealed record CreateOrder(Guid OrderId, OrderKind Kind, Guid? CustomerId, List<OrderLineInput> Lines, DateOnly? PickupDate, TimeOnly? PickupTime,
     string? Notes, int? ValidDays, DepositInput? Deposit);
 public sealed record OrderCreated(Guid OrderId, decimal Total);
+/// <param name="Refunded">What goes back to the customer: less than the deposit when part of it was already spent.</param>
+public sealed record OrderCancelled(decimal Refunded);
 
 /// <param name="Price">The unit price when it was made; the register charges today's.</param>
 public sealed record OrderLine(Guid ProductId, Guid? PresentationId, string Name, string Unit, decimal Quantity, decimal Price, decimal Total, string? Note);

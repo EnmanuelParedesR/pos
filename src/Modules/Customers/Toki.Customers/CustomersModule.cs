@@ -146,10 +146,10 @@ internal sealed class CustomerAccounts(CustomersDbContext db, IUserContext user,
         return Result.Success();
     }
 
-    public async Task<Result> UseCreditBalanceAsync(Guid customerId, Guid saleId, decimal amount, CancellationToken ct)
+    public async Task<Result> UseCreditBalanceAsync(Guid customerId, Guid saleId, decimal amount, decimal reserved, CancellationToken ct)
     {
         if (await db.LockAsync(customerId, ct) == 0) return CustomersErrors.CustomerNotFound;
-        if (await db.CreditBalanceAsync(customerId, ct) < amount) return CustomersErrors.InsufficientCreditBalance;
+        if (await db.CreditBalanceAsync(customerId, ct) - reserved < amount) return CustomersErrors.InsufficientCreditBalance;
         AddBalance(customerId, CreditBalanceMovementType.UsedInSale, -amount, saleId);
         await db.PublishBalanceAsync(outbox, customerId, ct);
         return Result.Success();
@@ -192,6 +192,7 @@ internal sealed class CustomerAccounts(CustomersDbContext db, IUserContext user,
     {
         if (await db.LockAsync(customerId, ct) == 0) return CustomersErrors.CustomerNotFound;
         AddBalance(customerId, CreditBalanceMovementType.Deposit, amount, orderId);
+        await db.PublishBalanceAsync(outbox, customerId, ct); // R8 #13: the cloud sees the deposit in the balance
         return Result.Success();
     }
 
@@ -200,6 +201,7 @@ internal sealed class CustomerAccounts(CustomersDbContext db, IUserContext user,
         if (await db.LockAsync(customerId, ct) == 0) return CustomersErrors.CustomerNotFound;
         if (await db.CreditBalanceAsync(customerId, ct) < amount) return CustomersErrors.InsufficientCreditBalance;
         AddBalance(customerId, CreditBalanceMovementType.DepositRefund, -amount, orderId);
+        await db.PublishBalanceAsync(outbox, customerId, ct);
         return Result.Success();
     }
 

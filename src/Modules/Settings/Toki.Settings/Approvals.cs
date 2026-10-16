@@ -59,11 +59,16 @@ internal static class UpdateApprovalPolicy
             RuleForEach(c => c.Required).Must(p => ApprovalPolicy.Defaults.Any(d => d.Permission == p)).WithMessage("Esa acción no pide supervisor: {PropertyValue}.");
     }
 
-    internal sealed class Handler(SettingsDbContext db, IAuditLog audit) : ICommandHandler<Command, Ok>
+    /// <remarks>R8 #5: the escalation brake of TK-215 holds here too. Turning an action off lets anyone do it alone, so only who can do it
+    /// may turn it off; turning one on needs nothing more.</remarks>
+    internal sealed class Handler(SettingsDbContext db, IUserContext user, IAuditLog audit) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
             var b = await db.Business.SingleAsync(ct);
+            if (ApprovalPolicy.Required(b.SupervisorApprovals).FirstOrDefault(p => !c.Required.Contains(p) && !user.Has(p)) is { } denied)
+                return Error.Forbidden("Settings.CannotWaiveApproval",
+                    $"No puede quitar la autorización de una acción que su rol no permite ({denied}). Pídaselo a quien sí la tenga.");
             b.SupervisorApprovals = string.Join(',', ApprovalPolicy.Defaults.Select(d => d.Permission).Where(c.Required.Contains));
             await audit.RecordAsync("settings.approvals", "Business", Guid.Empty, new { Required = b.SupervisorApprovals }, ct);
             return Ok.Value;

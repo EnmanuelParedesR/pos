@@ -53,9 +53,12 @@
                     <fieldset class="esc-col" style="gap:0;border:0;padding:0;margin:0" aria-label="Pedir autorización de supervisor para">
                         @foreach (var rule in _approvals)
                         {
-                            <label class="esc-check"><input type="checkbox" role="switch" checked="@rule.Required" @onchange="e => _approvals[_approvals.IndexOf(rule)] = rule with { Required = (bool)e.Value! }" /> @Approver.Explain(rule.Permission)</label>
+                            @* R8 #5: an action your role cannot do stays as it is; turning it off would let you (and anyone) do it alone. *@
+                            var locked = rule.Required && !Session.Can(rule.Permission);
+                            <label class="esc-check"><input type="checkbox" role="switch" checked="@rule.Required" disabled="@locked" @onchange="e => _approvals[_approvals.IndexOf(rule)] = rule with { Required = (bool)e.Value! }" /> @Approver.Explain(rule.Permission)@(locked ? " (su rol no la permite: no la puede apagar)" : "")</label>
                         }
                     </fieldset>
+                    <span class="esc-muted">Una acción apagada la hace sola cualquier persona que pueda usar la caja, no solo usted.</span>
                     <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Guardar autorizaciones</Button></div>
                 </div>
             </form>

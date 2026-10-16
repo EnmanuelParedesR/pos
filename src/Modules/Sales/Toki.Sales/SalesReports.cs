@@ -107,7 +107,9 @@ internal sealed class SalesReports(SalesDbContext db, Toki.Fiscal.Contracts.IFis
         decimal ByMethod(Sale s, PaymentMethod method) => s.Payments.Where(p => p.Method == method).Sum(p => p.Amount);
 
         // TK-149: e-CF of the DGII test environments are not fiscal (a day of margin: a void or return can be signed after the sale).
-        var test = await fiscal.TestENcfsAsync(f.AddDays(-1), t.AddDays(1), ct);
+        var test = (await fiscal.TestENcfsAsync(f.AddDays(-1), t.AddDays(1), ct)).ToHashSet(StringComparer.Ordinal);
+        // R8 #3: a voided or rejected e-CF not replaced yet is not a valid receipt: it goes in the 608 only.
+        test.UnionWith(await fiscal.UnreplacedENcfsAsync(f.AddDays(-1), t.AddDays(1), ct));
         return sales.Select(s => Row(s.CustomerRnc, s.ENcf, null, s.DateUtc, s.Total, s.Itbis, ByMethod(s, PaymentMethod.Cash), ByMethod(s, PaymentMethod.Transfer),
                 ByMethod(s, PaymentMethod.Card), ByMethod(s, PaymentMethod.OnAccount), ByMethod(s, PaymentMethod.CreditBalance)))
             .Concat(voided.Select(s => Row(s.CustomerRnc, s.VoidENcf!, s.ENcf, s.VoidedUtc!.Value, s.Total, s.Itbis)))

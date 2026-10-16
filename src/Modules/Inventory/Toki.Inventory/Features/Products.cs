@@ -24,7 +24,7 @@ internal sealed class ProductDataValidator : AbstractValidator<IProductData>
         RuleFor(c => c.WholesalePrice).GreaterThan(0).PrecisionScale(19, 2, true).When(c => c.WholesalePrice is not null);
         RuleFor(c => c.MinimumStock).GreaterThanOrEqualTo(0).PrecisionScale(19, 3, true);
         RuleFor(c => c.MaximumStock).GreaterThanOrEqualTo(0).PrecisionScale(19, 3, true)
-            .Must((c, max) => max == 0 || max >= c.MinimumStock).WithMessage("El máximo no puede ser menor que el mínimo (0 si no lo usa).");
+            .Must((c, max) => max is null or 0m || max >= c.MinimumStock).WithMessage("El máximo no puede ser menor que el mínimo (0 si no lo usa).");
         RuleFor(c => c.Unit).IsInEnum();
         RuleFor(c => c.ItbisRate).IsInEnum();
     }
@@ -41,7 +41,8 @@ internal interface IProductData
     decimal? WholesalePrice { get; }
     bool SellWithoutStock { get; }
     decimal MinimumStock { get; }
-    decimal MaximumStock { get; }
+    /// <summary>Null on an update keeps the saved one (R8 #22: a client that does not send it no longer erases it).</summary>
+    decimal? MaximumStock { get; }
 }
 
 internal static class CreateProduct
@@ -50,7 +51,7 @@ internal static class CreateProduct
     /// <param name="InitialStock">Optional opening stock in the main store, recorded as an adjustment.</param>
     public sealed record Command(
         string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate, decimal Price, decimal? WholesalePrice,
-        decimal Cost, bool SellWithoutStock, decimal MinimumStock, IReadOnlyList<string>? Barcodes, decimal InitialStock = 0, decimal MaximumStock = 0)
+        decimal Cost, bool SellWithoutStock, decimal MinimumStock, IReadOnlyList<string>? Barcodes, decimal InitialStock = 0, decimal? MaximumStock = 0)
         : ICommand<Response>, IProductData;
 
     public sealed record Response(Guid Id);
@@ -83,7 +84,7 @@ internal static class CreateProduct
             {
                 Id = Guid.CreateVersion7(), Name = c.Name.Trim(), CategoryId = c.CategoryId, Unit = c.Unit, Plu = plu,
                 ItbisRate = c.ItbisRate, Price = c.Price, WholesalePrice = c.WholesalePrice, Cost = c.Cost,
-                SellWithoutStock = c.SellWithoutStock, MinimumStock = c.MinimumStock, MaximumStock = c.MaximumStock,
+                SellWithoutStock = c.SellWithoutStock, MinimumStock = c.MinimumStock, MaximumStock = c.MaximumStock ?? 0,
             };
             db.Products.Add(product);
             db.Barcodes.AddRange(codes.Select(x => new Barcode { Code = x, ProductId = product.Id }));
@@ -119,7 +120,7 @@ internal static class UpdateProduct
 {
     public sealed record Command(
         Guid Id, int Version, string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate,
-        decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal MaximumStock = 0)
+        decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal? MaximumStock = null)
         : ICommand<Ok>, IProductData;
 
     internal sealed class Validator : AbstractValidator<Command>
@@ -138,6 +139,9 @@ internal static class UpdateProduct
             var plu = Product.NormalizePlu(c.Plu);
             if (plu is not null && await db.Products.AnyAsync(x => x.Plu == plu && x.Id != c.Id, ct)) return InventoryErrors.DuplicatePlu;
 
+            var maximum = c.MaximumStock ?? p.MaximumStock;
+            if (maximum != 0 && maximum < c.MinimumStock) return Error.Validation("Validation", "El máximo no puede ser menor que el mínimo (0 si no lo usa).");
+
             var priceChanges = p.Price != c.Price || p.WholesalePrice != c.WholesalePrice;
             if ((priceChanges || p.Plu != plu || p.ItbisRate != c.ItbisRate) && !user.Has(Permissions.PricesChange)) return InventoryErrors.NoPricePermission;
             if (priceChanges) outbox.Add(new PriceChangedV1(p.Id, p.Price, c.Price, p.WholesalePrice, c.WholesalePrice));
@@ -152,7 +156,7 @@ internal static class UpdateProduct
             p.WholesalePrice = c.WholesalePrice;
             p.SellWithoutStock = c.SellWithoutStock;
             p.MinimumStock = c.MinimumStock;
-            p.MaximumStock = c.MaximumStock;
+            p.MaximumStock = maximum;
             p.IsActive = c.IsActive;
             p.Version++;
             await audit.RecordAsync("inventory.update-product", "Product", p.Id, new { before, after = c }, ct);
@@ -162,7 +166,7 @@ internal static class UpdateProduct
 
     internal sealed record Body(
         int Version, string Name, Guid CategoryId, UnitOfMeasure Unit, string? Plu, ItbisRate ItbisRate,
-        decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal MaximumStock = 0);
+        decimal Price, decimal? WholesalePrice, bool SellWithoutStock, decimal MinimumStock, bool IsActive, decimal? MaximumStock = null);
 
     internal sealed class Endpoint : IEndpoint
     {

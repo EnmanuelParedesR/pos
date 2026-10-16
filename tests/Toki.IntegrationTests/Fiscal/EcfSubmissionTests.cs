@@ -141,6 +141,38 @@ public sealed class EcfSubmissionTimeoutTests(TokiApp app) : IClassFixture<TokiA
     }
 }
 
+/// <summary>R8 #2: a void of a document "never sent" that comes while the queue is sending it. Own app.</summary>
+public sealed class EcfVoidRaceTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    [Fact]
+    public async Task A_void_while_the_queue_sends_the_document_is_refused_and_the_DGII_never_gets_both()
+    {
+        await app.SetUpBusinessAsync();
+        var admin = app.Client(await app.AdminAsync());
+        var id = await app.PendingAsync("E320000095001", app.Clock.GetUtcNow().UtcDateTime.AddHours(72));
+        HttpResponseMessage? voided = null;
+        var dgii = new TestEcfProvider();
+        // The owner taps "Anular" while the DGII is still answering the send.
+        dgii.Responses.Enqueue(() =>
+        {
+            voided = Task.Run(() => admin.PostAsync($"/api/fiscal/documents/{id}/void", null)).GetAwaiter().GetResult();
+            return new DgiiAnswer(DgiiState.Accepted, SequenceUsed: true);
+        });
+
+        (await app.ProcessAsync(dgii)).ShouldBe(1);
+        (await voided!.ErrorCode()).ShouldBe("Fiscal.AlreadySent");
+        (await app.DocumentAsync(id)).Status.ShouldBe(SubmissionStatus.Accepted);
+        (await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Voids.CountAsync())).ShouldBe(0); // no ANECF for an accepted e-CF
+
+        // A void that wins (before the queue reaches the document) leaves it alone: the queue skips it.
+        var other = await app.PendingAsync("E320000095002", app.Clock.GetUtcNow().UtcDateTime.AddHours(72));
+        (await admin.PostAsync($"/api/fiscal/documents/{other}/void", null)).StatusCode.ShouldBe(System.Net.HttpStatusCode.Created);
+        (await app.ProcessAsync(dgii)).ShouldBe(0);
+        (await app.DocumentAsync(other)).Status.ShouldBe(SubmissionStatus.Voided);
+        dgii.Calls.ShouldBe(["send E320000095001"]);
+    }
+}
+
 /// <summary>TK-146/147: a rejection. Own app.</summary>
 public sealed class EcfSubmissionRejectionTests(TokiApp app) : IClassFixture<TokiApp>
 {

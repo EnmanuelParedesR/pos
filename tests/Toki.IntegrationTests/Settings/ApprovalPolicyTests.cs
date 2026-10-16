@@ -43,6 +43,24 @@ public sealed class ApprovalPolicyTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task Only_who_can_do_an_action_turns_its_approval_off()
+    {
+        // R8 #5: settings.manage alone does not turn off the supervisor of a void (it would let that user void alone).
+        var role = (await (await (await Admin()).PostAsJsonAsync("/api/identity/roles",
+            new { Name = "Encargado " + Guid.NewGuid().ToString()[..4], Permissions = new[] { "settings.manage", "sales.return" } })).Json()).GetProperty("id").GetGuid();
+        var manager = app.Client(await app.UserAsync(role));
+        await SetAsync("sales.void", "sales.return");
+
+        var denied = await manager.PutAsJsonAsync("/api/settings/approvals", new { Required = new[] { "sales.return" } });
+        (denied.StatusCode, await denied.ErrorCode()).ShouldBe((HttpStatusCode.Forbidden, "Settings.CannotWaiveApproval"));
+        (await GetAsync(manager))["sales.void"].ShouldBeTrue();
+
+        // What the role can do it turns off, and anything it turns on.
+        (await manager.PutAsJsonAsync("/api/settings/approvals", new { Required = new[] { "sales.void", "inventory.adjust" } })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await GetAsync(manager)).Where(p => p.Value).Select(p => p.Key).ShouldBe(["sales.void", "inventory.adjust"]);
+    }
+
+    [Fact]
     public async Task With_the_policy_off_the_cashier_acts_alone_and_on_it_asks()
     {
         var cashier = await app.UserAsync(Roles.Cashier);

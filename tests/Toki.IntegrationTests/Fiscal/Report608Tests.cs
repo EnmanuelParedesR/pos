@@ -48,5 +48,19 @@ public sealed class Report608Tests(TokiApp app) : IClassFixture<TokiApp>
             .ExecuteUpdateAsync(s => s.SetProperty(d => d.Status, SubmissionStatus.Rejected)));
         var rejected = (await admin.GetFromJsonAsync<JsonElement>($"/api/reports/dgii/608?{period}")).EnumerateArray().Single(r => r.GetProperty("ncf").GetString() == "E320000000003");
         rejected.GetProperty("voidType").GetString().ShouldBe("04");
+
+        // R8 #3: not in both. Until it is replaced the 607 is not exported (its sale would be missing), and the rows leave it out.
+        var blocked = await admin.GetAsync($"/api/reports/dgii/607?{period}");
+        (await blocked.ErrorCode()).ShouldBe("Reports.DocumentsToReplace");
+        (await blocked.Content.ReadAsStringAsync()).ShouldContain("Hay 1 comprobante anulado o rechazado por reemplazar");
+        (await app.InScopeAsync(sp => sp.GetRequiredService<Toki.Sales.Contracts.ISalesReports>().Report607Async(today, today, CancellationToken.None)))
+            .Select(r => r.Ncf).ShouldNotContain("E320000000003");
+
+        var id = await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Documents.Where(d => d.ENcf == "E320000000003").Select(d => d.Id).SingleAsync());
+        (await admin.PostAsync($"/api/fiscal/documents/{id}/replace", null)).EnsureSuccessStatusCode();
+        await app.InScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Messaging.OutboxProcessor>().ProcessAsync(CancellationToken.None));
+        r607 = (await admin.GetFromJsonAsync<JsonElement>($"/api/reports/dgii/607?{period}")).EnumerateArray().Select(r => r.GetProperty("ncf").GetString()).ToList();
+        r607.ShouldNotContain("E320000000003");
+        r607.ShouldContain("E320000000007"); // the replacement, after the voided 4–6
     }
 }
