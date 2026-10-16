@@ -116,6 +116,8 @@ public static class EscPos
         if (r.SecurityCode.Length > 0) foreach (var t in Wrap($"Código de seguridad: {r.SecurityCode}", w)) yield return new(t, Center: true);
         if (r.SignedAt is { } signed) foreach (var t in Wrap($"Firmada: {signed.ToString("dd/MM/yyyy h:mm:ss tt", Invariant)}", w)) yield return new(t, Center: true);
         if (r.ContingencyLegend is not null) foreach (var t in Wrap(r.ContingencyLegend, w)) yield return new(t, Center: true, Bold: true);
+        // TK-208: a 31 waited for the DGII before printing: "Aceptada por la DGII" or "Pendiente de respuesta de la DGII".
+        if (r.DgiiStatus is not null) foreach (var t in Wrap(r.DgiiStatus, w)) yield return new(t, Center: true);
         if (!string.IsNullOrEmpty(r.QrUrl)) yield return new("", Qr: r.QrUrl);
         if (r.Footer is not null) foreach (var t in Wrap(r.Footer, w)) yield return new(t, Center: true);
     }

@@ -46,6 +46,7 @@
             @if (Receipt.SecurityCode.Length > 0) { <div class="center">Código de seguridad: @Receipt.SecurityCode</div> }
             @if (Receipt.SignedAt is { } signed) { <div class="center">Fecha de firma: @signed.ToString("dd-MM-yyyy HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)</div> }
             @if (Receipt.ContingencyLegend is not null) { <div class="center" style="margin-top:8px;font-weight:700">@Receipt.ContingencyLegend</div> }
+            @if (Receipt.DgiiStatus is not null) { <div class="center">@Receipt.DgiiStatus</div> }
             @if (Receipt.Footer is not null) { <div class="center" style="margin-top:8px">@Receipt.Footer</div> }
         </div>
     </ChildContent>

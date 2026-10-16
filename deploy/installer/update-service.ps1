@@ -17,12 +17,17 @@
   The installed settings: ..\server\appsettings.json (server) or ..\app\appsettings.json (register) next to this script.
 .PARAMETER InstalledVersion
   Only for tests; by default the file version of the installed Toki.Host.Local.exe or Toki.exe.
+.PARAMETER PolicyPath
+  Register only (TK-254): update-policy.json, written by the register app with the store's channel (pilot/stable, chosen in Configuración →
+  Actualizaciones) and the cloud's cap (MaxVersion; "" = wait). Any local user can write it, so it only picks among the feed's releases or
+  holds back: the feed, the version checks and the signature checks below do not depend on it.
 #>
 param(
     [ValidateSet('server', 'register')] [string] $Role = 'server',
     [string] $DataRoot = $(if ($Role -eq 'server') { Join-Path $env:ProgramData 'Toki' } else { Join-Path $PSScriptRoot '..' }),
     [string] $SettingsPath = (Join-Path $PSScriptRoot "..\$(if ($Role -eq 'server') { 'server' } else { 'app' })\appsettings.json"),
-    [string] $InstalledVersion = ''
+    [string] $InstalledVersion = '',
+    [string] $PolicyPath = (Join-Path $env:ProgramData 'Toki\update-policy.json')
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'remove-tree.ps1')
@@ -73,9 +78,18 @@ try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     if ($Role -eq 'register') {
         $channel = if ($settings.Updates.Channel) { [string]$settings.Updates.Channel } else { 'stable' }
+        $max = $null
+        if (Test-Path -LiteralPath $PolicyPath) {
+            $policy = try { Get-Content -LiteralPath $PolicyPath -Raw | ConvertFrom-Json } catch { $null }
+            if ([string]$policy.Channel -in 'pilot', 'stable') { $channel = [string]$policy.Channel }
+            if ($null -ne $policy.MaxVersion) {
+                if ([string]$policy.MaxVersion -notmatch '^\d+\.\d+\.\d+$') { return } # the cloud says wait
+                $max = [version][string]$policy.MaxVersion
+            }
+        }
         $releases = (New-Object Net.WebClient).DownloadString("$feed/releases.$channel.json") | ConvertFrom-Json
         $version = @($releases.Assets | Where-Object { $_.Type -eq 'Full' -and [string]$_.Version -match '^\d+\.\d+\.\d+$' } |
-            ForEach-Object { [version][string]$_.Version } | Sort-Object -Descending)[0]
+            ForEach-Object { [version][string]$_.Version } | Where-Object { -not $max -or $_ -le $max } | Sort-Object -Descending)[0]
         if (-not $version -or $version -le (Get-Installed)) { return }
         $version = $version.ToString(3)
     }

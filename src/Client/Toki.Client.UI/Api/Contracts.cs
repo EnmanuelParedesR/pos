@@ -118,3 +118,9 @@ public sealed record Receivable(Guid CustomerId, string Customer, decimal Over90
 public sealed record SequenceAlert(string Type, long Available, DateOnly? ExpiresOn, bool Alert);
 /// <summary>e-CF waiting to be sent; each must go out before its 72-hour deadline. And when the store's certificate expires (TK-176).</summary>
 public sealed record FiscalQueue(int Pending, int Overdue, DateTime? NextDeadlineUtc, int Rejected, int Simulated, DateTime? CertificateExpiresUtc = null);
+/// <summary>TK-254: Configuración → Actualizaciones.</summary>
+public sealed record RegisterUpdate(Guid DeviceId, string Version, string? PendingVersion, DateTime ReportedUtc, bool RestartRequested);
+public sealed record UpdatesInfo(bool Configured, string ServerVersion, string? AvailableVersion, string? AllowedVersion, string Channel, bool OutsideHours,
+    DateTime? RequestedUtc, string? NotesUrl, List<RegisterUpdate> Registers);
+/// <summary>TK-254: the server's answer to a register's version report.</summary>
+public sealed record RegisterUpdateAnswer(string Channel, string? AllowedVersion, string? PendingVersion, bool RestartRequested);

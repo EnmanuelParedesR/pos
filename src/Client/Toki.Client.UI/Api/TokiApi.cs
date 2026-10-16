@@ -47,6 +47,8 @@ public sealed class TokiApi(HttpClient http, Session session, ServerAddress serv
     public Task<ApiResult<T>> GetAsync<T>(string url) => SendAsync<T>(HttpMethod.Get, url, null, DefaultTimeout);
     /// <summary>A periodic check of the status bar: R11 A4, it does not keep an idle session of someone who can approve open.</summary>
     public Task<ApiResult<T>> PollAsync<T>(string url) => SendAsync<T>(HttpMethod.Get, url, null, DefaultTimeout, background: true);
+    /// <summary>TK-254: the register's periodic version report; like <see cref="PollAsync{T}"/>, it does not keep an idle session open.</summary>
+    public Task<ApiResult<T>> PollPutAsync<T>(string url, object? body) => SendAsync<T>(HttpMethod.Put, url, body, DefaultTimeout, background: true);
     /// <param name="timeout">Longer than the 30 s default only for slow commands (a backup).</param>
     public Task<ApiResult<T>> PostAsync<T>(string url, object? body = null, TimeSpan? timeout = null) => SendAsync<T>(HttpMethod.Post, url, body, timeout ?? DefaultTimeout);
     public Task<ApiResult<T>> PutAsync<T>(string url, object? body) => SendAsync<T>(HttpMethod.Put, url, body, DefaultTimeout);

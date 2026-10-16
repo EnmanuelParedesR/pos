@@ -34,7 +34,18 @@
 3. Pulse **Regularizar**: por cada comprobante serie B, Toki emite un e-CF del mismo tipo y con los mismos datos que lo **reemplaza** (código de modificación 4, con referencia al NCF B). Ese e-CF va **solo a la DGII**; el cliente se queda con su comprobante B.
 4. Tiene **30 días calendario** desde la salida. Toki avisa en ámbar y, pasado el plazo, en rojo.
 
-## 5. Contactos
+## 5. Plan B: si la certificación no está lista el 15/11/2026
+
+Decisión del dueño de Toki (D16, `docs/preguntas-abiertas.md`): si su negocio está obligado a emitir e-CF desde el **15 de noviembre de 2026** (pequeños y micro) y la certificación con Toki todavía no termina, use el **Facturador Gratuito de la DGII** mientras tanto. Sirve para **poco volumen** (pocas facturas al día, por ejemplo las de crédito fiscal); no reemplaza la caja.
+
+1. **Confirme que le aplica.** Llame a la DGII (809-689-3444, opción 4) o pregunte a su contador si su negocio puede usar el Facturador Gratuito y con qué límites. *(Verificar con la DGII: requisitos y tope de facturas.)*
+2. **Pídalo en la OFV.** Entre a la Oficina Virtual con su clave y solicite el Facturador Gratuito. La DGII entrega un certificado digital para usarlo **solo ahí** (no sirve en Toki).
+3. **Siga vendiendo en Toki.** La caja, el inventario y los cierres siguen igual. Para las facturas que deben ser e-CF (por ejemplo, la de crédito fiscal que pide un cliente), emítalas en el Facturador Gratuito con los mismos datos de la venta.
+4. **Anote cada una.** Guarde el e-NCF del Facturador Gratuito junto al número de la venta de Toki (en la nota de la venta o en una hoja), para cuadrar el 607 con su contador. Toki no recibe esas facturas.
+5. **Siga con la certificación** en Comprobantes electrónicos → "Certificación con la DGII" ("¿Qué hago ahora?" dice el paso siguiente).
+6. **Al quedar autorizado,** cargue las secuencias e-NCF de producción en Toki, cambie el ambiente a Producción (eCF) y deje de usar el Facturador Gratuito. Avise a su contador desde qué fecha factura con Toki.
+
+## 6. Contactos
 
 - DGII, facturación electrónica: 809-689-3444, opción 4 · facturacionelectronica@dgii.gov.do
 - Soporte de Toki: el de su contrato.

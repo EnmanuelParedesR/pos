@@ -36,6 +36,16 @@ public static class Names
         _ => ("Simulado", "neutral"),
     };
 
+    /// <summary>TK-208: the line a 31 prints after waiting for the DGII; none for a simulated one.</summary>
+    public static string? DgiiReceiptNote(string status) => status switch
+    {
+        "Accepted" => "Aceptada por la DGII",
+        "AcceptedConditional" => "Aceptada por la DGII (condicional)",
+        "Rejected" => "Rechazada por la DGII",
+        "Simulated" => null,
+        _ => "Pendiente de respuesta de la DGII",
+    };
+
     public static string Itbis(string rate) => rate switch
     {
         "General18" => "18 %",

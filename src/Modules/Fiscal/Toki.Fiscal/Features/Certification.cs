@@ -315,7 +315,9 @@ internal static class CertificationStatus
     public sealed record Step(int Number, bool Done, DateTime? DoneUtc);
     public sealed record Case(Guid Id, int Row, string ENcf, EcfType Type, EcfChannel Channel, SubmissionStatus Status, string? TrackId, string? Messages);
     public sealed record Simulation(int Accepted, int Rejected, int Waiting);
-    public sealed record Response(FiscalEnvironment Environment, IReadOnlyList<Step> Steps, IReadOnlyList<Case> Cases, Simulation Simulation);
+    /// <param name="Guide">TK-256: the help, links and next action of each step, from <see cref="CertificationGuide"/>.</param>
+    public sealed record Response(FiscalEnvironment Environment, IReadOnlyList<Step> Steps, IReadOnlyList<Case> Cases, Simulation Simulation,
+        IReadOnlyList<CertificationGuideStep> Guide);
 
     public static Task<List<Case>> CasesAsync(FiscalDbContext db, CancellationToken ct) =>
         db.Set<CertificationCase>().AsNoTracking().OrderBy(c => c.Row)
@@ -332,7 +334,7 @@ internal static class CertificationStatus
                     int Count(params SubmissionStatus[] s) => simulation.Where(x => s.Contains(x.Key)).Sum(x => x.Count);
                     return Results.Ok(new Response(documents.Environment, steps, await CasesAsync(db, ct), new Simulation(
                         Count(SubmissionStatus.Accepted, SubmissionStatus.AcceptedConditional), Count(SubmissionStatus.Rejected),
-                        Count(SubmissionStatus.Pending, SubmissionStatus.Sent))));
+                        Count(SubmissionStatus.Pending, SubmissionStatus.Sent)), CertificationGuide.Steps));
                 })
                 .RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");
     }

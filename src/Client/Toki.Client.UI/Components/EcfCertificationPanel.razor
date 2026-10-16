@@ -5,11 +5,25 @@
 <section class="esc-card esc-card--padded" aria-labelledby="cert-title">
     <div class="esc-card__head">
         <h2 id="cert-title" class="esc-card__title">Certificación con la DGII</h2>
-        <span class="esc-card__aside">@(_state is { } st ? $"{st.Steps.Count(s => s.Done)} de {Steps.Length} pasos" : "")</span>
+        <span class="esc-card__aside">@(_state is { } st ? $"{st.Steps.Count(s => s.Done)} de {Steps.Count} pasos" : "")</span>
     </div>
     @if (_message is not null)
     {
         <p role="status" class="@(_error ? "esc-error" : "esc-muted")">@_message</p>
+    }
+    @* TK-256: the one thing to do now, so the owner can certify with minimal accompaniment. *@
+    @if (_state is not null && Steps.Count > 0)
+    {
+        <Notice Kind="Notice.Kinds.Info" Title="¿Qué hago ahora?">
+            @if (Current is { } now)
+            {
+                <b>Paso @(now + 1): @Steps[now].Title.</b> @Steps[now].Next <GuideLink Step="Steps[now]" />
+            }
+            else
+            {
+                <text>Certificación completa: la tienda ya puede facturar en producción. Revise la primera venta real.</text>
+            }
+        </Notice>
     }
     <ol class="esc-steps" aria-label="Pasos de la certificación">
         @foreach (var (step, i) in Steps.Select((s, i) => (s, i)))
@@ -18,6 +32,11 @@
             <li>
                 <label><input type="checkbox" checked="@done" disabled="@_sending" @onchange="e => MarkAsync(i, e.Value is true)" /> <b>@step.Title</b></label>
                 <span class="esc-table__sub esc-muted">@step.Who · @step.Hint</span>
+                <details class="esc-table__sub">
+                    <summary>Ayuda con este paso</summary>
+                    <p>@step.Help</p>
+                    <p><b>Qué hacer:</b> @step.Next <GuideLink Step="step" /></p>
+                </details>
             </li>
         }
     </ol>
@@ -90,27 +109,12 @@
 </section>
 
 @code {
-    private sealed record Step(string Title, string Who, string Hint);
+    /// <summary>The certification portal step by step, with help and the next action (TK-256, server: CertificationGuide). The index is what the server keeps.
+    /// TK-246: from "Confirmar las URL de prueba" to the production URL the store's main PC signs each acknowledgement: it must stay on and connected.</summary>
+    private List<CertificationGuideStep> Steps => _state?.Guide ?? [];
 
-    /// <summary>The certification portal (docs/ecf-propio.md §8). The index is what the server keeps.</summary>
-    private static readonly Step[] Steps =
-    [
-        new("Solicitud FI-GDF-016 en la OFV", "Dueño", "La DGII responde por el buzón con el acceso al portal"),
-        new("Pruebas libres en Pre-certificación (TesteCF)", "Toki", "Ventas de prueba de cada tipo con el ambiente en TesteCF"),
-        new("Postulación", "Dueño + Toki", "Nombre y versión del software, URL de la tienda; firme el XML aquí abajo"),
-        new("Pruebas de datos e-CF (set de pruebas)", "Toki", "Suba el Excel del portal"),
-        new("Pruebas de aprobaciones comerciales", "Toki", "Pendiente: llega con el servicio de la nube (TK-152)"),
-        new("Simulación con datos reales", "Toki", "Ventas normales con el ambiente en CerteCF"),
-        new("Subir el PDF de cada comprobante de la simulación", "Dueño", "Descargue cada uno en \"Simulación\" aquí abajo y guárdelo como PDF"),
-        // TK-246: from here to the production URL the store's main PC signs each acknowledgement: it must stay on and connected.
-        new("Confirmar las URL de prueba", "Dueño", "Recepción y aprobación comercial de la tienda. Deje esta PC encendida y con internet"),
-        new("Comunicación: la DGII envía e-CF y espera el acuse", "Nube de Toki + esta PC", "Esta PC firma cada acuse: manténgala encendida durante la prueba"),
-        new("Comunicación: aprobaciones comerciales", "Esta PC", "Apruebe o rechace en Compras → Recibidos; se firma y se envía desde aquí"),
-        new("URL de producción", "Dueño", "Las mismas URL, ambiente de producción. Esta PC encendida y con internet"),
-        new("Declaración jurada", "Dueño + Toki", "Descárguela, fírmela aquí abajo y súbala"),
-        new("Verificación del RNC por la DGII", "DGII", "Esperar la respuesta"),
-        new("Autorización: secuencias de producción y ambiente eCF", "Dueño", "Pida las secuencias en la OFV y cárguelas en Configuración"),
-    ];
+    /// <summary>The first step not ticked; null when all are.</summary>
+    private int? Current => Enumerable.Range(0, Steps.Count).Cast<int?>().FirstOrDefault(i => _state?.Steps.Find(s => s.Number == i)?.Done != true);
 
     private CertificationState? _state;
     private string? _message, _xml, _fileName;

@@ -65,6 +65,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Billing.PaddleProduct> PaddleProducts => Set<Billing.PaddleProduct>();
     public DbSet<Billing.Referral> Referrals => Set<Billing.Referral>();
     public DbSet<Certification.AccompanimentRequest> AccompanimentRequests => Set<Certification.AccompanimentRequest>();
+    public DbSet<Platform.AppRelease> AppReleases => Set<Platform.AppRelease>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -321,6 +322,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         });
         Alerts.AlertModel.Configure(builder);
         Certification.AccompanimentModel.Configure(builder);
+        Platform.Releases.Configure(builder);
         Toki.Host.Cloud.Nodes.UsedNonce.Configure(builder);
     }
 

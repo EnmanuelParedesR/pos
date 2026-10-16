@@ -8,7 +8,7 @@ namespace Toki.Client.Wpf;
 /// -Role register) while the app is closed; the app itself never updates its own files.</remarks>
 public partial class App : Application
 {
-    private static readonly string Log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Toki", "errors.log");
+    internal static readonly string Log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Toki", "errors.log");
 
     protected override void OnStartup(StartupEventArgs e)
     {

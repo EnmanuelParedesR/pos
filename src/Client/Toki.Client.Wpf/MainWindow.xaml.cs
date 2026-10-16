@@ -23,6 +23,7 @@ public partial class MainWindow
         services.AddTokiClient(api);
         services.AddSingleton<ILocalStore, ProtectedStore>();
         services.AddSingleton<IDeviceKeys, CngDeviceKeys>();
+        services.AddSingleton<IAppUpdater>(new RegisterUpdates(App.Log)); // TK-254
         // Simulated scale and printer in Debug builds, the real drivers in Release; appsettings "Hardware": { "Simulated": true|false } overrides it.
 #if DEBUG
         var simulate = true;

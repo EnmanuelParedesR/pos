@@ -1,0 +1,125 @@
+@inject TokiApi Api
+
+@* TK-254: Configuración → Actualizaciones. What the server and each register run, what is available, the channel and when updates install.
+   Every change here goes to the audit log. *@
+<form class="esc-card esc-setting" @onsubmit="SaveAsync" novalidate>
+    <div class="esc-setting__about"><h2>Actualizaciones</h2><p>Toki se actualiza solo y verifica la firma de cada versión antes de instalarla. Aquí decide cuándo.</p></div>
+    <div class="esc-setting__body">
+        @if (_info is { } i)
+        {
+            @if (!i.Configured)
+            {
+                <Notice Kind="Notice.Kinds.Info" Title="Esta PC no busca actualizaciones">El instalador no configuró la dirección de las versiones. Llame a soporte de Toki.</Notice>
+            }
+            <dl class="esc-dl">
+                <dt>Servidor (PC principal)</dt><dd>Versión @i.ServerVersion</dd>
+                <dt>Disponible</dt>
+                <dd>@if (i.AvailableVersion is { } available)
+                    {
+                        <span class="esc-pill esc-pill--warning">Versión @available</span>
+                        @if (i.RequestedUtc is { } requested) { <span class="esc-muted"> Pedida el @Format.Date(requested): se instala cuando no haya turnos abiertos o después del cierre.</span> }
+                    }
+                    else if (i.AllowedVersion == "") { <span class="esc-muted">Hay una versión nueva que todavía no llega a esta tienda.</span> }
+                    else { <span class="esc-pill esc-pill--success">Al día</span> }
+                    @if (i.NotesUrl is { } notes) { <a href="@notes" target="_blank" rel="noopener noreferrer"> Ver novedades</a> }
+                </dd>
+            </dl>
+            <div class="esc-form-grid">
+                <Field Label="Canal">
+                    <select class="esc-input" @bind="_channel">
+                        <option value="stable">Estable (recomendado)</option>
+                        <option value="pilot">Piloto: recibe las versiones primero</option>
+                    </select>
+                </Field>
+            </div>
+            <label class="esc-check"><input type="checkbox" role="switch" @bind="_outsideHours" /> Actualizar fuera de horario (solo, de noche)</label>
+            <span class="esc-muted">Apagado, las actualizaciones esperan a que usted toque "Actualizar ahora".</span>
+            @if (_message is not null) { <p role="status" class="@(_error ? "esc-error" : "esc-muted")">@_message</p> }
+            <div class="esc-form-actions">
+                <Button Type="submit" Disabled="_sending">Guardar</Button>
+                @if (i.AvailableVersion is not null && i.RequestedUtc is null)
+                {
+                    <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="ApplyNowAsync">Actualizar ahora</Button>
+                }
+            </div>
+
+            <h3 class="esc-card__title">Cajas</h3>
+            @if (i.Registers.Count == 0)
+            {
+                <p class="esc-muted">Ninguna caja ha informado su versión todavía. Lo hace cuando alguien entra a vender.</p>
+            }
+            else
+            {
+                <div class="esc-table-wrap">
+                    <table class="esc-table" aria-label="Versión de cada caja">
+                        <thead><tr><th>Caja</th><th>Versión</th><th><span class="esc-visually-hidden">Acción</span></th></tr></thead>
+                        <tbody>
+                            @foreach (var r in i.Registers)
+                            {
+                                <tr>
+                                    <td>@Name(r.DeviceId)<span class="esc-table__sub esc-muted">Informó @Format.Date(r.ReportedUtc)</span></td>
+                                    <td>@r.Version
+                                        @if (r.PendingVersion is { } pending)
+                                        {
+                                            <span class="esc-table__sub esc-muted">Hay una actualización (@pending); se aplicará al reiniciar@(r.RestartRequested ? ". Pedido: la caja se cierra cuando no tenga una venta en curso." : "")</span>
+                                        }
+                                    </td>
+                                    <td class="esc-num">
+                                        @if (r.PendingVersion is not null && !r.RestartRequested)
+                                        {
+                                            <Button Disabled="_sending" OnClick="() => RestartAsync(r.DeviceId)">Cerrar y actualizar</Button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        }
+        else
+        {
+            <Skeleton Height="120px" />
+        }
+    </div>
+</form>
+
+@code {
+    private UpdatesInfo? _info;
+    private Dictionary<Guid, string> _names = [];
+    private string _channel = "stable";
+    private bool _outsideHours = true, _sending, _error;
+    private string? _message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The device names need devices.manage; without it the register shows by its short id.
+        _names = ((await Api.GetAsync<List<Device>>("/api/identity/devices")).Value ?? []).ToDictionary(d => d.Id, d => d.Name);
+        await LoadAsync();
+    }
+
+    private string Name(Guid id) => _names.TryGetValue(id, out var n) ? n : $"Caja {id.ToString()[..8]}";
+
+    private async Task LoadAsync()
+    {
+        _info = (await Api.GetAsync<UpdatesInfo>("/api/settings/updates")).Value;
+        if (_info is { } i) (_channel, _outsideHours) = (i.Channel, i.OutsideHours);
+    }
+
+    private async Task RunAsync(Func<Task<ApiResult<Empty>>> call, string success)
+    {
+        _sending = true;
+        var r = await call();
+        _sending = false;
+        (_error, _message) = (r.Problem is not null, r.Problem?.Message ?? success);
+        await LoadAsync();
+    }
+
+    private Task SaveAsync() => RunAsync(() => Api.PutAsync<Empty>("/api/settings/updates", new { Channel = _channel, OutsideHours = _outsideHours }), "Guardado.");
+
+    private Task ApplyNowAsync() => RunAsync(() => Api.PostAsync<Empty>("/api/settings/updates/apply-now"),
+        "Listo. El servidor se actualiza cuando no haya turnos abiertos, o después del cierre. Las cajas siguen funcionando.");
+
+    private Task RestartAsync(Guid deviceId) => RunAsync(() => Api.PostAsync<Empty>($"/api/settings/updates/registers/{deviceId}/restart"),
+        "Pedido. La caja se cierra sola en unos minutos, cuando no tenga una venta en curso; la actualización se instala en menos de una hora y luego se vuelve a abrir Toki.");
+}

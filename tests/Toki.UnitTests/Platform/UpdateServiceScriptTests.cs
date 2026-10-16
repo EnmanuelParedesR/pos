@@ -88,6 +88,35 @@ public sealed class UpdateServiceScriptTests : IDisposable
         Run("bad", Feed, Hash, DateTime.UtcNow).Exit.ShouldBe(1); // fresh: reaches validation in any time zone
     }
 
+    [Fact]
+    public void TK254_a_register_waits_when_the_cloud_says_so_and_otherwise_goes_to_the_feed()
+    {
+        File.WriteAllText(Path.Combine(_root, "appsettings.json"), JsonSerializer.Serialize(new { Updates = new { FeedUrl = Feed, SignerThumbprints = new[] { Thumbprint } } }));
+        var policy = Path.Combine(_root, "update-policy.json");
+        (int, string) Register()
+        {
+            var info = new ProcessStartInfo("powershell.exe")
+            {
+                ArgumentList =
+                {
+                    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Script(), "-Role", "register", "-DataRoot", _root,
+                    "-SettingsPath", Path.Combine(_root, "appsettings.json"), "-InstalledVersion", "1.0.0", "-PolicyPath", policy,
+                },
+                RedirectStandardError = true, RedirectStandardOutput = true,
+            };
+            using var p = Process.Start(info)!;
+            var stderr = p.StandardError.ReadToEnd();
+            p.StandardOutput.ReadToEnd();
+            p.WaitForExit();
+            return (p.ExitCode, stderr);
+        }
+
+        File.WriteAllText(policy, """{"Channel":"pilot","MaxVersion":""}""");
+        Register().Item1.ShouldBe(0); // held back: nothing downloaded
+        File.WriteAllText(policy, """{"Channel":"pilot","MaxVersion":"1.2.0"}""");
+        Register().Item1.ShouldBe(1); // allowed: it reads the (unreachable, in tests) feed
+    }
+
     private static void Junction(string link, string target)
     {
         using var p = Process.Start(new ProcessStartInfo("cmd.exe") { ArgumentList = { "/c", "mklink", "/J", link, target }, RedirectStandardOutput = true })!;

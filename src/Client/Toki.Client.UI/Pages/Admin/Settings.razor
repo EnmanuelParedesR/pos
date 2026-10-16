@@ -326,6 +326,10 @@
             <HealthPanel />
             break;
 
+        case Section.Updates:
+            <UpdatesSettings />
+            break;
+
         case Section.Backups:
             <BackupSettingsCard />
             <section class="esc-card esc-setting">
@@ -464,7 +468,7 @@
 </Admin>
 
 @code {
-    private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, ScaleLabels, Users, Roles, Backups, Cloud, License, Health }
+    private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, ScaleLabels, Users, Roles, Backups, Cloud, License, Health, Updates }
     private sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
     private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; public bool RequireReference = true; }
 
@@ -484,6 +488,7 @@
         Section.Backups => "Respaldos",
         Section.Cloud => "Nube",
         Section.Health => "Salud",
+        Section.Updates => "Actualizaciones",
         _ => "Licencia",
     };
 
@@ -494,6 +499,7 @@
         Session.Can("settings.manage") ? Section.ScaleLabels : null,
         Session.Can("users.manage") ? Section.Users : null, Session.Can("users.manage") ? Section.Roles : null,
         Session.Can("backups.manage") ? Section.Backups : null, Session.Can("settings.manage") ? Section.Cloud : null, Section.License, Session.Can("settings.manage") ? Section.Health : null,
+        Session.Can("settings.manage") ? Section.Updates : null,
     }.OfType<Section>()];
 
     /// <summary>Configuración shows in the menu when any of its sections does (License alone is only informative).</summary>
@@ -537,6 +543,7 @@
     {
         "fiscal" when Sections.Contains(Section.FiscalSequences) => Section.FiscalSequences,
         "health" when Sections.Contains(Section.Health) => Section.Health,
+        "updates" when Sections.Contains(Section.Updates) => Section.Updates,
         "backups" when Sections.Contains(Section.Backups) => Section.Backups,
         "business" when Sections.Contains(Section.Business) => Section.Business,
         "license" => Section.License, // the Resumen's "Comprar licencia" and "Quitar ejemplos" (TK-196/220)

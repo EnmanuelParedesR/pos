@@ -1,9 +1,12 @@
 @inherits LayoutComponentBase
+@using Microsoft.Extensions.DependencyInjection
 @implements IDisposable
 @inject Session Session
 @inject TokiApi Api
 @inject NavigationManager Nav
 @inject Peripherals Peripherals
+@inject Cart Cart
+@inject IServiceProvider Services
 
 @if (_ready)
 {
@@ -64,6 +67,11 @@
                             <Icon Name="@icon" Size="16" />@device @(st switch { Peripherals.DeviceState.Connected => "conectada", Peripherals.DeviceState.Error => "sin respuesta", _ => "configurada" })
                         </span>
                     }
+                }
+                @* TK-254: calm, never blocks the sale. *@
+                @if (_pendingVersion is not null)
+                {
+                    <span class="muted" role="status">Hay una actualización; se aplicará al reiniciar</span>
                 }
                 @if (Session.Online)
                 {
@@ -160,7 +168,31 @@
         _contingency = Session.IsOpen && !IsBackOffice ? (await Api.PollAsync<EcfContingencyStatus>("/api/fiscal/contingency")).Value ?? _contingency : null;
         _backup = Session.Can("backups.manage") && !IsBackOffice ? (await Api.PollAsync<BackupWarning>("/api/backups/warning")).Value ?? _backup : null;
         _license = Session.IsOpen && !IsBackOffice ?(await Api.PollAsync<LicenseFeatures>("/api/settings/features")).Value ?? _license : null;
+        await ReportVersionAsync();
         StateHasChanged();
+    }
+
+    private IAppUpdater? _updater;
+    private DateTime _lastReport;
+    private string? _pendingVersion;
+    private (string, string?)? _lastPolicy;
+
+    /// <summary>TK-254: every 2 minutes this register tells the server its version. The answer brings the version it gets once Toki is closed (the
+    /// setup's SYSTEM task installs it), the store's channel and the cloud's cap (left for that task) and whether the owner asked it to close and
+    /// update: done only with no sale in progress.</summary>
+    private async Task ReportVersionAsync()
+    {
+        _updater ??= Services.GetService<IAppUpdater>();
+        if (_updater is null || !Session.IsOpen || DateTime.UtcNow - _lastReport < TimeSpan.FromMinutes(2)) return;
+        _lastReport = DateTime.UtcNow;
+        if ((await Api.PollPutAsync<RegisterUpdateAnswer>("/api/settings/updates/register", new { _updater.Version })).Value is not { } a) return;
+        _pendingVersion = a.PendingVersion;
+        if (_lastPolicy != (a.Channel, a.AllowedVersion))
+        {
+            _lastPolicy = (a.Channel, a.AllowedVersion);
+            _updater.Follow(a.Channel, a.AllowedVersion);
+        }
+        if (a.RestartRequested && a.PendingVersion is not null && Cart.IsEmpty) _updater.CloseToUpdate();
     }
 
     private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(() =>

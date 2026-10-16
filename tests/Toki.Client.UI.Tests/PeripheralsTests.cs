@@ -113,6 +113,47 @@ public sealed class PeripheralsTests
         hw.Printer.DrawerOpenings.ShouldBe(0); // the kick went with the receipt
     }
 
+    [Theory]
+    [InlineData("Accepted", "Aceptada por la DGII")]
+    [InlineData("Pending", "Pendiente de respuesta de la DGII")]
+    public void TK208_a_31_waits_for_the_DGII_and_prints_its_answer(string status, string printed)
+    {
+        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20", 80)));
+        using var _ = ctx;
+        var cart = ctx.Services.GetRequiredService<Cart>();
+        var receipt = RegisterTests.ReceiptFor(210m) with { ENcf = "E310000000005", Payments = [new("Tarjeta", 210m, null)] };
+        api.Respond("POST", "/api/sales", _ => FakeApi.Response(HttpStatusCode.Created, new SaleRegistered(cart.SaleId, 1, receipt.ENcf, 210m, 0m, receipt)))
+           .Json("POST", "/api/fiscal/documents/E310000000005/await-result", new { status, message = (string?)null });
+        var sale = ctx.Render<Sale>();
+
+        Scan(sale, "7460000000017");
+        sale.WaitForAssertion(() => sale.Find(".sale__line"));
+        sale.FindAll("button").Single(b => b.TextContent.Contains("Cobrar", StringComparison.Ordinal)).Click();
+        sale.FindAll("[role=dialog] button").Single(b => b.TextContent.Contains("Confirmar cobro", StringComparison.Ordinal)).Click();
+
+        sale.WaitForAssertion(() => hw.Printer.Printed.Single().Receipt.DgiiStatus.ShouldBe(printed));
+    }
+
+    [Fact]
+    public void TK208_a_31_the_DGII_rejected_is_not_printed_and_the_cashier_is_told()
+    {
+        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20", 80)));
+        using var _ = ctx;
+        var cart = ctx.Services.GetRequiredService<Cart>();
+        var receipt = RegisterTests.ReceiptFor(210m) with { ENcf = "E310000000006", Payments = [new("Tarjeta", 210m, null)] };
+        api.Respond("POST", "/api/sales", _ => FakeApi.Response(HttpStatusCode.Created, new SaleRegistered(cart.SaleId, 1, receipt.ENcf, 210m, 0m, receipt)))
+           .Json("POST", "/api/fiscal/documents/E310000000006/await-result", new { status = "Rejected", message = "Error" });
+        var sale = ctx.Render<Sale>();
+
+        Scan(sale, "7460000000017");
+        sale.WaitForAssertion(() => sale.Find(".sale__line"));
+        sale.FindAll("button").Single(b => b.TextContent.Contains("Cobrar", StringComparison.Ordinal)).Click();
+        sale.FindAll("[role=dialog] button").Single(b => b.TextContent.Contains("Confirmar cobro", StringComparison.Ordinal)).Click();
+
+        sale.WaitForAssertion(() => sale.Markup.ShouldContain("La DGII rechazó esta factura"));
+        hw.Printer.Printed.ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task With_printing_off_a_cash_sale_only_opens_the_drawer_and_the_choice_is_remembered()
     {

@@ -337,6 +337,29 @@ export interface StoreSyncStatus {
 
 // Plataforma (Toki staff, TK-189 / TK-190): /api/platform/*.
 
+/** TK-254: a version released on a channel to a share of the stores (Plataforma → Versiones). */
+export type ReleaseChannel = "pilot" | "stable";
+export interface AppRelease {
+  id: string;
+  channel: ReleaseChannel;
+  version: string;
+  rolloutPercent: number;
+  notesUrl: string | null;
+  publishedUtc: string;
+  changedUtc: string;
+  changedBy: string;
+}
+/** Store PCs (and stores) whose last heartbeat reported each version. */
+export interface FieldVersion {
+  version: string;
+  nodes: number;
+  stores: number;
+}
+export interface ReleasesResponse {
+  releases: AppRelease[];
+  field: FieldVersion[];
+}
+
 export type FunnelStage = "account" | "store" | "connected" | "firstSale" | "sevenDays" | "certified";
 /** TK-225: a store in the DGII certification. `currentStep` is 0-based (`totalSteps` when every step is ticked); `stuck`: 14 days or more on one step. */
 export interface CertificationProgress {

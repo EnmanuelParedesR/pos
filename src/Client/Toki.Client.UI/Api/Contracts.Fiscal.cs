@@ -43,3 +43,6 @@ public sealed record EcfReceiverUrls(string Environment, string Reception, strin
 public sealed record ReceivedEcf(Guid Id, string Environment, string IssuerRnc, string IssuerName, string ENcf, int Type, DateOnly IssuedOn, decimal Total,
     decimal Itbis, DateTime ReceivedUtc, string? Approval, string? ApprovalReason, DateTime? ApprovalUtc, DateTime? ApprovalDeliveredUtc,
     DateTime? ApprovalDgiiUtc, string? ApprovalMessage);
+
+/// <summary>TK-208: <c>POST /api/fiscal/documents/{eNcf}/await-result</c>. Status: Accepted, AcceptedConditional, Rejected, Simulated or Pending.</summary>
+public sealed record DgiiResult(string Status, string? Message);

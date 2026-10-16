@@ -448,7 +448,25 @@
         var cash = v.Receipt.Payments.Any(p => p.Method == "Efectivo");
         var print = Peripherals.Settings.PrintAfterSale;
         if (!print && !cash) return;
-        if (!await Peripherals.TryAsync(p => print ? p.PrintAsync(v.Receipt, cash, CancellationToken.None) : p.OpenDrawerAsync(CancellationToken.None)))
+        var receipt = v.Receipt;
+        // TK-208 (owner, D6): a 31 waits a few seconds for the DGII so the customer takes it already accepted; past that it prints as pending.
+        if (print && receipt.ENcf.StartsWith("E31", StringComparison.Ordinal))
+        {
+            _notice = new(Notice.Kinds.Info, "Esperando a la DGII…", "La factura de crédito fiscal se imprime con la respuesta; tarda unos segundos.");
+            StateHasChanged();
+            var status = (await Api.PostAsync<DgiiResult>($"/api/fiscal/documents/{Uri.EscapeDataString(receipt.ENcf)}/await-result", timeout: TimeSpan.FromSeconds(30))).Value?.Status ?? "Pending";
+            _notice = null;
+            receipt = receipt with { DgiiStatus = Names.DgiiReceiptNote(status) };
+            _last = v with { Receipt = receipt };
+            if (status == "Rejected")
+            {
+                _notice = new(Notice.Kinds.Warning, "La DGII rechazó esta factura: no se imprimió.",
+                    "La venta sí se guardó. No la entregue: avise al encargado para reemplazarla en Comprobantes electrónicos y luego reimprímala.");
+                if (!cash) return;
+                print = false; // the drawer still opens for the cash
+            }
+        }
+        if (!await Peripherals.TryAsync(p => print ? p.PrintAsync(receipt, cash, CancellationToken.None) : p.OpenDrawerAsync(CancellationToken.None)))
             _notice = new(Notice.Kinds.Warning, print ? "No se pudo imprimir la factura." : "No se pudo abrir la gaveta.",
                 "La venta sí se guardó. Revise que la impresora tenga papel y esté encendida; después reimprima con Ver factura.");
     }

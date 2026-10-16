@@ -133,6 +133,7 @@ internal static class PlatformEndpoints
 
         Certification.AccompanimentEndpoints.MapPlatformAccompaniment(platform); // TK-234
         Billing.BillingEndpoints.MapPlatformBilling(platform); // TK-249
+        Releases.MapPlatformReleases(platform); // TK-254
         Fe.FeDelegations.MapPlatformDelegations(platform); // R11 B-High2
 
         var metrics = platform.MapGroup("/metrics");

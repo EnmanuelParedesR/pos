@@ -2271,6 +2271,48 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("TenantMembers", "cloud");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Platform.AppRelease", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ChangedBy")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("NotesUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("PublishedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RolloutPercent")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Channel", "Version")
+                        .IsUnique();
+
+                    b.ToTable("AppReleases", "cloud");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Quotas.TenantUsage", b =>
                 {
                     b.Property<Guid>("TenantId")
