@@ -14,6 +14,7 @@ Este repositorio tiene el **backend de V1**: una API local que corre en la PC pr
 | `docs/arquitectura-v1-vsa.md` | Organización del código (vertical slices, outbox, seguridad, pruebas) |
 | `docs/adr/` | Decisiones tomadas al construir |
 | `backlog/BACKLOG.md` | Tickets y su estado |
+| `docs/preguntas-abiertas.md` | Todo lo que falta decidir o confirmar, por quién responde (dueño, DGII, contador, abogado, INDOTEL, campo, piloto) |
 
 ## Estructura
 

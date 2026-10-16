@@ -42,11 +42,18 @@ public sealed record FeReceivedItem(long Id, string Environment, string IssuerRn
     DateTime? ApprovalDgiiUtc, string? ApprovalMessage, bool Conflict, DateTime? AcknowledgedUtc);
 
 /// <summary>A received e-CF as the panel lists it (no XML).</summary>
+/// <param name="PanelDecision">TK-250: the owner's decision from the panel; pending at the store while <paramref name="Approval"/> is null.</param>
 public sealed record FePanelReceived(long Id, string Environment, string IssuerRnc, string IssuerName, string ENcf, int Type, DateOnly IssuedOn, decimal Total,
     decimal Itbis, DateTime ReceivedUtc, string? Approval, string? ApprovalReason, DateTime? ApprovalUtc, DateTime? ApprovalDeliveredUtc, DateTime? ApprovalDgiiUtc,
-    string? ApprovalMessage, bool Conflict, DateTime? AcknowledgedUtc);
+    string? ApprovalMessage, bool Conflict, DateTime? AcknowledgedUtc, string? PanelDecision = null, string? PanelReason = null, string? PanelDecidedBy = null,
+    DateTime? PanelDecidedUtc = null);
 
 public sealed record FePullRequest(long? After);
+
+/// <summary>TK-250: a commercial approval an owner decided in the panel, for the store to sign and send. <paramref name="Id"/> is the cloud id.</summary>
+public sealed record FePendingDecision(long Id, string Decision, string? Reason, string DecidedBy, DateTime DecidedUtc);
+
+public sealed record FeDecisionRequest(bool? Approve, string? Reason);
 
 internal static class FeErrors
 {
@@ -68,6 +75,12 @@ internal static class FeErrors
         "La prueba firmada del RNC no es válida o venció. Intente activar el receptor otra vez.");
     public static readonly Error CloudCustodyUnavailable = Error.Conflict("Fe.CloudCustodyUnavailable",
         "La copia del certificado en la nube todavía no está disponible. Active el receptor con la firma en la tienda.");
+    public static readonly Error DecisionRequired = Error.Validation("Fe.DecisionRequired", "Elija aceptar o rechazar.");
+    public static readonly Error ReasonRequired = Error.Validation("Fe.ReasonRequired", "Escriba el motivo del rechazo (hasta 250 caracteres).");
+    public static readonly Error ReceiverInactive = Error.Conflict("Fe.ReceiverInactive",
+        "El receptor no está activo: la aprobación se firma en la PC de la tienda que lo activó. Actívelo desde la tienda.");
+    public static readonly Error AlreadyDecided = Error.Conflict("Fe.AlreadyDecided",
+        "Ese comprobante ya tiene otra decisión (en la tienda o en el panel) y no se puede cambiar.");
 }
 
 internal static class FeServices
@@ -167,13 +180,21 @@ internal static class FeServices
             return Results.Ok(new FeReceiverStatus(false));
         });
 
-        // The store asks every 30 s for what arrived after the last one it has (the cursor is the cloud id).
+        // The store asks every 30 s for what arrived after the last one it has (the cursor is the cloud id), and (TK-250) for the approvals the owner
+        // decided in the panel that this PC has to sign and send. One stays pending until the store's CommercialApprovalRecordedV1 sets Approval.
         store.MapPost("/received/pull", async (FePullRequest r, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
         {
-            var tenant = NodeIdentity.From(user).TenantId;
+            var node = NodeIdentity.From(user);
             var after = r.After ?? 0;
-            var items = await db.FeReceived.AsNoTracking().Where(d => d.TenantId == tenant && d.Id > after).OrderBy(d => d.Id).Take(100).ToListAsync(ct);
-            return Results.Ok(new { items = items.Select(Item) });
+            var items = await db.FeReceived.AsNoTracking().Where(d => d.TenantId == node.TenantId && d.Id > after).OrderBy(d => d.Id).Take(100).ToListAsync(ct);
+            // Only the PC that activated the receiver gets them: it holds the certificate (another PC of the tenant would fail to sign).
+            var signer = await db.FeCertificates.AnyAsync(c => c.TenantId == node.TenantId && c.RevokedUtc == null && c.ConsentedByNodeId == node.NodeId, ct);
+            var decisions = signer
+                ? await db.FeReceived.AsNoTracking().Where(d => d.TenantId == node.TenantId && d.PanelDecision != null && d.Approval == null)
+                    .OrderBy(d => d.Id).Take(20)
+                    .Select(d => new FePendingDecision(d.Id, d.PanelDecision!, d.PanelReason, d.PanelDecidedBy!, d.PanelDecidedUtc!.Value)).ToListAsync(ct)
+                : [];
+            return Results.Ok(new { items = items.Select(Item), decisions });
         });
     }
 
@@ -210,7 +231,8 @@ internal static class FeServices
     }
 
     /// <summary>The owner sees the receiver, the signatures made for it, the hours it was without its store (StoreSigned) and the approvals buyers
-    /// sent; any owner can withdraw the consent. Approvals of received e-CF are decided at the store (TK-246): the panel shows them.</summary>
+    /// sent; any owner can withdraw the consent. Approvals of received e-CF are signed and sent at the store (TK-246); an owner can decide one here
+    /// (TK-250) and it waits for the store.</summary>
     private static void MapFePanel(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/panel/fe", async (ClaimsPrincipal user, HttpRequest http, CloudDbContext db, IConfiguration config, TimeProvider clock, CancellationToken ct) =>
@@ -247,10 +269,35 @@ internal static class FeServices
         {
             var tenant = user.GetTenantId();
             return Results.Ok(await db.FeReceived.AsNoTracking().Where(d => d.TenantId == tenant).OrderByDescending(d => d.Id).Take(200)
-                .Select(d => new FePanelReceived(d.Id, d.Environment, d.IssuerRnc, d.IssuerName, d.ENcf, d.Type, d.IssuedOn, d.Total, d.Itbis, d.ReceivedUtc,
-                    d.Approval, d.ApprovalReason, d.ApprovalUtc, d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage, d.Conflict, d.AcknowledgedUtc))
-                .ToListAsync(ct));
+                .Select(PanelItem).ToListAsync(ct));
         }).RequireAuthorization(CloudAuth.PanelPolicy).WithTags("Fe");
+
+        // TK-250: an owner accepts or rejects a received e-CF from the panel. The cloud only keeps the decision: the store's main PC pulls it, signs the
+        // ACECF with its certificate and sends it (ADR-0011). One conditional update: the first decision wins, the same one again is a no-op, and once
+        // the store recorded its own (Approval set) nothing changes. No quota meter: one decision per received document, under the panel's rate limit.
+        app.MapPost("/api/panel/fe/received/{id:long}/decision", async (long id, FeDecisionRequest r, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock,
+            ILoggerFactory logs, CancellationToken ct) =>
+        {
+            if (r.Approve is not { } approve) return EndpointExtensions.Problem(FeErrors.DecisionRequired);
+            var reason = approve ? null : r.Reason?.Trim();
+            if (!approve && (string.IsNullOrEmpty(reason) || reason.Length > 250)) return EndpointExtensions.Problem(FeErrors.ReasonRequired);
+            var decision = approve ? "Approved" : "Rejected";
+            var tenant = user.GetTenantId();
+            var by = Cut(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name ?? "", 256);
+            var row = db.FeReceived.Where(d => d.Id == id && d.TenantId == tenant);
+            if (!await row.AnyAsync(ct)) return EndpointExtensions.Problem(FeErrors.NotFound);
+            if (!await db.FeCertificates.AnyAsync(c => c.TenantId == tenant && c.RevokedUtc == null, ct)) return EndpointExtensions.Problem(FeErrors.ReceiverInactive);
+
+            var now = clock.GetUtcNow().UtcDateTime;
+            var taken = await row.Where(d => d.Approval == null && d.PanelDecision == null).ExecuteUpdateAsync(s => s
+                .SetProperty(d => d.PanelDecision, decision).SetProperty(d => d.PanelReason, reason).SetProperty(d => d.PanelDecidedBy, by)
+                .SetProperty(d => d.PanelDecidedUtc, now), ct) == 1;
+            var current = await row.AsNoTracking().Select(PanelItem).SingleAsync(ct);
+            if (taken)
+                logs.CreateLogger("Toki.Fe.Decisions").LogInformation("Commercial approval {Decision} of received {Id} decided in the panel by {By}", decision, id, by);
+            else if ((current.Approval ?? current.PanelDecision) != decision) return EndpointExtensions.Problem(FeErrors.AlreadyDecided);
+            return Results.Ok(current);
+        }).RequireAuthorization(CloudAuth.OwnerPolicy).RequireRateLimiting(Quotas.QuotaRateLimits.PanelUser).WithTags("Fe");
 
         app.MapGet("/api/panel/fe/received/{id:long}/xml", async (long id, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
         {
@@ -279,6 +326,11 @@ internal static class FeServices
             .ToList();
         return new FeReceiverStatus(true, c.Rnc, c.Subject, c.NotAfterUtc, c.ConsentedUtc, c.OwnerName, c.HolderName, urls, c.SigningMode, mode, custody);
     }
+
+    private static readonly System.Linq.Expressions.Expression<Func<FeReceivedDocument, FePanelReceived>> PanelItem = d => new FePanelReceived(d.Id,
+        d.Environment, d.IssuerRnc, d.IssuerName, d.ENcf, d.Type, d.IssuedOn, d.Total, d.Itbis, d.ReceivedUtc, d.Approval, d.ApprovalReason, d.ApprovalUtc,
+        d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage, d.Conflict, d.AcknowledgedUtc, d.PanelDecision, d.PanelReason, d.PanelDecidedBy,
+        d.PanelDecidedUtc);
 
     private static FeReceivedItem Item(FeReceivedDocument d) => new(d.Id, d.Environment, d.IssuerRnc, d.IssuerName, d.ENcf, d.Type, d.IssuedOn, d.Total, d.Itbis,
         d.ReceivedUtc, Convert.ToBase64String(d.XmlGzip), d.Approval, d.ApprovalReason, d.ApprovalUtc, d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage,

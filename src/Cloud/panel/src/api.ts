@@ -543,6 +543,11 @@ export interface ReceivedEcf {
   approvalMessage: string | null;
   /** TK-246: null while its acknowledgement waits for the store (it arrived with the store's PC off). */
   acknowledgedUtc?: string | null;
+  /** TK-250: an owner's decision from the panel; pending at the store while `approval` is null (the store's own decision, if first, wins). */
+  panelDecision?: "Approved" | "Rejected" | null;
+  panelReason?: string | null;
+  panelDecidedBy?: string | null;
+  panelDecidedUtc?: string | null;
 }
 
 /** TK-241: the cloud receiver (TK-151) as the panel shows it: GET /api/panel/fe. */

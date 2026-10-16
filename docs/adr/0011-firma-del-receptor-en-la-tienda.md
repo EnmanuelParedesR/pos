@@ -51,5 +51,7 @@ Los roles de Key Vault del Bicep (TK-151) se quedan para B.
 
 - El certificado no sale de la tienda en el modo por defecto; robar la nube no da firmas ni tokens de la DGII.
 - Con la PC apagada el receptor no acusa: el emisor reintenta y lo recibido no se pierde, pero la disponibilidad depende de la tienda (riesgo que el consejo aceptó).
-- La aprobación comercial necesita la PC principal (el panel la muestra, no la decide).
+- La aprobación comercial necesita la PC principal para firmarse y enviarse.
+
+**Nota TK-250 (16/10/2026).** El dueño también la **decide desde el panel**: la nube guarda solo la decisión (quién, cuándo, motivo) y la PC que activó el receptor la baja con el `received/pull`, la firma con su certificado y la envía como si se hubiera decidido en la tienda. El certificado sigue sin salir de la tienda; con la PC apagada la decisión espera y el panel la muestra "pendiente". Si la tienda decidió primero, gana la tienda.
 - TK-159 (receptor sin custodia) queda hecho con este diseño; E41 de compras sigue para después de V1.

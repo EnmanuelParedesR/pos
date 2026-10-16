@@ -67,19 +67,18 @@ it("TK-222: the e-mail link unsubscribes without a session", async () => {
   expect(bodies(fetch, "POST")).toContainEqual(["/api/notifications/unsubscribe", JSON.stringify({ token: "good" })]);
 });
 
-it("TK-246: the panel shows a received e-CF; its approval is decided and signed at the store", async () => {
+it("TK-246/TK-250: the owner sees a received e-CF and can decide it; nothing is sent until the owner confirms", async () => {
   const fetch = renderApp(owner, "/received");
 
   fireEvent.click(await screen.findByText("Distribuidora del Cibao"));
-  expect(screen.getByText(/Se aprueba o rechaza desde la PC principal de la tienda/)).toBeTruthy();
   expect(screen.getByText("Acuse de recibo pendiente")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "Aprobar" })).toBeNull();
-  expect(bodies(fetch, "POST").filter(([url]) => String(url).endsWith("/approval"))).toEqual([]);
+  expect(screen.getByRole("button", { name: "Aceptar" })).toBeTruthy();
+  expect(bodies(fetch, "POST").filter(([url]) => String(url).endsWith("/decision"))).toEqual([]);
 });
 
 it("TK-154: a read-only member sees received e-CF", async () => {
   renderApp(readOnly, "/received");
 
   fireEvent.click(await screen.findByText("Distribuidora del Cibao"));
-  expect(screen.queryByRole("button", { name: "Aprobar" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Aceptar" })).toBeNull();
 });

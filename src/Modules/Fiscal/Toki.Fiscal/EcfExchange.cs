@@ -109,6 +109,7 @@ internal static class EcfExchange
         services.AddHostedService<EcfExchangeWorker>();
         services.AddScoped<Features.CommercialApprovals>(); // TK-246: signed and sent from the store
         services.AddScoped<RemoteSigning>();
+        services.AddSingleton<RemoteSigningWake>();
         services.AddHostedService<RemoteSigningWorker>();
     }
 }
@@ -278,12 +279,19 @@ internal static class TaxpayerReceiver
     }
 }
 
-/// <summary>TK-154: brings down what the cloud received for this business since the last one here. Not connected or cloud down: nothing, next time.</summary>
-internal sealed class ReceivedDocumentsPuller(FiscalDbContext db, ICloudClient cloud, ILogger<ReceivedDocumentsPuller> log)
+/// <summary>TK-154: brings down what the cloud received for this business since the last one here. Not connected or cloud down: nothing, next time.
+/// TK-250: the same answer brings the commercial approvals an owner decided in the panel; each is signed and sent here (<see cref="Features.CommercialApprovals"/>),
+/// like one decided at this PC. One this PC already decided wins: the panel's is skipped and the cloud gets the store's through the outbox.</summary>
+/// <remarks>shortcut: a decision that cannot be signed yet (no certificate) is tried again on every pull and only logged; show the reason in the panel
+/// if owners get stuck there.</remarks>
+internal sealed class ReceivedDocumentsPuller(FiscalDbContext db, ICloudClient cloud, Features.CommercialApprovals approvals, ILogger<ReceivedDocumentsPuller> log)
 {
     public const string PullPath = "/fiscal/v1/received/pull";
 
-    internal sealed record Page(IReadOnlyList<Item> Items);
+    internal sealed record Page(IReadOnlyList<Item> Items, IReadOnlyList<PanelDecision>? Decisions);
+
+    /// <param name="Id">The cloud id of the received document.</param>
+    internal sealed record PanelDecision(long Id, string Decision, string? Reason, string DecidedBy, DateTime DecidedUtc);
 
     internal sealed record Item(long Id, string Environment, string IssuerRnc, string IssuerName, string ENcf, int Type, DateOnly IssuedOn, decimal Total,
         decimal Itbis, DateTime ReceivedUtc, string XmlGzip, string? Approval, string? ApprovalReason, DateTime? ApprovalUtc, DateTime? ApprovalDeliveredUtc,
@@ -315,7 +323,17 @@ internal sealed class ReceivedDocumentsPuller(FiscalDbContext db, ICloudClient c
                 ApprovalDgiiUtc = i.ApprovalDgiiUtc, ApprovalMessage = i.ApprovalMessage,
             });
         await db.SaveChangesAsync(ct);
+        foreach (var d in page?.Decisions ?? []) await DecideAsync(d, ct);
         return page?.Items.Count ?? 0;
+    }
+
+    private async Task DecideAsync(PanelDecision d, CancellationToken ct)
+    {
+        var local = await db.Set<ReceivedDocument>().AsNoTracking().Where(x => x.CloudId == d.Id).Select(x => new { x.Id, x.ApprovalXmlGzip }).FirstOrDefaultAsync(ct);
+        if (local is null || local.ApprovalXmlGzip is not null) return; // not here yet, or decided at this PC first
+        var result = await approvals.DecideAsync(local.Id, new Features.ReceivedDocuments.ApprovalRequest(d.Decision == "Approved", d.Reason), ct,
+            decidedBy: $"panel: {d.DecidedBy}");
+        if (result.IsFailure) log.LogWarning("The commercial approval decided in the panel for {CloudId} was not signed: {Error}", d.Id, result.Error!.Description);
     }
 }
 

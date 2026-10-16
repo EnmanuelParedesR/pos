@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useState, type FormEvent } from "react";
 import { api, ApiError, useApi, type ReceivedEcf } from "../api";
 import { usePanel } from "../App";
 import { dateTime, dayName, money } from "../format";
@@ -7,11 +7,15 @@ import { ReceiverPanel } from "./ReceiverPanel";
 
 const environmentNames: Record<string, string> = { ecf: "Producción", certecf: "Certificación", testecf: "Pruebas" };
 
-/** "Recibidos" (TK-154): the e-CF suppliers sent to the business, with their commercial approval. TK-246: the approval is decided, signed and
- * sent at the store; the panel shows it. */
+/** The DGII takes the rejection reason as free text (ACECF `DetalleMotivoRechazo`, up to 250 characters, no code list: §11 question 45).
+ * These are only suggestions. */
+const rejectReasons = ["Montos incorrectos", "Mercancía no recibida", "Mercancía dañada o incompleta", "Precio distinto al acordado", "Factura duplicada"];
+
+/** "Recibidos" (TK-154): the e-CF suppliers sent to the business, with their commercial approval. TK-246: the approval is signed and sent at the store.
+ * TK-250: an owner can decide it here; it waits for the store's main PC, which signs and sends it. */
 export function ReceivedPage() {
   const { canEdit } = usePanel();
-  const { data, error, loading } = useApi<ReceivedEcf[]>("/api/panel/fe/received");
+  const { data, error, loading, reload } = useApi<ReceivedEcf[]>("/api/panel/fe/received");
   const [open, setOpen] = useState<number | null>(null);
 
   return (
@@ -46,13 +50,13 @@ export function ReceivedPage() {
                   <td className="esc-hide-sm">{dayName(d.issuedOn)}</td>
                   <td className="esc-num">{money(d.total)}</td>
                   <td>
-                    <ApprovalPill approval={d.approval} />
+                    <ApprovalPill doc={d} />
                   </td>
                 </tr>
                 {open === d.id && (
                   <tr>
                     <td colSpan={5}>
-                      <Detail doc={d} />
+                      <Detail doc={d} canEdit={canEdit} onDecided={reload} />
                     </td>
                   </tr>
                 )}
@@ -70,17 +74,19 @@ export function ReceivedPage() {
   );
 }
 
-function ApprovalPill({ approval }: { approval: ReceivedEcf["approval"] }) {
-  if (approval === "Approved") return <span className="esc-pill esc-pill--success">Aprobado</span>;
-  if (approval === "Rejected") return <span className="esc-pill esc-pill--error">Rechazado</span>;
+function ApprovalPill({ doc }: { doc: ReceivedEcf }) {
+  if (doc.approval === "Approved") return <span className="esc-pill esc-pill--success">Aprobado</span>;
+  if (doc.approval === "Rejected") return <span className="esc-pill esc-pill--error">Rechazado</span>;
+  if (doc.panelDecision) return <span className="esc-pill esc-pill--warning">{doc.panelDecision === "Approved" ? "Aceptado" : "Rechazado"} · en espera</span>;
   return <span className="esc-pill esc-pill--warning">Pendiente</span>;
 }
 
-function Detail({ doc }: { doc: ReceivedEcf }) {
+function Detail({ doc, canEdit, onDecided }: { doc: ReceivedEcf; canEdit: boolean; onDecided: () => void }) {
   const [error, setError] = useState<ApiError | null>(null);
   const [xml, setXml] = useState<string | null>(null);
 
   const showXml = () => api<{ xml: string }>(`/api/panel/fe/received/${doc.id}/xml`).then((r) => setXml(r.xml), (err) => setError(err as ApiError));
+  const waiting = doc.approval === null && doc.panelDecision;
 
   return (
     <div className="esc-col" style={{ gap: 12 }}>
@@ -123,8 +129,23 @@ function Detail({ doc }: { doc: ReceivedEcf }) {
           Llegó con la PC de la tienda apagada. El acuse se firma cuando la PC vuelve a conectarse.
         </Notice>
       )}
-      {/* TK-246: the approval is signed with the store's certificate and sent from the store. */}
-      {doc.approval === null && <p className="esc-muted">Se aprueba o rechaza desde la PC principal de la tienda (Compras → Recibidos).</p>}
+      {/* TK-246/TK-250: the approval is signed with the store's certificate and sent from the store, whoever decided it. */}
+      {waiting && (
+        <Notice kind="info" title="Pendiente: se firmará en la tienda">
+          {doc.panelDecision === "Approved" ? "Aceptado" : `Rechazado (${doc.panelReason})`} por {doc.panelDecidedBy}
+          {doc.panelDecidedUtc && ` el ${dateTime(doc.panelDecidedUtc)}`}. La PC principal de la tienda lo firma y lo envía al suplidor y a la DGII cuando
+          esté encendida y conectada.
+        </Notice>
+      )}
+      {doc.approval && doc.panelDecision && doc.panelDecision !== doc.approval && (
+        <p className="esc-muted">Se decidió primero en la tienda: esa decisión es la que vale.</p>
+      )}
+      {doc.approval === null && !waiting &&
+        (canEdit ? (
+          <DecisionForm id={doc.id} onDecided={onDecided} />
+        ) : (
+          <p className="esc-muted">El dueño lo acepta o lo rechaza aquí o en la PC principal de la tienda (Compras → Recibidos).</p>
+        ))}
 
       {xml === null ? (
         <div>
@@ -138,5 +159,61 @@ function Detail({ doc }: { doc: ReceivedEcf }) {
         </pre>
       )}
     </div>
+  );
+}
+
+/** TK-250: Aceptar (one tap, then confirm) or Rechazar with its reason. The decision cannot change once made. */
+function DecisionForm({ id, onDecided }: { id: number; onDecided: () => void }) {
+  const [choice, setChoice] = useState<"accept" | "reject" | null>(null);
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<ApiError | null>(null);
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    api(`/api/panel/fe/received/${id}/decision`, "POST", choice === "accept" ? { approve: true } : { approve: false, reason: reason.trim() }).then(
+      () => onDecided(),
+      (err) => (setError(err as ApiError), setBusy(false)),
+    );
+  };
+
+  if (choice === null)
+    return (
+      <div className="esc-row" style={{ gap: 8 }}>
+        <button type="button" className="esc-button esc-button--small esc-button--primary" onClick={() => setChoice("accept")}>
+          Aceptar
+        </button>
+        <button type="button" className="esc-button esc-button--small esc-button--danger" onClick={() => setChoice("reject")}>
+          Rechazar
+        </button>
+        <span className="esc-muted">Opcional. La tienda firma la decisión y la envía al suplidor y a la DGII.</span>
+      </div>
+    );
+  return (
+    <form className="esc-col" style={{ gap: 8 }} onSubmit={submit}>
+      {choice === "reject" && (
+        <label className="esc-field">
+          <span>Motivo del rechazo</span>
+          <input className="esc-input" list={`reasons-${id}`} required maxLength={250} value={reason} onChange={(e) => setReason(e.target.value)} />
+          <datalist id={`reasons-${id}`}>
+            {rejectReasons.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
+        </label>
+      )}
+      <span className="esc-muted">No se puede cambiar después.</span>
+      <div className="esc-row" style={{ gap: 8 }}>
+        <button type="submit" className={`esc-button esc-button--small ${choice === "accept" ? "esc-button--primary" : "esc-button--danger"}`} disabled={busy}>
+          {busy ? "Un momento…" : choice === "accept" ? "Sí, aceptar" : "Sí, rechazar"}
+        </button>
+        <button type="button" className="esc-button esc-button--small esc-button--ghost" onClick={() => (setChoice(null), setError(null))}>
+          Cancelar
+        </button>
+      </div>
+      {error && <Notice kind={error.offline ? "warning" : "error"} title={error.detail} />}
+    </form>
   );
 }

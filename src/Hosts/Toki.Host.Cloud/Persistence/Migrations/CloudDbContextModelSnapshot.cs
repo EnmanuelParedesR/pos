@@ -631,6 +631,21 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
 
+                    b.Property<string>("PanelDecidedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("PanelDecidedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PanelDecision")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<string>("PanelReason")
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
                     b.Property<DateTime>("ReceivedUtc")
                         .HasColumnType("datetime2");
 
