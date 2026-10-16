@@ -113,6 +113,6 @@ describe("api", () => {
     const { ApiError, identityMessages } = await load();
     const error = new ApiError(400, "400", "x", { PasswordTooShort: ["Passwords must be..."], DuplicateUserName: ["..."], DuplicateEmail: ["..."] });
 
-    expect(identityMessages(error)).toEqual(["La contraseña debe tener al menos 8 caracteres.", "Ya existe una cuenta con ese correo."]);
+    expect(identityMessages(error)).toEqual(["La contraseña debe tener al menos 8 caracteres.", "Ese correo ya tiene una cuenta."]);
   });
 });

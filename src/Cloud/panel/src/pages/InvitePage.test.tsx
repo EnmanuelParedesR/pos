@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
-import type { InvitePreview, Me } from "../api";
+import { signOut, type InvitePreview, type Me } from "../api";
 import { json } from "../testing";
 import { InvitePage } from "./InvitePage";
 
@@ -9,6 +9,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   localStorage.clear();
+  signOut(); // the access token lives in module memory
 });
 
 const preview: InvitePreview = { tenantName: "Carnicería La Esquina", email: "contable@example.com", role: "ReadOnly", expiresUtc: "2026-10-21T12:00:00Z" };
@@ -41,10 +42,12 @@ it("TK-217 / R8 #12: an invited person (token after #) creates an account with t
     : undefined,
   );
 
-  expect(await screen.findByText("Únase a Carnicería La Esquina")).toBeTruthy();
-  expect((screen.getByLabelText("Correo") as HTMLInputElement).value).toBe("contable@example.com");
-  fireEvent.change(screen.getByLabelText(/Contraseña/), { target: { value: "Carniceria2026" } });
-  fireEvent.click(screen.getByRole("button", { name: "Crear cuenta y unirme" }));
+  expect(await screen.findByText("Únase al equipo de Carnicería La Esquina")).toBeTruthy();
+  expect(screen.getByText("contable@example.com")).toBeTruthy();
+  expect(screen.getByText("Solo lectura")).toBeTruthy(); // the role badge
+  expect(screen.getByText(/El enlace vence el .* y sirve una sola vez/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("Cree una contraseña"), { target: { value: "Carniceria2026" } });
+  fireEvent.click(screen.getByRole("button", { name: "Unirme al equipo" }));
 
   expect(await screen.findByText("Panel")).toBeTruthy();
   // R8 #12: the token is only ever in a request body.
@@ -67,7 +70,7 @@ it("TK-217: someone already signed in joins with one tap and gets a token for th
     : undefined,
   );
 
-  fireEvent.click(await screen.findByRole("button", { name: "Unirme a Carnicería La Esquina" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Unirme al equipo" }));
 
   expect(await screen.findByText("Panel")).toBeTruthy();
   expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/auth/refresh"))).toBe(true);
@@ -91,8 +94,30 @@ it("TK-217: a wrong account gets the server's message", async () => {
     : undefined,
   );
 
-  fireEvent.click(await screen.findByRole("button", { name: "Unirme a Carnicería La Esquina" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Unirme al equipo" }));
 
   expect(await screen.findByText("Esta invitación es para contable@example.com. Entre con esa cuenta.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Usar otra cuenta" })).toBeTruthy();
+});
+
+it("TK-230: someone with an account taps Entre y únase, signs in with the invited e-mail and joins", async () => {
+  const { fetch } = renderInvite((path, method) =>
+    path === "/api/invites/preview" ? json(200, preview)
+    : path === "/api/auth/login" ? json(200, tokens)
+    : path === "/api/invites/accept" && method === "POST" ? json(204)
+    : path === "/api/auth/refresh" ? json(200, tokens)
+    : path === "/api/me" ? json(200, me)
+    : undefined,
+  );
+
+  fireEvent.click(await screen.findByRole("button", { name: "Entre y únase" }));
+  const password = screen.getByLabelText("Contraseña") as HTMLInputElement;
+  fireEvent.change(password, { target: { value: "Carniceria2026" } });
+  fireEvent.click(screen.getByRole("button", { name: "Mostrar contraseña" }));
+  expect(password.type).toBe("text");
+  fireEvent.click(screen.getByRole("button", { name: "Entrar y unirme" }));
+
+  expect(await screen.findByText("Panel")).toBeTruthy();
+  expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/invites/register"))).toBe(false);
+  expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/invites/accept"))).toBe(true);
 });

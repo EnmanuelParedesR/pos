@@ -1,9 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
-import { api, ApiError, hasSession, identityMessages, registerByInvite, renewSession, roleNames, signIn, signOut, type InvitePreview } from "../api";
-import { Logo, Notice, Segmented, Skeleton } from "../ui";
+import { api, ApiError, hasSession, identityMessages, registerByInvite, renewSession, roleNames, signIn, signOut, type InvitePreview, type MemberRole } from "../api";
+import { dateTime } from "../format";
+import { Icon, Notice, Skeleton } from "../ui";
+import { AuthFrame, PasswordField } from "./AuthFrame";
 
-/** /invite#token (TK-217; R8 #12: after "#" the token never reaches a server log; /invite/:token still opens older links): the invited person creates an account, or signs in, and joins the business. The link works once. */
+const roleLeads: Record<MemberRole, string> = {
+  ReadOnly: "Podrá ver ventas, cuadres y comprobantes. No podrá cambiar nada.",
+  Owner: "Podrá ver todo y administrar el negocio, como el dueño.",
+};
+
+/** /invite#token (TK-217; R8 #12: after "#" the token never reaches a server log; /invite/:token still opens older links): the invited person creates an account, or signs in, and joins the business. The link works once. TK-230: the sign-in design. */
 export function InvitePage() {
   const params = useParams();
   const { hash } = useLocation();
@@ -37,77 +44,88 @@ export function InvitePage() {
     }
   }
 
+  const switchTo = (m: "create" | "in") => (setMode(m), setError(null));
   const messages = error ? identityMessages(error) : [];
+  const data = invite.data;
 
   return (
-    <main className="esc-admin esc-signin">
-      <form className="esc-card esc-signin__card" onSubmit={join}>
-        <Logo size={40} />
-        {invite.loading && <Skeleton height={80} />}
-        {invite.error && (
-          <>
-            <h1>Invitación no válida</h1>
-            <Notice kind={invite.error.offline ? "warning" : "error"} title={invite.error.detail} />
-            <a className="esc-button esc-button--wide" href="/app">
-              Ir al panel
-            </a>
-          </>
-        )}
-        {invite.data && (
-          <>
-            <div>
-              <h1>Únase a {invite.data.tenantName}</h1>
-              <p className="esc-muted" style={{ marginTop: 4 }}>
-                Le invitaron como <b>{roleNames[invite.data.role]}</b> con el correo <b>{invite.data.email}</b>.
-              </p>
+    <AuthFrame
+      eyebrow="INVITACIÓN"
+      title={data ? `Únase al equipo de ${data.tenantName}` : invite.error ? "Invitación no válida" : "Invitación"}
+      lead={data ? roleLeads[data.role] : undefined}
+    >
+      {invite.loading && <Skeleton height={160} />}
+      {invite.error && (
+        <div className="auth-form">
+          <Notice kind={invite.error.offline ? "warning" : "error"} title={invite.error.detail} />
+          <a className="esc-button esc-button--primary auth-submit" href="/app">
+            Ir al panel
+          </a>
+        </div>
+      )}
+      {data && (
+        <form className="auth-form" onSubmit={join}>
+          <div className="auth-field">
+            <span className="auth-label" id="invite-email-label">
+              Correo de la invitación
+            </span>
+            <div className="auth-readonly" aria-labelledby="invite-email-label" role="group">
+              <span>{data.email}</span>
+              <span className="auth-badge">{roleNames[data.role]}</span>
             </div>
-            {signedIn ? (
-              <button type="button" className="esc-button esc-button--ghost" onClick={() => (signOut(), setSignedIn(false))}>
-                Usar otra cuenta
-              </button>
-            ) : (
-              <>
-                <Segmented<"create" | "in">
-                  label="Opción"
-                  options={[
-                    ["create", "Crear cuenta"],
-                    ["in", "Ya tengo cuenta"],
-                  ]}
-                  value={mode}
-                  onChange={(m) => (setMode(m), setError(null))}
-                />
-                <label className="esc-field">
-                  <span>Correo</span>
-                  <input className="esc-input" type="email" value={invite.data.email} readOnly />
-                </label>
-                <label className="esc-field">
-                  <span>Contraseña</span>
-                  <input
-                    className="esc-input"
-                    type="password"
-                    autoComplete={mode === "create" ? "new-password" : "current-password"}
-                    required
-                    minLength={mode === "create" ? 8 : undefined}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    aria-invalid={error ? true : undefined}
-                  />
-                  {mode === "create" && <span className="esc-field__hint">Mínimo 8 caracteres, con una mayúscula, una minúscula y un número.</span>}
-                </label>
-              </>
-            )}
-            {error && (
-              <Notice kind={error.offline ? "warning" : "error"} title={messages[0]}>
-                {messages.length > 1 ? messages.slice(1).join(" ") : undefined}
-              </Notice>
-            )}
-            <button type="submit" className="esc-button esc-button--primary esc-button--wide" disabled={busy}>
-              {busy ? "Un momento…" : signedIn ? `Unirme a ${invite.data.tenantName}` : mode === "create" ? "Crear cuenta y unirme" : "Entrar y unirme"}
+          </div>
+          {signedIn ? (
+            <button type="button" className="auth-link auth-link--block" onClick={() => (signOut(), setSignedIn(false))}>
+              Usar otra cuenta
             </button>
-          </>
-        )}
-      </form>
-    </main>
+          ) : (
+            <PasswordField
+              id="invite-password"
+              label={mode === "create" ? "Cree una contraseña" : "Contraseña"}
+              value={password}
+              onChange={setPassword}
+              autoComplete={mode === "create" ? "new-password" : "current-password"}
+              invalid={error !== null && !error.offline}
+              describedBy={mode === "create" ? "invite-hint" : undefined}
+            >
+              {mode === "create" && (
+                <span id="invite-hint" className="auth-hint">
+                  8 caracteres o más, con una mayúscula, una minúscula y un número.
+                </span>
+              )}
+            </PasswordField>
+          )}
+          {error && (
+            <Notice kind={error.offline ? "warning" : "error"} title={messages[0]}>
+              {messages.length > 1 ? messages.slice(1).join(" ") : undefined}
+            </Notice>
+          )}
+          <button type="submit" className="esc-button esc-button--primary auth-submit" disabled={busy}>
+            {busy ? "Un momento…" : mode === "in" && !signedIn ? "Entrar y unirme" : "Unirme al equipo"}
+          </button>
+          {!signedIn &&
+            (mode === "create" ? (
+              <p className="auth-note auth-note--big">
+                ¿Ya tiene cuenta con este correo?{" "}
+                <button type="button" className="auth-link" onClick={() => switchTo("in")}>
+                  Entre y únase
+                </button>
+              </p>
+            ) : (
+              <p className="auth-note auth-note--big">
+                ¿Todavía no tiene cuenta?{" "}
+                <button type="button" className="auth-link" onClick={() => switchTo("create")}>
+                  Cree una contraseña
+                </button>
+              </p>
+            ))}
+          <div className="auth-expiry">
+            <Icon name="info" />
+            <span>El enlace vence el {dateTime(data.expiresUtc)} y sirve una sola vez.</span>
+          </div>
+        </form>
+      )}
+    </AuthFrame>
   );
 }
 
