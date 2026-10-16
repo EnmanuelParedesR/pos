@@ -44,7 +44,10 @@
     --bg: #14181D; --counter: #1C2128; --line: #3A424B; --line-strong: #4A535D; --warn-bg: #3A2A12; --warn-ink: #F5C98A; --ok-ink: #8FD8AB;
     --amber-soft: #33270F; --amber-line: #F5C98A; --green-soft: #14301E; --green-line: #8FD8AB; --night: #0B0E12; --night-line: #2A3038;
     --shadow: rgba(0, 0, 0, 0.5); color-scheme: dark; }
+  :root:not([data-theme]) .site .esc-logo { --logo-tag: #FFFFFF; --logo-mark: #0B5CAD; }
 }
+/* TK-273: on the dark site the tag turns white and the "a" blue (blue on #14181D is only 2.7:1), as in the dark back office. */
+:root[data-theme="dark"] .site .esc-logo { --logo-tag: #FFFFFF; --logo-mark: #0B5CAD; }
 
 .site { min-height: 100vh; display: flex; flex-direction: column; font: 400 17px/1.6 "Abastalia Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums; color: var(--ink); background: var(--bg); -webkit-text-size-adjust: 100%; overflow-x: clip; }

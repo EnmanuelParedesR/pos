@@ -148,6 +148,7 @@ public sealed class EscuadraComponentTests : IDisposable
         _ctx.Render<Skeleton>().Find("span").GetAttribute("aria-hidden").ShouldBe("true");
         _ctx.Render<Sparkline>(p => p.Add(x => x.Values, [1m, 2m])).Find("svg").GetAttribute("aria-hidden").ShouldBe("true");
         _ctx.Render<Logo>().Find("svg").GetAttribute("aria-label").ShouldBe("Abastalia");
+        _ctx.Render<Talia>(p => p.Add(x => x.Mood, Talia.Moods.Thinking)).Find("svg").GetAttribute("aria-hidden").ShouldBe("true");
     }
 
     [Theory]
