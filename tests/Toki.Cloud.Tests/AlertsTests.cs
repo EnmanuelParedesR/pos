@@ -26,7 +26,7 @@ public sealed class AlertsTests(MailingCloudApp app) : IClassFixture<MailingClou
         var email = $"contable{Guid.NewGuid():N}@example.com";
         (await owner.Client.PostAsJsonAsync("/api/members/invites", new { email, role = "ReadOnly" })).EnsureSuccessStatusCode();
         string body;
-        lock (app.Mail.Sent) body = app.Mail.Sent.Single(m => m.To == email).Body;
+        lock (app.Mail.Sent) body = app.Mail.Sent.Single(m => m.To == email && m.Subject.StartsWith("Le invitaron", StringComparison.Ordinal)).Body;
         (await app.CreateClient().PostAsJsonAsync("/api/invites/register", new { token = body[(body.IndexOf('#') + 1)..].Trim(), password = CloudApp.Password }))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         return await app.SignInAsync(email);

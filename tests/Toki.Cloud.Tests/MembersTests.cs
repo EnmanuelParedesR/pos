@@ -342,7 +342,7 @@ public sealed class InviteSecurityTests(CloudApp app) : IClassFixture<CloudApp>
         r.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await r.Json()).GetProperty("link").ValueKind.ShouldBe(JsonValueKind.Null); // the inviter cannot take over that address
 
-        var body = mailing.Mail.Sent.Single(m => m.To == email).Body;
+        var body = mailing.Mail.Sent.Single(m => m.To == email && m.Subject.StartsWith("Le invitaron", StringComparison.Ordinal)).Body;
         body.ShouldContain("/invite#");
         var token = body[(body.IndexOf('#') + 1)..];
         (await mailing.CreateClient().PostAsJsonAsync("/api/invites/register", new { token, password = CloudApp.Password })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
@@ -357,7 +357,7 @@ public sealed class InviteSecurityTests(CloudApp app) : IClassFixture<CloudApp>
         var email = $"member{Guid.NewGuid():N}@example.com";
         var squatter = await mailing.OwnerAsync(email); // registered first, by someone who does not read that inbox
         (await owner.Client.PostAsJsonAsync("/api/members/invites", new { email, role = "ReadOnly" })).StatusCode.ShouldBe(HttpStatusCode.OK);
-        var body = mailing.Mail.Sent.Single(m => m.To == email).Body;
+        var body = mailing.Mail.Sent.Single(m => m.To == email && m.Subject.StartsWith("Le invitaron", StringComparison.Ordinal)).Body;
         var token = body[(body.IndexOf('#') + 1)..];
 
         const string newPassword = "Invitada2026";
@@ -382,7 +382,7 @@ public sealed class InviteSecurityTests(CloudApp app) : IClassFixture<CloudApp>
         await mailing.OwnerAsync(email);
         await mailing.InDbAsync(db => db.Users.Where(u => u.Email == email).ExecuteUpdateAsync(s => s.SetProperty(u => u.EmailConfirmed, true)));
         (await first.Client.PostAsJsonAsync("/api/members/invites", new { email, role = "ReadOnly" })).StatusCode.ShouldBe(HttpStatusCode.OK);
-        var body = mailing.Mail.Sent.Single(m => m.To == email).Body;
+        var body = mailing.Mail.Sent.Single(m => m.To == email && m.Subject.StartsWith("Le invitaron", StringComparison.Ordinal)).Body;
         var r = await mailing.CreateClient().PostAsJsonAsync("/api/invites/register", new { token = body[(body.IndexOf('#') + 1)..], password = "Otra2026x" });
         (await r.ErrorCode()).ShouldBe("Invites.AccountExists");
     }
