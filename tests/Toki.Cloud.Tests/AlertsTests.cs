@@ -46,7 +46,7 @@ public sealed class AlertsTests(MailingCloudApp app) : IClassFixture<MailingClou
         var sent = Alerts(owner);
         sent.Count.ShouldBe(3);
         sent.ShouldContain(m => m.Subject.Contains("Carnicería La Esquina") && m.Body.Contains("rechazó 2 comprobantes"));
-        sent.ShouldContain(m => m.Body.Contains("vence el 25/10/2026"));
+        sent.ShouldContain(m => m.Body.Contains($"vence el {Now.AddDays(10).AddHours(-4):dd/MM/yyyy}")); // store day (UTC-4); the test clock starts from the real date
         sent.ShouldContain(m => m.Body.Contains("desde hace 30 horas"));
         sent.ShouldAllBe(m => m.Body.Contains("/unsubscribe#"));
         Alerts(member).ShouldBeEmpty();
