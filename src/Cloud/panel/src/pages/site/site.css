@@ -230,6 +230,22 @@
 .site th, .site td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .site th { font-weight: 600; background: var(--counter); }
 
+/* TK-263: a comparison table stacks on a phone, each value under its column name, so no column hides off-screen. */
+@media (max-width: 559px) {
+  .site .vs table { min-width: 0; }
+  .site .vs thead { display: none; }
+  .site .vs tr { display: block; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .site .vs th, .site .vs td { display: block; border: 0; padding: 4px 0; background: none; }
+  .site .vs th { font-size: 18px; }
+  .site .vs td::before { content: attr(data-label); display: block; font-size: 13px; font-weight: 600; color: var(--muted); }
+}
+.site .sources { padding-top: 0; font-size: 15px; }
+/* TK-263: 15 glossary terms on a phone: icon beside the term, so the list stays short. */
+@media (max-width: 559px) {
+  .site .glossary .tile { display: grid; grid-template-columns: 32px 1fr; gap: 4px 12px; padding: 16px; }
+  .site .glossary .tile .icon { grid-row: span 2; width: 32px; height: 32px; }
+}
+
 .site .faq details { border-bottom: 1px solid var(--line); }
 .site .faq summary { cursor: pointer; padding: 14px 0; font-weight: 600; min-height: 44px; }
 .site .faq details > *:not(summary) { margin-top: 0; }

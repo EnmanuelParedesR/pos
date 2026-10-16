@@ -31,7 +31,7 @@ function useScrollOnNavigate() {
 }
 
 const header = ["/carniceria", "/colmado", "/deli", "/e-cf", "/precios"];
-const footer = ["/descargar", "/certificacion", "/novedades"];
+const footer = ["/guia-e-cf", "/comparar", "/glosario", "/descargar", "/certificacion", "/novedades"];
 
 function Menu({ paths }: { paths: string[] }) {
   return (

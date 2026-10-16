@@ -197,6 +197,9 @@ function Ecf() {
       </Section>
       <Section>
         <h2>Qué necesita</h2>
+        <p className="muted">
+          Paso a paso en la <Link to="/guia-e-cf">guía e-CF</Link>; las palabras, en el <Link to="/glosario">glosario</Link>.
+        </p>
         <IconTiles
           items={[
             ["key", "RNC y Oficina Virtual", "RNC activo y al día, con acceso a la OFV."],
@@ -225,7 +228,12 @@ function Ecf() {
       </Section>
       <Faq
         items={[
-          ["¿Hay una opción gratis de la DGII?", "Sí, el Facturador Gratuito, para negocios con poco volumen. Emite e-CF, pero no es un punto de venta con caja, inventario ni balanza."],
+          [
+            "¿Hay una opción gratis de la DGII?",
+            <>
+              Sí, el Facturador Gratuito, para negocios con poco volumen. Emite e-CF, pero no es un punto de venta con caja, inventario ni balanza. <Link to="/comparar">Compárelos</Link>
+            </>,
+          ],
           ["¿Puedo usar el certificado que regala la DGII?", "No con Abastalia. Ese certificado solo sirve para el Facturador Gratuito de la DGII."],
           [
             "¿Cuánto tarda la certificación?",
@@ -247,6 +255,178 @@ function Ecf() {
           </a>
         </div>
       </Section>
+    </>
+  );
+}
+
+/** TK-263: "updated on" and the official sources behind the DGII facts of a page. */
+function Sources({ links }: { links: [string, string][] }) {
+  return (
+    <Section className="sources">
+      <p className="muted">
+        Actualizado el <time dateTime="2026-10-16">16/10/2026</time>. Fuentes:{" "}
+        {links.map(([text, href], i) => (
+          <span key={href}>
+            {i > 0 && " · "}
+            <a href={href} rel="noopener">
+              {text}
+            </a>
+          </span>
+        ))}
+        . No es asesoría legal: confirme con la DGII o su contador.
+      </p>
+    </Section>
+  );
+}
+
+const dgii = {
+  prorroga: "https://dgii.gov.do/noticias/Paginas/DGII-otorga-prorroga-seis-meses-Peque%C3%B1os-Micros-y-no-clasificados.aspx",
+  grandes: "https://dgii.gov.do/noticias/Paginas/DGII-informa-emision-exclusiva-de-facturas-electronicas-para-Grandes-Locales-y-Medianos-contribuyentes-desde-noviembre.aspx",
+  gratuito: "https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/Paginas/facturador-gratuito.aspx",
+  gratuitoFaq: "https://dgii.gov.do/cicloContribuyente/facturacion/comprobantesFiscalesElectronicosE-CF/Preguntas%20frecuentes/Generales/Preguntas-Frecuentes-Facturador-Gratuito.pdf",
+  formatos: "https://dgii.gov.do/cicloContribuyente/obligacionesTributarias/remisionInformacion/Paginas/formatoEnvioDatos.aspx",
+};
+
+/** TK-263: for "cómo empezar con el e-CF": the steps in order, each with where it is done. */
+function EcfGuide() {
+  return (
+    <>
+      <Hero eyebrow="Guía e-CF" title="Empiece a emitir e-CF en 6 pasos." sub="De su RNC a la primera factura electrónica." cta={<Contact className="btn">Quiero ayuda con el e-CF</Contact>} />
+      <Section className="counter">
+        <h2>Los pasos</h2>
+        <Steps
+          round
+          items={[
+            ["Confirme su fecha", <>Pequeños, micro y no clasificados: 15/11/2026. <Link to="/e-cf">¿Ya le toca?</Link></>],
+            ["RNC y Oficina Virtual", "RNC al día, alta de NCF y acceso a la OFV."],
+            ["Certificado digital", <>De persona física, de una entidad autorizada por INDOTEL. Pídalo en archivo <Link to="/glosario">.p12</Link>.</>],
+            ["Elija cómo facturar", <>El Facturador Gratuito de la DGII o un programa certificado. <Link to="/comparar">Compare</Link></>],
+            ["Certifíquese", <>La DGII prueba el programa con su RNC. <Link to="/certificacion">Cómo es</Link></>],
+            ["Secuencias y a vender", "Pida sus e-NCF en la OFV y emita su primer e-CF."],
+          ]}
+        />
+      </Section>
+      <Faq
+        items={[
+          ["¿Tengo que pedir la prórroga al 15 de noviembre?", "No. La DGII la dio en mayo de 2026 a todos los pequeños, micro y no clasificados (Aviso 06-26)."],
+          ["¿Hasta cuándo sirven mis comprobantes con serie B?", "Grandes locales y medianos emiten solo e-CF desde el 1 de noviembre de 2026; su serie B queda para contingencia. Para los demás, confirme con la DGII o su contador."],
+          ["¿Necesito internet para facturar?", "Con Abastalia, no siempre: firma en la tienda y envía al volver la conexión, dentro de las 72 horas que da la DGII. El Facturador Gratuito sí necesita internet."],
+          [
+            "¿Cuánto tarda todo?",
+            <>
+              Lo más lento suele ser la DGII entre una etapa y otra. Con Abastalia, la parte técnica de la <Link to="/certificacion">certificación</Link> es automática.
+            </>,
+          ],
+          ["¿Qué pasa si no cumplo la fecha?", "La Ley 32-23 (art. 27) prevé sanciones. Pregunte a su contador."],
+        ]}
+      />
+      <Sources links={[["Prórroga (DGII, mayo 2026)", dgii.prorroga], ["Grandes y medianos (DGII, 26/08/2026)", dgii.grandes]]} />
+      <CtaBand />
+    </>
+  );
+}
+
+const yes = <span className="ok">Sí</span>;
+
+/** Row, Facturador Gratuito (DGII's own FAQ unless dated otherwise), Abastalia. On a phone each row stacks (.vs in site.css). */
+const versus: [string, ReactNode, ReactNode][] = [
+  ["Costo", "Gratis", <>Mensual, por tamaño de tienda. <Link to="/precios">Precios</Link></>],
+  ["Pensado para", "Bajo volumen. Unas 150 facturas al mes, según la DGII (El Día, 12/05/2026)", "Tiendas con mostrador, sin cupo ni cobro por documento"],
+  ["Sin internet", "No emite", <>{yes}: firma y envía al volver (72 horas)</>],
+  ["Caja, balanza, inventario y fiado", "No: emite, recibe y consulta e-CF", yes],
+  ["Dónde se usa", "Portal web de la DGII", "Programa en la PC de la tienda y panel en el celular"],
+  ["Guarda sus e-CF", "Hasta 2 años en el portal; usted debe guardarlos 10", "10 años, en la tienda y en la nube"],
+  ["Certificado digital", "El gratis de la DGII (solo sirve ahí) o uno comprado", "Comprado a una entidad autorizada por INDOTEL"],
+  ["Tipos de e-CF", "Todos", "Consumo, crédito fiscal y notas de crédito"],
+];
+
+/** TK-263: Abastalia next to the DGII's free tool, only with facts the DGII publishes, and the questions to ask any other program. */
+function Compare() {
+  return (
+    <>
+      <Hero eyebrow="Comparar" title="¿Facturador Gratuito o un punto de venta?" sub="Los dos emiten e-CF válidos. Cambia lo que pasa en el mostrador." />
+      <Section>
+        <h2 className="esc-visually-hidden">Comparación</h2>
+        <div className="table-wrap vs">
+          <table>
+            <thead><tr><th></th><th>Facturador Gratuito (DGII)</th><th>Abastalia</th></tr></thead>
+            <tbody>
+              {versus.map(([row, free, ours]) => (
+                <tr key={row}>
+                  <th scope="row">{row}</th>
+                  <td data-label="Facturador Gratuito">{free}</td>
+                  <td data-label="Abastalia">{ours}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+      <Section className="counter">
+        <h2>Antes de elegir cualquier programa, pregunte</h2>
+        <IconTiles
+          cols={3}
+          items={[
+            ["ecf", "¿Cobra por factura o tiene cupo?"],
+            ["offline", "¿Factura si se va el internet?"],
+            ["scale", "¿Lee la balanza y vende por libra?"],
+            ["shield", "¿Está certificado ante la DGII?"],
+            ["data", "¿Guarda los e-CF 10 años?"],
+            ["key", "¿Me llevo mis datos si me voy?"],
+          ]}
+        />
+      </Section>
+      <Faq
+        items={[
+          ["¿El Facturador Gratuito es legal para mi colmado?", "Sí. Lo da la DGII a cualquier contribuyente, sobre todo de bajo volumen. Excluye a los grandes contribuyentes nacionales."],
+          ["¿Puedo empezar con el Facturador Gratuito y cambiar después?", "Sí, pero el nuevo programa debe certificarse con su RNC. El certificado gratis de la DGII no sirve fuera del Facturador Gratuito."],
+          ["¿Abastalia cobra por cada e-CF?", "No. No hay cupo ni cobro por documento, y la venta no se detiene por volumen."],
+        ]}
+      />
+      <Sources links={[["Facturador Gratuito (DGII)", dgii.gratuito], ["Preguntas frecuentes del Facturador Gratuito (DGII)", dgii.gratuitoFaq], ["Límite de 150 al mes (El Día, 12/05/2026)", "https://eldia.com.do/quienes-pueden-usar-el-facturador-electronico-gratuito-de-la-dgii/"]]} />
+      <CtaBand />
+    </>
+  );
+}
+
+/** TK-263: the words of the e-CF in one line each. */
+function Glossary() {
+  return (
+    <>
+      <Hero eyebrow="Glosario" title="Las palabras del e-CF, sin enredos." sub={<>Para empezar, vea la <Link to="/guia-e-cf">guía en 6 pasos</Link>.</>} />
+      <Section className="counter glossary">
+        <h2 className="esc-visually-hidden">Términos</h2>
+        <IconTiles
+          cols={3}
+          items={[
+            ["ecf", "e-CF", "Comprobante fiscal electrónico: la factura en XML, firmada con su certificado y validada por la DGII."],
+            ["tag", "e-NCF", "El número del e-CF: E, el tipo y 10 dígitos. Ejemplo: E320000000001."],
+            ["tag", "NCF", "El número del comprobante en papel: B, el tipo y 8 dígitos. Ejemplo: B0200000001."],
+            ["quote", "Tipos 31, 32, 33 y 34", "31 crédito fiscal, 32 consumo, 33 nota de débito y 34 nota de crédito."],
+            ["data", "RFCE", "Resumen firmado de la factura de consumo de menos de RD$250,000. El e-CF completo se guarda en la tienda."],
+            ["qr", "Representación impresa", "La versión en papel del e-CF, con QR y código de seguridad."],
+            ["lock", "Certificado .p12", "Certificado digital de persona física, de una entidad autorizada por INDOTEL. Firma cada e-CF."],
+            ["key", "OFV", "Oficina Virtual de la DGII: solicitudes, secuencias y declaraciones."],
+            ["pc", "TesteCF", "Ambiente de pruebas libres de la DGII."],
+            ["shield", "CerteCF", "Ambiente de certificación: set de pruebas y simulación."],
+            ["offline", "Contingencia", "Cuando no se puede emitir e-CF: se factura con serie B y luego se regulariza."],
+            ["box", "606", "Compras del mes, para la DGII."],
+            ["register", "607", "Ventas del mes, para la DGII."],
+            ["calendar", "608", "Comprobantes anulados en el mes."],
+            ["download", "Facturador Gratuito", <>Portal gratis de la DGII para emitir e-CF con poco volumen. <Link to="/comparar">Comparar</Link></>],
+          ]}
+        />
+        <p className="muted">
+          El 606, el 607 y el 608 se envían por la OFV, a más tardar el día 15 del mes siguiente. Abastalia los prepara para su contador. Vea también <Link to="/e-cf">¿Ya le toca el e-CF?</Link>
+        </p>
+      </Section>
+      <Faq
+        items={[
+          ["¿Cuál es la diferencia entre NCF y e-NCF?", "El NCF numera el comprobante en papel (serie B, 11 caracteres). El e-NCF numera el e-CF (serie E, 13 caracteres)."],
+          ["¿El RFCE reemplaza la factura?", "No. El cliente recibe su factura y la tienda guarda el e-CF completo; a la DGII solo va el resumen, si la venta es de consumo y de menos de RD$250,000."],
+        ]}
+      />
+      <Sources links={[["Formatos de envío de datos (DGII)", dgii.formatos], ["Preguntas frecuentes del Facturador Gratuito (DGII)", dgii.gratuitoFaq]]} />
     </>
   );
 }
@@ -296,7 +476,9 @@ function Certification() {
             ["Producción", "La DGII lo habilita; carga sus secuencias e-NCF y factura."],
           ]}
         />
-        <p className="muted">Los tiempos entre una etapa y otra los pone la DGII.</p>
+        <p className="muted">
+          Los tiempos entre una etapa y otra los pone la DGII. ¿Dudas con un término? Vea el <Link to="/glosario">glosario</Link>.
+        </p>
       </Section>
       <Section>
         <h2>Quién hace qué</h2>
@@ -494,7 +676,9 @@ function Pricing() {
             </tbody>
           </table>
         </div>
-        <p className="muted">El certificado digital para el e-CF se compra directamente a la entidad certificadora; no lo vende Abastalia.</p>
+        <p className="muted">
+          El certificado digital para el e-CF se compra directamente a la entidad certificadora; no lo vende Abastalia. ¿Y el Facturador Gratuito de la DGII? <Link to="/comparar">Compare</Link>
+        </p>
       </Section>
       <Section className="counter">
         <h2>Reglas que no cambian</h2>
@@ -531,8 +715,13 @@ function WhatsNew() {
     <>
       <Hero eyebrow="Novedades" title="Lo nuevo en Abastalia" sub="Lo más reciente va primero." />
       <Section>
-        <h2>Octubre de 2026</h2>
+        <h2>
+          <time dateTime="2026-10">Octubre de 2026</time>
+        </h2>
         <ul className="log">
+          <News title="Guía, glosario y comparación del e-CF">
+            <Link to="/guia-e-cf">Los 6 pasos</Link>, <Link to="/glosario">las palabras</Link> y <Link to="/comparar">el Facturador Gratuito al lado de Abastalia</Link>.
+          </News>
           <News title="Facturación electrónica directa con la DGII">Firma en la tienda y envía sin intermediarios. Un rechazo se reemplaza con un e-CF nuevo; los números sobrantes se anulan desde la pantalla. Cada e-CF se guarda 10 años en la nube.</News>
           <News title="Asistente de certificación y cambio desde otro programa">Las etapas en una lista, el set de pruebas que se envía solo y un camino para quien ya emite e-CF.</News>
           <News title="Contingencia sin internet o sin certificado">Sin internet, los e-CF salen solos dentro de las 72 horas. Si no se puede firmar, Abastalia guía la contingencia con serie B y su regularización.</News>
@@ -603,6 +792,27 @@ export const sitePages: SitePage[] = [
     title: "¿Ya le toca el e-CF? · Plazo del 15 de noviembre de 2026",
     description: "Guía corta del e-CF en República Dominicana: a quién le toca el 15 de noviembre de 2026, qué necesita y cómo Abastalia factura aunque se vaya el internet.",
     element: <Ecf />,
+  },
+  {
+    path: "/guia-e-cf",
+    nav: "Guía e-CF",
+    title: "Cómo empezar a emitir e-CF · Guía en 6 pasos",
+    description: "Guía para empezar con la facturación electrónica en República Dominicana: fecha, RNC y OFV, certificado digital, certificación y secuencias e-NCF.",
+    element: <EcfGuide />,
+  },
+  {
+    path: "/comparar",
+    nav: "Comparar",
+    title: "Facturador Gratuito de la DGII o punto de venta · Comparar",
+    description: "Facturador Gratuito de la DGII al lado de Abastalia: costo, volumen, internet, caja y balanza, cuánto guarda los e-CF y qué preguntar antes de elegir.",
+    element: <Compare />,
+  },
+  {
+    path: "/glosario",
+    nav: "Glosario",
+    title: "Glosario del e-CF: e-NCF, NCF, RFCE, 606, 607 y 608",
+    description: "Qué significan e-CF, e-NCF, NCF, RFCE, 606, 607, 608, TesteCF, CerteCF, OFV y el certificado .p12, en una línea cada uno. Para dueños de tienda en RD.",
+    element: <Glossary />,
   },
   {
     path: "/certificacion",

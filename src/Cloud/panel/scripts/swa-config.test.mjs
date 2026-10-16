@@ -21,6 +21,7 @@ describe("staticwebapp.config.json (TK-228)", () => {
   it("serves each public page from its prerendered file", () => {
     expect(servedBy("/precios")).toBe("/precios.html");
     expect(servedBy("/e-cf")).toBe("/e-cf.html");
+    for (const p of ["/guia-e-cf", "/comparar", "/glosario"]) expect(servedBy(p), p).toBe(`${p}.html`); // TK-263
     expect(servedBy("/404")).toBeNull();
   });
 
