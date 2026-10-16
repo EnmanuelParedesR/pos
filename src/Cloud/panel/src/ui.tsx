@@ -3,15 +3,16 @@ import type { ApiError, Store } from "./api";
 import { addDays, money, shortMoney, storeDay } from "./format";
 import { getTheme, nextTheme, setTheme, themeName, type ThemeChoice } from "./theme";
 
-/** Logo C5, the tag with the winking eye (same SVG as Escuadra's Logo.razor). */
-export function Logo({ size = 28, withName = true }: { size?: number; withName?: boolean }) {
+/** Logo C5, the tag with the winking eye (same SVG as Escuadra's Logo.razor). `on-dark` (TK-230, Escuadra README): white tag, check in marca. */
+export function Logo({ size = 28, withName = true, variant = "default" }: { size?: number; withName?: boolean; variant?: "default" | "on-dark" }) {
+  const [tag, eye, pupil, check] = variant === "on-dark" ? ["#FFFFFF", "#14181D", "#FFFFFF", "#0B5CAD"] : ["#0B5CAD", "#FFFFFF", "#14181D", "#FFFFFF"];
   return (
-    <span className="esc-logo" style={{ fontSize: (size * 7) / 10, color: "var(--text)" }}>
+    <span className="esc-logo" style={{ fontSize: (size * 7) / 10, color: variant === "on-dark" ? "var(--frame-text)" : "var(--text)" }}>
       <svg role="img" aria-label="Toki" width={size} height={size} viewBox="0 0 120 120">
-        <path d="M44 24 H96 Q104 24 104 32 V88 Q104 96 96 96 H44 L16 60 Z" fill="#0B5CAD" stroke="#0B5CAD" strokeWidth="6" strokeLinejoin="round" />
-        <circle cx="35" cy="60" r="8" fill="#FFFFFF" />
-        <circle cx="32.5" cy="60" r="3.8" fill="#14181D" />
-        <path d="M70 36 V76 Q70 84 78 84 H86 M58 50 H86" fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M44 24 H96 Q104 24 104 32 V88 Q104 96 96 96 H44 L16 60 Z" fill={tag} stroke={tag} strokeWidth="6" strokeLinejoin="round" />
+        <circle cx="35" cy="60" r="8" fill={eye} />
+        <circle cx="32.5" cy="60" r="3.8" fill={pupil} />
+        <path d="M70 36 V76 Q70 84 78 84 H86 M58 50 H86" fill="none" stroke={check} strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       {withName && <span aria-hidden="true">toki</span>}
     </span>

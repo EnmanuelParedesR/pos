@@ -49,6 +49,7 @@ builder.Services.AddIdentityApiEndpoints<CloudUser>(o =>
     .AddClaimsPrincipalFactory<CloudClaimsFactory>()
     .AddSignInManager<CloudSignInManager>();
 builder.Services.AddScoped<IUserStore<CloudUser>, CloudUserStore>();
+builder.Services.AddTransient<IEmailSender<CloudUser>, IdentityEmails>(); // TK-230: confirm and reset e-mails, in Spanish
 
 // Guessing an 8-digit code is the only way in without an account.
 var registerPerMinute = config.GetValue("Nodes:RegisterPerMinute", 10);

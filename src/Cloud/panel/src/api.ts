@@ -132,8 +132,9 @@ const identityErrors: Record<string, string> = {
   PasswordRequiresUpper: "La contraseña debe tener al menos una letra mayúscula.",
   PasswordRequiresNonAlphanumeric: "La contraseña debe tener al menos un símbolo.",
   PasswordRequiresUniqueChars: "La contraseña necesita más caracteres distintos.",
-  DuplicateUserName: "Ya existe una cuenta con ese correo.",
-  DuplicateEmail: "Ya existe una cuenta con ese correo.",
+  DuplicateUserName: "Ese correo ya tiene una cuenta.",
+  DuplicateEmail: "Ese correo ya tiene una cuenta.",
+  InvalidToken: "El enlace no es válido o ya venció. Pida uno nuevo.",
   InvalidEmail: "El correo no es válido.",
   InvalidUserName: "El correo no es válido.",
 };
@@ -148,6 +149,28 @@ export async function register(email: string, password: string) {
   const response = await send("/api/auth/register", "POST", { email, password }, false);
   if (!response.ok) throw await toError(response);
   await signIn(email, password);
+}
+
+/** "Ese correo ya tiene una cuenta": the sign-in screen offers to switch to Entrar. */
+export const isDuplicateEmail = (error: ApiError) => "DuplicateEmail" in error.errors || "DuplicateUserName" in error.errors;
+
+/** TK-230: asks for Identity's reset e-mail. Always 200, whether the account exists or not (no account enumeration). */
+export async function forgotPassword(email: string) {
+  const response = await send("/api/auth/forgotPassword", "POST", { email }, false);
+  if (!response.ok) throw await toError(response);
+}
+
+/** TK-230: the code from the e-mailed link (/app/restablecer#email=…&code=…) and the new password. */
+export async function resetPassword(email: string, resetCode: string, newPassword: string) {
+  const response = await send("/api/auth/resetPassword", "POST", { email, resetCode, newPassword }, false);
+  if (!response.ok) throw await toError(response);
+}
+
+/** TK-230: the link of the confirmation e-mail sent on sign-up (/app/confirmar#…); only a confirmed address gets a reset e-mail.
+ * shortcut: Identity's endpoint takes the code in the query string (single use, it only confirms the address); our request log keeps the path only. */
+export async function confirmEmail(userId: string, code: string) {
+  const response = await send(`/api/auth/confirmEmail?${new URLSearchParams({ userId, code })}`, "GET", undefined, false);
+  if (!response.ok) throw new ApiError(response.status, "Auth.ConfirmFailed", "El enlace no es válido o ya se usó. Si ya confirmó su correo, no tiene que hacer nada más.");
 }
 
 /** TK-217: a new account for the invited e-mail, already a member of the inviting business (no business of its own). */

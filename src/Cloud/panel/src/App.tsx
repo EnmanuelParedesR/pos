@@ -13,6 +13,7 @@ import { PlatformMetricsPage, PlatformStorePage, PlatformTenantPage, PlatformTen
 import { CatalogPage } from "./pages/CatalogPage";
 import { MembersPage } from "./pages/MembersPage";
 import { InvitePage } from "./pages/InvitePage";
+import { ConfirmEmailPage, ResetPasswordPage } from "./pages/EmailLinkPages";
 import { NotificationsPage, UnsubscribePage } from "./pages/NotificationsPage";
 import { ReceivedPage } from "./pages/ReceivedPage";
 import { SiteLayout } from "./pages/site/SiteLayout";
@@ -54,6 +55,9 @@ export function App() {
       <Route path="invite/:token" element={<InvitePage />} />
       {/* TK-222: the unsubscribe link of an alert e-mail works without a session. */}
       <Route path="unsubscribe" element={<UnsubscribePage />} />
+      {/* TK-230: the links of the "¿La olvidó?" and sign-up e-mails; the code is after "#" (R8 #12). */}
+      <Route path="app/restablecer" element={<ResetPasswordPage />} />
+      <Route path="app/confirmar" element={<ConfirmEmailPage />} />
       <Route path="app/*" element={<Panel />} />
       {movedToApp.map((p) => (
         <Route key={p} path={`${p}/*`} element={<ToApp />} />
