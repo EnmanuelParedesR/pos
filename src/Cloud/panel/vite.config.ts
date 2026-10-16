@@ -6,5 +6,6 @@ export default defineConfig({
   plugins: [react()],
   // escuadra.css and escuadra-admin.css come from the register's design system so both share one set of tokens.
   server: { fs: { allow: [".", "../../Client/Abastalia.Escuadra/wwwroot"] } },
-  test: { environment: "jsdom" },
+  // Two workers: jsdom suites under full parallelism time out their findBy waits on a loaded PC or CI runner.
+  test: { environment: "jsdom", maxWorkers: 2 },
 });
