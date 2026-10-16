@@ -30,3 +30,6 @@ docs/nombres-mercado.md
 # Owner's panel (React)
 node_modules/
 src/Cloud/panel/dist/
+
+# Public site (built by src/Site/build.mjs)
+src/Site/dist/

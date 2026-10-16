@@ -153,6 +153,30 @@ El token va en una variable de entorno, nunca en el repositorio. El panel import
 
 `public/staticwebapp.config.json` va dentro de `dist` y manda toda ruta del panel (`/sales`, `/stores`…) a `index.html`, así que recargar la página no da 404.
 
+## Sitio público (TK-197, TK-198, TK-226)
+
+`src/Site` es el sitio de Toki: HTML y CSS sin JavaScript ni dependencias. Las páginas están en `src/Site/pages` (cada una empieza con un comentario JSON con `title`, `description` y, si va, `nav`); `build.mjs` les pone el encabezado y el pie, copia `assets/` y las fuentes IBM Plex Sans de `Toki.Escuadra`, y falla si hay un enlace interno roto. CI lo compila en el trabajo "Sitio público".
+
+```
+node src/Site/build.mjs            # deja el sitio en src/Site/dist
+node src/Site/build.mjs --serve    # además, vista previa en http://localhost:4173
+```
+
+Páginas: inicio, Carnicería, Colmado, Deli, "¿Ya te toca el e-CF?", "Certifícate con Toki", Precios y Novedades (más `404.html`).
+
+**Pendiente del dueño antes de publicar:** los precios y los límites de cada plan (TK-203; hoy dicen "Precio por confirmar"), el precio de la instalación y del acompañamiento en la certificación (TK-219), el dominio y el número de WhatsApp. Los dos últimos van en `src/Site/site.json` (`url` sin barra final, `whatsapp` solo dígitos con el código de país): con `url` salen `canonical` y `og:url`; con `whatsapp`, los botones "Hablemos" abren WhatsApp. Las novedades se escriben a mano en `pages/novedades.html` (en lenguaje del cliente, no los textos del backlog). Que un contador revise "¿Ya te toca el e-CF?" antes de publicarla (TK-198).
+
+**Desplegar en Azure Static Web Apps (no se ha hecho).** Una Static Web App aparte del panel, plan Free:
+
+```
+az staticwebapp create -n stapp-toki-site -g rg-toki-prod -l eastus2 --sku Free
+node src/Site/build.mjs
+$env:SWA_CLI_DEPLOYMENT_TOKEN = az staticwebapp secrets list -n stapp-toki-site -g rg-toki-prod --query properties.apiKey -o tsv
+npx @azure/static-web-apps-cli deploy src/Site/dist --env production
+```
+
+`assets/staticwebapp.config.json` va dentro de `dist`: manda las rutas que no existen a `404.html`, guarda en caché las fuentes un año y pone los encabezados de seguridad (CSP sin scripts, `nosniff`, sin marcos). El dominio propio se agrega con `az staticwebapp hostname set -n stapp-toki-site --hostname <dominio>` después de crear el CNAME (o el registro TXT para el dominio raíz) en el DNS; Azure emite el certificado solo.
+
 ## Volver a publicar la API
 
 ```

@@ -158,10 +158,11 @@
             </div>
         </form>
 
-        @* TK-156, TK-157, TK-155: health and contingency guide, paper series B, certification assistant. *@
+        @* TK-156, TK-157, TK-155, TK-221: health and contingency guide, paper series B, certification assistant, switching from another program. *@
         <EcfHealthPanel @ref="_health" />
         <EcfContingencyPanel Changed="ContingencyChangedAsync" />
         <EcfCertificationPanel />
+        <EcfSwitchPanel Environment="@_queue?.Environment" />
     </ChildContent>
 </Admin>
 

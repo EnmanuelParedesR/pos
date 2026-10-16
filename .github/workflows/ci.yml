@@ -30,6 +30,16 @@ jobs:
           # Run as a store PC would (UTC-4) so time-zone bugs show up in CI.
           TZ: America/Santo_Domingo
 
+  site:
+    name: Sitio público (compila y revisa enlaces)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node src/Site/build.mjs
+
   ui:
     name: Pruebas de interfaz (Playwright)
     runs-on: ubuntu-latest
