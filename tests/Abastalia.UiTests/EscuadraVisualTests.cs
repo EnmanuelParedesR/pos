@@ -4,7 +4,7 @@ using Shouldly;
 namespace Abastalia.UiTests;
 
 /// <summary>TK-243: screenshots of the Escuadra gallery (/dev/escuadra, Development only) against committed baselines in
-/// Baselines/ (one set per OS: font rendering differs). A missing baseline is written and the test passes; delete a baseline
+/// Baselines/ (one set per OS: font rendering differs). Outside CI a missing baseline is written and the test passes; delete a baseline
 /// to accept an intended change.</summary>
 public sealed class EscuadraVisualTests
 {
@@ -47,8 +47,16 @@ public sealed class EscuadraVisualTests
     {
         Directory.CreateDirectory(Baselines);
         var file = Path.Combine(Baselines, $"{name}.{OperatingSystem()}.png");
+        var actualFile = Path.Combine(Traces.Folder, $"{name}.actual.png");
         if (!File.Exists(file))
         {
+            // TK-270: in CI a missing baseline fails instead of being written (CI runs this on windows, against the committed set).
+            if (Environment.GetEnvironmentVariable("CI") == "true")
+            {
+                await File.WriteAllBytesAsync(actualFile, actual);
+                failures.Add($"{name}: no baseline {file} for this OS (actual: {actualFile})");
+                return;
+            }
             await File.WriteAllBytesAsync(file, actual);
             return;
         }
@@ -69,7 +77,6 @@ public sealed class EscuadraVisualTests
             """, new object[] { Convert.ToBase64String(await File.ReadAllBytesAsync(file)), Convert.ToBase64String(actual), ChannelTolerance });
         if (diff > PixelTolerance)
         {
-            var actualFile = Path.Combine(Path.GetTempPath(), $"{name}.actual.png");
             await File.WriteAllBytesAsync(actualFile, actual);
             failures.Add($"{name}: {diff:P2} of the pixels differ from {file} (actual: {actualFile})");
         }

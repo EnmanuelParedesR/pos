@@ -73,8 +73,10 @@ jobs:
           if-no-files-found: ignore
 
   ui:
+    # TK-123/TK-270: tests/Abastalia.UiTests (not in Abastalia.slnx: needs Chromium and Node). Windows because the Escuadra
+    # visual baselines are windows ones (font rendering differs per OS); Sqlite, so no SQL Server is needed.
     name: Pruebas de interfaz (Playwright)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -88,9 +90,16 @@ jobs:
       - run: npm ci
         working-directory: src/Cloud/panel
       - run: dotnet build tests/Abastalia.UiTests/Abastalia.UiTests.csproj -c Release
+      # The Chromium build that matches the pinned Microsoft.Playwright package (Directory.Packages.props).
       - name: Navegador
-        run: pwsh tests/Abastalia.UiTests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+        run: pwsh tests/Abastalia.UiTests/bin/Release/net10.0/playwright.ps1 install chromium
+      # Run as a store PC would (UTC-4); Windows ignores TZ.
+      - run: tzutil /s "SA Western Standard Time"
       - name: Pruebas
         run: dotnet test --project tests/Abastalia.UiTests/Abastalia.UiTests.csproj -c Release --no-build
-        env:
-          TZ: America/Santo_Domingo
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: tests/Abastalia.UiTests/bin/Release/net10.0/traces
+          if-no-files-found: ignore

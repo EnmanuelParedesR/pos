@@ -9,6 +9,7 @@ public sealed class RegisterApp : IAsyncLifetime
     private readonly string _folder = Path.Combine(Path.GetTempPath(), $"abastalia_ui_{Guid.NewGuid():N}");
     private IPlaywright? _playwright;
     private IBrowser? _browser;
+    private IBrowserContext? _context;
     private WebProcess? _web;
 
     public AbastaliaServer Api { get; private set; } = null!;
@@ -29,8 +30,9 @@ public sealed class RegisterApp : IAsyncLifetime
         });
         _playwright = await Playwright.CreateAsync();
         _browser = await _playwright.Chromium.LaunchAsync();
-        var context = await _browser.NewContextAsync(new() { BaseURL = _web.Base.ToString(), ViewportSize = new() { Width = 1366, Height = 900 }, Locale = "es-DO" });
+        var context = _context = await _browser.NewContextAsync(new() { BaseURL = _web.Base.ToString(), ViewportSize = new() { Width = 1366, Height = 900 }, Locale = "es-DO" });
         context.SetDefaultTimeout(15_000);
+        await Traces.StartAsync(context);
         Assertions.SetDefaultExpectTimeout(15_000); // a cold CI runner: the first circuit and the first queries take a few seconds
         Page = await context.NewPageAsync();
     }
@@ -40,6 +42,7 @@ public sealed class RegisterApp : IAsyncLifetime
 
     public async ValueTask DisposeAsync()
     {
+        if (_context is not null) await Traces.StopAsync(_context, "register-day");
         if (_browser is not null) await _browser.DisposeAsync();
         _playwright?.Dispose();
         if (_web is not null) await _web.DisposeAsync();
