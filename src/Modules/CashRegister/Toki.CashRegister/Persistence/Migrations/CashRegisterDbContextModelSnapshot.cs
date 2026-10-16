@@ -104,6 +104,10 @@ namespace Toki.CashRegister.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<decimal?>("StandardFloat")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
                     b.HasKey("Id");
 
                     b.ToTable("Registers", "cash");

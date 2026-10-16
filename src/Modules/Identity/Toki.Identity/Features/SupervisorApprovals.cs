@@ -14,10 +14,12 @@ using Toki.SharedKernel;
 namespace Toki.Identity.Features;
 
 /// <summary>A supervisor types code + PIN at the register to allow one action (void, big discount, cash out…).
-/// The result is a one-time approval valid 2 minutes, bound to the action, the resource and this device.</summary>
+/// The result is a one-time approval valid 2 minutes, bound to the action, the resource, this device, the cashier who asked and (R11 A1)
+/// the summary the server wrote for it (amount, kind, lines): the same approval with another amount is refused.</summary>
 internal static class GrantSupervisorApproval
 {
-    public sealed record Command(string Code, string Pin, string Permission, Guid ResourceId) : ICommand<Response>;
+    /// <param name="Summary">What is approved, exactly as the server wrote it in <c>Approval.Required</c> (<c>errors.summary</c>); the dialog shows it.</param>
+    public sealed record Command(string Code, string Pin, string Permission, Guid ResourceId, string? Summary = null) : ICommand<Response>;
 
     /// <summary>A wrong PIN is a successful command so the failed attempt is saved; <see cref="Failure"/> carries the error.</summary>
     public sealed record Response(Guid? ApprovalId, string? Supervisor, DateTime? ExpiresUtc, Error? Failure);
@@ -29,44 +31,50 @@ internal static class GrantSupervisorApproval
             RuleFor(c => c.Code).NotEmpty().MaximumLength(20);
             RuleFor(c => c.Pin).NotEmpty().MaximumLength(8);
             RuleFor(c => c.Permission).Must(p => Permissions.All.Contains(p)).WithMessage("Permiso desconocido.");
+            RuleFor(c => c.Summary).MaximumLength(2000);
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IUserContext me, IAuditLog audit, AttemptLimiter limiter, TimeProvider clock)
+    internal sealed class Handler(IdentityDbContext db, IUserContext me, IAuditLog audit, PinPepper pepper, AttemptLimiter limiter, TimeProvider clock)
         : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             if (me.DeviceId is not { } deviceId) return IdentityErrors.DeviceNotPaired;
             if (limiter.IsBlocked(AttemptLimiter.PinKey(deviceId), AttemptLimiter.PinsPerDevice)) return IdentityErrors.DeviceLocked;
+            var now = clock.GetUtcNow().UtcDateTime;
+            // R11 A14: a cashier trying PINs runs out here, before the supervisor's own count: nobody locks the owner out from a register.
+            var key = AttemptLimiter.UserPinKey(deviceId, User.NormalizeCode(c.Code), me.UserId);
+            if (limiter.IsBlocked(key, AttemptLimiter.PinsPerUser)) return new Response(null, null, null, IdentityErrors.TooManyAttempts);
+
             var supervisor = await db.Users.FirstOrDefaultAsync(u => u.Code == User.NormalizeCode(c.Code), ct);
             if (supervisor is null)
             {
                 limiter.Fail(AttemptLimiter.PinKey(deviceId));
-                return IdentityErrors.InvalidCredentials;
+                return new Response(null, null, null, IdentityErrors.CannotApprove);
             }
-
-            var now = clock.GetUtcNow().UtcDateTime;
-            var pin = supervisor.TryPin(c.Pin, now);
+            // R11 A14: whether the person may approve is checked before the PIN, with the same answer as a wrong PIN, so it never tells a right PIN apart.
+            var permissions = (await db.Roles.AsNoTracking().SingleAsync(r => r.Id == supervisor.RoleId, ct)).Effective;
+            var pin = permissions.Contains(c.Permission) ? supervisor.TryPin(c.Pin, now, pepper.Value) : PinResult.Incorrect;
             if (pin != PinResult.Correct)
             {
                 limiter.Fail(AttemptLimiter.PinKey(deviceId));
-                await audit.RecordAsync("identity.pin-failed", "User", supervisor.Id, new { supervisor.Code, c.Permission, Result = pin }, ct);
-                return new Response(null, null, null, pin == PinResult.Locked ? IdentityErrors.UserLocked : IdentityErrors.InvalidCredentials);
+                limiter.Fail(key);
+                await audit.RecordAsync("identity.pin-failed", "User", supervisor.Id,
+                    new { supervisor.Code, c.Permission, Result = pin, Requester = me.UserId, Device = deviceId }, ct);
+                return new Response(null, null, null, pin == PinResult.Locked ? IdentityErrors.UserLocked : IdentityErrors.CannotApprove);
             }
 
-            var permissions = (await db.Roles.AsNoTracking().SingleAsync(r => r.Id == supervisor.RoleId, ct)).Effective;
-            if (!permissions.Contains(c.Permission)) return new Response(null, null, null, IdentityErrors.SupervisorLacksPermission);
-
+            var summary = c.Summary ?? "";
             var approval = new SupervisorApproval
             {
                 Id = Guid.CreateVersion7(), SupervisorId = supervisor.Id, RequesterId = me.UserId, DeviceId = deviceId,
-                Permission = c.Permission, ResourceId = c.ResourceId, ExpiresUtc = now + SupervisorApproval.Duration,
+                Permission = c.Permission, ResourceId = c.ResourceId, PayloadHash = SupervisorApproval.HashOf(summary), ExpiresUtc = now + SupervisorApproval.Duration,
             };
             db.Approvals.Add(approval);
-            // The only server trace of actions that happen at the register alone (removing a line, opening the drawer).
+            // The only server trace of actions that happen at the register alone (opening the drawer), and what the supervisor saw.
             await audit.RecordAsync("approval.granted", "SupervisorApproval", approval.Id,
-                new { c.Permission, c.ResourceId, Supervisor = supervisor.Id, Requester = me.UserId }, ct);
+                new { c.Permission, c.ResourceId, Supervisor = supervisor.Id, Requester = me.UserId, Summary = summary }, ct);
             return new Response(approval.Id, supervisor.Name, approval.ExpiresUtc, null);
         }
     }

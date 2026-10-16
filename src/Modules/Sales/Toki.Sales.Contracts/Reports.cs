@@ -12,7 +12,8 @@ public sealed record DailySales(DateOnly Day, int SaleCount, decimal SalesWithIt
 public sealed record ProductSales(Guid ProductId, Guid CategoryId, string Product, decimal Quantity, decimal NetWithoutItbis, decimal? Cost, decimal? Profit);
 
 /// <param name="SoldWithItbis">What the cashier's completed sales charged, ITBIS included (returns are not per cashier).</param>
-public sealed record CashierSales(Guid CashierId, string Cashier, int SaleCount, int VoidedCount, decimal SoldWithItbis, decimal Discount);
+/// <param name="SoldOnCredit">R11 A6: what the cashier's completed sales charged on credit (fiado) or to a customer's credit balance.</param>
+public sealed record CashierSales(Guid CashierId, string Cashier, int SaleCount, int VoidedCount, decimal SoldWithItbis, decimal Discount, decimal SoldOnCredit = 0);
 
 /// <summary>One line of the DGII 607 (sales), columns in the order of DGII's format. Amounts without ITBIS in <see cref="InvoicedAmount"/>.</summary>
 /// <param name="IdType">1 = RNC, 2 = cédula; empty for a consumer receipt without one.</param>

@@ -90,18 +90,19 @@ export function ConfirmEmailPage() {
   const params = useHashParams();
   const userId = params.get("userId") ?? "";
   const code = params.get("code") ?? "";
-  const [state, setState] = useState<{ done?: boolean; error?: ApiError }>({});
+  const changedEmail = params.get("changedEmail") ?? undefined;
+  const [state, setState] = useState<{ done?: boolean; first?: boolean; error?: ApiError }>({});
 
   useEffect(() => {
     let live = true;
-    confirmEmail(userId, code).then(
-      () => live && setState({ done: true }),
+    confirmEmail(userId, code, changedEmail).then(
+      (r) => live && setState({ done: true, first: r.firstConfirmation }),
       (err) => live && setState({ error: toApiError(err) }),
     );
     return () => {
       live = false;
     };
-  }, [userId, code]);
+  }, [userId, code, changedEmail]);
 
   return (
     <AuthFrame title="Sus tiendas, aunque no esté en el mostrador.">
@@ -111,6 +112,12 @@ export function ConfirmEmailPage() {
         </div>
         {!state.done && !state.error && <Skeleton height={56} />}
         {state.done && <Notice kind="success" title="Listo, su correo quedó confirmado." />}
+        {/* R11 B-High1: someone else may have created the account with this e-mail; what they added before is gone, but not their password. */}
+        {state.first && (
+          <Notice kind="warning" title="Si usted no creó esta cuenta, cambie la contraseña ahora.">
+            Entre → ¿La olvidó? y le enviamos un enlace. Quitamos del negocio a las personas e invitaciones que se agregaron antes de confirmar.
+          </Notice>
+        )}
         {state.error && <Notice kind={state.error.offline ? "warning" : "error"} title={state.error.detail} />}
         <Link className="esc-button esc-button--primary auth-submit" to="/app">
           Ir al panel

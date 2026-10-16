@@ -39,7 +39,9 @@ for (const page of pages) {
 
 // Static Web Apps: public pages, the app's own addresses and a real 404 for everything else.
 const configPath = join(dist, "staticwebapp.config.json");
-writeFileSync(configPath, JSON.stringify(swaConfig(JSON.parse(readFileSync(configPath, "utf8")), pages, movedToApp), null, 2));
+// R11 B-Med5: the CSP allows the API the build talks to (same default as src/api.ts).
+const apiUrl = process.env.VITE_API_URL || "http://localhost:5100";
+writeFileSync(configPath, JSON.stringify(swaConfig(JSON.parse(readFileSync(configPath, "utf8")), pages, movedToApp, apiUrl), null, 2));
 
 rmSync(ssr, { recursive: true, force: true });
 console.log(`Prerendered ${pages.length} public pages`);

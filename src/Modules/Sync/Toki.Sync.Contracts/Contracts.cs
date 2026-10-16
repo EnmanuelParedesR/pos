@@ -12,13 +12,16 @@ namespace Toki.Sync.Contracts;
 /// <param name="Days">Yesterday and today (store days), so yesterday's last hour is not lost.</param>
 /// <param name="Fiscal">TK-222, added later: null from stores on older versions (the cloud then sends them no fiscal alert).</param>
 /// <param name="License">TK-196: added later, so heartbeats of older versions arrive without it (null).</param>
+/// <param name="AuditHead">R11 A10: the head of the store's audit chain ("#seq hash8"), so the cloud keeps how far it went and a rewritten chain shows.</param>
 public sealed record NodeHeartbeatV1(
     Guid NodeId, string AppVersion, string Os, int UptimeMinutes, int ActiveRegisters, int OpenShifts, int OutboxBacklog, string? LastErrorCode,
-    NodeFeaturesV1 Features, NodeSetupV1 Setup, IReadOnlyList<DailyUsageV1> Days, NodeLicenseV1? License = null, NodeFiscalV1? Fiscal = null) : IntegrationEvent(NodeId);
+    NodeFeaturesV1 Features, NodeSetupV1 Setup, IReadOnlyList<DailyUsageV1> Days, NodeLicenseV1? License = null, NodeFiscalV1? Fiscal = null,
+    string? AuditHead = null) : IntegrationEvent(NodeId);
 
 /// <param name="Status">Trial, Active, Grace or Restricted.</param>
 /// <param name="EndsUtc">When the trial ends or the license expires; null for a trial that has not sold yet.</param>
-public sealed record NodeLicenseV1(string Status, DateTime? EndsUtc);
+/// <param name="Jws">R11 B-Low8: the installed license as Toki signed it (null in a trial or from older versions); the cloud verifies it for the paid extras.</param>
+public sealed record NodeLicenseV1(string Status, DateTime? EndsUtc, string? Jws = null);
 
 /// <summary>TK-222: counts and dates the cloud alerts the owner on (no e-NCF, no amounts).</summary>
 /// <param name="RejectedWithoutReplacement">e-CF the DGII rejected in the last 30 days still without a replacement.</param>

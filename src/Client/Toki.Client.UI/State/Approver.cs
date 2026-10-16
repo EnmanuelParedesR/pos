@@ -10,12 +10,13 @@ public sealed class Approver
     internal ApprovalRequest? Current { get; private set; }
     internal event Action? Changed;
 
-    /// <summary>Null when the cashier cancels. The id is single use, valid 2 minutes, for this permission, resource and device.</summary>
-    public Task<Guid?> RequestAsync(string permission, Guid resourceId, string reason)
+    /// <summary>Null when the cashier cancels. The id is single use, valid 2 minutes, for this permission, resource, device, cashier and
+    /// <paramref name="summary"/> (R11 A1: what the server said is being approved; the dialog shows it).</summary>
+    public Task<Guid?> RequestAsync(string permission, Guid resourceId, string reason, string summary = "")
     {
         _pending?.TrySetResult(null);
         _pending = new TaskCompletionSource<Guid?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        Current = new(permission, resourceId, reason);
+        Current = new(permission, resourceId, reason, summary);
         Changed?.Invoke();
         return _pending.Task;
     }
@@ -32,7 +33,7 @@ public sealed class Approver
     {
         var r = await command(null);
         if (r.Problem?.PermissionRequired is not { } permission) return r;
-        var id = await RequestAsync(permission, resourceId, reason);
+        var id = await RequestAsync(permission, resourceId, reason, r.Problem.ApprovalSummary);
         return id is null ? new(default, new Problem(0, "Cancelled", "Se canceló la autorización.")) : await command(id);
     }
 
@@ -43,6 +44,8 @@ public sealed class Approver
         "sales.large-discount" => "Descuento mayor que el tope",
         "sales.price-override" => "Cambiar el precio",
         "credit.exceed-limit" => "Fiar por encima del límite",
+        "credit.sell" => "Vender fiado o con saldo a favor",
+        "customers.manage" => "Crédito fiscal a un RNC que no es de un cliente",
         "register.withdraw" => "Sacar efectivo de la caja",
         "register.approve-close" => "Cerrar turno con diferencia",
         "register.open" => "Abrir turno",
@@ -56,4 +59,4 @@ public sealed class Approver
     };
 }
 
-internal sealed record ApprovalRequest(string Permission, Guid ResourceId, string Reason);
+internal sealed record ApprovalRequest(string Permission, Guid ResourceId, string Reason, string Summary = "");

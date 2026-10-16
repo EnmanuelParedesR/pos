@@ -106,8 +106,8 @@ public sealed class QuotaTests(QuotaApp app) : IClassFixture<QuotaApp>
         var staff = await app.StaffAsync();
         var start = await staff.Client.GetFromJsonAsync<JsonElement>($"/api/platform/tenants/{owner.TenantId}/usage");
         start.GetProperty("usage").GetProperty("plan").GetString().ShouldBe("Default");
-        start.GetProperty("plans").EnumerateArray().Select(p => p.GetString()).ShouldBe(["Default", "MultiRegister", "MultiStore"]);
-        start.GetProperty("addOns").EnumerateArray().Select(p => p.GetString()).ShouldBe(["SupplierInvoiceReading"]);
+        start.GetProperty("plans").EnumerateArray().Select(p => p.GetString()).ShouldBe(["Default", "Essential", "MultiRegister", "MultiStore"]);
+        start.GetProperty("addOns").EnumerateArray().Select(p => p.GetString()).ShouldBe(["AssistantPack", "ExtraRegister", "ExtraStore", "ExtraUsers", "SupplierInvoiceReading"]);
 
         (await staff.Client.PutAsJsonAsync($"/api/platform/tenants/{owner.TenantId}/plan", new { plan = "Gold", addOns = Array.Empty<string>() }))
             .StatusCode.ShouldBe(HttpStatusCode.BadRequest);
@@ -119,6 +119,14 @@ public sealed class QuotaTests(QuotaApp app) : IClassFixture<QuotaApp>
         usage.GetProperty("plan").GetString().ShouldBe("MultiStore");
         Used(usage, "Invites").Limit.ShouldBe(40);                     // the plan's own
         Used(usage, "SupplierInvoices").Limit.ShouldBe(QuotaApp.Invoices); // not set for the plan: Default's
+
+        // TK-258: add-ons add to the plan, once per unit (a code twice = two packs).
+        (await staff.Client.PutAsJsonAsync($"/api/platform/tenants/{owner.TenantId}/plan", new { plan = "Essential", addOns = new[] { "AssistantPack", "AssistantPack", "ExtraUsers" } }))
+            .StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        usage = await owner.Client.GetFromJsonAsync<JsonElement>("/api/usage");
+        usage.GetProperty("addOns").EnumerateArray().Select(a => a.GetString()).ShouldBe(["AssistantPack", "AssistantPack", "ExtraUsers"]);
+        Used(usage, "AssistantQuestions").Limit.ShouldBe(100 + 2 * 1000);
+        Used(usage, "Invites").Limit.ShouldBe(2 + 5);
     }
 
     [Fact]
@@ -129,7 +137,7 @@ public sealed class QuotaTests(QuotaApp app) : IClassFixture<QuotaApp>
         for (var i = 0; i < QuotaApp.Invoices; i++) (await node.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo())).StatusCode.ShouldBe(HttpStatusCode.OK);
         var over = await node.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo());
         over.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
-        (await over.Json()).GetProperty("detail").GetString()!.ShouldContain("servicio adicional");
+        (await over.Json()).GetProperty("detail").GetString()!.ShouldContain("adicional de lectura de facturas");
         var left = await (await node.Client.PostAsJsonAsync("/ai/v1/supplier-invoice/quota", new { })).Json();
         (left.GetProperty("used").GetInt32(), left.GetProperty("limit").GetInt32(), left.GetProperty("addOn").GetBoolean()).ShouldBe((QuotaApp.Invoices, QuotaApp.Invoices, false));
 
@@ -139,7 +147,7 @@ public sealed class QuotaTests(QuotaApp app) : IClassFixture<QuotaApp>
 
         (await node.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo())).StatusCode.ShouldBe(HttpStatusCode.OK);
         left = await (await node.Client.PostAsJsonAsync("/ai/v1/supplier-invoice/quota", new { })).Json();
-        (left.GetProperty("used").GetInt32(), left.GetProperty("limit").GetInt32(), left.GetProperty("addOn").GetBoolean()).ShouldBe((QuotaApp.Invoices + 1, QuotaApp.AddOnInvoices, true));
+        (left.GetProperty("used").GetInt32(), left.GetProperty("limit").GetInt32(), left.GetProperty("addOn").GetBoolean()).ShouldBe((QuotaApp.Invoices + 1, QuotaApp.Invoices + QuotaApp.AddOnInvoices, true)); // the add-on adds its own
     }
 
     [Fact]
@@ -176,6 +184,7 @@ public sealed class QuotaTests(QuotaApp app) : IClassFixture<QuotaApp>
         var client = strict.CreateClient();
         var email = $"owner{Guid.NewGuid():N}@example.com";
         (await client.PostAsJsonAsync("/api/auth/register", new { email, password = CloudApp.Password })).EnsureSuccessStatusCode();
+        await CloudApp.ConfirmEmailAsync(strict, email);
         var token = (await (await client.PostAsJsonAsync("/api/auth/login", new { email, password = CloudApp.Password })).Json()).GetProperty("accessToken").GetString();
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         for (var i = 0; i < 2; i++) (await client.GetAsync("/api/panel/sync-status")).StatusCode.ShouldBe(HttpStatusCode.OK);

@@ -686,6 +686,59 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("FeCertificates", "cloud");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Fe.FeDelegation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("Approved")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("DecidedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HolderName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RequestedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Rnc")
+                        .IsRequired()
+                        .HasMaxLength(11)
+                        .HasColumnType("nvarchar(11)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Thumbprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Rnc", "Thumbprint")
+                        .IsUnique();
+
+                    b.ToTable("FeDelegations", "cloud");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Fe.FeReceivedDocument", b =>
                 {
                     b.Property<long>("Id")
@@ -779,6 +832,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<bool>("SignerUnverified")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -871,6 +927,22 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.HasIndex("TenantId", "AtUtc");
 
                     b.ToTable("FeSignatures", "cloud");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Nodes.UsedNonce", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(110)
+                        .HasColumnType("nvarchar(110)");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("ExpiresUtc");
+
+                    b.ToTable("NodeNonces", "cloud");
                 });
 
             modelBuilder.Entity("Toki.Host.Cloud.Persistence.CloudUser", b =>
@@ -1125,6 +1197,8 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.HasIndex("TenantId", "EventId")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "ReceivedUtc");
 
                     b.ToTable("Inbox", "ingest");
                 });
@@ -1526,6 +1600,10 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.Property<DateTime?>("LicenseEndsUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("LicenseJws")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<string>("LicenseStatus")
                         .HasMaxLength(20)

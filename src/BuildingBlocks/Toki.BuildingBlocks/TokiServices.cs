@@ -1,5 +1,6 @@
 using System.Reflection;
 using FluentValidation;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -27,6 +28,9 @@ public static class TokiServices
         services.AddModuleDbContext<InfraDbContext>();
         services.AddScoped<IOutbox, Outbox>();
         services.AddScoped<IAuditLog, AuditLog>();
+        services.AddDataProtection(); // the Settings module keeps its key ring in the key folder
+        services.AddSingleton<ServiceKeys>();
+        services.AddSingleton<AuditKey>();
         services.AddHealthChecks().AddCheck<ClockHealthCheck>("clock").AddCheck<OutboxHealthCheck>("outbox");
         services.AddScoped<OutboxProcessor>();
         if (db.CreateOnStartup) services.AddHostedService<CreateDatabaseOnStartup>();

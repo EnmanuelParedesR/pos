@@ -34,8 +34,9 @@ public static class IdentityModule
     {
         services.AddModuleDbContext<IdentityDbContext>();
         services.AddSingleton<StoreCertificateAuthority>();
+        services.AddHealthChecks().AddCheck<StoreCaHealthCheck>("store-ca").AddCheck<PinFailuresHealthCheck>("pin-failures");
+        services.AddSingleton<PinPepper>();
         services.AddSingleton<AttemptLimiter>();
-        services.AddHealthChecks().AddCheck<StoreCaHealthCheck>("store-ca");
         services.AddScoped<IRestoreGuard, IdentityRestoreGuard>();
         services.AddScoped<ISupervisorApprovals, SupervisorApprovals>();
         services.AddScoped<ICloudSnapshot, UserSnapshot>();
@@ -121,10 +122,19 @@ internal sealed class SessionAuthenticationHandler(
             join u in db.Users on s.UserId equals u.Id
             join r in db.Roles on u.RoleId equals r.Id
             where s.TokenHash == tokenHash && s.ClosedUtc == null && s.ExpiresUtc > now && s.DeviceId == deviceId && u.IsActive
-            select new { SessionId = s.Id, UserId = u.Id, u.Name, DeviceId = s.DeviceId, Role = r })
+            select new { SessionId = s.Id, UserId = u.Id, u.Name, DeviceId = s.DeviceId, Role = r, Seen = s.LastSeenUtc ?? s.CreatedUtc })
             .AsNoTracking().FirstOrDefaultAsync(Context.RequestAborted);
         if (data is null) return AuthenticateResult.Fail("Invalid or expired session.");
         var permissions = data.Role.Effective;
+
+        // R11 A4: whoever can authorize (or manage users) is signed out after a few idle minutes, so nobody approves from a register left open.
+        // The register's own polling (TokiApi.PollAsync) does not count as activity.
+        if (permissions.Any(IdleLock.Applies))
+        {
+            if (data.Seen + IdleLock.Timeout(config) <= now) return AuthenticateResult.Fail("Session idle.");
+            if (Request.Headers[IdleLock.BackgroundHeader].Count == 0 && data.Seen + IdleLock.WriteEvery <= now)
+                await db.Sessions.Where(s => s.Id == data.SessionId).ExecuteUpdateAsync(s => s.SetProperty(x => x.LastSeenUtc, now), Context.RequestAborted);
+        }
 
         List<Claim> claims =
         [
@@ -135,6 +145,41 @@ internal sealed class SessionAuthenticationHandler(
             .. permissions.Select(p => new Claim(TokiClaims.Permission, p)),
         ];
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, Scheme.Name)), Scheme.Name));
+    }
+}
+
+/// <summary>R11 A4: sessions of users who can approve close after <c>Identity:IdleMinutes</c> (5) without a request of their own.</summary>
+internal static class IdleLock
+{
+    /// <summary>Sent by the register's periodic checks (status bar): they keep the screen fresh but are not the person working.</summary>
+    public const string BackgroundHeader = "X-Toki-Background";
+    public static readonly TimeSpan WriteEvery = TimeSpan.FromMinutes(1);
+
+    private static readonly HashSet<string> Approving =
+        [Permissions.RegisterApproveClose, Permissions.SalesVoid, Permissions.SalesReturn, Permissions.RegisterWithdraw, Permissions.UsersManage];
+
+    public static bool Applies(string permission) => Approving.Contains(permission);
+    public static TimeSpan Timeout(IConfiguration config) => TimeSpan.FromMinutes(config.GetValue("Identity:IdleMinutes", 5));
+}
+
+/// <summary>R11 A3: the server's PIN pepper (a <see cref="ServiceKeys"/> secret, never in the database or a backup).</summary>
+internal sealed class PinPepper(ServiceKeys keys)
+{
+    public byte[] Value => keys.GetOrCreate("pin-pepper");
+}
+
+/// <summary>R11 A4: degraded while someone is locked out or collected several wrong PINs in the last hour, so the owner sees it in Salud
+/// (and the cloud with the health summary) instead of finding it in the audit log.</summary>
+internal sealed class PinFailuresHealthCheck(IdentityDbContext db, TimeProvider clock) : IHealthCheck
+{
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        var since = now - User.FailureMemory;
+        var names = await db.Users.Where(u => u.LockedUntilUtc > now || (u.FailedAttempts >= 3 && u.LastFailedUtc > since))
+            .OrderBy(u => u.Name).Select(u => u.Name).ToListAsync(cancellationToken);
+        return names.Count == 0 ? HealthCheckResult.Healthy() : HealthCheckResult.Degraded(
+            $"Varios PIN incorrectos en la última hora para: {string.Join(", ", names)}. Revise quién lo intentó en Auditoría.");
     }
 }
 
@@ -149,11 +194,14 @@ internal sealed class UserSnapshot(IdentityDbContext db, IOutbox outbox) : IClou
 
 internal sealed class SupervisorApprovals(IdentityDbContext db, IUserContext user, TimeProvider clock) : ISupervisorApprovals
 {
-    public async Task<Result<Guid>> ConsumeAsync(Guid approvalId, string permission, Guid resourceId, CancellationToken ct)
+    public async Task<Result<Guid>> ConsumeAsync(Guid approvalId, string permission, Guid resourceId, string summary, CancellationToken ct)
     {
         var now = clock.GetUtcNow().UtcDateTime;
+        var hash = SupervisorApproval.HashOf(summary);
+        // R11 A1: also the cashier who asked and the content the supervisor saw (amount, lines): RD$ 100 approved is not RD$ 20,000.
         var valid = db.Approvals.Where(a => a.Id == approvalId && a.UsedUtc == null && a.ExpiresUtc > now
-            && a.Permission == permission && a.ResourceId == resourceId && a.DeviceId == user.DeviceId);
+            && a.Permission == permission && a.ResourceId == resourceId && a.DeviceId == user.DeviceId
+            && a.RequesterId == user.UserId && a.PayloadHash == hash);
         // Conditional update: only one command can consume it, even when two race.
         if (await valid.ExecuteUpdateAsync(s => s.SetProperty(a => a.UsedUtc, now), ct) == 0)
             return IdentityErrors.InvalidApproval;

@@ -30,7 +30,8 @@ internal static class Projectors
         [Name<SaleVoidedV1>()] = async (db, e, ct) =>
         {
             var v = Read<SaleVoidedV1>(e);
-            await db.SaleVoids.Where(x => x.TenantId == e.TenantId && x.SaleId == v.SaleId).ExecuteDeleteAsync(ct);
+            if (await db.Sales.AnyAsync(x => x.TenantId == e.TenantId && x.Id == v.SaleId && x.StoreId != e.StoreId, ct)) return; // another store's sale
+            if (!await Replace(db.SaleVoids.Where(x => x.TenantId == e.TenantId && x.SaleId == v.SaleId), e, ct)) return;
             db.SaleVoids.Add(new ReplicaSaleVoid
             {
                 TenantId = e.TenantId, SaleId = v.SaleId, StoreId = e.StoreId, CreditNoteENcf = v.CreditNoteENcf, Reason = v.Reason,
@@ -41,7 +42,7 @@ internal static class Projectors
         [Name<ShiftClosedV1>()] = async (db, e, ct) =>
         {
             var s = Read<ShiftClosedV1>(e);
-            await db.ClosedShifts.Where(x => x.TenantId == e.TenantId && x.ShiftId == s.ShiftId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.ClosedShifts.Where(x => x.TenantId == e.TenantId && x.ShiftId == s.ShiftId), e, ct)) return;
             db.ClosedShifts.Add(new ReplicaClosedShift
             {
                 TenantId = e.TenantId, ShiftId = s.ShiftId, StoreId = e.StoreId, RegisterId = s.RegisterId, CashierId = s.CashierId, ZNumber = s.ZNumber,
@@ -51,7 +52,7 @@ internal static class Projectors
         [Name<StockMovementRecordedV1>()] = async (db, e, ct) =>
         {
             var m = Read<StockMovementRecordedV1>(e);
-            await db.StockMovements.Where(x => x.TenantId == e.TenantId && x.Id == m.MovementId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.StockMovements.Where(x => x.TenantId == e.TenantId && x.Id == m.MovementId), e, ct)) return;
             db.StockMovements.Add(new ReplicaStockMovement
             {
                 TenantId = e.TenantId, Id = m.MovementId, StoreId = e.StoreId, ProductId = m.ProductId, WarehouseId = m.WarehouseId, Type = m.Type.ToString(),
@@ -61,14 +62,14 @@ internal static class Projectors
         [Name<PriceChangedV1>()] = async (db, e, ct) =>
         {
             var p = Read<PriceChangedV1>(e);
-            await db.PriceChanges.Where(x => x.TenantId == e.TenantId && x.EventId == e.EventId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.PriceChanges.Where(x => x.TenantId == e.TenantId && x.EventId == e.EventId), e, ct)) return;
             db.PriceChanges.Add(new ReplicaPriceChange
             {
                 TenantId = e.TenantId, EventId = e.EventId, StoreId = e.StoreId, ProductId = p.ProductId, OldPrice = p.OldPrice, NewPrice = p.NewPrice,
                 OldWholesalePrice = p.OldWholesalePrice, NewWholesalePrice = p.NewWholesalePrice, ChangedUtc = e.OccurredUtc,
             });
             // The public catalog follows the shelf price (TK-195).
-            await db.CatalogItems.Where(x => x.TenantId == e.TenantId && x.ProductId == p.ProductId && x.ChangedUtc <= e.OccurredUtc)
+            await db.CatalogItems.Where(x => x.TenantId == e.TenantId && x.StoreId == e.StoreId && x.ProductId == p.ProductId && x.ChangedUtc <= e.OccurredUtc)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.Price, p.NewPrice).SetProperty(x => x.ChangedUtc, e.OccurredUtc), ct);
         },
         [Name<CatalogItemChangedV1>()] = async (db, e, ct) =>
@@ -76,7 +77,7 @@ internal static class Projectors
             var c = Read<CatalogItemChangedV1>(e);
             var row = await db.CatalogItems.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.ProductId == c.ProductId, ct);
             if (row is null) db.CatalogItems.Add(row = new ReplicaCatalogItem { TenantId = e.TenantId, ProductId = c.ProductId });
-            else if (row.ChangedUtc > e.OccurredUtc) return;
+            else if (row.ChangedUtc > e.OccurredUtc || row.StoreId != e.StoreId) return;
             (row.StoreId, row.Name, row.Category, row.Unit, row.Price, row.Visible, row.ChangedUtc) =
                 (e.StoreId, c.Name, c.Category, c.Unit, c.Price, c.Visible, e.OccurredUtc);
         },
@@ -91,7 +92,7 @@ internal static class Projectors
         [Name<FiscalDocumentIssuedV1>()] = async (db, e, ct) =>
         {
             var d = Read<FiscalDocumentIssuedV1>(e);
-            await db.FiscalDocuments.Where(x => x.TenantId == e.TenantId && x.Id == d.DocumentId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.FiscalDocuments.Where(x => x.TenantId == e.TenantId && x.Id == d.DocumentId), e, ct)) return;
             db.FiscalDocuments.Add(new ReplicaFiscalDocument
             {
                 TenantId = e.TenantId, Id = d.DocumentId, StoreId = e.StoreId, ENcf = d.ENcf, Type = d.Type.ToString(), ReferenceId = d.ReferenceId,
@@ -126,7 +127,7 @@ internal static class Projectors
             var u = Read<UserProfileChangedV1>(e);
             var row = await db.StoreUsers.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.Id == u.UserId, ct);
             if (row is null) db.StoreUsers.Add(row = new ReplicaStoreUser { TenantId = e.TenantId, Id = u.UserId });
-            else if (row.ChangedUtc > e.OccurredUtc) return;
+            else if (row.ChangedUtc > e.OccurredUtc || row.StoreId != e.StoreId) return;
             (row.StoreId, row.Name, row.Active, row.ChangedUtc) = (e.StoreId, u.Name, u.Active, e.OccurredUtc);
         },
         [Name<RegisterChangedV1>()] = async (db, e, ct) =>
@@ -134,13 +135,13 @@ internal static class Projectors
             var r = Read<RegisterChangedV1>(e);
             var row = await db.Registers.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.Id == r.RegisterId, ct);
             if (row is null) db.Registers.Add(row = new ReplicaRegister { TenantId = e.TenantId, Id = r.RegisterId });
-            else if (row.ChangedUtc > e.OccurredUtc) return;
+            else if (row.ChangedUtc > e.OccurredUtc || row.StoreId != e.StoreId) return;
             (row.StoreId, row.Name, row.ChangedUtc) = (e.StoreId, r.Name, e.OccurredUtc);
         },
         [Name<PurchasePostedV1>()] = async (db, e, ct) =>
         {
             var p = Read<PurchasePostedV1>(e);
-            await db.Purchases.Where(x => x.TenantId == e.TenantId && x.Id == p.PurchaseId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.Purchases.Where(x => x.TenantId == e.TenantId && x.Id == p.PurchaseId), e, ct)) return;
             db.Purchases.Add(new ReplicaPurchase
             {
                 TenantId = e.TenantId, Id = p.PurchaseId, StoreId = e.StoreId, SupplierId = p.SupplierId, Ncf = p.Ncf, Subtotal = p.Subtotal, Itbis = p.Itbis,
@@ -150,13 +151,13 @@ internal static class Projectors
         [Name<PurchaseVoidedV1>()] = async (db, e, ct) =>
         {
             var v = Read<PurchaseVoidedV1>(e);
-            await db.PurchaseVoids.Where(x => x.TenantId == e.TenantId && x.PurchaseId == v.PurchaseId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.PurchaseVoids.Where(x => x.TenantId == e.TenantId && x.PurchaseId == v.PurchaseId), e, ct)) return;
             db.PurchaseVoids.Add(new ReplicaPurchaseVoid { TenantId = e.TenantId, PurchaseId = v.PurchaseId, StoreId = e.StoreId, Reason = v.Reason, VoidedUtc = e.OccurredUtc });
         },
         [Name<OnAccountChargeRecordedV1>()] = async (db, e, ct) =>
         {
             var c = Read<OnAccountChargeRecordedV1>(e);
-            await db.CustomerCharges.Where(x => x.TenantId == e.TenantId && x.SaleId == c.SaleId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.CustomerCharges.Where(x => x.TenantId == e.TenantId && x.SaleId == c.SaleId), e, ct)) return;
             db.CustomerCharges.Add(new ReplicaCustomerCharge
             {
                 TenantId = e.TenantId, SaleId = c.SaleId, StoreId = e.StoreId, CustomerId = c.CustomerId, Amount = c.Amount, ChargedUtc = e.OccurredUtc,
@@ -165,7 +166,7 @@ internal static class Projectors
         [Name<CustomerPaymentRecordedV1>()] = async (db, e, ct) =>
         {
             var p = Read<CustomerPaymentRecordedV1>(e);
-            await db.CustomerPayments.Where(x => x.TenantId == e.TenantId && x.Id == p.CustomerPaymentId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.CustomerPayments.Where(x => x.TenantId == e.TenantId && x.Id == p.CustomerPaymentId), e, ct)) return;
             db.CustomerPayments.Add(new ReplicaCustomerPayment
             {
                 TenantId = e.TenantId, Id = p.CustomerPaymentId, StoreId = e.StoreId, CustomerId = p.CustomerId, Amount = p.Amount, PaidUtc = e.OccurredUtc,
@@ -177,13 +178,13 @@ internal static class Projectors
             var c = Read<CustomerBalanceChangedV1>(e);
             var row = await db.Customers.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.Id == c.CustomerId, ct);
             if (row is null) db.Customers.Add(row = new ReplicaCustomer { TenantId = e.TenantId, Id = c.CustomerId });
-            else if (row.ChangedUtc > e.OccurredUtc) return;
+            else if (row.ChangedUtc > e.OccurredUtc || row.StoreId != e.StoreId) return;
             (row.StoreId, row.Name, row.Debt, row.CreditBalance, row.ChangedUtc) = (e.StoreId, FeXml.Cut(c.Name, 150), c.Debt, c.CreditBalance, e.OccurredUtc);
         },
         [Name<ShiftOpenedV1>()] = async (db, e, ct) =>
         {
             var s = Read<ShiftOpenedV1>(e);
-            await db.OpenedShifts.Where(x => x.TenantId == e.TenantId && x.ShiftId == s.ShiftId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.OpenedShifts.Where(x => x.TenantId == e.TenantId && x.ShiftId == s.ShiftId), e, ct)) return;
             db.OpenedShifts.Add(new ReplicaOpenedShift
             {
                 TenantId = e.TenantId, ShiftId = s.ShiftId, StoreId = e.StoreId, RegisterId = s.RegisterId, CashierId = s.CashierId, OpeningFloat = s.OpeningFloat,
@@ -193,7 +194,7 @@ internal static class Projectors
         [Name<CashMovementRecordedV1>()] = async (db, e, ct) =>
         {
             var m = Read<CashMovementRecordedV1>(e);
-            await db.CashMovements.Where(x => x.TenantId == e.TenantId && x.EventId == e.EventId).ExecuteDeleteAsync(ct);
+            if (!await Replace(db.CashMovements.Where(x => x.TenantId == e.TenantId && x.EventId == e.EventId), e, ct)) return;
             db.CashMovements.Add(new ReplicaCashMovement
             {
                 TenantId = e.TenantId, EventId = e.EventId, StoreId = e.StoreId, ShiftId = m.ShiftId, Type = m.Type, Method = m.Method.ToString(), Amount = m.Amount,
@@ -213,6 +214,7 @@ internal static class Projectors
                 (node.OnAccount, node.ScaleConfigured, node.PrinterConfigured, node.FiscalProvider) = (h.Features.OnAccount, h.Features.ScaleConfigured, h.Features.PrinterConfigured, FeXml.Cut(h.Features.FiscalProvider, 30));
                 (node.BusinessNameSet, node.RncSet, node.ActiveProducts) = (h.Setup.BusinessNameSet, h.Setup.RncSet, h.Setup.ActiveProducts);
                 (node.LicenseStatus, node.LicenseEndsUtc) = (h.License is null ? null : FeXml.Cut(h.License.Status, 20), h.License?.EndsUtc);
+                node.LicenseJws = h.License?.Jws is { Length: <= ReplicaNodeHeartbeat.MaxLicenseLength } jws ? jws : null; // R11 B-Low8: verified where it is used
                 (node.RejectedWithoutReplacement, node.OldestPendingUtc, node.CertificateExpiresUtc) =
                     (h.Fiscal?.RejectedWithoutReplacement, h.Fiscal?.OldestPendingUtc, h.Fiscal?.CertificateExpiresUtc);
             }
@@ -229,9 +231,9 @@ internal static class Projectors
 
     private static async Task Sale(CloudDbContext db, InboxEvent e, SaleRecordedV2 s, CancellationToken ct)
     {
+        if (!await Replace(db.Sales.Where(x => x.TenantId == e.TenantId && x.Id == s.SaleId), e, ct)) return;
         await db.SaleLines.Where(l => l.TenantId == e.TenantId && l.SaleId == s.SaleId).ExecuteDeleteAsync(ct);
         await db.SalePayments.Where(p => p.TenantId == e.TenantId && p.SaleId == s.SaleId).ExecuteDeleteAsync(ct);
-        await db.Sales.Where(x => x.TenantId == e.TenantId && x.Id == s.SaleId).ExecuteDeleteAsync(ct);
         db.Sales.Add(new ReplicaSale
         {
             TenantId = e.TenantId, Id = s.SaleId, StoreId = e.StoreId, Number = s.Number, ShiftId = s.ShiftId, CashierId = s.CashierId,
@@ -250,8 +252,8 @@ internal static class Projectors
 
     private static async Task Return(CloudDbContext db, InboxEvent e, ReturnRecordedV2 r, CancellationToken ct)
     {
+        if (!await Replace(db.Returns.Where(x => x.TenantId == e.TenantId && x.Id == r.ReturnId), e, ct)) return;
         await db.ReturnLines.Where(x => x.TenantId == e.TenantId && x.ReturnId == r.ReturnId).ExecuteDeleteAsync(ct);
-        await db.Returns.Where(x => x.TenantId == e.TenantId && x.Id == r.ReturnId).ExecuteDeleteAsync(ct);
         db.Returns.Add(new ReplicaReturn
         {
             TenantId = e.TenantId, Id = r.ReturnId, StoreId = e.StoreId, SaleId = r.SaleId, CreditNoteENcf = r.CreditNoteENcf, Method = r.Method,
@@ -262,6 +264,41 @@ internal static class Projectors
             TenantId = e.TenantId, ReturnId = r.ReturnId, LineNumber = i + 1, StoreId = e.StoreId, ProductId = l.ProductId, PresentationId = l.PresentationId,
             Description = l.Description, Quantity = l.Quantity, Total = l.Total, Itbis = l.Itbis, UnitCost = l.Cost,
         }));
+    }
+
+    /// <summary>Applies <paramref name="e"/> with its projector. R11 B-Med4: a commercial approval counts only from the PC that activated the
+    /// receiver, with an ACECF of that e-NCF signed by the receiver's certificate; any other is dropped (logged, no values).</summary>
+    public static async Task ApplyAsync(IServiceProvider services, CloudDbContext db, InboxEvent e, CancellationToken ct)
+    {
+        if (e.Type == Name<CommercialApprovalRecordedV1>() && !await ApprovalFromReceiverAsync(services.GetRequiredService<FeTrust>(), db, e, ct))
+        {
+            services.GetRequiredService<ILogger<InboxApplier>>().LogWarning("Commercial approval event {Sequence} of tenant {TenantId} dropped: not from the " +
+                "receiver's PC or not signed by its certificate", e.Sequence, e.TenantId);
+            return;
+        }
+        await ByType[e.Type](db, e, ct);
+    }
+
+    private static async Task<bool> ApprovalFromReceiverAsync(FeTrust trust, CloudDbContext db, InboxEvent e, CancellationToken ct)
+    {
+        var a = Read<CommercialApprovalRecordedV1>(e);
+        var receiver = await db.FeCertificates.AsNoTracking().Where(c => c.TenantId == e.TenantId && c.ConsentedByNodeId == e.NodeId)
+            .OrderByDescending(c => c.ConsentedUtc).FirstOrDefaultAsync(ct);
+        var encf = await db.FeReceived.Where(d => d.TenantId == e.TenantId && d.Id == a.CloudId).Select(d => d.ENcf).FirstOrDefaultAsync(ct);
+        if (receiver is null || encf is null || a.XmlGzip is not { Length: > 0 }) return false;
+        var doc = FeXml.Parse(FeXml.UnzipBytes(a.XmlGzip));
+        return doc?.DocumentElement?.Name == "ACECF" && FeXml.Text(doc, "/ACECF/DetalleAprobacionComercial/eNCF") == encf
+            && (trust.SignedByTrusted(doc, receiver.Rnc)
+                || (FeXml.Signer(doc, out var carried) is { } signer && signer.Thumbprint == receiver.Thumbprint && trust.IsTrusted(signer, carried)));
+    }
+
+    /// <summary>R11 B-Med4: deletes the rows <paramref name="e"/> replaces, unless another store of the business owns them (then false: the event
+    /// changes nothing, a PC never overwrites another store's data).</summary>
+    private static async Task<bool> Replace<T>(IQueryable<T> rows, InboxEvent e, CancellationToken ct) where T : class, IReplicaRow
+    {
+        if (await rows.AnyAsync(x => x.StoreId != e.StoreId, ct)) return false;
+        await rows.ExecuteDeleteAsync(ct);
+        return true;
     }
 
     private static string Name<T>() => typeof(T).FullName!;

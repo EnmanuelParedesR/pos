@@ -62,9 +62,32 @@ internal sealed class CloudClaimsFactory(UserManager<CloudUser> users, IOptions<
 /// An account with no membership left (removed everywhere) keeps the old rule: its own tenant must be active (the panel then refuses every call).</summary>
 internal sealed class CloudSignInManager(UserManager<CloudUser> users, IHttpContextAccessor http, IUserClaimsPrincipalFactory<CloudUser> claims,
     IOptions<IdentityOptions> options, ILogger<SignInManager<CloudUser>> logger, IAuthenticationSchemeProvider schemes, IUserConfirmation<CloudUser> confirmation,
-    CloudDbContext db)
+    CloudDbContext db, LoginThrottle throttle)
     : SignInManager<CloudUser>(users, http, claims, options, logger, schemes, confirmation)
 {
+    /// <summary>R11 B-Low6: wrong passwords count per IP and account (<see cref="LoginThrottle"/>); a blocked pair answers as a lockout.</summary>
+    public override async Task<SignInResult> PasswordSignInAsync(CloudUser user, string password, bool isPersistent, bool lockoutOnFailure)
+    {
+        var key = LoginThrottle.Key(Context, user);
+        if (throttle.IsBlocked(key)) return SignInResult.LockedOut;
+        var result = await base.PasswordSignInAsync(user, password, isPersistent, lockoutOnFailure);
+        if (result == SignInResult.Failed) throttle.Fail(key);
+        else if (result.Succeeded) throttle.Succeeded(key);
+        return result;
+    }
+
+    /// <summary>The same count for the authenticator code of an account with 2FA (R11 B-Med6).</summary>
+    public override async Task<SignInResult> TwoFactorAuthenticatorSignInAsync(string code, bool isPersistent, bool rememberClient)
+    {
+        var user = await GetTwoFactorAuthenticationUserAsync();
+        var key = user is null ? null : LoginThrottle.Key(Context, user);
+        if (key is not null && throttle.IsBlocked(key)) return SignInResult.LockedOut;
+        var result = await base.TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient);
+        if (key is not null && result == SignInResult.Failed) throttle.Fail(key);
+        else if (key is not null && result.Succeeded) throttle.Succeeded(key);
+        return result;
+    }
+
     public override async Task<bool> CanSignInAsync(CloudUser user)
     {
         if (!await base.CanSignInAsync(user)) return false;
@@ -122,6 +145,7 @@ public sealed record SwitchTenantRequest(Guid TenantId);
 internal static class StoreEndpoints
 {
     public static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(30);
+    public const int MaxLiveCodes = 5;
 
     public static void MapStores(this IEndpointRouteBuilder app)
     {
@@ -135,7 +159,8 @@ internal static class StoreEndpoints
                 .Join(db.Tenants.Where(t => t.DisabledUtc == null), m => m.TenantId, t => t.Id, (m, t) => new MyTenant(t.Id, t.Name, m.Role))
                 .ToListAsync(ct);
             var current = tenants.Single(t => t.TenantId == tenantId); // the panel policy already checked the membership
-            return Results.Ok(new MeResponse(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, tenantId, current.Name, user.IsPlatformAdmin(), current.Role,
+            return Results.Ok(new MeResponse(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, tenantId, current.Name,
+                await PlatformAuth.IsAdminInDbAsync(db, userId, ct), current.Role,
                 [.. tenants.OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)], await PanelAccess.CanViewCostsAsync(user, db, ct),
                 await db.Users.Where(u => u.Id == userId).Select(u => u.EmailConfirmed).SingleAsync(ct)));
         });
@@ -181,6 +206,10 @@ internal static class StoreEndpoints
             if (!await db.Stores.AnyAsync(s => s.Id == id && s.TenantId == tenantId, ct))
                 return EndpointExtensions.Problem(Error.NotFound("Stores.NotFound", "No encontramos esa tienda."));
             var now = clock.GetUtcNow().UtcDateTime;
+            // R11 B-Low5: few live codes per business, so guessing one stays hopeless.
+            if (await db.ConnectionCodes.CountAsync(c => c.TenantId == tenantId && c.UsedUtc == null && c.ExpiresUtc > now, ct) >= MaxLiveCodes)
+                return EndpointExtensions.Problem(Error.Conflict("Stores.TooManyCodes",
+                    $"Ya hay {MaxLiveCodes} códigos de conexión sin usar. Use uno de ellos o espere a que venzan (30 minutos)."));
             string code;
             // Two live codes must never be equal: the code alone picks the store.
             do code = RandomNumberGenerator.GetInt32(0, 100_000_000).ToString("00000000", System.Globalization.CultureInfo.InvariantCulture);

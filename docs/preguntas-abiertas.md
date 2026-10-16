@@ -23,7 +23,7 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Por qué importa:** el sitio no se puede anunciar sin precios; el plan propuesto cuesta varias veces el Básico de Poszy.
 - **Hoy:** `config.ts` → `prices` en `null`; el sitio dice "Precio por confirmar".
 - **Fuente:** TK-203, TK-197; `docs/competencia-poszy.md` §3 y "Lectura"; `src/Cloud/panel/src/pages/site/config.ts`.
-- **Respuesta:** (16/10/2026) Hacer un análisis con un consejo de analistas del mercado dominicano para identificar qué planes benefician al proyecto y a los clientes (en curso).
+- **Respuesta:** (16/10/2026) Hacer un análisis con un consejo de analistas del mercado dominicano para identificar qué planes benefician al proyecto y a los clientes (en curso). (16/10/2026, TK-258) Aprobados como **provisionales**: Esencial US$12, Estándar US$19 y Pro US$35 al mes (anual = 10 meses), todas las funciones en todos, y adicionales con cantidad; detalle en `docs/cobro-paddle.md`. Pendiente: precio por cajero.
 
 ### D2 · Precio de la instalación
 - **Pregunta:** ¿Cuánto cuesta la instalación (pago único)?
@@ -143,6 +143,19 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Hoy:** la guía del dueño pide `.p12` o `.pfx`; precio y formato "por confirmar".
 - **Fuente:** `docs/ecf-propio.md` §11 #4 y §12 (TK-141); `docs/servicio-certificacion.md` §5.
 - **Respuesta:** Se hará con la cuenta piloto (Toki no tendrá RNC); investigar cuál entidad es la más económica para nuestros clientes.
+
+### D19 · Referidos: planes que califican y monto del descuento (TK-255)
+- **Pregunta:** ¿Qué planes cuentan para el referido y cuánto se descuenta (porcentaje o monto) en el siguiente pago de quien refirió?
+- **Por qué importa:** los referidos están construidos pero apagados hasta definir `Billing:Referrals`.
+- **Hoy:** apagado. Además falta en Paddle: permiso de la llave de API para crear descuentos y los eventos `adjustment.*` en el destino de notificaciones.
+- **Fuente:** `docs/cobro-paddle.md` (Referidos).
+- **Respuesta:**
+
+### D20 · Precio por cajero
+- **Pregunta:** ¿Cuánto cuesta cada cajero adicional, cuántos incluye cada plan y cómo se cuentan (propuesta: usuarios con PIN que entraron en el mes)?
+- **Por qué importa:** el dueño quiere cobrar por cajero (trazabilidad de quién hizo qué); sin estas cifras no se carga en Paddle.
+- **Hoy:** no construido; TK-258 deja el camino libre para un adicional "Cajero adicional" por cantidad.
+- **Respuesta:**
 
 ---
 

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
   api,
@@ -8,6 +8,7 @@ import {
   type AccompanimentStatus,
   type CertificationProgress,
   type DailyActivity,
+  type FeDelegation,
   type FunnelStage,
   type MetricsOverview,
   type PlatformAccompaniment,
@@ -72,16 +73,15 @@ function PlatformTabs() {
     ["/app/platform", "Métricas"],
     ["/app/platform/tenants", "Clientes"],
     ["/app/platform/accompaniment", "Acompañamiento"],
+    ["/app/platform/delegations", "Firmantes"],
     ["/app/platform/releases", "Versiones"],
   ];
   const current =
-    pathname === "/app/platform"
-      ? "/app/platform"
-      : pathname.startsWith("/app/platform/accompaniment")
-        ? "/app/platform/accompaniment"
-        : pathname.startsWith("/app/platform/releases")
-          ? "/app/platform/releases"
-          : "/app/platform/tenants";
+    pathname === "/app/platform" ? "/app/platform"
+    : pathname.startsWith("/app/platform/accompaniment") ? "/app/platform/accompaniment"
+    : pathname.startsWith("/app/platform/delegations") ? "/app/platform/delegations"
+    : pathname.startsWith("/app/platform/releases") ? "/app/platform/releases"
+    : "/app/platform/tenants";
   return (
     <div className="esc-tabs" role="tablist" aria-label="Plataforma">
       {tabs.map(([to, label]) => (
@@ -95,6 +95,17 @@ function PlatformTabs() {
 
 const staffNote = "Solo para el equipo de Toki. Cada consulta queda registrada.";
 
+/** R11 B-Med6: the console needs two-step verification on, and lasts one access token (30 minutes) after the sign-in with the code. */
+function PlatformError({ error }: { error?: ApiError }) {
+  if (error?.status !== 403) return <LoadError error={error} />;
+  return (
+    <Notice kind="warning" title="Vuelva a entrar con su código de verificación.">
+      La plataforma pide la verificación en dos pasos (actívela en <Link to="/app/security">Seguridad</Link>) y se cierra 30 minutos después de entrar con el
+      código. Salga y entre de nuevo.
+    </Notice>
+  );
+}
+
 export function PlatformMetricsPage() {
   const overview = useApi<MetricsOverview>("/api/platform/metrics/overview");
   const daily = useApi<DailyActivity[]>("/api/platform/metrics/daily?days=30");
@@ -105,7 +116,7 @@ export function PlatformMetricsPage() {
     <>
       <PageHead title="Plataforma" subtitle={staffNote} />
       <PlatformTabs />
-      <LoadError error={overview.error} />
+      <PlatformError error={overview.error} />
       {!o && overview.loading && <Skeleton height={120} />}
       {o && (
         <>
@@ -324,7 +335,22 @@ function Retention({ cohorts }: { cohorts?: RetentionCohort[] }) {
 export function PlatformTenantsPage() {
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
-  const { data, error, loading } = useApi<PlatformTenant[]>(`/api/platform/tenants${query ? `?search=${encodeURIComponent(query)}` : ""}`);
+  const all = useApi<PlatformTenant[]>(query ? null : "/api/platform/tenants");
+  // R11 B-Low1: the search (often an e-mail) goes in the body, never in a URL that telemetry keeps.
+  const [found, setFound] = useState<{ data?: PlatformTenant[]; error?: ApiError; loading: boolean }>({ loading: false });
+  useEffect(() => {
+    if (!query) return;
+    let live = true;
+    setFound({ loading: true });
+    api<PlatformTenant[]>("/api/platform/tenants/search", "POST", { search: query }).then(
+      (data) => live && setFound({ data, loading: false }),
+      (error) => live && setFound({ error: error instanceof ApiError ? error : undefined, loading: false }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [query]);
+  const { data, error, loading } = query ? found : all;
   const navigate = useNavigate();
 
   return (
@@ -341,7 +367,7 @@ export function PlatformTenantsPage() {
           Buscar
         </button>
       </form>
-      <LoadError error={error} />
+      <PlatformError error={error} />
       <section className="esc-card esc-table-wrap">
         <table className="esc-table esc-table--wide platform-wrap">
           <thead>
@@ -424,7 +450,7 @@ export function PlatformTenantPage() {
             />
           ))}
       </PageHead>
-      <LoadError error={error} />
+      <PlatformError error={error} />
       {loading && !t && <Skeleton height={120} />}
       {t && (
         <>
@@ -585,7 +611,7 @@ export function PlatformStorePage() {
           )
         }
       />
-      <LoadError error={error} />
+      <PlatformError error={error} />
       {loading && !s && <Skeleton height={120} />}
       {s && c && (
         <div className="esc-grid">
@@ -724,7 +750,7 @@ export function PlatformAccompanimentPage() {
     <>
       <PageHead title="Plataforma" subtitle={staffNote} />
       <PlatformTabs />
-      <LoadError error={error} />
+      <PlatformError error={error} />
       <section className="esc-card esc-table-wrap" aria-label="Solicitudes de acompañamiento">
         <table className="esc-table esc-table--wide platform-wrap">
           <thead>
@@ -973,5 +999,64 @@ function AccompanimentForm({ request: r, onSaved }: { request: PlatformAccompani
         </button>
       </div>
     </form>
+  );
+}
+
+/** R11 B-High2: receiver activations with a person's certificate (cédula) for a company's RNC. Support checks outside Toki (the DGII's records)
+ * that the person signs for the company, then approves or refuses (audited); after an approval the store activates again. */
+export function PlatformDelegationsPage() {
+  const { data, error, loading, reload } = useApi<FeDelegation[]>("/api/platform/fe/delegations");
+  const decide = (id: string, approve: boolean) => api(`/api/platform/fe/delegations/${id}`, "POST", { approve }).then(reload);
+
+  return (
+    <>
+      <PageHead title="Plataforma" subtitle={staffNote} />
+      <PlatformTabs />
+      <PlatformError error={error} />
+      <section className="esc-card esc-table-wrap" aria-label="Firmantes por verificar">
+        <table className="esc-table esc-table--wide platform-wrap">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Firmante</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && !data && <SkeletonRows columns={3} />}
+            {data?.map((d) => (
+              <tr key={d.id}>
+                <td>
+                  <Link to={`/app/platform/tenants/${d.tenantId}`}>{d.tenantName}</Link>
+                  <span className="esc-table__sub">RNC {d.rnc} · pedida {dateTime(d.requestedUtc)}</span>
+                </td>
+                <td>
+                  {d.holderName}
+                  <span className="esc-table__sub">{d.subject}</span>
+                </td>
+                <td>
+                  {d.approved === null ? (
+                    <span className="esc-row" style={{ gap: 8 }}>
+                      <ConfirmButton label="Aprobar" confirm={`¿Verificó que firma por el RNC ${d.rnc}?`} onConfirm={() => decide(d.id, true)} />
+                      <ConfirmButton label="Rechazar" danger confirm="¿Rechazar este firmante?" onConfirm={() => decide(d.id, false)} />
+                    </span>
+                  ) : (
+                    <>
+                      <span className={`esc-pill esc-pill--${d.approved ? "success" : "error"}`}>{d.approved ? "Aprobado" : "Rechazado"}</span>
+                      <span className="esc-table__sub">{[d.decidedBy, d.decidedUtc && dateTime(d.decidedUtc)].filter(Boolean).join(" · ")}</span>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data?.length === 0 && (
+          <EmptyState icon="shield" title="Ninguna solicitud">
+            Aparecen cuando una tienda activa el receptor con el certificado de una persona para el RNC de una empresa.
+          </EmptyState>
+        )}
+      </section>
+    </>
   );
 }

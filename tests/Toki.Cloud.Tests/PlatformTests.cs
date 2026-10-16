@@ -35,31 +35,50 @@ public sealed class PlatformTests(CloudApp app) : IClassFixture<CloudApp>
         var staff = await app.StaffAsync();
         (await staff.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("isPlatformAdmin").GetBoolean().ShouldBeTrue();
         var before = await app.InDbAsync(db => db.PlatformAudit.CountAsync());
-        var tenants = await staff.Client.GetFromJsonAsync<JsonElement>($"/api/platform/tenants?search={Uri.EscapeDataString(owner.Email)}");
+        // R11 B-Low1: the search (an e-mail here) goes in the body, never in the URL that telemetry and the audit keep.
+        var tenants = await (await staff.Client.PostAsJsonAsync("/api/platform/tenants/search", new { search = owner.Email })).Json();
         tenants.EnumerateArray().ShouldHaveSingleItem().GetProperty("id").GetGuid().ShouldBe(owner.TenantId);
         (await staff.Client.GetAsync($"/api/platform/tenants/{owner.TenantId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var audit = await app.InDbAsync(db => db.PlatformAudit.OrderBy(a => a.Id).Skip(before).ToListAsync());
         audit.Count.ShouldBe(2);
-        audit.ShouldAllBe(a => a.Email == CloudApp.StaffEmail && a.UserId != "" && a.Method == "GET");
-        audit[0].Path.ShouldBe($"/api/platform/tenants?search={Uri.EscapeDataString(owner.Email)}");
+        audit.ShouldAllBe(a => a.Email == CloudApp.StaffEmail && a.UserId != "" && !a.Path.Contains('@'));
+        (audit[0].Method, audit[0].Path).ShouldBe(("POST", "/api/platform/tenants/search"));
         (audit[1].Path, audit[1].TenantId).ShouldBe(($"/api/platform/tenants/{owner.TenantId}", owner.TenantId));
     }
 
     [Fact]
-    public async Task The_role_is_granted_only_by_the_console_command_and_counts_from_the_next_sign_in()
+    public async Task The_role_is_granted_only_by_the_console_command_needs_2FA_and_a_revoke_counts_at_once()
     {
         var owner = await app.OwnerAsync();
         (await PlatformCli.RunAsync(app.Services, PlatformCli.Grant, "nobody@example.com")).ShouldBe(1);
         (await PlatformCli.RunAsync(app.Services, PlatformCli.Grant, owner.Email)).ShouldBe(0);
-        (await owner.Client.GetAsync("/api/platform/tenants")).StatusCode.ShouldBe(HttpStatusCode.Forbidden); // old token
-
-        var again = await app.SignInAsync(owner.Email);
-        (await again.Client.GetAsync("/api/platform/tenants")).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await app.InDbAsync(db => db.PlatformAudit.AnyAsync(a => a.Method == "CLI" && a.Path == $"{PlatformCli.Grant} {owner.Email}"))).ShouldBeTrue();
 
-        (await PlatformCli.RunAsync(app.Services, PlatformCli.Revoke, owner.Email)).ShouldBe(0);
+        // R11 B-Med6: without 2FA on the account, and without a sign-in that passed it, the console stays closed.
+        (await owner.Client.GetAsync("/api/platform/tenants")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await (await app.SignInAsync(owner.Email)).Client.GetAsync("/api/platform/tenants")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        var key = await CloudApp.EnableTwoFactorAsync(owner);
+        (await owner.Client.GetAsync("/api/platform/tenants")).StatusCode.ShouldBe(HttpStatusCode.Forbidden); // that token did not pass the code
+        var login = await app.CreateClient().PostAsJsonAsync("/api/auth/login", new { email = owner.Email, password = CloudApp.Password });
+        (await login.Json()).GetProperty("detail").GetString().ShouldBe("RequiresTwoFactor");
+        var staff = await app.SignInAsync(owner.Email, key);
+        (await staff.Client.GetAsync("/api/platform/tenants")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await staff.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("isPlatformAdmin").GetBoolean().ShouldBeTrue();
+
+        // The role is read from the database on every call: a revoke closes the console for the token already issued.
+        (await PlatformCli.RunAsync(app.Services, PlatformCli.Revoke, owner.Email)).ShouldBe(0);
+        (await staff.Client.GetAsync("/api/platform/tenants")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await staff.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("isPlatformAdmin").GetBoolean().ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task R11_health_ready_wakes_the_database_only_for_staff()
+    {
+        (await app.CreateClient().GetAsync("/health/ready")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await (await app.OwnerAsync()).Client.GetAsync("/health/ready")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await (await app.StaffAsync()).Client.GetAsync("/health/ready")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await app.CreateClient().GetAsync("/health")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]

@@ -75,6 +75,7 @@ export function ReceivedPage() {
 }
 
 function ApprovalPill({ doc }: { doc: ReceivedEcf }) {
+  if (doc.signerUnverified) return <span className="esc-pill esc-pill--error">Firmante sin verificar</span>;
   if (doc.approval === "Approved") return <span className="esc-pill esc-pill--success">Aprobado</span>;
   if (doc.approval === "Rejected") return <span className="esc-pill esc-pill--error">Rechazado</span>;
   if (doc.panelDecision) return <span className="esc-pill esc-pill--warning">{doc.panelDecision === "Approved" ? "Aceptado" : "Rechazado"} · en espera</span>;
@@ -140,7 +141,14 @@ function Detail({ doc, canEdit, onDecided }: { doc: ReceivedEcf; canEdit: boolea
       {doc.approval && doc.panelDecision && doc.panelDecision !== doc.approval && (
         <p className="esc-muted">Se decidió primero en la tienda: esa decisión es la que vale.</p>
       )}
-      {doc.approval === null && !waiting &&
+      {/* R11 B-High2: a person's certificate (cédula) for the supplier's company: nobody here can verify that person signs for it. */}
+      {doc.signerUnverified && (
+        <Notice kind="error" title="Firmante sin verificar">
+          Lo firmó una persona por la empresa del suplidor y no se puede verificar que firme por ella. No pasa a la tienda (ni a compras ni al 606):
+          confírmelo con el suplidor.
+        </Notice>
+      )}
+      {doc.approval === null && !waiting && !doc.signerUnverified &&
         (canEdit ? (
           <DecisionForm id={doc.id} onDecided={onDecided} />
         ) : (

@@ -18,6 +18,9 @@ public sealed record Problem(int Status, string Code, string Message, IReadOnlyD
     /// <summary>The permission a supervisor must grant (<c>errors.permission</c> of <c>Approval.Required</c>).</summary>
     public string? PermissionRequired => Code == "Approval.Required" ? Error("permission") : null;
 
+    /// <summary>R11 A1: what the supervisor approves, written by the server (<c>errors.summary</c>); the approval is bound to it.</summary>
+    public string ApprovalSummary => Error("summary") ?? "";
+
     /// <summary>No answer or a server failure: the command may have been saved anyway (timeout after the commit).</summary>
     public bool IsUncertain => Code == NoServer || Status >= 500;
 
@@ -42,6 +45,10 @@ public sealed class TokiApi(HttpClient http, Session session, ServerAddress serv
     public bool ServerIsThisPc => server.Current.IsLoopback;
 
     public Task<ApiResult<T>> GetAsync<T>(string url) => SendAsync<T>(HttpMethod.Get, url, null, DefaultTimeout);
+    /// <summary>A periodic check of the status bar: R11 A4, it does not keep an idle session of someone who can approve open.</summary>
+    public Task<ApiResult<T>> PollAsync<T>(string url) => SendAsync<T>(HttpMethod.Get, url, null, DefaultTimeout, background: true);
+    /// <summary>TK-254: the register's periodic version report; like <see cref="PollAsync{T}"/>, it does not keep an idle session open.</summary>
+    public Task<ApiResult<T>> PollPutAsync<T>(string url, object? body) => SendAsync<T>(HttpMethod.Put, url, body, DefaultTimeout, background: true);
     /// <param name="timeout">Longer than the 30 s default only for slow commands (a backup).</param>
     public Task<ApiResult<T>> PostAsync<T>(string url, object? body = null, TimeSpan? timeout = null) => SendAsync<T>(HttpMethod.Post, url, body, timeout ?? DefaultTimeout);
     public Task<ApiResult<T>> PutAsync<T>(string url, object? body) => SendAsync<T>(HttpMethod.Put, url, body, DefaultTimeout);
@@ -55,14 +62,16 @@ public sealed class TokiApi(HttpClient http, Session session, ServerAddress serv
         if (detail.Problem is { Status: 404 }) return new(default, null);
         if (detail.Value is not { } d) return new(default, detail.Problem);
         var receipt = await GetAsync<Receipt>($"/api/sales/{saleId}/receipt");
-        return receipt.Value is { } r ? new(new SaleRegistered(d.Id, d.Number, d.ENcf, d.Total, d.Change, r), null) : new(default, receipt.Problem);
+        // The change from the receipt: the sale's detail hides it from the cashier while the shift is open (R11 A2).
+        return receipt.Value is { } r ? new(new SaleRegistered(d.Id, d.Number, d.ENcf, d.Total, r.Change, r), null) : new(default, receipt.Problem);
     }
 
-    private async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string url, object? body, TimeSpan timeout)
+    private async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string url, object? body, TimeSpan timeout, bool background = false)
     {
         using var request = new HttpRequestMessage(method, new Uri(server.Current, url));
         if (session.DeviceToken is { } device) request.Headers.Add("X-Device", device);
         if (session.Token is { } token) request.Headers.Authorization = new("Bearer", token);
+        if (background) request.Headers.Add("X-Toki-Background", "1");
         // A file upload (the DGII registry) goes as is; everything else as JSON.
         if (body is not null) request.Content = body as HttpContent ?? JsonContent.Create(body, body.GetType(), options: Json);
 

@@ -7,7 +7,7 @@ namespace Toki.Host.Cloud.Quotas;
 
 /// <summary>TK-249: what each plan and add-on allows, merged: the Paddle product's <c>custom_data.toki</c> &gt; appsettings
 /// (<c>Quotas:&lt;Plan&gt;</c>, <c>Quotas:&lt;Plan&gt;:RateLimits</c>, <c>Quotas:AddOns</c>) &gt; Default's (Paddle, then appsettings) &gt; the
-/// global setting. An add-on raises a limit to its own when higher (docs/cuotas.md, docs/cobro-paddle.md).</summary>
+/// global setting. Each add-on unit adds its own value to the plan's (TK-258: quantity add-ons; docs/cuotas.md, docs/cobro-paddle.md).</summary>
 public sealed class PlanLimits(IConfiguration config, BillingCatalog catalog)
 {
     public const string PanelPerMinute = "panelPerMinute", AssistantPerMinute = "assistantPerMinute", SupplierInvoicesPerMinute = "supplierInvoicesPerMinute";
@@ -23,7 +23,8 @@ public sealed class PlanLimits(IConfiguration config, BillingCatalog catalog)
     {
         var plans = config.GetSection("Quotas").GetChildren().Select(c => c.Key).Where(k => k != Quota.AddOnsSection)
             .Concat(catalog.Entries.Select(e => e.Toki.Plan).OfType<string>()).Append(Quota.DefaultPlan).Distinct();
-        var addOns = config.GetSection($"Quotas:{Quota.AddOnsSection}").GetChildren().Select(c => c.Key)
+        var addOns = config.GetSection($"Quotas:{Quota.AddOnsSection}").GetChildren()
+            .Concat(config.GetSection($"Billing:{Quota.AddOnsSection}").GetChildren()).Select(c => c.Key) // TK-258: add-ons with no quota (extra register, store)
             .Concat(catalog.Entries.Select(e => e.Toki.AddOn).OfType<string>()).Distinct();
         return ([.. plans.OrderBy(k => k != Quota.DefaultPlan).ThenBy(k => k, StringComparer.Ordinal)], [.. addOns.Order(StringComparer.Ordinal)]);
     }
@@ -39,7 +40,7 @@ public sealed class PlanLimits(IConfiguration config, BillingCatalog catalog)
                     ?? Paddle(Quota.DefaultPlan) ?? config.GetValue<int?>(configKey(Quota.DefaultPlan, key)) ?? fallback;
         foreach (var addOn in addOns)
             if ((Paddle(addOn) ?? config.GetValue<int?>(string.Format(System.Globalization.CultureInfo.InvariantCulture, addOnConfigKey, addOn))) is { } raised)
-                limit = Math.Max(limit, raised);
+                limit += raised;
         return limit;
     }
 }

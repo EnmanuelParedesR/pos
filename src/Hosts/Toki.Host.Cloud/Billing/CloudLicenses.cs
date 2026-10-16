@@ -61,9 +61,13 @@ internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, Bi
         if (expires <= now) return null; // nothing paid ahead: an expired license would only replace a valid offline one
 
         var tenant = await db.Tenants.AsNoTracking().SingleAsync(t => t.Id == tenantId, ct);
+        var (plan, addOns) = (string.IsNullOrEmpty(tenant.Plan) ? Quota.DefaultPlan : tenant.Plan, Quota.SplitAddOns(tenant.AddOns));
+        // TK-258: the plan's stores plus one per "Sucursal adicional" get a license, the oldest first; the rest keep their own (offline or trial).
+        var licensed = await db.Stores.AsNoTracking().Where(s => s.TenantId == tenantId).OrderBy(s => s.CreatedUtc).ThenBy(s => s.Id)
+            .Take(Count(config, catalog, plan, addOns, nameof(TokiProduct.Stores), t => t.Stores) ?? 1).Select(s => s.Id).ToListAsync(ct);
+        if (!licensed.Contains(storeId)) return null;
         var store = await db.Stores.AsNoTracking().Where(s => s.Id == storeId).Select(s => s.Name).SingleOrDefaultAsync(ct) ?? tenant.Name;
-        var data = Data(config, catalog, store, string.IsNullOrEmpty(tenant.Plan) ? Quota.DefaultPlan : tenant.Plan, Quota.SplitAddOns(tenant.AddOns),
-            Truncate(subscription.UpdatedUtc), expires);
+        var data = Data(config, catalog, store, plan, addOns, Truncate(subscription.UpdatedUtc), expires);
         var input = Jws.SigningInput(data);
         return Jws.Compose(input, await signer.SignSha256Async(SHA256.HashData(Encoding.ASCII.GetBytes(input)), ct));
     }
@@ -76,12 +80,19 @@ internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, Bi
         var own = catalog.Of(plan)?.Toki;
         var basic = catalog.Of(Quota.DefaultPlan)?.Toki;
         string[]? Config(string p) => config.GetSection($"Billing:Plans:{p}:Features").Get<string[]>();
-        int? Registers(string p) => config.GetValue<int?>($"Billing:Plans:{p}:Registers");
         var features = (own?.Features?.ToArray() ?? Config(plan) ?? basic?.Features?.ToArray() ?? Config(Quota.DefaultPlan) ?? [])
             .Concat(addOns.Where(a => Enum.TryParse<Feature>(a, out _))).Distinct().ToList();
-        var limits = (own?.Registers ?? Registers(plan) ?? basic?.Registers ?? Registers(Quota.DefaultPlan)) is { } registers
+        var limits = Count(config, catalog, plan, addOns, nameof(Limit.Registers), t => t.Registers) is { } registers
             ? new Dictionary<string, int> { [nameof(Limit.Registers)] = registers } : [];
         return new LicenseData(store, config[$"Billing:Plans:{plan}:Name"] ?? catalog.Of(plan)?.Name ?? plan, features, limits, issuedUtc, expiresUtc);
+    }
+
+    /// <summary>Registers or stores: the plan's (Paddle &gt; <c>Billing:Plans:&lt;Plan&gt;</c> &gt; Default's), plus each add-on unit's (Paddle &gt;
+    /// <c>Billing:AddOns:&lt;AddOn&gt;</c>), TK-258. Null when no plan says.</summary>
+    private static int? Count(IConfiguration config, BillingCatalog catalog, string plan, IEnumerable<string> addOns, string key, Func<TokiProduct, int?> of)
+    {
+        int? Own(string section, string code) => (catalog.Of(code)?.Toki is { } t ? of(t) : null) ?? config.GetValue<int?>($"Billing:{section}:{code}:{key}");
+        return (Own("Plans", plan) ?? Own("Plans", Quota.DefaultPlan)) is { } n ? n + addOns.Sum(a => Own(Quota.AddOnsSection, a) ?? 0) : null;
     }
 
     private static DateTime Truncate(DateTime utc) => DateTime.SpecifyKind(new DateTime(utc.Ticks - utc.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);

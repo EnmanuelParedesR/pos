@@ -250,4 +250,17 @@ internal static class DocumentDate
     public static bool IsValid(DateOnly date, TimeProvider clock) => date != default && date <= BusinessDay.Of(clock.GetUtcNow().UtcDateTime).AddDays(1);
 
     public const string Message = "La fecha es obligatoria y no puede ser futura.";
+
+    /// <summary>R11 A19: a month's 606 is filed by the 15th of the next one. From the 16th on, last month is closed: an expense or a payment
+    /// dated in it would change a report already filed.</summary>
+    public static DateOnly FirstOpenDay(TimeProvider clock)
+    {
+        var today = BusinessDay.Of(clock.GetUtcNow().UtcDateTime);
+        var month = new DateOnly(today.Year, today.Month, 1);
+        return today.Day > 15 ? month : month.AddMonths(-1);
+    }
+
+    public static bool IsInOpenPeriod(DateOnly date, TimeProvider clock) => IsValid(date, clock) && date >= FirstOpenDay(clock);
+
+    public const string ClosedPeriodMessage = "La fecha es obligatoria, no puede ser futura ni de un mes cuyo 606 ya se presentó (el 15 del mes siguiente).";
 }

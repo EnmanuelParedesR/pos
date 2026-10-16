@@ -11,4 +11,7 @@ public interface ICashRegisterReports
 
     /// <summary>Names of the registers with an open shift, whenever it was opened.</summary>
     Task<IReadOnlyList<string>> OpenRegistersAsync(CancellationToken ct);
+
+    /// <summary>R11 A2: whether the shift is still open (its count is still blind for its cashier).</summary>
+    Task<bool> IsOpenAsync(Guid shiftId, CancellationToken ct);
 }

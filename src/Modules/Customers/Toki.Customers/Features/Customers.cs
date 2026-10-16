@@ -77,7 +77,7 @@ internal static class SaveCustomer
             app.MapPost("/api/customers", async (Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(new Command(null, b.Name, b.TaxId, b.Phone, b.Address, b.FiscalCredit, b.PriceLevel, b.CreditLimit, b.IsActive), ct))
                     .ToHttp(r => Results.Created($"/api/customers/{r.Id}", r)))
-                .RequirePermission(Permissions.CustomersManage).WithTags("Customers");
+                .RequireAnyPermission(Permissions.CustomersManage, Permissions.CustomersQuickAdd).WithTags("Customers"); // R11 A9: the register adds; editing needs manage
             app.MapPut("/api/customers/{id:guid}", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.Name, b.TaxId, b.Phone, b.Address, b.FiscalCredit, b.PriceLevel, b.CreditLimit, b.IsActive), ct))
                     .ToHttp(_ => Results.NoContent()))
@@ -109,10 +109,10 @@ internal static class SearchCustomers
                     return Results.Ok(await q.OrderBy(c => c.Name).Take(50)
                         .Select(c => new Item(c.Id, c.Name, c.TaxId, c.Phone, c.PriceLevel, c.CreditLimit, c.IsActive, c.Address, c.FiscalCredit)).ToListAsync(ct));
                 })
-                .RequirePermission(Permissions.CustomersManage).WithTags("Customers");
+                .RequireAnyPermission(Permissions.CustomersManage, Permissions.CustomersQuickAdd, Permissions.CreditCollect).WithTags("Customers");
             app.MapGet("/api/customers/{id:guid}", async (Guid id, ICustomerAccounts accounts, CancellationToken ct) =>
                     await accounts.GetAsync(id, ct) is { } c ? Results.Ok(c) : EndpointExtensions.Problem(CustomersErrors.CustomerNotFound))
-                .RequirePermission(Permissions.CustomersManage).WithTags("Customers");
+                .RequireAnyPermission(Permissions.CustomersManage, Permissions.CustomersQuickAdd, Permissions.CreditCollect).WithTags("Customers");
         }
     }
 }

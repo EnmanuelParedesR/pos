@@ -40,16 +40,19 @@ public sealed class AzureOpenAIOptions
     public const string Section = "AzureOpenAI";
     public string? Endpoint { get; set; }
     public string? Deployment { get; set; }
-    /// <remarks>shortcut: API key from Key Vault; switch to the App Service managed identity (Entra token) when convenient.</remarks>
+    /// <remarks>R11 B-Low7: empty in Azure, where the resource has local (key) auth off and the API signs in with its managed identity
+    /// ("Cognitive Services OpenAI User", deploy/azure/main.bicep). A key is only for development against a resource that allows it.</remarks>
     public string? ApiKey { get; set; }
     public string ApiVersion { get; set; } = "2024-10-21";
 
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(Endpoint) && !string.IsNullOrWhiteSpace(Deployment) && !string.IsNullOrWhiteSpace(ApiKey);
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Endpoint) && !string.IsNullOrWhiteSpace(Deployment);
 }
 
 /// <summary>Azure OpenAI Chat Completions with function calling, over plain HTTP.</summary>
 internal sealed class AzureOpenAIChatModel(HttpClient http, AzureOpenAIOptions options) : IChatModel
 {
+    private static readonly Lazy<Azure.Core.TokenCredential> Identity = new(() => new Azure.Identity.DefaultAzureCredential());
+
     public async Task<ChatMessage> CompleteAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools, CancellationToken ct)
     {
         var body = new JsonObject
@@ -64,7 +67,10 @@ internal sealed class AzureOpenAIChatModel(HttpClient http, AzureOpenAIOptions o
         };
         var url = $"{options.Endpoint!.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(options.Deployment!)}/chat/completions?api-version={options.ApiVersion}";
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
-        request.Headers.Add("api-key", options.ApiKey);
+        if (!string.IsNullOrWhiteSpace(options.ApiKey)) request.Headers.Add("api-key", options.ApiKey);
+        else
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", (await Identity.Value.GetTokenAsync(
+                new Azure.Core.TokenRequestContext(["https://cognitiveservices.azure.com/.default"]), ct)).Token); // cached by the credential
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var response = await http.SendAsync(request, ct);
         response.EnsureSuccessStatusCode();

@@ -37,3 +37,10 @@ internal sealed class HttpUserContext(IHttpContextAccessor accessor) : IUserCont
     public bool Has(string permission) => User.HasClaim(TokiClaims.Permission, permission);
     public Guid? SupervisorId { get; set; }
 }
+
+public static class UserContextExtensions
+{
+    /// <summary>Whether the caller can do everything (the Administrador role, or a role the owner gave every permission): R11 A3, for the
+    /// few actions that open the way to everyone else's access (the backup passphrase, a copy to a network folder).</summary>
+    public static bool IsAdministrator(this IUserContext user) => Permissions.All.All(user.Has);
+}

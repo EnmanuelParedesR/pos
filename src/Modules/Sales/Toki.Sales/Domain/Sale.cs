@@ -143,6 +143,9 @@ internal static class SalesErrors
     public static readonly Error DuplicateId = Error.Conflict("Sales.DuplicateId", "Ese número de venta ya se usó para otra venta. Vuelva a cobrar.");
     public static readonly Error ScaleLabelMismatch = Error.Conflict("Sales.ScaleLabelMismatch", "La etiqueta de balanza es de otro producto.");
     public static readonly Error RncRequired = Error.Validation("Sales.RncRequired", "Este comprobante necesita el RNC o la cédula del cliente.");
+    /// <summary>R11 A16: a card or transfer payment carries its authorization or transfer number (the store can turn it off).</summary>
+    public static readonly Error ReferenceRequired = Error.Validation("Sales.ReferenceRequired",
+        "Escriba el número de autorización de la tarjeta o el de la transferencia.");
 
     public static Error MethodExceeded(PaymentMethod method, decimal maximum) =>
         Error.Validation("Sales.MethodExceeded", $"Por {PaymentMethodNames.Display(method)} se pueden devolver como máximo RD$ {maximum:N2} (lo que se cobró así).");

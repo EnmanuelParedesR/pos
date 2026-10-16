@@ -26,6 +26,11 @@ public sealed class ApprovalPolicyTests
         var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Json("GET", "/api/settings/approvals", new[] { new ApprovalRule("sales.remove-line", required), new ApprovalRule("sales.void", true) });
+        // R11 A5: the server records the removal and asks for the supervisor when its policy says so.
+        api.Respond("POST", $"/api/cash/shifts/{ScreenContext.Shift.ShiftId}/cart-removals", body => required && body.Contains("\"supervisorApprovalId\":null")
+            ? FakeApi.Problem(System.Net.HttpStatusCode.Forbidden, "Approval.Required", "Necesita un supervisor.",
+                new { permission = new[] { "sales.remove-line" }, summary = new[] { "Quitar 1 × Salami (RD$ 100.00)" } })
+            : FakeApi.Response(System.Net.HttpStatusCode.OK, new { removalId = Guid.NewGuid() }));
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null);
         return (ctx, api, cart);
@@ -51,6 +56,7 @@ public sealed class ApprovalPolicyTests
 
         screen.WaitForAssertion(() => cart.IsEmpty.ShouldBeTrue());
         api.Requests.Single(r => r.Route == "/api/identity/approvals").Body.ShouldContain("sales.remove-line");
+        api.Requests.Single(r => r.Route == "/api/identity/approvals").Body.ShouldContain("Quitar 1"); // the summary the server wrote
     }
 
     [Fact]
@@ -64,6 +70,7 @@ public sealed class ApprovalPolicyTests
 
         screen.WaitForAssertion(() => cart.IsEmpty.ShouldBeTrue());
         api.Requests.ShouldNotContain(r => r.Route == "/api/identity/approvals");
+        api.Requests.ShouldContain(r => r.Route.EndsWith("/cart-removals", StringComparison.Ordinal)); // still on the Z
     }
 
     [Fact]

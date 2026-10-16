@@ -26,6 +26,9 @@ internal static class EcfArchiveEndpoint
 {
     public const int MaxXmlBytes = 1_000_000;
 
+    /// <summary>R11 B-Med3: uploads per store PC (<c>Archive:UploadsPerMinutePerNode</c>, 120).</summary>
+    public const string NodeRateLimit = "archive-node";
+
     public static void MapEcfArchive(this IEndpointRouteBuilder app) =>
         app.MapPost("/fiscal/v1/archive", async (ArchiveEcfRequest request, ClaimsPrincipal user, CloudDbContext db, ColdArchiveSignal cold, TimeProvider clock, CancellationToken ct) =>
         {
@@ -64,7 +67,7 @@ internal static class EcfArchiveEndpoint
                     db.ChangeTracker.Clear(); // the same e-NCF arrived twice at once: update the row the other request saved
                 }
             }
-        }).RequireAuthorization(CloudAuth.NodePolicy);
+        }).RequireAuthorization(CloudAuth.NodePolicy).RequireRateLimiting(NodeRateLimit);
 
 
     /// <summary>The DGII environments a document is archived for, as the store names them.</summary>

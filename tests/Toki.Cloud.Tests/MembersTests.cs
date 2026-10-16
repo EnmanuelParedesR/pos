@@ -60,13 +60,14 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         (preview.GetProperty("email").GetString(), preview.GetProperty("role").GetString()).ShouldBe((email, "ReadOnly"));
 
         (await RegisterAsync(token)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        // R8 #1: without an e-mail provider the owner saw the link, so the address is not taken as confirmed (R11 B-High1: nor can it sign in yet).
+        (await app.InDbAsync(db => db.Users.SingleAsync(u => u.Email == email))).EmailConfirmed.ShouldBeFalse();
+        (await app.CreateClient().PostAsJsonAsync("/api/auth/login", new { email, password = CloudApp.Password })).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         var member = await app.SignInAsync(email);
         member.TenantId.ShouldBe(owner.TenantId);
         var me = await member.Client.GetFromJsonAsync<JsonElement>("/api/me");
         me.GetProperty("role").GetString().ShouldBe("ReadOnly");
         (await app.InDbAsync(db => db.Tenants.CountAsync(t => t.Name == email))).ShouldBe(0); // no tenant of their own
-        // R8 #1: without an e-mail provider the owner saw the link, so the address is not taken as confirmed.
-        (await app.InDbAsync(db => db.Users.SingleAsync(u => u.Email == email))).EmailConfirmed.ShouldBeFalse();
 
         var members = (await MembersAsync(owner)).GetProperty("members").EnumerateArray().Select(m => (m.GetProperty("email").GetString(), m.GetProperty("role").GetString())).ToList();
         members.ShouldBe([(owner.Email, "Owner"), (email, "ReadOnly")]);
@@ -355,7 +356,9 @@ public sealed class InviteSecurityTests(CloudApp app) : IClassFixture<CloudApp>
         await using var mailing = new MailingCloudApp();
         var owner = await mailing.OwnerAsync();
         var email = $"member{Guid.NewGuid():N}@example.com";
-        var squatter = await mailing.OwnerAsync(email); // registered first, by someone who does not read that inbox
+        // Registered first, by someone who does not read that inbox (and so never confirmed it).
+        (await mailing.CreateClient().PostAsJsonAsync("/api/auth/register", new { email, password = CloudApp.Password })).EnsureSuccessStatusCode();
+        var squatter = new { TenantId = await mailing.InDbAsync(db => db.Users.Where(u => u.Email == email).Select(u => u.TenantId).SingleAsync()) };
         (await owner.Client.PostAsJsonAsync("/api/members/invites", new { email, role = "ReadOnly" })).StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = mailing.Mail.Sent.Single(m => m.To == email && m.Subject.StartsWith("Le invitaron", StringComparison.Ordinal)).Body;
         var token = body[(body.IndexOf('#') + 1)..];
@@ -391,6 +394,8 @@ public sealed class InviteSecurityTests(CloudApp app) : IClassFixture<CloudApp>
     {
         var owner = await app.OwnerAsync();
         var member = await app.OwnerAsync();
+        // A session from before R11 (sign-in did not need a confirmed e-mail then).
+        await app.InDbAsync(db => db.Users.Where(u => u.Email == member.Email).ExecuteUpdateAsync(s => s.SetProperty(u => u.EmailConfirmed, false)));
         var link = (await (await owner.Client.PostAsJsonAsync("/api/members/invites", new { email = member.Email, role = "ReadOnly" })).Json()).GetProperty("link").GetString()!;
         (await member.Client.PostAsJsonAsync("/api/invites/accept", new { token = link[(link.IndexOf('#') + 1)..] })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await member.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("emailConfirmed").GetBoolean().ShouldBeFalse();

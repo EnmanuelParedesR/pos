@@ -10,6 +10,10 @@ public sealed class PurchasingTests(TokiApp app) : IClassFixture<TokiApp>
 {
     private async Task<HttpClient> Admin() => app.Client(await app.AdminAsync());
 
+    /// <summary>Expenses and payments are dated in a month whose 606 is still open (R11 A19), so they use today, not a fixed date.</summary>
+    private DateOnly Today => DateOnly.FromDateTime(app.Clock.GetUtcNow().UtcDateTime.AddHours(-4));
+    private string Day => Today.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
     private static string NewNcf() => "B01" + Random.Shared.Next(10_000_000, 99_999_999);
 
     private static async Task<Guid> SupplierAsync(HttpClient c, int days = 30) =>
@@ -83,10 +87,10 @@ public sealed class PurchasingTests(TokiApp app) : IClassFixture<TokiApp>
         var oldest = await PurchaseAsync(c, supplier, "Credit", new DateOnly(2026, 9, 1), new { ProductId = product, Quantity = 100m, UnitCost = 60m, ItbisRate = "Exempt" });
         await PurchaseAsync(c, supplier, "Credit", new DateOnly(2026, 10, 1), new { ProductId = product, Quantity = 50m, UnitCost = 60m, ItbisRate = "Exempt" });
 
-        var tooMuch = await c.PostAsJsonAsync("/api/purchasing/payments", new { SupplierId = supplier, Amount = 9001m, Method = "Transfer", Date = "2026-10-15" });
+        var tooMuch = await c.PostAsJsonAsync("/api/purchasing/payments", new { SupplierId = supplier, Amount = 9001m, Method = "Transfer", Date = Day });
         (await tooMuch.ErrorCode()).ShouldBe("Purchasing.PaymentExceedsDebt");
 
-        var payment = await (await c.PostAsJsonAsync("/api/purchasing/payments", new { SupplierId = supplier, Amount = 7000m, Method = "Transfer", Date = "2026-10-15", Reference = "TRF-1" })).Json();
+        var payment = await (await c.PostAsJsonAsync("/api/purchasing/payments", new { SupplierId = supplier, Amount = 7000m, Method = "Transfer", Date = Day, Reference = "TRF-1" })).Json();
         var allocations = payment.GetProperty("allocations");
         allocations[0].GetProperty("amount").GetDecimal().ShouldBe(6000m); // the September invoice first, in full
         allocations[1].GetProperty("amount").GetDecimal().ShouldBe(1000m);
@@ -126,7 +130,7 @@ public sealed class PurchasingTests(TokiApp app) : IClassFixture<TokiApp>
         var supplier = await SupplierAsync(c);
         var r = await c.PostAsJsonAsync("/api/purchasing/expenses", new
         {
-            SupplierId = supplier, Ncf = NewNcf(), Date = "2026-10-10", Description = "Energía eléctrica", Type = "WorkSuppliesAndServices",
+            SupplierId = supplier, Ncf = NewNcf(), Date = Day, Description = "Energía eléctrica", Type = "WorkSuppliesAndServices",
             Subtotal = 4000m, Itbis = 720m, Terms = "Credit",
         });
         r.StatusCode.ShouldBe(HttpStatusCode.Created);
@@ -134,7 +138,7 @@ public sealed class PurchasingTests(TokiApp app) : IClassFixture<TokiApp>
 
         var bad = await c.PostAsJsonAsync("/api/purchasing/expenses", new
         {
-            SupplierId = supplier, Ncf = NewNcf(), Date = "2026-10-10", Description = "x", Type = "FinancialExpenses", Subtotal = 100m, Itbis = 50m, Terms = "Cash",
+            SupplierId = supplier, Ncf = NewNcf(), Date = Day, Description = "x", Type = "FinancialExpenses", Subtotal = 100m, Itbis = 50m, Terms = "Cash",
         });
         bad.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
@@ -181,7 +185,7 @@ public sealed class PurchasingTests(TokiApp app) : IClassFixture<TokiApp>
         // The same NCF cannot come back as an expense either.
         var expense = await c.PostAsJsonAsync("/api/purchasing/expenses", new
         {
-            SupplierId = supplier, Ncf = ncf, Date = "2026-10-15", Description = "x", Type = "FinancialExpenses", Subtotal = 100m, Itbis = 0m, Terms = "Cash",
+            SupplierId = supplier, Ncf = ncf, Date = Day, Description = "x", Type = "FinancialExpenses", Subtotal = 100m, Itbis = 0m, Terms = "Cash",
         });
         (await expense.ErrorCode()).ShouldBe("Purchasing.DuplicateNcf");
     }
@@ -212,7 +216,7 @@ public sealed class PurchasingTests(TokiApp app) : IClassFixture<TokiApp>
         var ncf = NewNcf();
         object Expense(decimal subtotal) => new
         {
-            SupplierId = supplier, Ncf = ncf, Date = "2026-10-10", Description = "Alquiler", Type = "Leases", Subtotal = subtotal, Itbis = 0m, Terms = "Credit",
+            SupplierId = supplier, Ncf = ncf, Date = Day, Description = "Alquiler", Type = "Leases", Subtotal = subtotal, Itbis = 0m, Terms = "Credit",
         };
         var bad = (await (await c.PostAsJsonAsync("/api/purchasing/expenses", Expense(40000m))).Json()).GetProperty("id").GetGuid();
         (await c.PostAsJsonAsync($"/api/purchasing/expenses/{bad}/void", new { Reason = "era 4,000" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
@@ -220,7 +224,7 @@ public sealed class PurchasingTests(TokiApp app) : IClassFixture<TokiApp>
 
         async Task<decimal> Balance() => (await c.GetFromJsonAsync<JsonElement>($"/api/purchasing/suppliers/{supplier}/statement")).GetProperty("balance").GetDecimal();
         (await Balance()).ShouldBe(4000m);
-        var payment = (await (await c.PostAsJsonAsync("/api/purchasing/payments", new { SupplierId = supplier, Amount = 4000m, Method = "Transfer", Date = "2026-10-15" })).Json())
+        var payment = (await (await c.PostAsJsonAsync("/api/purchasing/payments", new { SupplierId = supplier, Amount = 4000m, Method = "Transfer", Date = Day })).Json())
             .GetProperty("supplierPaymentId").GetGuid();
         (await Balance()).ShouldBe(0m);
         (await c.PostAsJsonAsync($"/api/purchasing/payments/{payment}/void", new { Reason = "era otro suplidor" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
@@ -236,11 +240,11 @@ public sealed class PurchasingTests(TokiApp app) : IClassFixture<TokiApp>
         var supplier = await SupplierAsync(c);
         (await c.PostAsJsonAsync("/api/purchasing/expenses", new
         {
-            SupplierId = supplier, Ncf = NewNcf(), Date = "2026-10-10", Description = "Transporte", Type = "WorkSuppliesAndServices", Subtotal = 5000m, Itbis = 0m, Terms = "Credit",
+            SupplierId = supplier, Ncf = NewNcf(), Date = Day, Description = "Transporte", Type = "WorkSuppliesAndServices", Subtotal = 5000m, Itbis = 0m, Terms = "Credit",
         })).EnsureSuccessStatusCode();
 
         var paymentId = Guid.CreateVersion7();
-        object Payment() => new { SupplierPaymentId = paymentId, SupplierId = supplier, Amount = 5000m, Method = "Cash", Date = "2026-10-15", ShiftId = cashier.ShiftId };
+        object Payment() => new { SupplierPaymentId = paymentId, SupplierId = supplier, Amount = 5000m, Method = "Cash", Date = Day, ShiftId = cashier.ShiftId };
         (await c.PostAsJsonAsync("/api/purchasing/payments", Payment())).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await c.PostAsJsonAsync("/api/purchasing/payments", Payment())).StatusCode.ShouldBe(HttpStatusCode.OK); // a retry pays once
         (await app.XReportAsync(cashier.ShiftId)).GetProperty("expectedCash").GetDecimal().ShouldBe(5000m);
@@ -277,25 +281,25 @@ public sealed class PurchasingTests(TokiApp app) : IClassFixture<TokiApp>
         var c = await Admin();
         var supplier = await SupplierAsync(c);
         var beef = await c.ProductAsync(await c.CategoryAsync(), "Res " + Guid.NewGuid().ToString()[..4], 250m, unit: "Pound", rate: "Exempt");
-        var purchase = await PurchaseAsync(c, supplier, "Credit", new DateOnly(2026, 10, 14), new { ProductId = beef, Quantity = 10m, UnitCost = 180m });
+        var purchase = await PurchaseAsync(c, supplier, "Credit", Today, new { ProductId = beef, Quantity = 10m, UnitCost = 180m });
         var purchaseNcf = (await c.GetFromJsonAsync<JsonElement>($"/api/purchasing/purchases/{purchase}")).GetProperty("ncf").GetString();
         var expenseNcf = NewNcf();
         (await c.PostAsJsonAsync("/api/purchasing/expenses", new
         {
-            SupplierId = supplier, Ncf = expenseNcf, Date = "2026-10-14", Description = "Hielo", Type = "WorkSuppliesAndServices", Subtotal = 500m, Itbis = 90m, Terms = "Cash",
+            SupplierId = supplier, Ncf = expenseNcf, Date = Day, Description = "Hielo", Type = "WorkSuppliesAndServices", Subtotal = 500m, Itbis = 90m, Terms = "Cash",
         })).EnsureSuccessStatusCode();
 
         var transferNcf = NewNcf();
         (await c.PostAsJsonAsync("/api/purchasing/expenses", new
         {
-            SupplierId = supplier, Ncf = transferNcf, Date = "2026-10-14", Description = "Fumigación", Type = "WorkSuppliesAndServices", Subtotal = 1000m, Itbis = 180m,
+            SupplierId = supplier, Ncf = transferNcf, Date = Day, Description = "Fumigación", Type = "WorkSuppliesAndServices", Subtotal = 1000m, Itbis = 180m,
             Terms = "Cash", Method = "Transfer",
         })).EnsureSuccessStatusCode();
 
-        var rows = (await c.GetFromJsonAsync<JsonElement>("/api/reports/dgii/606?from=2026-10-14&to=2026-10-14")).EnumerateArray().ToList();
+        var rows = (await c.GetFromJsonAsync<JsonElement>($"/api/reports/dgii/606?from={Day}&to={Day}")).EnumerateArray().ToList();
         // Payment form: transfer → 2 with the invoice date; a credit purchase → 4 with no date; a cash one whose method is unknown → empty.
         var transferred = rows.Single(f => f.GetProperty("ncf").GetString() == transferNcf);
-        (transferred.GetProperty("paymentForm").GetInt32(), transferred.GetProperty("paymentDate").GetString()).ShouldBe((2, "2026-10-14"));
+        (transferred.GetProperty("paymentForm").GetInt32(), transferred.GetProperty("paymentDate").GetString()).ShouldBe((2, Day));
         var credit = rows.Single(f => f.GetProperty("ncf").GetString() == purchaseNcf);
         (credit.GetProperty("paymentForm").GetInt32(), credit.GetProperty("paymentDate").ValueKind).ShouldBe((4, JsonValueKind.Null));
         rows.Single(f => f.GetProperty("ncf").GetString() == expenseNcf).GetProperty("paymentForm").ValueKind.ShouldBe(JsonValueKind.Null);

@@ -33,22 +33,29 @@ internal static class FeReceiverEndpoints
 
     /// <summary>R9 #2: anyone can call the receiver, and each call may sign in Key Vault (one vault for every tenant): limited per caller IP
     /// (<c>Fe:RequestsPerMinutePerIp</c>, 60) and per RNC (<c>Fe:RequestsPerMinutePerRnc</c>, 600), whatever the environment or the case in the URL.</summary>
+    /// <remarks>R11 B-Med7: the anonymous authentication routes (seed, validacioncertificado) have their own per-RNC bucket
+    /// (<c>Fe:SeedRequestsPerMinutePerRnc</c>, 60), so a flood of seeds never uses up the reception and approval calls of that RNC.</remarks>
     public static PartitionedRateLimiter<HttpContext> RateLimiter(IConfiguration config)
     {
         var perIp = config.GetValue("Fe:RequestsPerMinutePerIp", 60);
         var perRnc = config.GetValue("Fe:RequestsPerMinutePerRnc", 600);
+        var seedsPerRnc = config.GetValue("Fe:SeedRequestsPerMinutePerRnc", 60);
         static FixedWindowRateLimiterOptions PerMinute(int limit) => new() { PermitLimit = limit, Window = TimeSpan.FromMinutes(1) };
         return PartitionedRateLimiter.CreateChained(
-            PartitionedRateLimiter.Create<HttpContext, string>(http => IsReceiver(http)
+            PartitionedRateLimiter.Create<HttpContext, string>(http => ReceiverPattern(http) is not null
                 ? RateLimitPartition.GetFixedWindowLimiter("ip:" + http.Connection.RemoteIpAddress, _ => PerMinute(perIp))
                 : RateLimitPartition.GetNoLimiter("")),
-            PartitionedRateLimiter.Create<HttpContext, string>(http => IsReceiver(http)
-                ? RateLimitPartition.GetFixedWindowLimiter("rnc:" + (http.GetRouteValue("rnc") as string)?.ToLowerInvariant(), _ => PerMinute(perRnc))
+            PartitionedRateLimiter.Create<HttpContext, string>(http => ReceiverPattern(http) is { } pattern
+                ? pattern.Contains("/autenticacion/", StringComparison.Ordinal)
+                    ? RateLimitPartition.GetFixedWindowLimiter("seed-rnc:" + Rnc(http), _ => PerMinute(seedsPerRnc))
+                    : RateLimitPartition.GetFixedWindowLimiter("rnc:" + Rnc(http), _ => PerMinute(perRnc))
                 : RateLimitPartition.GetNoLimiter("")));
+
+        static string? Rnc(HttpContext http) => (http.GetRouteValue("rnc") as string)?.ToLowerInvariant();
     }
 
-    private static bool IsReceiver(HttpContext http) =>
-        http.GetEndpoint() is RouteEndpoint { RoutePattern.RawText: { } pattern } && pattern.StartsWith(Route, StringComparison.Ordinal);
+    private static string? ReceiverPattern(HttpContext http) =>
+        http.GetEndpoint() is RouteEndpoint { RoutePattern.RawText: { } pattern } && pattern.StartsWith(Route, StringComparison.Ordinal) ? pattern : null;
 
     public static void MapFeReceiver(this IEndpointRouteBuilder app)
     {
@@ -109,12 +116,15 @@ internal static class FeReceiverEndpoints
         var versions = db.FeReceived.Where(d => d.TenantId == receiver.TenantId && d.Environment == env && d.IssuerRnc == issuer && d.ENcf == encf);
         // TK-246: the same bytes kept pending (the store was off and the supplier got a 503) are the supplier's retry: acknowledged now as received.
         var pending = received is null ? null : await versions.FirstOrDefaultAsync(d => d.Sha256 == received.Sha256 && d.AcknowledgedUtc == null, ct);
+        var signedBy = FeSignerCheck.Untrusted;
         int? reason = pending is not null ? null
             : received is null || (FeXml.EcfSchema(received.Type) is { } schema && FeXml.Validate(bytes!, schema).Count > 0) ? 1
-            : !trust.SignedByTrusted(doc, issuer) ? 2
+            : (signedBy = trust.Check(doc, issuer)) == FeSignerCheck.Untrusted ? 2
             : buyer != receiver.Rnc ? 4
             : await versions.AnyAsync(d => d.Sha256 == received.Sha256, ct) || await versions.CountAsync(ct) >= MaxVersions ? 3
             : null;
+        // R11 B-High2: a cédula signing for the issuer's company is acknowledged (the supplier did deliver it) but flagged "firmante sin verificar".
+        if (reason is null && pending is null) received!.SignerUnverified = signedBy == FeSignerCheck.UnverifiedDelegate;
         var kept = pending ?? (reason is null ? received : null);
         if (kept is not null) kept.AcknowledgedUtc = now;
         if (pending is null && kept is not null) db.FeReceived.Add(kept);
@@ -147,7 +157,8 @@ internal static class FeReceiverEndpoints
     public const int RetryAfterSeconds = 60;
 
     /// <summary>A buyer's commercial approval (ACECF) of an e-CF this tenant issued, signed by a certificate of an INDOTEL authority that belongs to
-    /// <c>RNCComprador</c> (R9 #1). Kept (10 years) and shown with the archived e-CF.</summary>
+    /// <c>RNCComprador</c> (R9 #1; R11 B-High2: a cédula for a company buyer is not that). Kept (10 years) and shown with the archived e-CF.
+    /// R11 B-Med3: the first approval of a buyer for an e-NCF stays; a repeat is answered 200 and not stored again.</summary>
     private static async Task<IResult> ReceiveApprovalAsync(string amb, string rnc, HttpContext http, CloudDbContext db, FeTrust trust, TimeProvider clock,
         CancellationToken ct)
     {
@@ -157,11 +168,13 @@ internal static class FeReceiverEndpoints
         var doc = bytes is null ? null : FeXml.Parse(bytes);
         const string detail = "/ACECF/DetalleAprobacionComercial/";
         if (doc?.DocumentElement?.Name != "ACECF" || FeXml.Validate(bytes!, FeXml.Acecf).Count > 0 || FeXml.Text(doc, detail + "RNCEmisor") != receiver!.Rnc
-            || FeXml.Text(doc, detail + "RNCComprador") is not { } buyer || !trust.SignedByTrusted(doc, buyer))
+            || FeXml.Text(doc, detail + "RNCComprador") is not { } buyer || FeXml.Text(doc, detail + "eNCF") is not { } encf || !trust.SignedByTrusted(doc, buyer))
             return Results.BadRequest();
+        if (await db.FeApprovalsReceived.AnyAsync(a => a.TenantId == receiver.TenantId && a.Environment == env && a.ENcf == encf && a.BuyerRnc == buyer, ct))
+            return Results.Ok();
         db.FeApprovalsReceived.Add(new FeApprovalReceived
         {
-            TenantId = receiver.TenantId, Environment = env, ENcf = FeXml.Text(doc, detail + "eNCF")!, BuyerRnc = buyer,
+            TenantId = receiver.TenantId, Environment = env, ENcf = encf, BuyerRnc = buyer,
             Approved = FeXml.Text(doc, detail + "Estado") == "1", Reason = FeXml.Text(doc, detail + "DetalleMotivoRechazo"), XmlGzip = FeXml.Zip(bytes!),
             ReceivedUtc = clock.GetUtcNow().UtcDateTime,
         });

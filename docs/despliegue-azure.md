@@ -14,7 +14,9 @@ Cómo se crea y se publica la nube de Toki (ADR-0008): la API `Toki.Host.Cloud`,
 | Azure OpenAI (S0) + despliegue `chat` | El asistente. El modelo se elige por precio. | Solo por uso |
 | Storage Account (StorageV2, LRS, Cool) + contenedor `ecf-archive` | Archivo frío de los e-CF firmados (TK-207): 10 años, escritura única, pasa a Archive a los 180 días. Solo la identidad de la API entra. | Centavos (ver abajo) |
 
-La API no consulta la base cuando no hay tiendas subiendo datos: el chequeo de salud de App Service (`/health`) no la toca y el aplicador del inbox solo trabaja cuando llega un lote. Así la base se pausa de noche. `/health/ready` sí prueba la base.
+La API no consulta la base cuando no hay tiendas subiendo datos: el chequeo de salud de App Service (`/health`) no la toca y el aplicador del inbox solo trabaja cuando llega un lote. Así la base se pausa de noche. `/health/ready` sí prueba la base; desde R11 (TK-253) solo responde con el token de un administrador de la plataforma (con verificación en dos pasos): sin él, 401.
+
+R11 (TK-253): la API entra a Azure OpenAI con su identidad administrada (rol "Cognitive Services OpenAI User"; el recurso no acepta claves) y no lee secretos del Key Vault; los roles de certificados del Key Vault solo existen con `allowCloudCustody=true`. La Web App no acepta usuario y contraseña de publicación (FTP ni SCM): `az webapp deploy` entra con Entra ID.
 
 ## Lo que está desplegado hoy (TK-139, 2026-10-15)
 
@@ -77,7 +79,7 @@ La tienda sube cada e-CF firmado (XML, RFCE y respuesta de la DGII) a `POST /fis
 
 ### Prueba de humo (2026-10-15)
 
-- `/health` → 200 `Healthy`. `/health/ready` → 200 `Healthy`.
+- `/health` → 200 `Healthy`. `/health/ready` → 200 `Healthy` (con el token de un administrador de la plataforma, R11).
 - Registro de dueño, inicio de sesión, `/api/me`, alta de tienda y código de conexión de 8 dígitos: OK.
 - `/api/assistant/ask` con "¿Cuánto vendí hoy?" → 200 en ~8 s, respuesta en español (RD$ 0.00, todavía sin datos).
 - Panel: carga en la URL de la Static Web App, una ruta profunda (`/sales`) responde 200 y el *preflight* de CORS a la API devuelve el origen del panel.
@@ -137,7 +139,7 @@ Las salidas dan el nombre de la Web App, su identidad, el servidor SQL y la URL 
 
    Al arrancar crea las tablas. Si la base estaba en pausa, el primer arranque tarda hasta un minuto más.
 3. **Publicar el panel** en la Static Web App con su token de despliegue (`az staticwebapp secrets list -n <nombre del panel>`), como dice la sección siguiente. El origen del panel ya está permitido en CORS (`Panel__Origins__0`). Si se le pone un dominio propio, se agrega como `Panel__Origins__1`.
-4. Revisar `https://<api>/health/ready`: tiene que responder `Healthy`.
+4. Revisar `https://<api>/health/ready` con el token de un administrador de la plataforma: tiene que responder `Healthy`.
 5. **Equipo de Toki (consola Plataforma):** cada cuenta se registra en el panel y luego `dotnet run --project src/Hosts/Toki.Host.Cloud -- grant-platform-admin <correo>` contra la base de producción. La lista `Platform__Admins` ya no da el rol (R8 #1): si estaba en la configuración de la Web App, se borra.
 
 ## Publicar el sitio y el panel (Static Web App)
@@ -204,7 +206,7 @@ Borra la base con todos los datos de las tiendas: no tiene vuelta atrás.
 | `Database:Provider` | `SqlServer` (Azure SQL o SQL Express) o `Sqlite` (pruebas). |
 | `Database:ConnectionString` | En Azure, con `Authentication=Active Directory Managed Identity`. En desarrollo, `.\SQLEXPRESS` (`appsettings.Development.json`). |
 | `Panel:Origins` | Orígenes del panel permitidos por CORS. |
-| `AzureOpenAI:Endpoint`, `Deployment`, `ApiKey`, `ApiVersion` | El asistente. Si falta alguno, `/api/assistant/ask` responde 503 `Assistant.NotConfigured`. |
+| `AzureOpenAI:Endpoint`, `Deployment`, `ApiVersion` (y `ApiKey` solo en desarrollo) | El asistente. Sin `ApiKey` entra con la identidad administrada (R11). Si falta `Endpoint` o `Deployment`, `/api/assistant/ask` responde 503 `Assistant.NotConfigured`. |
 | `Ingest:ApplyInBackground` | `false` solo en pruebas. |
 | `Nodes:RegisterPerMinute` | Intentos de conectar una tienda por minuto y por IP (10). |
 | `Email:Provider` | `AzureCommunicationServices` envía correos de verdad (avisos de TK-222 e invitaciones). Sin él, los correos solo quedan en el log y el panel muestra el enlace de la invitación. |

@@ -21,6 +21,8 @@ internal sealed class ApprovalPolicy(SettingsDbContext db) : IApprovalPolicy
         (Permissions.SalesRemoveLine, false), (Permissions.SalesVoid, true), (Permissions.SalesReturn, true),
         (Permissions.SalesLargeDiscount, true), (Permissions.SalesPriceOverride, true), (Permissions.RegisterWithdraw, true),
         (Permissions.RegisterApproveClose, true), (Permissions.InventoryAdjust, true), (Permissions.CreditManage, true),
+        // R11 A6: selling on credit or with a customer's balance; a store whose cashiers all sell on credit turns it off.
+        (Permissions.CreditSell, true),
     ];
 
     public static HashSet<string> Required(string? saved) =>

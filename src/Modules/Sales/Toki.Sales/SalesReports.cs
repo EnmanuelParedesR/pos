@@ -79,11 +79,16 @@ internal sealed class SalesReports(SalesDbContext db, Toki.Fiscal.Contracts.IFis
     public async Task<IReadOnlyList<CashierSales>> ByCashierAsync(DateOnly from, DateOnly to, CancellationToken ct)
     {
         var (f, t) = BusinessDay.UtcRange(from, to);
-        var sales = await db.Sales.Where(s => s.DateUtc >= f && s.DateUtc < t).Select(s => new { s.CashierId, s.Cashier, s.Status, s.Total, s.Discount })
+        var sales = await db.Sales.Where(s => s.DateUtc >= f && s.DateUtc < t).Select(s => new
+            {
+                s.CashierId, s.Cashier, s.Status, s.Total, s.Discount,
+                Credit = s.Payments.Where(p => p.Method == PaymentMethod.OnAccount || p.Method == PaymentMethod.CreditBalance).Select(p => p.Amount).ToList(),
+            })
             .AsNoTracking().ToListAsync(ct);
         return sales.GroupBy(s => s.CashierId).Select(g => new CashierSales(g.Key, g.First().Cashier,
             g.Count(s => s.Status == SaleStatus.Completed), g.Count(s => s.Status == SaleStatus.Voided),
-            g.Where(s => s.Status == SaleStatus.Completed).Sum(s => s.Total), g.Where(s => s.Status == SaleStatus.Completed).Sum(s => s.Discount)))
+            g.Where(s => s.Status == SaleStatus.Completed).Sum(s => s.Total), g.Where(s => s.Status == SaleStatus.Completed).Sum(s => s.Discount),
+            g.Where(s => s.Status == SaleStatus.Completed).Sum(s => s.Credit.Sum())))
             .OrderByDescending(c => c.SoldWithItbis).ToList();
     }
 

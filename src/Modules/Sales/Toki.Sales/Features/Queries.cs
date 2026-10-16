@@ -23,12 +23,22 @@ internal static class GetReceipt
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/sales/{id:guid}/receipt", async (Guid id, SalesDbContext db, ISettingsQueries settings, CancellationToken ct) =>
-                    await db.FullSaleAsync(id, ct) is { } s
+            app.MapGet("/api/sales/{id:guid}/receipt", async (Guid id, SalesDbContext db, ISettingsQueries settings, IUserContext user, CancellationToken ct) =>
+                    await db.FullSaleAsync(id, ct) is { } s && SaleAccess.MayRead(user, s)
                         ? Results.Ok(Receipt.From(s, await settings.GetBusinessProfileAsync(ct)))
                         : EndpointExtensions.Problem(SalesErrors.SaleNotFound))
                 .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
     }
+}
+
+/// <summary>R11 A13: a cashier reads their own sales; other people's only with reports, Turnos y cuadres, or the right to void or return them
+/// (a return of another cashier's sale). Someone else's sale answers "not found", like one that does not exist.</summary>
+internal static class SaleAccess
+{
+    public static bool SeesAll(IUserContext user) => user.Has(Permissions.ReportsView) || user.Has(Permissions.ShiftsView);
+
+    public static bool MayRead(IUserContext user, Sale s) =>
+        s.CashierId == user.UserId || SeesAll(user) || user.Has(Permissions.SalesReturn) || user.Has(Permissions.SalesVoid);
 }
 
 internal static class GetSale
@@ -44,16 +54,19 @@ internal static class GetSale
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/sales/{id:guid}", async (Guid id, SalesDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/sales/{id:guid}", async (Guid id, SalesDbContext db, IUserContext user, ICashRegisterReports cash, CancellationToken ct) =>
                 {
                     var s = await db.FullSaleAsync(id, ct);
-                    if (s is null) return EndpointExtensions.Problem(SalesErrors.SaleNotFound);
+                    if (s is null || !SaleAccess.MayRead(user, s)) return EndpointExtensions.Problem(SalesErrors.SaleNotFound);
                     var returns = await db.Returns.Where(r => r.SaleId == id).OrderBy(r => r.DateUtc)
                         .Select(r => new ReturnDto(r.Id, r.DateUtc, r.Total, r.Method, r.ENcf, r.Reason)).AsNoTracking().ToListAsync(ct);
+                    // R11 A2: while the shift is open its cashier does not see how each sale was paid (nor the change): adding them up would give
+                    // the expected cash of the blind count. They show once the shift is closed.
+                    var blind = !SaleAccess.SeesAll(user) && await cash.IsOpenAsync(s.ShiftId, ct);
                     return Results.Ok(new Response(s.Id, s.Number, s.ENcf, s.DocumentType, s.DateUtc, s.Status.ToString(), s.Register, s.Cashier, s.CustomerId,
-                        s.CustomerName, s.Discount, s.Itbis, s.Total, s.Change, s.VoidReason, s.VoidENcf,
+                        s.CustomerName, s.Discount, s.Itbis, s.Total, blind ? 0 : s.Change, s.VoidReason, s.VoidENcf,
                         s.Lines.Select(l => new LineDto(l.Id, l.Description, l.Quantity, l.UnitPrice, l.Discount, l.Total, l.Itbis, l.ReturnedQuantity, l.Note, l.Unit)).ToList(),
-                        s.Payments.Select(p => new PaymentDto(p.Method, p.Amount, p.Received, p.Reference)).ToList(), returns));
+                        blind ? [] : s.Payments.Select(p => new PaymentDto(p.Method, p.Amount, p.Received, p.Reference)).ToList(), returns));
                 })
                 .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
     }
@@ -153,9 +166,12 @@ internal static class HeldSales
             app.MapDelete("/api/sales/held/{id:guid}", async (Guid id, Guid shiftId, ICommandHandler<Remove, Ok> h, CancellationToken ct) =>
                     (await h.Handle(new Remove(id, shiftId), ct)).ToHttp(_ => Results.NoContent()))
                 .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
-            app.MapGet("/api/sales/held", async (Guid shiftId, SalesDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/sales/held", async (Guid shiftId, SalesDbContext db, IUserContext user, CancellationToken ct) =>
                 {
-                    var items = await db.HeldSales.Where(h => h.ShiftId == shiftId).OrderBy(h => h.CreatedUtc).AsNoTracking().ToListAsync(ct);
+                    // R11 A13: only one's own parked carts, unless one may operate other registers' shifts.
+                    var q = db.HeldSales.Where(h => h.ShiftId == shiftId);
+                    if (!user.Has(Permissions.RegisterApproveClose)) q = q.Where(h => h.UserId == user.UserId);
+                    var items = await q.OrderBy(h => h.CreatedUtc).AsNoTracking().ToListAsync(ct);
                     return Results.Ok(items.Select(h => new Item(h.Id, h.Label, h.Total, h.CreatedUtc, JsonDocument.Parse(h.Content).RootElement)));
                 })
                 .RequirePermission(Permissions.SalesCreate).WithTags("Sales");

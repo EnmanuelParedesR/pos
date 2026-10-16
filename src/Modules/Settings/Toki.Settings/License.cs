@@ -76,6 +76,9 @@ internal sealed class LicenseService : IFeatureService
     /// <summary>The installed license as signed (JWS), or null.</summary>
     public string? Current { get; private set; }
 
+    /// <summary>R11 B-Low8: the heartbeat sends it so the cloud checks it itself.</summary>
+    string? IFeatureService.LicenseJws => Current;
+
     public string FilePath { get; }
     public LicenseData? Data { get; private set; }
 

@@ -53,6 +53,8 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Fe.FeReceivedDocument> FeReceived => Set<Fe.FeReceivedDocument>();
     public DbSet<Fe.FeApprovalReceived> FeApprovalsReceived => Set<Fe.FeApprovalReceived>();
     public DbSet<Fe.FeReceiverOutage> FeReceiverOutages => Set<Fe.FeReceiverOutage>();
+    public DbSet<Fe.FeDelegation> FeDelegations => Set<Fe.FeDelegation>();
+    public DbSet<Toki.Host.Cloud.Nodes.UsedNonce> NodeNonces => Set<Toki.Host.Cloud.Nodes.UsedNonce>();
     public DbSet<ReplicaCertification> Certifications => Set<ReplicaCertification>();
     public DbSet<Alerts.AlertPreference> AlertPreferences => Set<Alerts.AlertPreference>();
     public DbSet<Alerts.SentAlert> SentAlerts => Set<Alerts.SentAlert>();
@@ -167,6 +169,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(i => i.Error).HasMaxLength(2000);
             e.HasIndex(i => new { i.TenantId, i.EventId }).IsUnique();
             e.HasIndex(i => i.AppliedUtc);
+            e.HasIndex(i => new { i.TenantId, i.ReceivedUtc }); // R11 B-Med3: the tenant's daily cap
         });
 
         builder.Entity<ReplicaSale>(e =>
@@ -297,6 +300,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.Property(h => h.LastErrorCode).HasMaxLength(30);
             e.Property(h => h.FiscalProvider).HasMaxLength(30);
             e.Property(h => h.LicenseStatus).HasMaxLength(20);
+            e.Property(h => h.LicenseJws).HasMaxLength(ReplicaNodeHeartbeat.MaxLicenseLength);
         });
         builder.Entity<ReplicaCustomer>(e =>
         {
@@ -319,6 +323,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         Alerts.AlertModel.Configure(builder);
         Certification.AccompanimentModel.Configure(builder);
         Platform.Releases.Configure(builder);
+        Toki.Host.Cloud.Nodes.UsedNonce.Configure(builder);
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -772,6 +777,10 @@ public sealed class ReplicaNodeHeartbeat : IReplicaRow
     public string? LicenseStatus { get; set; }
     /// <summary>When the trial ends or the license expires; null before the first sale of a trial.</summary>
     public DateTime? LicenseEndsUtc { get; set; }
+    /// <summary>R11 B-Low8: the license as Toki signed it (JWS), when the store sent it. Status and end above are only what the store says;
+    /// the paid extras trust this, verified with Toki's public key (<see cref="Assistant.LicenseCheck"/>).</summary>
+    public string? LicenseJws { get; set; }
+    public const int MaxLicenseLength = 4000;
     /// <summary>TK-222: the fiscal signals the alerts read; null from stores on versions before it.</summary>
     public int? RejectedWithoutReplacement { get; set; }
     public DateTime? OldestPendingUtc { get; set; }

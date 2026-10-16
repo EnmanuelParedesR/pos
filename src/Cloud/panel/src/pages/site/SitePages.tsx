@@ -405,30 +405,35 @@ function Plan({ name, note, price, children, brand }: { name: string; note: stri
 }
 
 function Pricing() {
-  const prices = usePlanPrices(); // TK-249: from Paddle; "Precio por confirmar" while billing is off
+  const price = usePlanPrices(); // TK-249: from Paddle; "Precio por confirmar" while billing is off
+  const prices = site.prices;
   const referred = useReferralLink(); // TK-255: /precios?ref=CODE
   return (
     <>
-      <Hero eyebrow="Precios" title="Pague por el tamaño de su tienda, no por factura." sub="Tres planes según cajas y sucursales. Lo esencial, en todos.">
-        <p className="note">Estamos cerrando los precios. Los publicamos aquí en cuanto estén aprobados; mientras tanto, escríbanos y le damos una cotización.</p>
+      <Hero eyebrow="Precios" title="Pague por el tamaño de su tienda, no por factura." sub="Tres planes según cuántas cajas tiene. Todas las funciones, en todos.">
+        <p className="note">Precios provisionales en dólares (US$), al mes. Si prefiere, escríbanos y le damos una cotización.</p>
       </Hero>
       <Section>
         <h2>Planes</h2>
         <div className="grid grid--3">
-          <Plan name="Una caja" note="Colmado o tienda con un punto de cobro." price={prices.Default}>
-            <li>1 caja</li>
-            <li>1 sucursal</li>
+          <Plan name="Esencial" note="Para empezar con un solo punto de cobro." price={price("Essential")}>
+            <li>Solo la PC principal</li>
+            <li>2 usuarios del panel</li>
+            <li>100 preguntas al asistente al mes</li>
           </Plan>
-          <Plan name="Varias cajas" note="Carnicería o deli con fila." price={prices.MultiRegister} brand>
-            <li>Varias cajas <Tbd>Cantidad por confirmar</Tbd></li>
-            <li>1 sucursal</li>
+          <Plan name="Estándar" note="La PC principal y una caja más." price={price("Default")} brand>
+            <li>PC principal + 1 caja</li>
+            <li>3 usuarios del panel</li>
+            <li>300 preguntas al asistente al mes</li>
           </Plan>
-          <Plan name="Varias sucursales" note="Más de un local." price={prices.MultiStore}>
-            <li>Cajas por sucursal <Tbd>Cantidad por confirmar</Tbd></li>
-            <li>Varias sucursales</li>
+          <Plan name="Pro" note="Para la tienda con fila." price={price("MultiRegister")}>
+            <li>PC principal + 3 cajas</li>
+            <li>5 usuarios del panel</li>
+            <li>600 preguntas al asistente al mes</li>
+            <li>Soporte más rápido</li>
           </Plan>
         </div>
-        <p className="muted">Entre planes cambian las cajas, las sucursales y el acceso desde el celular del dueño.</p>
+        <p className="muted">Todas las funciones en todos los planes: balanza, carnicería, mayoreo, e-CF, inventario, respaldo en la nube y 20 facturas de suplidor leídas con IA al mes.</p>
         {/* TK-249: the account first, then "Plan y facturación" in the panel (pago con tarjeta por Paddle). */}
         {referred && <p className="note">Viene recomendado por un cliente de Toki. Cree su cuenta y elija su plan.</p>}
         <p className="actions">
@@ -436,6 +441,22 @@ function Pricing() {
             Crear su cuenta y elegir plan
           </Link>
         </p>
+      </Section>
+      <Section>
+        <h2>Adapte su plan</h2>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Adicional</th><th>Incluye</th><th>Precio al mes</th></tr></thead>
+            <tbody>
+              <tr><td>Caja adicional</td><td>Una caja más, cuantas necesite.</td><td><Price value={price("ExtraRegister")} /></td></tr>
+              <tr><td>Sucursal adicional</td><td>Otra tienda con su licencia y las cajas de su plan.</td><td><Price value={price("ExtraStore")} /></td></tr>
+              <tr><td>Lectura de facturas</td><td>300 facturas de suplidor más al mes, leídas con IA.</td><td><Price value={price("SupplierInvoiceReading")} /></td></tr>
+              <tr><td>Asistente +1,000 preguntas</td><td>1,000 preguntas más al mes al asistente del panel.</td><td><Price value={price("AssistantPack")} /></td></tr>
+              <tr><td>Usuarios del panel +5</td><td>Cinco invitaciones más al panel cada mes.</td><td><Price value={price("ExtraUsers")} /></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="muted">Pago anual: 10 meses por 12. Paddle cobra por Toki y calcula los impuestos.</p>
       </Section>
       <Section className="counter">
         <h2>En todos los planes</h2>

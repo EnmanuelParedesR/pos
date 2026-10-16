@@ -12,7 +12,7 @@ using Toki.Host.Cloud.Persistence;
 namespace Toki.Host.Cloud.Persistence.Migrations
 {
     [DbContext(typeof(CloudDbContext))]
-    [Migration("20261016163609_AppReleases")]
+    [Migration("20261016194602_AppReleases")]
     partial class AppReleases
     {
         /// <inheritdoc />
@@ -293,11 +293,96 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("PaddleProducts", "cloud");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Billing.Referral", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("AppliedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("DiscountAmount")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("DiscountFromUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("DiscountType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("PaddleDiscountId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PaddleSubscriptionId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid>("ReferredTenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ReferrerTenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RevertedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TransactionId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReferredTenantId")
+                        .IsUnique();
+
+                    b.HasIndex("TransactionId");
+
+                    b.HasIndex("ReferrerTenantId", "Status");
+
+                    b.ToTable("Referrals", "cloud");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Billing.TenantSubscription", b =>
                 {
                     b.Property<Guid>("TenantId")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("FirstPaidUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<string>("Interval")
                         .HasMaxLength(20)
@@ -330,6 +415,14 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.Property<DateTime?>("PastDueSinceUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("ReferralCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("ReferredByCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -341,6 +434,10 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.HasKey("TenantId");
 
                     b.HasIndex("PaddleSubscriptionId");
+
+                    b.HasIndex("ReferralCode")
+                        .IsUnique()
+                        .HasFilter("[ReferralCode] IS NOT NULL");
 
                     b.ToTable("TenantSubscriptions", "cloud");
                 });
@@ -592,6 +689,59 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("FeCertificates", "cloud");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Fe.FeDelegation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("Approved")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<DateTime?>("DecidedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("HolderName")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("RequestedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Rnc")
+                        .IsRequired()
+                        .HasMaxLength(11)
+                        .HasColumnType("nvarchar(11)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Thumbprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "Rnc", "Thumbprint")
+                        .IsUnique();
+
+                    b.ToTable("FeDelegations", "cloud");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Fe.FeReceivedDocument", b =>
                 {
                     b.Property<long>("Id")
@@ -685,6 +835,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("nvarchar(64)");
 
+                    b.Property<bool>("SignerUnverified")
+                        .HasColumnType("bit");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
@@ -777,6 +930,22 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.HasIndex("TenantId", "AtUtc");
 
                     b.ToTable("FeSignatures", "cloud");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Nodes.UsedNonce", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(110)
+                        .HasColumnType("nvarchar(110)");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("ExpiresUtc");
+
+                    b.ToTable("NodeNonces", "cloud");
                 });
 
             modelBuilder.Entity("Toki.Host.Cloud.Persistence.CloudUser", b =>
@@ -1031,6 +1200,8 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.HasIndex("TenantId", "EventId")
                         .IsUnique();
+
+                    b.HasIndex("TenantId", "ReceivedUtc");
 
                     b.ToTable("Inbox", "ingest");
                 });
@@ -1432,6 +1603,10 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.Property<DateTime?>("LicenseEndsUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("LicenseJws")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
 
                     b.Property<string>("LicenseStatus")
                         .HasMaxLength(20)

@@ -47,6 +47,7 @@ public sealed class DgiiPublicLookupTests(DgiiPublicApp app) : IClassFixture<Dgi
     {
         var c = await Admin();
         var supplier = await SupplierAsync(c, "401506254");
+        var Today = Toki.SharedKernel.BusinessDay.Of(app.Clock.GetUtcNow().UtcDateTime).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
         app.DgiiPublic.Ncf("401506254", "B0199999999", "ncf-not-matching").Ncf("401506254", "B0100000001", "ncf-expired");
         object Expense(string ncf, string date, string? reason) => new
         {
@@ -54,10 +55,10 @@ public sealed class DgiiPublicLookupTests(DgiiPublicApp app) : IClassFixture<Dgi
             Terms = "Cash", Method = "Cash", NcfOverrideReason = reason,
         };
 
-        var refused = await c.PostAsJsonAsync("/api/purchasing/expenses", Expense("B0199999999", "2026-10-10", null));
+        var refused = await c.PostAsJsonAsync("/api/purchasing/expenses", Expense("B0199999999", Today, null));
         refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await refused.ErrorCode()).ShouldBe("Purchasing.NcfNotValidAtDgii");
-        (await c.PostAsJsonAsync("/api/purchasing/expenses", Expense("B0199999999", "2026-10-10", "El suplidor confirmó el NCF por teléfono")))
+        (await c.PostAsJsonAsync("/api/purchasing/expenses", Expense("B0199999999", Today, "El suplidor confirmó el NCF por teléfono")))
             .StatusCode.ShouldBe(HttpStatusCode.Created);
         (await app.InScopeAsync(sp => sp.GetRequiredService<InfraDbContext>().AuditRecords
             .CountAsync(a => a.Action == "purchasing.ncf-not-valid-at-dgii" && a.Data.Contains("B0199999999") && a.Data.Contains("NotMatching") && a.Data.Contains("El suplidor")))).ShouldBe(1);
@@ -68,6 +69,12 @@ public sealed class DgiiPublicLookupTests(DgiiPublicApp app) : IClassFixture<Dgi
             SupplierId = supplier, Ncf = "B0100000001", InvoiceDate = "2026-10-10", Terms = "Cash",
             Lines = new[] { new { ProductId = Guid.NewGuid(), Quantity = 1m, UnitCost = 1m } },
         })).ErrorCode()).ShouldBe("Purchasing.NcfNotValidAtDgii");
-        (await c.PostAsJsonAsync("/api/purchasing/expenses", Expense("B0100000001", "2019-12-20", null))).StatusCode.ShouldBe(HttpStatusCode.Created);
+        // (A purchase: an expense of 2019 is refused anyway, its 606 was filed long ago, R11 A19.)
+        var product = await c.ProductAsync(await c.CategoryAsync(), "Papel " + Guid.NewGuid().ToString()[..4], 10m);
+        (await c.PostAsJsonAsync("/api/purchasing/purchases", new
+        {
+            SupplierId = supplier, Ncf = "B0100000001", InvoiceDate = "2019-12-20", Terms = "Cash",
+            Lines = new[] { new { ProductId = product, Quantity = 1m, UnitCost = 1m } },
+        })).StatusCode.ShouldBe(HttpStatusCode.Created);
     }
 }

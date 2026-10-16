@@ -36,13 +36,17 @@ internal static class OpenSession
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, IFeatureService license, AttemptLimiter limiter, TimeProvider clock)
+    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, IFeatureService license, PinPepper pepper, AttemptLimiter limiter, TimeProvider clock)
         : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
             if (c.DeviceId is not { } deviceId) return IdentityErrors.DeviceNotPaired;
             if (limiter.IsBlocked(AttemptLimiter.PinKey(deviceId), AttemptLimiter.PinsPerDevice)) return IdentityErrors.DeviceLocked;
+            var now = clock.GetUtcNow().UtcDateTime;
+            // R11 A14: a register that keeps typing wrong PINs for one person stops before that person's own count locks them out.
+            var key = AttemptLimiter.UserPinKey(deviceId, User.NormalizeCode(c.Code));
+            if (limiter.IsBlocked(key, AttemptLimiter.PinsPerUser)) return new Response(null, null, null, null, IdentityErrors.TooManyAttempts);
 
             var user = await db.Users.FirstOrDefaultAsync(u => u.Code == User.NormalizeCode(c.Code), ct);
             if (user is null)
@@ -51,11 +55,11 @@ internal static class OpenSession
                 return IdentityErrors.InvalidCredentials;
             }
 
-            var now = clock.GetUtcNow().UtcDateTime;
-            var result = user.TryPin(c.Pin, now);
+            var result = user.TryPin(c.Pin, now, pepper.Value);
             if (result != PinResult.Correct)
             {
                 limiter.Fail(AttemptLimiter.PinKey(deviceId));
+                if (result == PinResult.Incorrect) limiter.Fail(key);
                 await audit.RecordAsync("identity.pin-failed", "User", user.Id, new { user.Code, Device = deviceId, Result = result }, ct);
                 return new Response(null, null, null, null, result == PinResult.Locked ? IdentityErrors.UserLocked : IdentityErrors.InvalidCredentials);
             }
