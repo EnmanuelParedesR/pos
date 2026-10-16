@@ -39,16 +39,24 @@ public sealed record DocumentToIssue(
 public sealed record IssuedDocument(Guid DocumentId, string ENcf, string SecurityCode, DateTime SignedUtc, string QrUrl,
     DateOnly? SequenceExpiresOn = null, bool Contingency = false);
 
+/// <summary>Production: an e-CF of the eCF environment or a paper B receipt. Test: TesteCF or CerteCF. Simulated: no DGII behind it
+/// (or a number Toki does not know).</summary>
+public enum IssuedIn { Simulated, Test, Production }
+
 /// <summary>Issues e-CF inside the caller's transaction: reserves the next e-NCF (no gaps), signs locally and queues it for the 72-hour submission.</summary>
 public interface IFiscalDocuments
 {
     Task<Result<IssuedDocument>> IssueAsync(DocumentToIssue document, CancellationToken ct);
 
+    /// <summary>R9 #12: where a receipt number was issued (the trial starts only with a real sale).</summary>
+    Task<IssuedIn> IssuedInAsync(string ncf, CancellationToken ct);
+
     /// <summary>e-NCF of documents issued in a DGII test environment (TesteCF, CerteCF) in the period: the 606/607 leave them out.</summary>
     Task<IReadOnlySet<string>> TestENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct);
 
     /// <summary>R8 #3: e-NCF signed in the period that were voided before sending (TK-205) or rejected by the DGII and are not replaced yet. They are
-    /// not a valid receipt (the 608 lists them), so the 607 leaves them out and is not exported while there are any.</summary>
+    /// not a valid receipt (the 608 lists them), so the 607 leaves them out and is not exported while there are any.
+    /// R9 #18: also the B receipts of a contingency (paper NCF) not regularized yet.</summary>
     Task<IReadOnlySet<string>> UnreplacedENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct);
 }
 
@@ -79,6 +87,17 @@ public sealed record CertificationProgressedV1(IReadOnlyList<int> DoneSteps, int
 public static class CertificationSteps
 {
     public const int Count = 14;
+}
+
+/// <summary>R9 #20: the e-CF certificate installed, so the business RNC is checked against it when it changes, not only at import.</summary>
+public interface IEcfCertificateHolder
+{
+    /// <summary>RNC or cédula of the holder of the installed certificate; null without a certificate or when it names none.</summary>
+    string? TaxId { get; }
+
+    /// <summary>R8 #4: a certificate that names another RNC (or another cédula, for a business that is a person) does not fit: the DGII would reject
+    /// everything signed with it. A cédula on the certificate of a company (9-digit RNC) is the delegated signer's and fits.</summary>
+    static bool Fits(string? taxId, string? rnc) => taxId is null || rnc is null || taxId.Length != rnc.Length || taxId == rnc;
 }
 
 /// <summary>The DGII taxpayer registry the owner loaded (DGII_RNC.TXT): names by RNC or cédula.</summary>

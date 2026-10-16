@@ -42,10 +42,12 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
         {
             // R8 #2: claims a pending document before calling the DGII. A void needs SentUtc null, so it can no longer win; one that already won
             // (it changed the status after the load above) leaves 0 rows and the document is skipped.
+            // R9 #7: a pending document that still has its claim was being sent when the process died: that send may have arrived.
+            var mayHaveArrived = d.Attempts > 0 || d.SentUtc is not null;
             if (d.Status == SubmissionStatus.Pending && !await ClaimAsync(d, now, ct)) continue;
             try
             {
-                var answer = d.Status == SubmissionStatus.Sent ? await provider.GetResultAsync(d.TrackId!, ct) : await SendAsync(d, rnc, ct);
+                var answer = d.Status == SubmissionStatus.Sent ? await provider.GetResultAsync(d.TrackId!, ct) : await SendAsync(d, rnc, mayHaveArrived, ct);
                 Apply(d, answer, now);
             }
             // An HTTP timeout is a TaskCanceledException too: only our own shutdown token ends the pass.
@@ -89,10 +91,10 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
         return true;
     }
 
-    private async Task<DgiiAnswer> SendAsync(FiscalDocument d, string rnc, CancellationToken ct)
+    /// <param name="mayHaveArrived">A previous try failed (a timeout after delivery) or was cut by a crash: ask the DGII before sending.</param>
+    private async Task<DgiiAnswer> SendAsync(FiscalDocument d, string rnc, bool mayHaveArrived, CancellationToken ct)
     {
-        // A previous try failed: it may have reached the DGII anyway (timeout after delivery).
-        if (d.Attempts > 0 && await provider.FindAsync(rnc, d.ENcf, d.SecurityCode, d.Channel, ct) is { } known) return known;
+        if (mayHaveArrived && await provider.FindAsync(rnc, d.ENcf, d.SecurityCode, d.Channel, ct) is { } known) return known;
         return d.Channel == EcfChannel.Rfce
             ? await provider.SendRfceAsync(rnc, d.ENcf, Unzip(d.RfceXml!), ct)
             : await provider.SendEcfAsync(rnc, d.ENcf, Unzip(d.SignedXml), ct);

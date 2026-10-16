@@ -88,8 +88,8 @@ internal sealed class ReportsEndpoints : IEndpoint
             var pending = (await fiscal.UnreplacedENcfsAsync(f, t, ct)).Count;
             return pending > 0
                 ? EndpointExtensions.Problem(Error.Conflict("Reports.DocumentsToReplace",
-                    $"Hay {pending} {(pending == 1 ? "comprobante anulado o rechazado" : "comprobantes anulados o rechazados")} por reemplazar en el período. " +
-                    "Reemplácelos en Comprobantes electrónicos antes de sacar el 607."))
+                    $"Hay {pending} {(pending == 1 ? "comprobante anulado, rechazado o serie B" : "comprobantes anulados, rechazados o serie B")} por reemplazar o regularizar en el período. " +
+                    "Resuélvalos en Comprobantes electrónicos antes de sacar el 607."))
                 : Export.As(await sales.Report607Async(p.From, p.To, ct), p.Format, p.Name("607"));
         });
         dgii.MapGet("/dgii/606", async ([AsParameters] Period p, IPurchasingReports purchasing, CancellationToken ct) =>

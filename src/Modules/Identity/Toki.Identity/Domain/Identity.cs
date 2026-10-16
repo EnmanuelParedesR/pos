@@ -189,7 +189,8 @@ internal static class IdentityErrors
     public static readonly Error AdministratorOnly = Error.Forbidden("Identity.AdministratorOnly", "Solo un administrador puede dar o quitar el rol Administrador.");
     /// <summary>TK-220: a register beyond what the license allows (Restricted keeps the main PC and one register).</summary>
     public static readonly Error RegisterNotLicensed = Error.Forbidden("Identity.RegisterNotLicensed",
-        "Toki está en modo Restringido: venden la PC principal y una caja. Para usar esta caja, compre la licencia en Configuración → Licencia. Sus datos están completos.");
+        "Toki está en modo Restringido: venden la PC principal y una caja. Para usar esta caja, compre la licencia en Configuración → Licencia. Sus datos están completos. " +
+        "Si esta caja tiene un turno abierto, un supervisor lo cierra desde la PC principal en Turnos y cuadres.");
     public static readonly Error RoleInUse =Error.Conflict("Identity.RoleInUse", "Ese rol tiene usuarios. Cámbieles el rol antes de borrarlo.");
 
     /// <summary>TK-215: nobody gives a permission they do not have (a role with it, or a user with that role).</summary>

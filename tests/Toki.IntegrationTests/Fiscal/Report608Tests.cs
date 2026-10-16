@@ -52,7 +52,7 @@ public sealed class Report608Tests(TokiApp app) : IClassFixture<TokiApp>
         // R8 #3: not in both. Until it is replaced the 607 is not exported (its sale would be missing), and the rows leave it out.
         var blocked = await admin.GetAsync($"/api/reports/dgii/607?{period}");
         (await blocked.ErrorCode()).ShouldBe("Reports.DocumentsToReplace");
-        (await blocked.Content.ReadAsStringAsync()).ShouldContain("Hay 1 comprobante anulado o rechazado por reemplazar");
+        (await blocked.Content.ReadAsStringAsync()).ShouldContain("Hay 1 comprobante anulado, rechazado o serie B por reemplazar");
         (await app.InScopeAsync(sp => sp.GetRequiredService<Toki.Sales.Contracts.ISalesReports>().Report607Async(today, today, CancellationToken.None)))
             .Select(r => r.Ncf).ShouldNotContain("E320000000003");
 

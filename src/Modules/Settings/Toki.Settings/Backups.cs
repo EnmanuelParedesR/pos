@@ -117,6 +117,13 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
         return new BackupFile(Path.GetFileName(target), new FileInfo(target).Length, now);
     }
 
+    /// <summary>When a backup of this folder was made: from its name (store time), else the file's date.</summary>
+    public DateTime CreatedUtc(string fileName) =>
+        fileName.Length >= 20 && DateTime.TryParseExact(fileName[5..20], "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None, out var local) && fileName.StartsWith("toki-", StringComparison.Ordinal)
+            ? DateTime.SpecifyKind(local - BusinessDay.Offset, DateTimeKind.Utc)
+            : File.GetLastWriteTimeUtc(Path.Combine(Folder, fileName));
+
     /// <summary>Encrypted backups, newest first.</summary>
     public IEnumerable<FileInfo> List() => List(Folder);
 
@@ -265,8 +272,14 @@ internal static class SetBackupPassphrase
 /// would be lost or half-restored); the data before it is backed up first. The restore itself is audited in the restored database.</summary>
 internal static class RestoreBackup
 {
-    public sealed record Request(string Passphrase);
+    /// <param name="ConfirmOlder">The owner accepted that the backup is older than the last e-CF signed (or B receipt issued): those
+    /// documents will not be in the restored data (their numbers are not used again).</param>
+    public sealed record Request(string Passphrase, bool ConfirmOlder = false);
     public sealed record Response(string? BackupBefore);
+
+    public static Error OlderThanLastDocument(DateTime backupUtc, DateTime lastUtc) => Error.Conflict("Backup.OlderThanLastDocument",
+        $"Este respaldo es del {backupUtc + BusinessDay.Offset:dd/MM/yyyy HH:mm} y el último comprobante se emitió el {lastUtc + BusinessDay.Offset:dd/MM/yyyy HH:mm}. " +
+        "Los comprobantes emitidos después no estarán en los datos restaurados, aunque la DGII ya los tenga (sus números no se vuelven a usar). Confirme solo si está seguro.");
 
     /// <summary>Only records the restore: it runs after it, in the restored database's audit chain.</summary>
     internal sealed record Restored(string FileName, string? BackupBefore) : ICommand<Ok>;
@@ -290,10 +303,18 @@ internal static class RestoreBackup
                     if (await cash.OpenRegistersAsync(http.RequestAborted) is { Count: > 0 } open)
                         return EndpointExtensions.Problem(Error.Conflict("Backup.RegistersOpen", $"Cierre las cajas antes de restaurar: {string.Join(", ", open)}."));
 
+                    // R9 #3: what already left the store is read now and put back on the restored data.
+                    var guards = new List<RestoreSnapshot>();
+                    foreach (var guard in http.RequestServices.GetServices<IRestoreGuard>()) guards.Add(await guard.CaptureAsync(http.RequestAborted));
+                    var backupUtc = backups.CreatedUtc(fileName);
+                    if (guards.Max(g => g.LastIrreversibleUtc) is { } last && last > backupUtc && !r.ConfirmOlder)
+                        return EndpointExtensions.Problem(OlderThanLastDocument(backupUtc, last));
+
                     var restored = await backups.RestoreAsync(fileName, r.Passphrase, lifetime.ApplicationStopping);
                     if (restored.IsFailure) return EndpointExtensions.Problem(restored.Error!);
                     // An older backup gets the migrations of this version, as at startup.
                     await TokiServices.CreateDatabaseAsync(http.RequestServices, CancellationToken.None);
+                    foreach (var g in guards) await g.ReapplyAsync(CancellationToken.None);
                     await record.Handle(new Restored(fileName, restored.Value), CancellationToken.None);
                     return Results.Ok(new Response(restored.Value));
                 })

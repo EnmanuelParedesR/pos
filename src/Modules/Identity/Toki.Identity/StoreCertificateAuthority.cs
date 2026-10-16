@@ -11,7 +11,7 @@ namespace Toki.Identity;
 /// <c>store-ca.pem</c>, its private key encrypted with Data Protection (DPAPI of the machine on Windows) in <c>store-ca.key</c>.
 /// It signs the server's TLS certificate and each register's client certificate; registers pin this CA, so the server can renew its own
 /// certificate without pairing them again.</summary>
-public sealed class StoreCertificateAuthority
+public sealed class StoreCertificateAuthority : IDisposable
 {
     private const string ServerAuth = "1.3.6.1.5.5.7.3.1";
     private const string ClientAuth = "1.3.6.1.5.5.7.3.2";
@@ -24,6 +24,7 @@ public sealed class StoreCertificateAuthority
     private readonly Lazy<(X509Certificate2 Certificate, ECDsa Key)> _ca;
     private readonly Lock _lock = new();
     private X509Certificate2? _server;
+    private readonly List<X509Certificate2> _loaded = [];
 
     public StoreCertificateAuthority(IConfiguration config, IDataProtectionProvider protection, TimeProvider clock)
     {
@@ -37,15 +38,50 @@ public sealed class StoreCertificateAuthority
     /// <summary>The CA certificate (public part), PEM: what a register pins when it pairs.</summary>
     public string CertificatePem => _ca.Value.Certificate.ExportCertificatePem();
 
-    /// <summary>The server's TLS certificate, issued by the CA and renewed 30 days before it expires (a register that pinned the CA keeps working).</summary>
+    /// <summary>The server's TLS certificate, issued by the CA and renewed 30 days before it expires (a register that pinned the CA keeps working).
+    /// R9 #15: kept in <c>store-server.pfx</c> (protected like the CA key), so a restart shows the same one and its fingerprint stays.</summary>
     public X509Certificate2 ServerCertificate
     {
         get
         {
             lock (_lock)
             {
+                _server ??= LoadServerCertificate();
                 return _server is not null && _server.NotAfter.ToUniversalTime() > _clock.GetUtcNow().UtcDateTime.AddDays(30) ? _server : IssueServerCertificate();
             }
+        }
+    }
+
+    private string ServerFile => Path.Combine(_folder, "store-server.pfx");
+
+    private X509Certificate2? LoadServerCertificate()
+    {
+        var ca = _ca.Value.Certificate; // first: replacing an unreadable CA deletes the server certificate it signed
+        if (!File.Exists(ServerFile)) return null;
+        try
+        {
+            var certificate = Track(X509CertificateLoader.LoadPkcs12(_protector.Unprotect(File.ReadAllBytes(ServerFile)), null));
+            return IssuedBy(certificate, ca, ServerAuth) ? certificate : null;
+        }
+        catch (CryptographicException)
+        {
+            return null; // made again
+        }
+    }
+
+    /// <summary>On Windows a certificate loaded from a PFX keeps its key in a file until it is disposed: the host disposes this singleton when it stops.</summary>
+    private X509Certificate2 Track(X509Certificate2 certificate)
+    {
+        _loaded.Add(certificate);
+        return certificate;
+    }
+
+    public void Dispose()
+    {
+        lock (_lock)
+        {
+            foreach (var c in _loaded) c.Dispose();
+            _loaded.Clear();
         }
     }
 
@@ -111,7 +147,12 @@ public sealed class StoreCertificateAuthority
         using var issued = Sign(request, ServerValidity);
         using var withKey = issued.CopyWithPrivateKey(key);
         // Windows' TLS needs a key it can load, not the ephemeral one made in memory.
-        lock (_lock) return _server = X509CertificateLoader.LoadPkcs12(withKey.Export(X509ContentType.Pfx), null);
+        var pfx = withKey.Export(X509ContentType.Pfx);
+        lock (_lock)
+        {
+            File.WriteAllBytes(ServerFile, _protector.Protect(pfx));
+            return _server = Track(X509CertificateLoader.LoadPkcs12(pfx, null));
+        }
     }
 
     private X509Certificate2 Sign(CertificateRequest request, TimeSpan validity)
@@ -123,6 +164,10 @@ public sealed class StoreCertificateAuthority
         return request.Create(ca.SubjectName, X509SignatureGenerator.CreateForECDsa(key), now.AddDays(-1), notAfter, RandomNumberGenerator.GetBytes(16));
     }
 
+    /// <summary>When this CA was made (its certificate starts a day earlier, for clocks a bit behind). A register paired before it holds a
+    /// certificate of an older CA (one that could not be read and was replaced) and has to be paired again.</summary>
+    public DateTime CreatedUtc => _ca.Value.Certificate.NotBefore.ToUniversalTime().AddDays(1);
+
     private (X509Certificate2, ECDsa) LoadOrCreate()
     {
         var certificateFile = Path.Combine(_folder, "store-ca.pem");
@@ -130,8 +175,22 @@ public sealed class StoreCertificateAuthority
         var key = ECDsa.Create();
         if (File.Exists(certificateFile) && File.Exists(keyFile))
         {
-            key.ImportPkcs8PrivateKey(_protector.Unprotect(File.ReadAllBytes(keyFile)), out _);
-            return (X509Certificate2.CreateFromPem(File.ReadAllText(certificateFile)), key);
+            try
+            {
+                key.ImportPkcs8PrivateKey(_protector.Unprotect(File.ReadAllBytes(keyFile)), out _);
+                return (X509Certificate2.CreateFromPem(File.ReadAllText(certificateFile)), key);
+            }
+            catch (Exception e) when (e is CryptographicException or ArgumentException)
+            {
+                // R9 #8: a key ring that cannot open it (the keys folder copied to a new PC, another account) or a damaged file must not stop
+                // the store: the old CA is kept aside and a new one made; the health check asks to pair the registers again.
+                var aside = $".unreadable-{_clock.GetUtcNow():yyyyMMddHHmmss}";
+                File.Move(keyFile, keyFile + aside);
+                File.Move(certificateFile, certificateFile + aside);
+                File.Delete(ServerFile);
+                key.Dispose();
+                key = ECDsa.Create();
+            }
         }
 
         key.GenerateKey(ECCurve.NamedCurves.nistP256);

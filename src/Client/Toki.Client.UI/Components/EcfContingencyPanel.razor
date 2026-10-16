@@ -131,7 +131,10 @@
         if (!Confirmed("regularize")) return;
         _sending = true;
         var r = await Api.PostAsync<PaperRegularized>("/api/fiscal/contingency/regularize");
-        await DoneAsync(r.Problem, $"Se emitieron {r.Value?.Regularized} e-CF de reemplazo. Salen hacia la DGII con la cola.");
+        var manual = r.Value is { Manual: > 0 } v
+            ? $" {v.Manual} {(v.Manual == 1 ? "nota" : "notas")} de débito o crédito serie B (B03, B04) no se regularizan solas: consulte con su contador cómo regularizarlas ante la DGII."
+            : "";
+        await DoneAsync(r.Problem, $"Se emitieron {r.Value?.Regularized} e-CF de reemplazo. Salen hacia la DGII con la cola.{manual}");
     }
 
     private async Task LoadRangeAsync()

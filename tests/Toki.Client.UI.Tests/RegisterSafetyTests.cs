@@ -181,6 +181,29 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
+    public void A_supervisor_closes_another_registers_shift_from_the_main_PC()
+    {
+        var (ctx, api) = ScreenContext.Create("register.close", "register.approve-close", "shifts.view");
+        using var _ = ctx;
+        var other = Guid.NewGuid();
+        var open = new ZReport(other, null, "Caja 3", "Cajera", DateTime.UtcNow.AddHours(-3), null, 500m, [], 2, 0, 0, 0, 0, 0, 0, 900m, null, null);
+        api.Json("GET", "/api/cash/denominations", Denominations)
+           .Json("GET", $"/api/cash/shifts/{other}/z", open)
+           .Json("POST", $"/api/cash/shifts/{other}/close", Z(3) with { ShiftId = other, Register = "Caja 3" });
+        ctx.Services.GetRequiredService<NavigationManager>().NavigateTo($"close-register?shift={other}");
+        var page = ctx.Render<CloseRegister>();
+
+        page.WaitForAssertion(() => page.Markup.ShouldContain("Turno de Caja 3"));
+        page.Find("input[aria-label='Cantidad de 500']").Input("1");
+        Key(page, ".esc-page", "F12");
+        Key(page, ".esc-page", "F12");
+
+        page.WaitForAssertion(() => page.Markup.ShouldContain("Cierre Z #3"));
+        api.Requests.ShouldContain(r => r.Method == "POST" && r.Route == $"/api/cash/shifts/{other}/close");
+        ctx.Services.GetRequiredService<Session>().Shift.ShouldBe(ScreenContext.Shift); // the supervisor's own shift stays open
+    }
+
+    [Fact]
     public void A_scanned_pack_of_a_by_the_pound_product_adds_one_piece_without_asking_the_weight()
     {
         var (ctx, api) = ScreenContext.Create("sales.create");

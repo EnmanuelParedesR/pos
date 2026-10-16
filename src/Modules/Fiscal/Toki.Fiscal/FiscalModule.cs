@@ -26,6 +26,7 @@ public static class FiscalModule
         services.AddScoped<IFiscalDocuments, FiscalDocuments>();
         services.AddScoped<FiscalDocuments>();
         services.AddSingleton<EcfCertificate>();
+        services.AddSingleton<IEcfCertificateHolder>(sp => sp.GetRequiredService<EcfCertificate>());
         services.AddScoped<IFiscalReports, FiscalReports>();
         services.AddScoped<ITaxpayerRegistry, Features.TaxpayerNames>();
         var signer = config["Fiscal:Signer"] ?? "Simulated";
@@ -53,6 +54,7 @@ public static class FiscalModule
                 throw new InvalidOperationException($"Unknown Fiscal:Provider '{other}': use Simulated or Dgii.");
         }
         services.AddScoped<EcfSubmissionQueue>();
+        services.AddScoped<IRestoreGuard, FiscalRestoreGuard>();
         services.AddSingleton<Features.TaxpayerImport>();
         services.AddHostedService<EcfSubmissionWorker>();
         EcfExchange.Register(services); // TK-153/154: 31 deliveries to buyers and received e-CF
@@ -258,7 +260,23 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
     public async Task<IReadOnlySet<string>> UnreplacedENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct) =>
         (await db.Documents.Where(d => d.SignedUtc >= fromUtc && d.SignedUtc < toUtc && d.ReplacedByENcf == null
                 && (d.Status == SubmissionStatus.Voided || d.Status == SubmissionStatus.Rejected))
-            .Select(d => d.ENcf).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
+            .Select(d => d.ENcf).ToListAsync(ct))
+        // R9 #18: a B receipt of a contingency not regularized yet holds the 607 too.
+        .Concat(await db.Set<PaperDocument>().Where(d => d.IssuedUtc >= fromUtc && d.IssuedUtc < toUtc && d.RegularizedByENcf == null)
+            .Select(d => d.Ncf).ToListAsync(ct))
+        .ToHashSet(StringComparer.Ordinal);
+
+    public async Task<IssuedIn> IssuedInAsync(string ncf, CancellationToken ct)
+    {
+        if (PaperNcf.Is(ncf)) return IssuedIn.Production;
+        var env = await db.Documents.Where(d => d.ENcf == ncf).Select(d => (FiscalEnvironment?)d.Environment).FirstOrDefaultAsync(ct);
+        return env switch
+        {
+            FiscalEnvironment.eCF => IssuedIn.Production,
+            FiscalEnvironment.TesteCF or FiscalEnvironment.CerteCF => IssuedIn.Test,
+            _ => IssuedIn.Simulated,
+        };
+    }
 
     public async Task<IReadOnlySet<string>> TestENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct) =>
         (await db.Documents.Where(d => d.SignedUtc >= fromUtc && d.SignedUtc < toUtc

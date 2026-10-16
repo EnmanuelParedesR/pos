@@ -118,12 +118,17 @@ public sealed class EcfExchangeTests(ExchangeTokiApp app) : IClassFixture<Exchan
         // A buyer that stays down for 72 hours: given up, the DGII queue never waited for it.
         app.Buyer.Down = true;
         var late = (await cashier.SellAsync(soda, 59m, "FiscalCredit31", ElectronicBuyer)).GetProperty("eNcf").GetString()!;
+        // R9 #19: a 31 accepted long before the deliveries existed (the update that brought TK-153) is not handed out.
+        var old = (await cashier.SellAsync(soda, 59m, "FiscalCredit31", ElectronicBuyer)).GetProperty("eNcf").GetString()!;
         await app.DrainAsync();
         (await app.DocumentAsync(late)).Status.ShouldBe(SubmissionStatus.Accepted);
+        await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Documents.Where(d => d.ENcf == old)
+            .ExecuteUpdateAsync(s => s.SetProperty(d => d.ResultUtc, app.Clock.GetUtcNow().UtcDateTime.AddDays(-30))));
         await DeliverAsync();
         app.Clock.Advance(TimeSpan.FromHours(73));
         await DeliverAsync();
         (await DeliveriesAsync()).Single(d => d.ENcf == late).Status.ShouldBe(DeliveryStatus.Failed);
+        (await DeliveriesAsync()).ShouldNotContain(d => d.ENcf == old);
     }
 
     private Task<int> DeliverAsync() => app.InScopeAsync(sp => sp.GetRequiredService<EcfDeliveryQueue>().ProcessAsync(CancellationToken.None));

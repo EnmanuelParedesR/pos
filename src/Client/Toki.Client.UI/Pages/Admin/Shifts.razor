@@ -91,6 +91,11 @@
                 <Footer>
                     @if (_downloaded is not null) { <span class="esc-muted" role="status">@_downloaded</span> }
                     <span class="esc-spacer"></span>
+                    @if (z.ClosedUtc is null)
+                    {
+                        @* R9 #13: a register that cannot sign in (Restricted) has its shift closed here, with its cash counted. *@
+                        <Button OnClick='() => Nav.NavigateTo($"close-register?shift={z.ShiftId}")'>Cerrar este turno</Button>
+                    }
                     <Button Disabled="_downloading" OnClick="() => DownloadAsync(z)"><Icon Name="arrow-down" Size="16" /> @(_downloading ? "Preparando…" : "Descargar para PDF")</Button>
                     <Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="() => _z = null">Cerrar</Button>
                 </Footer>

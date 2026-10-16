@@ -18,7 +18,8 @@ public sealed record PaperPending(Guid Id, string Ncf, string Type, DateTime Iss
 public sealed record EcfContingencyStatus(bool Active, DateTime? StartedUtc, string? Reason, int? Day, int MaxDays, DateTime? LastEndedUtc, DateOnly? RegularizeBy,
     bool CanSign, string? CannotSignReason, List<PaperRange> Ranges, List<PaperPending> ToRegularize, int Regularized);
 
-public sealed record PaperRegularized(int Regularized);
+/// <param name="Manual">R9 #11: B03 and B04 that are not regularized automatically.</param>
+public sealed record PaperRegularized(int Regularized, int Manual = 0);
 
 public sealed record CertificationStepState(int Number, bool Done, DateTime? DoneUtc);
 public sealed record CertificationCaseRow(Guid Id, int Row, string ENcf, string Type, string Channel, string Status, string? TrackId, string? Messages);

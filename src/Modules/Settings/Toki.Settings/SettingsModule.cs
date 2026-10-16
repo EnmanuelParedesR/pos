@@ -12,6 +12,7 @@ using Toki.BuildingBlocks.Endpoints;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
+using Toki.Fiscal.Contracts;
 using Toki.Settings.Contracts;
 using Toki.SharedKernel;
 
@@ -116,13 +117,18 @@ internal static class UpdateBusinessProfile
         }
     }
 
-    internal sealed class Handler(SettingsDbContext db, IAuditLog audit) : ICommandHandler<Command, Ok>
+    internal sealed class Handler(SettingsDbContext db, IAuditLog audit, IEcfCertificateHolder certificate) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
+            var rnc = SharedKernel.Rnc.Normalize(c.Rnc);
+            // R9 #20: the certificate may have been imported before the RNC was set, when there was nothing to compare it with.
+            if (certificate.TaxId is { } taxId && !IEcfCertificateHolder.Fits(taxId, rnc))
+                return Error.Validation("Settings.CertificateWrongRnc",
+                    $"El certificado digital instalado es de {taxId}: con el RNC {rnc} la DGII rechazaría todo lo firmado. Revise el RNC o importe el certificado de este negocio.");
             var b = await db.Business.SingleAsync(ct);
             b.Name = c.Name.Trim();
-            b.Rnc = SharedKernel.Rnc.Normalize(c.Rnc);
+            b.Rnc = rnc;
             b.Address = c.Address?.Trim();
             b.Phone = c.Phone?.Trim();
             b.ReceiptFooter = c.ReceiptFooter?.Trim();

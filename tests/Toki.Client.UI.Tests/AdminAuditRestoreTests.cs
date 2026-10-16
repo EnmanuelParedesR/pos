@@ -65,8 +65,15 @@ public sealed class AdminAuditRestoreTests
         Button("Sí, reemplazar los datos").Click();
         page.WaitForAssertion(() => page.Markup.ShouldContain("Esa frase no abre este respaldo."));
 
-        api.Json("POST", $"/api/backups/{file}/restore", new { backupBefore = "toki-20261015-101010-antes-de-restaurar.toki-backup" });
+        // R9 #3: older than the last e-CF signed: restored only after ticking that those documents are lost here.
+        api.Respond("POST", $"/api/backups/{file}/restore", body => body.Contains("\"confirmOlder\":true")
+            ? FakeApi.Response(HttpStatusCode.OK, new { backupBefore = "toki-20261015-101010-antes-de-restaurar.toki-backup" })
+            : FakeApi.Problem(HttpStatusCode.Conflict, "Backup.OlderThanLastDocument", "Este respaldo es del 14/10/2026 23:30 y el último comprobante…"));
         Continue().Click();
+        Button("Sí, reemplazar los datos").Click();
+        page.WaitForAssertion(() => page.Markup.ShouldContain("Este respaldo es del 14/10/2026 23:30"));
+        Button("Sí, reemplazar los datos").HasAttribute("disabled").ShouldBeTrue();
+        page.Find("input[aria-label='Restaurar aunque se pierdan comprobantes']").Change(true);
         Button("Sí, reemplazar los datos").Click();
         page.WaitForAssertion(() => page.Markup.ShouldContain("toki-20261015-101010-antes-de-restaurar.toki-backup"));
         api.Requests.Last(r => r.Route.EndsWith("/restore")).Body.ShouldContain("\"passphrase\":\"frase equivocada\"");

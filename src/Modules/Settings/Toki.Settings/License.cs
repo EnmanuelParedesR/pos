@@ -13,6 +13,8 @@ using Toki.BuildingBlocks.Endpoints;
 using Toki.BuildingBlocks.Messaging;
 using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
+using Toki.Fiscal.Contracts;
+using Toki.Inventory.Contracts;
 using Toki.Sales.Contracts;
 using Toki.SharedKernel;
 
@@ -181,13 +183,18 @@ internal sealed class LicenseService : IFeatureService
     }
 }
 
-/// <summary>TK-196: the trial's 14 days start with the store's first sale, not with the installation. Runs again harmlessly (the first one wins).</summary>
+/// <summary>TK-196: the trial's 14 days start with the store's first sale, not with the installation. Runs again harmlessly (the first one wins).
+/// R9 #12: only a real sale counts: not one of the DGII certification or test environments, nor a simulated one with the sample products.</summary>
 /// <remarks>shortcut: the date lives in the store's own database; an owner who edits it by hand gets more days. A cloud copy (heartbeat) is the check if it matters.</remarks>
-internal sealed class StartTrialOnFirstSale(SettingsDbContext db, LicenseService license) : IEventHandler<SaleRecordedV2>
+internal sealed class StartTrialOnFirstSale(SettingsDbContext db, LicenseService license, IFiscalDocuments fiscal, ICatalogQueries catalog)
+    : IEventHandler<SaleRecordedV2>
 {
     public async Task HandleAsync(SaleRecordedV2 e, CancellationToken ct)
     {
         if (license.TrialStartedUtc is not null) return;
+        var issuedIn = await fiscal.IssuedInAsync(e.ENcf, ct);
+        if (issuedIn == IssuedIn.Test) return;
+        if (issuedIn == IssuedIn.Simulated && await catalog.AnySampleAsync([.. e.Lines.Select(l => l.ProductId)], ct)) return;
         await db.Business.Where(b => b.TrialStartedUtc == null).ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialStartedUtc, e.OccurredUtc), ct);
         license.TrialStarted((await db.Business.AsNoTracking().SingleAsync(ct)).TrialStartedUtc ?? e.OccurredUtc);
     }
