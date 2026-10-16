@@ -133,6 +133,25 @@ it.each(["/carniceria", "/colmado", "/deli"])("TK-245: %s keeps both calls to ac
   expect(screen.getByRole("link", { name: "Hablemos" })).toBeTruthy();
 });
 
+it("TK-263: the e-CF guide, the comparison and the glossary link to each other and from /e-cf, /precios, /certificacion, /novedades and the footer", () => {
+  const expectLinks = (path: string, hrefs: string[]) => {
+    renderAt(path);
+    const all = [...document.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    for (const href of hrefs) expect(all, `${path} → ${href}`).toContain(href);
+    cleanup();
+  };
+  expectLinks("/e-cf", ["/guia-e-cf", "/glosario", "/comparar"]);
+  expectLinks("/precios", ["/comparar"]);
+  expectLinks("/certificacion", ["/glosario"]);
+  expectLinks("/guia-e-cf", ["/e-cf", "/comparar", "/certificacion", "/glosario"]);
+  expectLinks("/glosario", ["/guia-e-cf", "/comparar", "/e-cf"]);
+  expectLinks("/comparar", ["/precios"]);
+  expectLinks("/novedades", ["/guia-e-cf", "/glosario", "/comparar"]);
+  renderAt("/");
+  const footer = screen.getByRole("navigation", { name: "Pie de página" });
+  for (const name of ["Guía e-CF", "Comparar", "Glosario"]) expect(footer.textContent).toContain(name);
+});
+
 it("TK-245: /e-cf keeps the date, the extension note and the legal disclaimer", () => {
   renderAt("/e-cf");
   expect(screen.getByText("15/11/2026")).toBeTruthy();

@@ -100,6 +100,6 @@ describe("TK-260: JSON-LD", () => {
         text: "Depende en buena parte de la DGII. La parte técnica (set de pruebas y simulación) la hace Abastalia. Vea Certifíquese con Abastalia.",
       },
     });
-    for (const path of ["/carniceria", "/colmado", "/deli"]) expect(blocksOf(path).map((b) => b["@type"]), path).toContain("FAQPage");
+    for (const path of ["/carniceria", "/colmado", "/deli", "/guia-e-cf", "/comparar", "/glosario"]) expect(blocksOf(path).map((b) => b["@type"]), path).toContain("FAQPage");
   });
 });
