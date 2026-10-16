@@ -82,8 +82,8 @@
             using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
             do
             {
-                if (Peripherals.Scale is not { } scale || _manual) continue;
-                _reading = await scale.ReadAsync(_stop.Token);
+                if (Peripherals.Scale is null || _manual) continue;
+                _reading = await Peripherals.ReadScaleAsync(_stop.Token);
                 await InvokeAsync(StateHasChanged);
             } while (await timer.WaitForNextTickAsync(_stop.Token));
         }

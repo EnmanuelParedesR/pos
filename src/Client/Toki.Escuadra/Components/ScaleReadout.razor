@@ -1,0 +1,34 @@
+@* Lectura de balanza: the weight with 3 decimals and its state in words (never color alone). Nothing moves (principle 6): fixed widths,
+   no animation; only the digits and the word change. The state is announced; the digits are not (four readings a second). *@
+<div class="esc-scale" role="group" aria-label="Balanza">
+    <Icon Name="scale" />
+    <span class="esc-scale__value esc-num">@Text<span> lb</span></span>
+    <span class="esc-pill esc-pill--@Tone" role="status">@Label</span>
+</div>
+
+@code {
+    public enum States { Stable, Weighing, Empty, Overload, Disconnected }
+
+    [Parameter] public decimal Pounds { get; set; }
+    [Parameter] public States State { get; set; }
+
+    private string Text => State == States.Disconnected ? "-.---" : Pounds.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+
+    private string Label => State switch
+    {
+        States.Stable => "Estable",
+        States.Weighing => "Pesando",
+        States.Empty => "Vacía",
+        States.Overload => "Sobrecarga",
+        _ => "Desconectada",
+    };
+
+    // Amber when it does not answer: the sale goes on with the weight typed (principle 3's spirit). Red only for the overload.
+    private string Tone => State switch
+    {
+        States.Stable => "success",
+        States.Empty => "neutral",
+        States.Overload => "error",
+        _ => "warning",
+    };
+}

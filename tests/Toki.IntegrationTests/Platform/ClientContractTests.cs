@@ -210,6 +210,30 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         var audit = await Send<List<C.AuditRow>>(api, HttpMethod.Get, $"/api/audit?{range}&page=1");
         audit.ShouldContain(r => r.Action == "cash.rename-register" && r.User == "Dueña");
         (await Send<List<C.AuditRow>>(api, HttpMethod.Get, $"/api/audit?{range}&action=settings.business")).ShouldAllBe(r => r.ResourceId == null);
+
+        // The back office's remaining screens (TK-243): Resumen, Pedidos, Configuración and the e-CF panels, with the records they read
+        // (the receiver status needs the cloud: EcfExchangeTests).
+        (await Send<List<C.HourlySales>>(api, HttpMethod.Get, $"/api/reports/sales/by-hour?{range}")).ShouldNotBeEmpty();
+        (await Send<List<C.PaymentMethodSales>>(api, HttpMethod.Get, $"/api/reports/sales/by-payment-method?{range}")).ShouldContain(m => m.Method == C.PaymentMethod.Cash);
+        (await Send<List<C.Receivable>>(api, HttpMethod.Get, "/api/reports/receivables")).ShouldHaveSingleItem().Customer.ShouldBe("Ana Pérez");
+        (await Send<List<C.StockItem>>(api, HttpMethod.Get, "/api/inventory/stock")).ShouldContain(s => s.ProductId == ribs);
+        (await Send<List<decimal>>(api, HttpMethod.Get, "/api/cash/denominations")).ShouldNotBeEmpty();
+        await Send<C.EcfHealth>(api, HttpMethod.Get, "/api/fiscal/health");
+        (await Send<C.EcfContingencyStatus>(api, HttpMethod.Get, "/api/fiscal/contingency")).Active.ShouldBeFalse();
+        (await Send<C.CertificationState>(api, HttpMethod.Get, "/api/fiscal/certification")).Environment.ShouldNotBeNullOrEmpty();
+        (await Send<C.CloudLink>(api, HttpMethod.Get, "/api/sync/status")).Connected.ShouldBeFalse();
+        await Send<List<C.BackupFile>>(api, HttpMethod.Get, "/api/backups");
+        await Send<C.Empty>(api, HttpMethod.Put, "/api/catalog", new C.SaveCatalog("809-555-0104", [steak]));
+        (await Send<C.CatalogSettings>(api, HttpMethod.Get, "/api/catalog")).ProductIds.ShouldBe([steak]);
+        (await Send<C.CatalogQr>(api, HttpMethod.Get, "/api/catalog/qr?url=https%3A%2F%2Fpanel.toki.test%2Fc%2F1")).Svg.ShouldStartWith("<svg");
+        var quote = await Send<C.OrderCreated>(api, HttpMethod.Post, "/api/orders",
+            new C.CreateOrder(Guid.CreateVersion7(), C.OrderKind.Quote, customer, [new C.OrderLineInput(steak, null, 2, null)], null, null, null, 15, null));
+        (await Send<List<C.OrderItem>>(api, HttpMethod.Get, $"/api/orders?kind=Quote&{range}")).ShouldHaveSingleItem().Id.ShouldBe(quote.OrderId);
+        (await Send<C.OrderItem>(api, HttpMethod.Get, $"/api/orders/{quote.OrderId}")).Lines.ShouldHaveSingleItem().ProductId.ShouldBe(steak);
+        var roles = await Send<C.RoleList>(api, HttpMethod.Get, "/api/identity/roles");
+        await Send<C.Created>(api, HttpMethod.Post, "/api/identity/users", new { Name = "Yudelka", Code = "yudelka", Pin = "4826", RoleId = roles.Roles[0].Id });
+        (await Send<List<C.User>>(api, HttpMethod.Get, "/api/identity/users")).Count.ShouldBe(2);
+        (await Send<C.PairingCode>(api, HttpMethod.Post, "/api/identity/devices/pairing-codes", new { DeviceName = "Caja 2" })).Code.ShouldNotBeNullOrEmpty();
     }
 
     [Fact]

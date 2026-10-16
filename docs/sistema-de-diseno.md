@@ -75,8 +75,8 @@ src/Client/
 └─ …
 src/Cloud/ (celular del dueño y panel web) ← también usa Toki.Escuadra
 tests/
-├─ Toki.Escuadra.Tests/  ← bUnit por componente
-└─ Toki.Escuadra.Visual/ ← capturas con Playwright a 1024×768, 1366×768 y 390×844, tema claro/oscuro y 3 marcas
+├─ Toki.Client.UI.Tests/ ← bUnit por componente (EscuadraComponentTests) y contraste y tokens (EscuadraTokenTests), TK-243
+└─ Toki.Escuadra.Visual/ ← (pendiente) capturas con Playwright a 1024×768, 1366×768 y 390×844, tema claro/oscuro y 3 marcas
 ```
 
 - **Galería de componentes** dentro de la app (solo en modo desarrollo): cada componente con todos sus estados. Es la referencia viva para programar y revisar.

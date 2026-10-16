@@ -55,20 +55,53 @@ public sealed class Peripherals : IDisposable
     public async Task<bool> TryAsync(Func<IReceiptPrinter, Task> job)
     {
         if (Printer is null) return false;
+        bool ok;
         try
         {
             await job(Printer);
-            return true;
+            ok = true;
         }
-        catch (HardwareException) { return false; }
+        catch (HardwareException) { ok = false; }
+        Report(ref _printerWorked, ok);
+        return ok;
+    }
+
+    /// <summary>Reads the scale (every screen goes through here, so the status bar knows whether it answers).</summary>
+    public async Task<ScaleReading> ReadScaleAsync(CancellationToken ct)
+    {
+        var r = Scale is { } scale ? await scale.ReadAsync(ct) : ScaleReading.Disconnected;
+        Report(ref _scaleAnswers, r.Status != ScaleStatus.Disconnected);
+        return r;
+    }
+
+    public enum DeviceState { Configured, Connected, Error }
+
+    /// <summary>TK-243, for the status bar: null when there is none; Configured until it is first used (a print, a reading).</summary>
+    public DeviceState? ScaleState => Scale is null ? null : State(_scaleAnswers);
+    public DeviceState? PrinterState => Printer is null ? null : State(_printerWorked);
+
+    /// <summary>A device was set, started answering or stopped answering.</summary>
+    public event Action? Changed;
+
+    private bool? _scaleAnswers, _printerWorked;
+
+    private static DeviceState State(bool? worked) => worked switch { null => DeviceState.Configured, true => DeviceState.Connected, false => DeviceState.Error };
+
+    private void Report(ref bool? field, bool worked)
+    {
+        if (field == worked) return;
+        field = worked;
+        Changed?.Invoke();
     }
 
     private void Apply(HardwareSettings s)
     {
         Release();
+        (_scaleAnswers, _printerWorked) = (null, null);
         Settings = s;
         Scale = s.Scale is { } scale ? _drivers.CreateScale(scale) : null;
         Printer = s.Printer is { } printer ? _drivers.CreatePrinter(printer) : null;
+        Changed?.Invoke();
     }
 
     private void Release()

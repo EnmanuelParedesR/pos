@@ -116,6 +116,7 @@
         }
 
         <div class="sale__totals">
+            <SaleScale />
             @if (Cart.Discounts > 0)
             {
                 <div class="esc-row" style="justify-content:space-between"><span class="esc-muted">Descuentos</span><span>−@Format.Amount(Cart.Discounts)</span></div>
