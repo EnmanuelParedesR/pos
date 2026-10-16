@@ -134,4 +134,55 @@ public sealed class AdminPurchasingTests
         page.WaitForAssertion(() => page.Find(".esc-notice").TextContent.ShouldContain("Ya usó las 20 lecturas de facturas con IA de este mes. Se renuevan el 01/11/2026."));
         page.Find(".esc-notice").TextContent.ShouldContain("servicio adicional");
     }
+
+    [Fact]
+    public void TK_224_several_invoices_become_drafts_one_by_one_and_a_spent_quota_stops_the_rest()
+    {
+        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        using var _ = ctx;
+        Suppliers(api);
+        var draft = Guid.NewGuid();
+        object Read(Guid? supplier, string? name, string[] warnings) => new
+        {
+            supplierId = supplier, supplierRnc = (string?)"101234567", supplierName = name, ncf = (string?)"B0100000001", date = (DateOnly?)new DateOnly(2026, 10, 10),
+            lines = Array.Empty<object>(), subtotal = (decimal?)100m, itbis = (decimal?)18m, total = (decimal?)118m, confidence = 0.9m, warnings, source = "ai",
+        };
+        var answers = new Queue<HttpResponseMessage>([
+            FakeApi.Response(HttpStatusCode.OK, new { purchaseId = (Guid?)draft, review = Read(Farm, "Granja del Cibao", ["Agregue: Chuleta (2 × 100.00)"]) }),
+            FakeApi.Response(HttpStatusCode.OK, new { purchaseId = (Guid?)null, review = Read(null, "Sin registrar", ["No se leyó una fecha válida: escríbala."]) }),
+            FakeApi.Problem(HttpStatusCode.Conflict, "Purchasing.AiQuotaExceeded", "Este mes ya se usó todo lo incluido en su plan. Se renueva el 01/11/2026."),
+        ]);
+        api.Json("GET", "/api/purchasing/purchases", Array.Empty<object>())
+           .Json("GET", "/api/inventory/warehouses", new[] { new { id = Main, name = "Tienda", isActive = true, isMain = true } })
+           .Respond("POST", "/api/purchasing/purchases/draft-from-invoice", _ => answers.Dequeue())
+           .Json("GET", $"/api/purchasing/purchases/{draft}", new
+            {
+                id = draft, number = 7L, supplierId = Farm, supplierName = "Granja del Cibao", ncf = "B0100000001", invoiceDate = new DateOnly(2026, 10, 10), terms = "Credit",
+                method = (string?)null, dueDate = (DateOnly?)null, warehouseId = (Guid?)null, status = "Draft", subtotal = 100m, itbis = 18m, total = 118m, notes = (string?)null,
+                voidReason = (string?)null, lines = Array.Empty<object>(), attachmentName = "uno.pdf",
+            });
+        var page = ctx.Render<Purchases>();
+        page.WaitForAssertion(() => page.Find(".esc-empty__title"));
+
+        page.FindComponent<Microsoft.AspNetCore.Components.Forms.InputFile>().UploadFiles(
+            InputFileContent.CreateFromText("%PDF uno", "uno.pdf", contentType: "application/pdf"),
+            InputFileContent.CreateFromText("%PDF dos", "dos.pdf", contentType: "application/pdf"),
+            InputFileContent.CreateFromText("%PDF tres", "tres.pdf", contentType: "application/pdf"),
+            InputFileContent.CreateFromText("%PDF cuatro", "cuatro.pdf", contentType: "application/pdf"));
+
+        page.WaitForAssertion(() => page.Markup.ShouldContain("2 de 4 facturas leídas · 2 por revisar"));
+        var rows = page.FindAll("section[aria-label='Facturas leídas en lote'] tbody tr").Select(r => r.TextContent).ToList();
+        rows[0].ShouldContain("Borrador por revisar");
+        rows[1].ShouldContain("Falta el suplidor");
+        rows[2].ShouldContain("Sin leer");
+        rows[3].ShouldContain("Sin leer");
+        page.Find("section[aria-label='Facturas leídas en lote'] .esc-notice").TextContent.ShouldContain("Se renueva el 01/11/2026. Las facturas que faltan no se leyeron.");
+        api.Requests.Count(r => r.Route == "/api/purchasing/purchases/draft-from-invoice").ShouldBe(3);
+        api.Requests.ShouldNotContain(r => r.Route.EndsWith("/post", StringComparison.Ordinal));
+
+        // Each draft opens with what to check against the invoice.
+        page.Find("button[aria-label='Revisar uno.pdf']").Click();
+        page.WaitForAssertion(() => page.Find("[role=dialog]").TextContent.ShouldContain("Agregue: Chuleta (2 × 100.00)"));
+        page.Find("[role=dialog]").TextContent.ShouldContain("Compra #7 (borrador)");
+    }
 }
