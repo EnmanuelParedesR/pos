@@ -18,6 +18,9 @@ namespace Toki.Cloud.Tests;
 public class CloudApp : WebApplicationFactory<Program>
 {
     private readonly string _file = Path.Combine(Path.GetTempPath(), $"toki_cloud_test_{Guid.NewGuid():N}.db");
+
+    /// <summary>TK-207: the cold archive on disk (<c>Archive:Folder</c>); tests move documents with <c>ColdArchiver</c> themselves.</summary>
+    public string ArchiveFolder { get; } = Path.Combine(Path.GetTempPath(), $"toki_cloud_archive_{Guid.NewGuid():N}");
     private readonly IChatModel? _chatModel;
 
     public CloudApp() : this(null) { }
@@ -35,9 +38,12 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("Database:Provider", "Sqlite");
         builder.UseSetting("Database:ConnectionString", $"Data Source={_file};Pooling=False");
         builder.UseSetting("Ingest:ApplyInBackground", "false");
+        builder.UseSetting("Archive:Folder", ArchiveFolder);
+        builder.UseSetting("Archive:MoveInBackground", "false");
         builder.UseSetting("Nodes:RegisterPerMinute", "10000");
+        builder.UseSetting("Catalog:RequestsPerMinute", "10000");
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
-        builder.UseSetting("Platform:Admins:0", StaffEmail);
+        builder.UseSetting("Platform:Admins:0", LegacyAdminEmail); // R8 #1: ignored now
         builder.ConfigureTestServices(s =>
         {
             s.AddSingleton<TimeProvider>(Clock);
@@ -74,13 +80,23 @@ public class CloudApp : WebApplicationFactory<Program>
 
     public const string Password = "Carniceria2026";
 
-    /// <summary>In <c>Platform:Admins</c>: Toki staff once the account exists.</summary>
+    /// <summary>Toki staff once the account exists and <c>grant-platform-admin</c> ran (TK-189).</summary>
     public const string StaffEmail = "staff@toki.example";
+
+    /// <summary>In the old <c>Platform:Admins</c> setting, which no longer grants anything (R8 #1).</summary>
+    public const string LegacyAdminEmail = "legacy-admin@toki.example";
 
     private Owner? _staff;
 
-    /// <summary>The platform admin of this app (TK-189), registered on first use.</summary>
-    public async Task<Owner> StaffAsync() => _staff ??= await OwnerAsync(StaffEmail);
+    /// <summary>The platform admin of this app (TK-189): registered, granted with the CLI command and signed in again, on first use.</summary>
+    public async Task<Owner> StaffAsync()
+    {
+        if (_staff is not null) return _staff;
+        await OwnerAsync(StaffEmail);
+        if (await Toki.Host.Cloud.Platform.PlatformCli.RunAsync(Services, Toki.Host.Cloud.Platform.PlatformCli.Grant, StaffEmail) != 0)
+            throw new InvalidOperationException("grant-platform-admin failed");
+        return _staff = await SignInAsync(StaffEmail);
+    }
 
     /// <summary>A store for the owner with its main PC registered as a node.</summary>
     public async Task<StoreNode> StoreWithNodeAsync(Owner owner, string name = "Carnicería La Esquina")
@@ -101,6 +117,8 @@ public class CloudApp : WebApplicationFactory<Program>
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try { File.Delete(_file); }
         catch (IOException) { } // best effort: a temp file left behind is harmless
+        try { if (Directory.Exists(ArchiveFolder)) Directory.Delete(ArchiveFolder, recursive: true); }
+        catch (IOException) { }
     }
 }
 

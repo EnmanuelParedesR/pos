@@ -23,9 +23,9 @@ function renderInvite(routes: (url: string, method: string) => Response | undefi
   vi.stubGlobal("fetch", fetch);
   const onJoined = vi.fn();
   render(
-    <MemoryRouter initialEntries={["/invite/tok"]}>
+    <MemoryRouter initialEntries={["/invite#tok"]}>
       <Routes>
-        <Route path="/invite/:token" element={<InvitePage onJoined={onJoined} />} />
+        <Route path="/invite" element={<InvitePage onJoined={onJoined} />} />
         <Route path="/" element={<p>Panel</p>} />
       </Routes>
     </MemoryRouter>,
@@ -33,10 +33,10 @@ function renderInvite(routes: (url: string, method: string) => Response | undefi
   return { fetch, onJoined };
 }
 
-it("TK-217: an invited person creates an account with the invited e-mail and lands in the panel", async () => {
+it("TK-217 / R8 #12: an invited person (token after #) creates an account with the invited e-mail and lands in the panel", async () => {
   const { fetch, onJoined } = renderInvite((path, method) =>
-    path === "/api/invites/tok" ? json(200, preview)
-    : path === "/api/invites/tok/register" && method === "POST" ? json(204)
+    path === "/api/invites/preview" ? json(200, preview)
+    : path === "/api/invites/register" && method === "POST" ? json(204)
     : path === "/api/auth/login" ? json(200, tokens)
     : path === "/api/me" ? json(200, me)
     : undefined,
@@ -49,8 +49,12 @@ it("TK-217: an invited person creates an account with the invited e-mail and lan
 
   expect(await screen.findByText("Panel")).toBeTruthy();
   expect(onJoined).toHaveBeenCalledWith(me);
-  const register = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/invites/tok/register"))!;
-  expect(register[1]?.body).toBe(JSON.stringify({ password: "Carniceria2026" }));
+  // R8 #12: the token is only ever in a request body.
+  expect(fetch.mock.calls.every(([url]) => !String(url).includes("tok"))).toBe(true);
+  const previewCall = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/invites/preview"))!;
+  expect(previewCall[1]?.body).toBe(JSON.stringify({ token: "tok" }));
+  const register = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/invites/register"))!;
+  expect(register[1]?.body).toBe(JSON.stringify({ token: "tok", password: "Carniceria2026" }));
   const login = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/auth/login"))!;
   expect(login[1]?.body).toBe(JSON.stringify({ email: "contable@example.com", password: "Carniceria2026" }));
 });
@@ -58,8 +62,8 @@ it("TK-217: an invited person creates an account with the invited e-mail and lan
 it("TK-217: someone already signed in joins with one tap and gets a token for the new business", async () => {
   localStorage.setItem("toki.refreshToken", "saved");
   const { fetch, onJoined } = renderInvite((path, method) =>
-    path === "/api/invites/tok" ? json(200, preview)
-    : path === "/api/invites/tok/accept" && method === "POST" ? json(204)
+    path === "/api/invites/preview" ? json(200, preview)
+    : path === "/api/invites/accept" && method === "POST" ? json(204)
     : path === "/api/auth/refresh" ? json(200, tokens)
     : path === "/api/me" ? json(200, me)
     : undefined,
@@ -74,7 +78,7 @@ it("TK-217: someone already signed in joins with one tap and gets a token for th
 
 it("TK-217: a used, expired or revoked link says so", async () => {
   renderInvite((path) =>
-    path === "/api/invites/tok" ? json(404, { code: "Invites.Invalid", detail: "La invitación no es válida, ya se usó o venció. Pida una nueva al dueño." }) : undefined,
+    path === "/api/invites/preview" ? json(404, { code: "Invites.Invalid", detail: "La invitación no es válida, ya se usó o venció. Pida una nueva al dueño." }) : undefined,
   );
 
   expect(await screen.findByText("Invitación no válida")).toBeTruthy();
@@ -85,8 +89,8 @@ it("TK-217: a used, expired or revoked link says so", async () => {
 it("TK-217: a wrong account gets the server's message", async () => {
   localStorage.setItem("toki.refreshToken", "saved");
   renderInvite((path) =>
-    path === "/api/invites/tok" ? json(200, preview)
-    : path === "/api/invites/tok/accept" ? json(403, { code: "Invites.WrongEmail", detail: "Esta invitación es para contable@example.com. Entre con esa cuenta." })
+    path === "/api/invites/preview" ? json(200, preview)
+    : path === "/api/invites/accept" ? json(403, { code: "Invites.WrongEmail", detail: "Esta invitación es para contable@example.com. Entre con esa cuenta." })
     : undefined,
   );
 

@@ -327,6 +327,17 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("ColdHasRfce")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("ColdKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("ColdUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<int?>("DgiiCode")
                         .HasColumnType("int");
 
@@ -398,6 +409,8 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ColdUtc", "ReceivedUtc");
 
                     b.HasIndex("TenantId", "ENcf")
                         .IsUnique();
@@ -1416,6 +1429,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
 
+                    b.Property<bool>("LinkShown")
+                        .HasColumnType("bit");
+
                     b.Property<DateTime?>("RevokedUtc")
                         .IsConcurrencyToken()
                         .HasColumnType("datetime2");
@@ -1451,6 +1467,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.Property<string>("UserId")
                         .HasMaxLength(450)
                         .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("CanViewCosts")
+                        .HasColumnType("bit");
 
                     b.Property<DateTime>("JoinedUtc")
                         .HasColumnType("datetime2");

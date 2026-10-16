@@ -84,3 +84,5 @@ Los roles que el dueño ya editó conservan exactamente lo que podían hacer: qu
 ### Panel en la nube (TK-217)
 
 Miembros del negocio en el panel con dos roles: **Dueño** (todo, incluye conectar cajas e invitar) y **Solo lectura** (resumen, ventas, cuadres, asistente). Invitación por correo con enlace de un solo uso. Es independiente de los usuarios de la tienda (que entran con PIN en la caja).
+
+**Costos y ganancias en el panel (TK-201):** el Dueño siempre los ve. Un miembro de Solo lectura no, salvo que un Dueño marque "Ve costos y ganancias" en Equipo (pensado para el contador, igual que el rol Contador de la tienda tiene `costs.view`). Sin esa marca la API manda la ganancia vacía (`null`) en "Lo más vendido" y el asistente no la recibe. Hoy es el único dato de costo que llega al panel: la réplica no tiene valor de inventario ni costos de compra.

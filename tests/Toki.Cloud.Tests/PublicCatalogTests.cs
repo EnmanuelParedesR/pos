@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
 using Shouldly;
 using Toki.Inventory.Contracts;
 using Toki.Sales.Contracts;
@@ -40,5 +41,28 @@ public sealed class PublicCatalogTests(CloudApp app) : IClassFixture<CloudApp>
         items.ShouldAllBe(i => i.EnumerateObject().Select(p => p.Name).Order().SequenceEqual(new[] { "category", "name", "price", "productId", "unit" }));
 
         (await anonymous.GetAsync($"/api/public/catalog/{Guid.NewGuid()}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task A_disabled_business_has_no_public_catalog()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        var staff = await app.StaffAsync();
+        (await app.CreateClient().GetAsync($"/api/public/catalog/{node.StoreId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        (await staff.Client.PostAsync($"/api/platform/tenants/{owner.TenantId}/disable", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await app.CreateClient().GetAsync($"/api/public/catalog/{node.StoreId}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task The_public_catalog_is_rate_limited_per_address()
+    {
+        await using var limited = app.WithWebHostBuilder(b => b.UseSetting("Catalog:RequestsPerMinute", "2"));
+        var anonymous = limited.CreateClient();
+        var store = Guid.NewGuid();
+        (await anonymous.GetAsync($"/api/public/catalog/{store}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await anonymous.GetAsync($"/api/public/catalog/{store}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await anonymous.GetAsync($"/api/public/catalog/{store}")).StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
     }
 }

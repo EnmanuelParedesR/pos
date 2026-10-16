@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Host.Cloud.Accounts;
 using Toki.Host.Cloud.Nodes;
+using Toki.Host.Cloud.Persistence;
 using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Panel;
@@ -20,8 +21,12 @@ internal static class PanelEndpoints
         panel.MapGet("/sales/by-day", (DateOnly? from, DateOnly? to, Guid? storeId, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
             Run(user, q, from, to, storeId, f => q.SalesByDayAsync(f, ct)));
 
-        panel.MapGet("/sales/top-products", (DateOnly? from, DateOnly? to, Guid? storeId, int? limit, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
-            Run(user, q, from, to, storeId, f => q.TopProductsAsync(f, limit ?? 10, ct)));
+        panel.MapGet("/sales/top-products", async (DateOnly? from, DateOnly? to, Guid? storeId, int? limit, ClaimsPrincipal user, PanelQueries q, CloudDbContext db,
+            CancellationToken ct) =>
+        {
+            var showCosts = await PanelAccess.CanViewCostsAsync(user, db, ct);
+            return await Run(user, q, from, to, storeId, f => q.TopProductsAsync(f, limit ?? 10, showCosts, ct));
+        });
 
         panel.MapGet("/sales/by-cashier", (DateOnly? from, DateOnly? to, Guid? storeId, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
             Run(user, q, from, to, storeId, f => q.SalesByCashierAsync(f, ct)));
@@ -31,6 +36,11 @@ internal static class PanelEndpoints
 
         panel.MapGet("/shifts", (DateOnly? from, DateOnly? to, Guid? storeId, bool? onlyDifferences, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
             Run(user, q, from, to, storeId, f => q.ShiftsAsync(f, onlyDifferences ?? false, ct)));
+
+        panel.MapGet("/shifts/{shiftId:guid}", async (Guid shiftId, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
+            await q.ShiftReportAsync(user.GetTenantId(), shiftId, ct) is { } report
+                ? Results.Ok(report)
+                : EndpointExtensions.Problem(Error.NotFound("Panel.ShiftNotFound", "No encontramos ese cierre.")));
 
         panel.MapGet("/receivables", async (Guid? storeId, int? limit, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
             Results.Ok(await q.ReceivablesAsync(user.GetTenantId(), storeId, limit ?? 10, ct)));

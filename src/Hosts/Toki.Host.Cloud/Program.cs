@@ -51,11 +51,15 @@ builder.Services.AddScoped<IUserStore<CloudUser>, CloudUserStore>();
 
 // Guessing an 8-digit code is the only way in without an account.
 var registerPerMinute = config.GetValue("Nodes:RegisterPerMinute", 10);
+// R8 #17: the public catalog needs no account either; a customer opens it a few times, a scraper many.
+var catalogPerMinute = config.GetValue("Catalog:RequestsPerMinute", 60);
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     o.AddPolicy(CloudAuth.RegisterNodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = registerPerMinute, Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy(PublicCatalogEndpoints.RateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = catalogPerMinute, Window = TimeSpan.FromMinutes(1) }));
 });
 
 builder.Services.AddSingleton<InboxSignal>();
@@ -64,6 +68,7 @@ builder.Services.AddHostedService<InboxApplierWorker>();
 builder.Services.AddScoped<PanelQueries>();
 builder.Services.AddScoped<PlatformQueries>();
 builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
+builder.Services.AddColdArchive(config);
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
 if (openAi.IsConfigured)
@@ -114,6 +119,7 @@ app.MapIngest();
 app.MapPanel();
 app.MapAssistant();
 app.MapEcfArchive();
+app.MapColdArchive();
 app.MapPlatform();
 app.MapPublicCatalog();
 

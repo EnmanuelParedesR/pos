@@ -100,6 +100,36 @@ public sealed class PanelTests(CloudApp app) : IClassFixture<CloudApp>
     }
 
     [Fact]
+    public async Task A_closed_shift_has_its_printable_Z_with_the_opening_sales_by_method_and_cash_movements()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner, "Tienda Z");
+        var (cashier, register) = (Guid.CreateVersion7(), Guid.CreateVersion7());
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        var sale = Sale(500, cashier, Steak, "Bistec de res", new SalePaymentV1("Cash", 300), new SalePaymentV1("Card", 200));
+        var voided = new SaleRecordedV2(Guid.CreateVersion7(), 2, sale.ShiftId, cashier, null, "E320000000002", 300, 45.76m, 0,
+            [new SaleLineV2(Ground, null, "Carne molida", 1, "Pound", 300, 45.76m, 100)], [new SalePaymentV1("Cash", 300)]);
+        (await node.SendAsync(
+            Events.Envelope(new ShiftOpenedV1(sale.ShiftId, register, cashier, 1000), now.AddHours(-1)),
+            Events.Envelope(sale, now),
+            Events.Envelope(voided, now.AddMinutes(1)),
+            Events.Envelope(new SaleVoidedV1(voided.SaleId, "E340000000009", "Error", null), now.AddMinutes(2)),
+            Events.Envelope(new CashMovementRecordedV1(sale.ShiftId, "Withdrawal", PaymentMethod.Cash, 200, null), now.AddMinutes(3)),
+            Events.Envelope(new ShiftClosedV1(sale.ShiftId, register, cashier, 7, 1100, 1100, 0), now.AddHours(1)))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        await app.ApplyAsync();
+
+        var z = await owner.Client.GetFromJsonAsync<JsonElement>($"/api/panel/shifts/{sale.ShiftId}");
+        (z.GetProperty("shift").GetProperty("zNumber").GetInt32(), z.GetProperty("shift").GetProperty("storeName").GetString()).ShouldBe((7, "Tienda Z"));
+        (z.GetProperty("openingFloat").GetDecimal(), z.GetProperty("salesCount").GetInt32(), z.GetProperty("salesTotal").GetDecimal(), z.GetProperty("voidedCount").GetInt32())
+            .ShouldBe((1000m, 1, 500m, 1));
+        z.GetProperty("payments").EnumerateArray().Select(p => (p.GetProperty("method").GetString(), p.GetProperty("amount").GetDecimal())).ShouldBe([("Cash", 300m), ("Card", 200m)]);
+        var cash = z.GetProperty("cashMovements").EnumerateArray().ShouldHaveSingleItem();
+        (cash.GetProperty("type").GetString(), cash.GetProperty("amount").GetDecimal()).ShouldBe(("Withdrawal", 200m));
+
+        (await (await app.OwnerAsync()).Client.GetAsync($"/api/panel/shifts/{sale.ShiftId}")).StatusCode.ShouldBe(HttpStatusCode.NotFound); // other tenant
+    }
+
+    [Fact]
     public async Task A_range_longer_than_a_year_is_rejected()
     {
         var owner = await app.OwnerAsync();

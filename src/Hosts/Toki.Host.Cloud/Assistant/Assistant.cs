@@ -9,6 +9,7 @@ using Toki.BuildingBlocks.Persistence;
 using Toki.Host.Cloud.Accounts;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Panel;
+using Toki.Host.Cloud.Persistence;
 using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Assistant;
@@ -89,7 +90,8 @@ public sealed record AskRequest(string? Question, IReadOnlyList<AssistantTurn>? 
 public sealed record AskResponse(string Answer);
 
 /// <summary>Answers the owner's questions with read-only tools over the replica. The tenant comes from the token and is never a tool argument.</summary>
-public sealed class OwnerAssistant(IChatModel model, PanelQueries queries)
+/// <param name="showCosts">TK-201: false for a member who may not see costs; top_products then has no profit.</param>
+public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool showCosts = true)
 {
     public const int MaxDays = 92;
     private const int MaxRounds = 5;
@@ -150,7 +152,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries)
         {
             "receivables" => Serialize(await queries.ReceivablesAsync(tenantId, storeId, 10, ct)),
             "sales_by_day" => Serialize(await queries.SalesByDayAsync(f, ct)),
-            "top_products" => Serialize(await queries.TopProductsAsync(f, args.TryGetProperty("limit", out var l) && l.TryGetInt32(out var n) ? n : 10, ct)),
+            "top_products" => Serialize(await queries.TopProductsAsync(f, args.TryGetProperty("limit", out var l) && l.TryGetInt32(out var n) ? n : 10, showCosts, ct)),
             "shift_differences" => Serialize(await queries.ShiftsAsync(f, onlyDifferences: false, ct)),
             "sales_by_cashier" => Serialize(await queries.SalesByCashierAsync(f, ct)),
             "payment_mix" => Serialize(await queries.PaymentMixAsync(f, ct)),
@@ -208,7 +210,8 @@ internal static class AssistantEndpoints
 
             try
             {
-                var assistant = new OwnerAssistant(model, services.GetRequiredService<PanelQueries>());
+                var assistant = new OwnerAssistant(model, services.GetRequiredService<PanelQueries>(),
+                    await PanelAccess.CanViewCostsAsync(user, services.GetRequiredService<CloudDbContext>(), ct));
                 return Results.Ok(new AskResponse(await assistant.AskAsync(user.GetTenantId(), question, request.History ?? [], ct)));
             }
             catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))

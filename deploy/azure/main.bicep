@@ -148,6 +148,71 @@ resource openAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   properties: { value: openAi.listKeys().key1 }
 }
 
+// TK-207: cold archive of the signed e-CF (10 years, DGII). The API moves XML older than Archive:HotDays (90) out of SQL into here, as Cool.
+// Only the API's managed identity reaches it (no account keys, no public blobs).
+resource archive 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: 'sttoki${env}${take(suffix, 6)}'
+  location: location
+  tags: tags
+  kind: 'StorageV2'
+  sku: { name: 'Standard_LRS' } // shortcut: one region; Standard_GRS doubles the (tiny) storage price if the DGII copy must survive a region loss
+  properties: {
+    accessTier: 'Cool'
+    minimumTlsVersion: 'TLS1_2'
+    allowBlobPublicAccess: false
+    allowSharedKeyAccess: false
+    supportsHttpsTrafficOnly: true
+  }
+}
+
+resource archiveBlobs 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: archive
+  name: 'default'
+}
+
+resource archiveContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: archiveBlobs
+  name: 'ecf-archive'
+  properties: { publicAccess: 'None' }
+}
+
+// Write once: no blob can be changed or deleted for 10 years from its upload. Free. Left unlocked on purpose: locking is permanent
+// (az storage container immutability-policy lock); do it once the owner agrees, see docs/despliegue-azure.md.
+resource archiveRetention 'Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies@2023-05-01' = {
+  parent: archiveContainer
+  name: 'default'
+  properties: {
+    immutabilityPeriodSinceCreationInDays: 3653
+    allowProtectedAppendWrites: false
+  }
+}
+
+// Cool → Archive after 180 days (Archive's minimum stay); a document brought back stays Cool for 7 days before it goes back. Deleted after 10 years.
+resource archiveLifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@2023-05-01' = {
+  parent: archive
+  name: 'default'
+  properties: {
+    policy: {
+      rules: [
+        {
+          name: 'ecf-archive-tiering'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: { blobTypes: ['blockBlob'], prefixMatch: ['ecf-archive/'] }
+            actions: {
+              baseBlob: {
+                tierToArchive: { daysAfterModificationGreaterThan: 180, daysAfterLastTierChangeGreaterThan: 7 }
+                delete: { daysAfterCreationGreaterThan: 3660 }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}
+
 resource panel 'Microsoft.Web/staticSites@2023-12-01' = {
   name: 'stapp-${name}'
   location: staticWebAppLocation
@@ -197,11 +262,22 @@ resource apiReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
   }
 }
 
+// Storage Blob Data Contributor for the API on the archive (upload, read, bring back from Archive; the retention policy blocks changes).
+resource apiWritesArchive 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(archive.id, api.id, 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+  scope: archive
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+    principalId: api.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // Set after the Key Vault role exists: App Service resolves Key Vault references once and caches a denial for up to a day.
 resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: api
   name: 'appsettings'
-  dependsOn: [apiReadsSecrets]
+  dependsOn: [apiReadsSecrets, apiWritesArchive]
   properties: {
     ASPNETCORE_ENVIRONMENT: 'Production'
     ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
@@ -214,6 +290,8 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     AzureOpenAI__ApiVersion: openAiApiVersion
     AzureOpenAI__ApiKey: '@Microsoft.KeyVault(SecretUri=${openAiKey.properties.secretUri})'
     Panel__Origins__0: 'https://${panel.properties.defaultHostname}'
+    Archive__Blob__ServiceUri: archive.properties.primaryEndpoints.blob
+    Archive__Blob__Container: archiveContainer.name
   }
 }
 
@@ -224,3 +302,4 @@ output panelUrl string = 'https://${panel.properties.defaultHostname}'
 output panelName string = panel.name
 output sqlServer string = sqlServer.properties.fullyQualifiedDomainName
 output keyVault string = vault.name
+output archiveStorage string = archive.name

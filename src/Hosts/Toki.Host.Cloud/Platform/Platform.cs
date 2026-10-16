@@ -7,7 +7,7 @@ using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Platform;
 
-/// <summary>Toki staff (TK-189), not store owners. The role is a claim: from <c>Platform:Admins</c> (e-mails in configuration) or stored on the
+/// <summary>Toki staff (TK-189), not store owners. The role is a claim stored on the
 /// account by the <see cref="PlatformCli"/> command. Never self-service.</summary>
 public static class PlatformAuth
 {

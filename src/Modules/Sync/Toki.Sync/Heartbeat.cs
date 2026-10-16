@@ -69,13 +69,17 @@ internal static class SendHeartbeat
     }
 }
 
-/// <summary>Sends a heartbeat on start and every <c>Sync:HeartbeatMinutes</c> (60), unless <c>Sync:Enabled</c> is false (the test host).</summary>
+/// <summary>Sends a heartbeat on start and every <c>Sync:HeartbeatMinutes</c> (240), unless <c>Sync:Enabled</c> is false (the test host).</summary>
+/// <remarks>R8 #21: every upload wakes the cloud's serverless SQL for at least an hour (~0.30 USD); an hourly heartbeat kept it awake all day for
+/// every connected store. Every 4 hours it still shows a store as alive well inside the 24-hour "no data" alert.</remarks>
 internal sealed class HeartbeatWorker(IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<HeartbeatWorker> log) : BackgroundService
 {
+    public static TimeSpan Interval(IConfiguration config) => TimeSpan.FromMinutes(config.GetValue("Sync:HeartbeatMinutes", 240));
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!config.GetValue("Sync:Enabled", true)) return;
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(config.GetValue("Sync:HeartbeatMinutes", 60)), clock);
+        using var timer = new PeriodicTimer(Interval(config), clock);
         do
         {
             try

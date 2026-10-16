@@ -152,7 +152,8 @@ export async function register(email: string, password: string) {
 
 /** TK-217: a new account for the invited e-mail, already a member of the inviting business (no business of its own). */
 export async function registerByInvite(token: string, email: string, password: string) {
-  const response = await send(`/api/invites/${encodeURIComponent(token)}/register`, "POST", { password }, false);
+  // R8 #12: the token goes in the body, never in a URL.
+  const response = await send("/api/invites/register", "POST", { token, password }, false);
   if (!response.ok) throw await toError(response);
   await signIn(email, password);
 }
@@ -188,11 +189,13 @@ export function useApi<T>(path: string | null) {
 export type MemberRole = "Owner" | "ReadOnly";
 export const roleNames: Record<MemberRole, string> = { Owner: "Dueño", ReadOnly: "Solo lectura" };
 export interface MyTenant { tenantId: string; name: string; role: MemberRole }
-export interface Me { email: string | null; tenantId: string; tenantName: string; isPlatformAdmin?: boolean; role: MemberRole; tenants: MyTenant[] }
-export interface Member { userId: string; email: string | null; role: MemberRole; joinedUtc: string }
+/** `canViewCosts` (TK-201): Owners always; a Solo lectura member only when an Owner allowed it. Without it profit comes back null. */
+export interface Me { email: string | null; tenantId: string; tenantName: string; isPlatformAdmin?: boolean; role: MemberRole; tenants: MyTenant[]; canViewCosts?: boolean }
+export interface Member { userId: string; email: string | null; role: MemberRole; joinedUtc: string; canViewCosts?: boolean }
 export interface Invite { id: string; email: string; role: MemberRole; invitedBy: string; createdUtc: string; expiresUtc: string }
 export interface Members { members: Member[]; invites: Invite[] }
-export interface CreatedInvite { invite: Invite; link: string }
+/** `link`: null when the invitation went out by e-mail (R8 #1); the owner never sees it then. */
+export interface CreatedInvite { invite: Invite; link: string | null }
 export interface InvitePreview { tenantName: string; email: string; role: MemberRole; expiresUtc: string }
 export interface Store { id: string; name: string; createdUtc: string; lastEventUtc: string | null; lastSyncUtc: string | null; nodes: number }
 export interface ConnectionCode { code: string; expiresUtc: string }
@@ -228,7 +231,8 @@ export interface Summary {
 }
 export interface DaySales { date: string; count: number; total: number; discount: number; itbis: number; returns: number; net: number; voidedCount: number }
 /** `unit`: "Pound" or "Unit"; null for sales the store uploaded before TK-180. */
-export interface ProductSales { productId: string; description: string; quantity: number; total: number; profit: number; unit?: string | null }
+/** `profit`: null for a member who may not see costs (TK-201). */
+export interface ProductSales { productId: string; description: string; quantity: number; total: number; profit: number | null; unit?: string | null }
 export interface CashierSales { cashierId: string; count: number; total: number; voidedCount: number; cashierName?: string | null }
 /** `customerName`: null until the store sends the customer's account (TK-174). */
 export interface Receivables { total: number; customerCount: number; topDebtors: { customerId: string; storeId: string; debt: number; customerName?: string | null }[] }
@@ -245,6 +249,30 @@ export interface Shift {
   countedCash: number;
   difference: number;
   closedUtc: string;
+}
+/** TK-200 in the panel: one closed shift with what the cloud has of its Z. */
+export interface ShiftReport {
+  shift: Shift;
+  openingFloat: number | null;
+  openedUtc: string | null;
+  salesCount: number;
+  salesTotal: number;
+  voidedCount: number;
+  payments: PaymentMix[];
+  cashMovements: { type: string; method: PaymentMethod; count: number; amount: number }[];
+}
+/** TK-207: an archived e-CF. `ready` is false while a document in deep archive comes back (hours). */
+export interface ArchivedEcf {
+  eNcf: string;
+  status: string;
+  environment: string;
+  signedUtc: string | null;
+  receivedUtc: string;
+  replacedByENcf: string;
+  cold: boolean;
+  ready: boolean;
+  signedXml: string | null;
+  rfceXml: string | null;
 }
 /** TK-195: a store's public catalog (no sign-in). Never cost or stock. */
 export interface PublicCatalogItem { productId: string; name: string; category: string; unit: "Unit" | "Pound"; price: number }

@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useApi, type Shift } from "../api";
 import { usePanel } from "../App";
 import { cashierLabel, dateTime, money } from "../format";
 import { EmptyState, LoadError, PageHead, RangePicker, SkeletonRows, StoreSelect, lastDays } from "../ui";
 
-/** Cuadres: closed shifts (Z) with expected, counted and the difference. */
+/** Cuadres: closed shifts (Z) with expected, counted and the difference; each opens its printable Z (TK-200). */
 export function ShiftsPage() {
   const { stores, storeId, setStoreId } = usePanel();
   const [range, setRange] = useState(lastDays(7));
@@ -53,7 +54,10 @@ export function ShiftsPage() {
             {data?.map((s) => (
               <tr key={s.shiftId}>
                 <td>
-                  {dateTime(s.closedUtc)}
+                  {/* TK-200: the Z on one printable page. */}
+                  <Link to={`/shifts/${s.shiftId}`} title="Ver e imprimir el Z">
+                    {dateTime(s.closedUtc)}
+                  </Link>
                   <span className="esc-table__sub esc-only-sm">
                     {[cashierLabel(s.cashierId, s.cashierName), s.registerName ?? s.storeName].join(" · ")}
                   </span>

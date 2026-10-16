@@ -19,11 +19,17 @@ public sealed record Summary(
     int VoidedCount, IReadOnlyList<HourSales> ByHour, IReadOnlyList<PaymentMix> PaymentMix, IReadOnlyList<PanelIssue> Issues, DateTime? LastEventUtc);
 public sealed record DaySales(DateOnly Date, int Count, decimal Total, decimal Discount, decimal Itbis, decimal Returns, decimal Net, int VoidedCount);
 /// <param name="Unit">Unit of <paramref name="Quantity"/>, "Pound" or "Unit", from the newest sale with one (SaleRecordedV2, TK-180); null before that.</param>
-public sealed record ProductSales(Guid ProductId, string Description, decimal Quantity, decimal Total, decimal Profit, string? Unit = null);
+/// <param name="Profit">Null for a member who may not see costs (TK-201).</param>
+public sealed record ProductSales(Guid ProductId, string Description, decimal Quantity, decimal Total, decimal? Profit, string? Unit = null);
 /// <param name="CashierName">Null until the store sent the name (names come from UserProfileChangedV1 and RegisterChangedV1).</param>
 public sealed record ShiftDifference(
     Guid ShiftId, Guid StoreId, string StoreName, Guid RegisterId, Guid CashierId, int ZNumber, decimal ExpectedCash, decimal CountedCash, decimal Difference, DateTime ClosedUtc,
     string? RegisterName = null, string? CashierName = null);
+/// <param name="OpeningFloat">Null when the store never sent the opening (ShiftOpenedV1).</param>
+public sealed record ShiftReport(ShiftDifference Shift, decimal? OpeningFloat, DateTime? OpenedUtc, int SalesCount, decimal SalesTotal, int VoidedCount,
+    IReadOnlyList<PaymentMix> Payments, IReadOnlyList<CashMovementTotal> CashMovements);
+/// <param name="Type">As the store sends it (CashMovementRecordedV1): sale change, cash in or out, credit payment...</param>
+public sealed record CashMovementTotal(string Type, string Method, int Count, decimal Amount);
 public sealed record CashierSales(Guid CashierId, int Count, decimal Total, int VoidedCount, string? CashierName = null);
 /// <param name="CustomerName">Null until the store sent the customer's account (CustomerBalanceChangedV1, TK-174).</param>
 public sealed record CustomerDebt(Guid CustomerId, Guid StoreId, decimal Debt, string? CustomerName = null);
@@ -92,7 +98,7 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
 
     /// <summary>Sold minus returned in the range (returns on the day they happened, like the store's reports).</summary>
     /// <remarks>Returns uploaded as ReturnRecordedV1 have no lines, so they are not subtracted.</remarks>
-    public async Task<IReadOnlyList<ProductSales>> TopProductsAsync(PanelFilter f, int limit, CancellationToken ct)
+    public async Task<IReadOnlyList<ProductSales>> TopProductsAsync(PanelFilter f, int limit, bool showCosts, CancellationToken ct)
     {
         var (start, end) = BusinessDay.UtcRange(f.From, f.To);
         var sold = await (from l in Rows(db.SaleLines, f)
@@ -105,7 +111,7 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
             .ToListAsync(ct);
         return [.. sold.Concat(returned).GroupBy(l => l.ProductId)
             .Select(g => new ProductSales(g.Key, g.MaxBy(l => l.At)!.Description, g.Sum(l => l.Quantity), g.Sum(l => l.Total),
-                Money.Round(g.Sum(l => l.Total - l.Itbis - l.UnitCost * l.Quantity)), g.Where(l => l.Unit != null).MaxBy(l => l.At)?.Unit))
+                showCosts ? Money.Round(g.Sum(l => l.Total - l.Itbis - l.UnitCost * l.Quantity)) : null, g.Where(l => l.Unit != null).MaxBy(l => l.At)?.Unit))
             .OrderByDescending(p => p.Total).Take(Math.Clamp(limit, 1, 50))];
     }
 
@@ -119,6 +125,32 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
         return [.. shifts.Where(s => !onlyDifferences || s.Difference != 0).OrderByDescending(s => s.ClosedUtc)
             .Select(s => new ShiftDifference(s.ShiftId, s.StoreId, stores.GetValueOrDefault(s.StoreId, "?"), s.RegisterId, s.CashierId, s.ZNumber,
                 s.ExpectedCash, s.CountedCash, s.Difference, s.ClosedUtc, registers.GetValueOrDefault(s.RegisterId), users.GetValueOrDefault(s.CashierId)))];
+    }
+
+    /// <summary>TK-200 in the panel: one closed shift with what the replica has of its Z (opening float, sales by payment method, cash in and out).</summary>
+    public async Task<ShiftReport?> ShiftReportAsync(Guid tenantId, Guid shiftId, CancellationToken ct)
+    {
+        var s = await db.ClosedShifts.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == tenantId && x.ShiftId == shiftId, ct);
+        if (s is null) return null;
+        var f = new PanelFilter(tenantId, s.StoreId, default, default);
+        var opened = await Rows(db.OpenedShifts, f).SingleOrDefaultAsync(x => x.ShiftId == shiftId, ct);
+        var voids = Rows(db.SaleVoids, f).Select(v => v.SaleId);
+        var sales = await Rows(db.Sales, f).Where(x => x.ShiftId == shiftId).Select(x => new { x.Total, Voided = voids.Contains(x.Id) }).ToListAsync(ct);
+        var payments = await (from p in Rows(db.SalePayments, f)
+                              join x in Rows(db.Sales, f) on p.SaleId equals x.Id
+                              where x.ShiftId == shiftId && !voids.Contains(x.Id)
+                              select new { p.Method, p.Amount }).ToListAsync(ct);
+        var cash = await Rows(db.CashMovements, f).Where(m => m.ShiftId == shiftId).Select(m => new { m.Type, m.Method, m.Amount }).ToListAsync(ct);
+        var store = await db.Stores.AsNoTracking().Where(x => x.Id == s.StoreId).Select(x => x.Name).SingleOrDefaultAsync(ct);
+        var register = await Rows(db.Registers, f).Where(r => r.Id == s.RegisterId).Select(r => r.Name).SingleOrDefaultAsync(ct);
+        var cashier = await db.StoreUsers.AsNoTracking().Where(u => u.TenantId == tenantId && u.Id == s.CashierId).Select(u => u.Name).SingleOrDefaultAsync(ct);
+        var done = sales.Where(x => !x.Voided).ToList();
+        return new ShiftReport(
+            new ShiftDifference(s.ShiftId, s.StoreId, store ?? "?", s.RegisterId, s.CashierId, s.ZNumber, s.ExpectedCash, s.CountedCash, s.Difference, s.ClosedUtc,
+                register, cashier),
+            opened?.OpeningFloat, opened?.OpenedUtc, done.Count, done.Sum(x => x.Total), sales.Count - done.Count,
+            [.. payments.GroupBy(p => p.Method).Select(g => new PaymentMix(g.Key, g.Count(), g.Sum(p => p.Amount))).OrderByDescending(p => p.Amount)],
+            [.. cash.GroupBy(m => (m.Type, m.Method)).Select(g => new CashMovementTotal(g.Key.Type, g.Key.Method, g.Count(), g.Sum(m => m.Amount))).OrderBy(m => m.Type)]);
     }
 
     public async Task<IReadOnlyList<CashierSales>> SalesByCashierAsync(PanelFilter f, CancellationToken ct)
