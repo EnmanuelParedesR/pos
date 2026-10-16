@@ -16,7 +16,23 @@ public static class FunnelStages
     public const string Connected = "connected";
     public const string FirstSale = "firstSale";
     public const string SevenDays = "sevenDays";
-    public static readonly string[] All = [Account, Store, Connected, FirstSale, SevenDays];
+    /// <summary>TK-225: a store ticked the last step of the DGII certification (the authorization). Counted apart: it can come before the sales.</summary>
+    public const string Certified = "certified";
+    public static readonly string[] All = [Account, Store, Connected, FirstSale, SevenDays, Certified];
+}
+
+/// <summary>TK-225: a store in the DGII certification. <see cref="Stuck"/>: not certified and on the same step for
+/// <see cref="ProductMetrics.CertificationStuckDays"/> days or more.</summary>
+/// <param name="CurrentStep">0-based; <paramref name="TotalSteps"/> when every step is ticked.</param>
+public sealed record CertificationProgress(Guid TenantId, string TenantName, Guid StoreId, string StoreName, int CurrentStep, int TotalSteps, int StepsDone,
+    bool Certified, DateTime StepSinceUtc, int DaysInStep, bool Stuck)
+{
+    public static CertificationProgress Of(ReplicaCertification c, string tenantName, string storeName, DateTime nowUtc)
+    {
+        var days = Math.Max(0, (int)(nowUtc - c.StepSinceUtc).TotalDays);
+        return new(c.TenantId, tenantName, c.StoreId, storeName, c.CurrentStep, c.TotalSteps, c.StepsDone, c.Certified, c.StepSinceUtc, days,
+            !c.Certified && days >= ProductMetrics.CertificationStuckDays);
+    }
 }
 
 public sealed record FunnelStep(string Stage, int Tenants);
@@ -32,7 +48,7 @@ public sealed record ChurnSignal(Guid TenantId, string TenantName, Guid StoreId,
 public sealed record MetricsOverview(
     DateOnly Today, int Tenants, int Stores, int Nodes, int NodesOnline, int ActiveToday, int ActiveLast7Days, int ActiveLast30Days,
     int SalesLast30Days, decimal AmountLast30Days, IReadOnlyList<FunnelStep> Funnel, IReadOnlyList<FeatureAdoption> Features, HealthMetrics Health,
-    IReadOnlyList<ChurnSignal> Churn);
+    IReadOnlyList<ChurnSignal> Churn, IReadOnlyList<CertificationProgress> Certification);
 public sealed record DailyActivity(DateOnly Day, int ActiveStores, int Sales, decimal Amount);
 /// <param name="Week">Monday of the signup week (store days).</param>
 /// <param name="ActiveByWeek">[0] = the signup week, [1] = the next one…: tenants of the cohort with at least one active store that week.</param>
@@ -50,7 +66,9 @@ public sealed class ProductMetrics
     public static readonly TimeSpan DisconnectedAfter = TimeSpan.FromDays(3);
     public const int NoSalesDays = 7;
     public const int BacklogAlert = 500;
+    public const int CertificationStuckDays = 14;
 
+    private readonly IReadOnlyList<ReplicaCertification> _certifications;
     private readonly IReadOnlyList<Tenant> _tenants;
     private readonly IReadOnlyList<Store> _stores;
     private readonly IReadOnlyList<Node> _nodes;
@@ -62,8 +80,10 @@ public sealed class ProductMetrics
     private readonly ILookup<Guid, DateOnly> _activeDays; // by store
 
     public ProductMetrics(IReadOnlyList<Tenant> tenants, IReadOnlyList<Store> stores, IReadOnlyList<Node> nodes, IReadOnlyList<SaleFact> sales,
-        IReadOnlyList<ReplicaNodeHeartbeat> heartbeats, IReadOnlyList<ReplicaDailyUsage> usage, int failedEvents, DateTime nowUtc)
+        IReadOnlyList<ReplicaNodeHeartbeat> heartbeats, IReadOnlyList<ReplicaDailyUsage> usage, int failedEvents, DateTime nowUtc,
+        IReadOnlyList<ReplicaCertification>? certifications = null)
     {
+        _certifications = certifications ?? [];
         (_tenants, _stores, _nodes, _sales, _heartbeats, _failedEvents, _now) = (tenants, stores, nodes, sales, heartbeats, failedEvents, nowUtc);
         _today = BusinessDay.Of(nowUtc);
         _activeDays = sales.Select(s => (s.StoreId, s.Day)).Concat(usage.Where(u => u.Sales > 0).Select(u => (u.StoreId, u.Day)))
@@ -82,13 +102,27 @@ public sealed class ProductMetrics
             _today, _tenants.Count, _stores.Count, liveNodes.Count, liveNodes.Count(n => !Stale(n.LastSyncUtc)),
             ActiveStores(_today, _today), ActiveStores(_today.AddDays(-6), _today), ActiveStores(_today.AddDays(-29), _today),
             month.Sum(s => s.Count), month.Sum(s => s.Total),
-            [.. FunnelStages.All.Select(stage => new FunnelStep(stage, _tenants.Count(t => Reached(Stage(t.Id), stage))))],
+            [.. FunnelStages.All.Select(stage => new FunnelStep(stage, stage == FunnelStages.Certified
+                ? _tenants.Count(t => Certified(t.Id))
+                : _tenants.Count(t => Reached(SalesStage(t.Id), stage))))],
             Features(recent),
             new HealthMetrics(liveNodes.Count, liveNodes.Count(n => Stale(n.LastSyncUtc)),
                 recent.Count(h => h.LastErrorCode is not null), recent.Count(h => h.OutboxBacklog > BacklogAlert), _failedEvents,
                 [.. recent.GroupBy(h => h.AppVersion).Select(g => new VersionCount(g.Key, g.Count())).OrderByDescending(v => v.Nodes).ThenByDescending(v => v.Version)]),
-            Churn(disabled));
+            Churn(disabled), Certification(disabled));
     }
+
+    /// <summary>Every store in the certification of a live tenant: stuck ones first, then the longest on their step.</summary>
+    private List<CertificationProgress> Certification(HashSet<Guid> disabled)
+    {
+        var tenants = _tenants.ToDictionary(t => t.Id, t => t.Name);
+        var stores = _stores.ToDictionary(s => s.Id, s => s.Name);
+        return [.. _certifications.Where(c => !disabled.Contains(c.TenantId))
+            .Select(c => CertificationProgress.Of(c, tenants.GetValueOrDefault(c.TenantId, ""), stores.GetValueOrDefault(c.StoreId, ""), _now))
+            .OrderByDescending(c => c.Stuck).ThenBy(c => c.Certified).ThenByDescending(c => c.DaysInStep)];
+    }
+
+    private bool Certified(Guid tenantId) => _certifications.Any(c => c.TenantId == tenantId && c.Certified);
 
     public IReadOnlyList<DailyActivity> Daily(int days) =>
         [.. Enumerable.Range(0, days).Select(i => _today.AddDays(i - days + 1)).Select(day =>
@@ -119,8 +153,10 @@ public sealed class ProductMetrics
             days.Count == 0 ? null : days.Min(), days.Count == 0 ? null : days.Max());
     }
 
-    /// <summary>The furthest funnel stage the tenant reached.</summary>
-    public string Stage(Guid tenantId)
+    /// <summary>The furthest funnel stage the tenant reached: <see cref="FunnelStages.Certified"/> once a store is certified, else the sales stage.</summary>
+    public string Stage(Guid tenantId) => Certified(tenantId) ? FunnelStages.Certified : SalesStage(tenantId);
+
+    private string SalesStage(Guid tenantId)
     {
         var stores = _stores.Where(s => s.TenantId == tenantId).Select(s => s.Id).ToList();
         var days = stores.SelectMany(s => _activeDays[s]).Distinct().Count();

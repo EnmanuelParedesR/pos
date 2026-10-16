@@ -46,8 +46,7 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("Platform:Admins:0", LegacyAdminEmail); // R8 #1: ignored now
         builder.ConfigureTestServices(s =>
         {
-            s.AddSingleton<TimeProvider>(Clock);
-            if (_chatModel is not null) s.AddSingleton(_chatModel);
+            s.AddSingleton<TimeProvider>(Clock);            if (_chatModel is not null) s.AddSingleton(_chatModel);
         });
     }
 

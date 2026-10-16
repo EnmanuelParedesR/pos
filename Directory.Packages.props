@@ -24,6 +24,8 @@
     <!-- Cloud host: the stores' e-CF certificates in Key Vault, signed with the managed identity (TK-151, MIT) -->
      <PackageVersion Include="Azure.Security.KeyVault.Certificates" Version="4.9.2" />
      <PackageVersion Include="Azure.Security.KeyVault.Keys" Version="4.10.2" />
+    <!-- Cloud host: alert and invite e-mail through Azure Communication Services, with the managed identity (MIT; TK-222) -->
+    <PackageVersion Include="Azure.Communication.Email" Version="1.1.0" />
      <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.13" />
     <!-- Cloud host: panel accounts (bearer tokens) -->
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />

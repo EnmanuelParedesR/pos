@@ -211,6 +211,31 @@ Borra la base con todos los datos de las tiendas: no tiene vuelta atrás.
 | `AzureOpenAI:Endpoint`, `Deployment`, `ApiKey`, `ApiVersion` | El asistente. Si falta alguno, `/api/assistant/ask` responde 503 `Assistant.NotConfigured`. |
 | `Ingest:ApplyInBackground` | `false` solo en pruebas. |
 | `Nodes:RegisterPerMinute` | Intentos de conectar una tienda por minuto y por IP (10). |
+| `Email:Provider` | `AzureCommunicationServices` envía correos de verdad (avisos de TK-222 e invitaciones). Sin él, los correos solo quedan en el log y el panel muestra el enlace de la invitación. |
+| `Email:Endpoint`, `Email:Sender` | El recurso de Azure Communication Services (`https://<nombre>.communication.azure.com`, con la identidad administrada) y el remitente verificado (`DoNotReply@<dominio>`). |
+| `Email:ConnectionString` | Alternativa a `Email:Endpoint` (fuera de Azure): es un secreto, va en user-secrets o en una referencia a Key Vault, nunca en el repositorio. |
+
+### Correo de avisos (TK-222), apagado por defecto
+
+Los avisos por correo (rechazos de la DGII, certificado por vencer, comprobantes sin enviar por más de 24 horas, avance de la certificación) salen
+del latido y de los eventos que las tiendas ya suben: se revisan justo después de aplicar un lote, nunca con un temporizador, para no despertar la
+base serverless. Uno por condición, tienda y día. Cada miembro los elige en **Avisos** del panel; el enlace del correo da de baja sin entrar.
+
+Para encenderlos (una vez):
+
+```powershell
+az communication create -n acs-toki-prod -g rg-toki-prod --location global --data-location UnitedStates
+az communication email create -n email-toki-prod -g rg-toki-prod --location global --data-location UnitedStates
+az communication email domain create --domain-name AzureManagedDomain --email-service-name email-toki-prod -g rg-toki-prod --location global --domain-management AzureManaged
+# Enlazar el dominio al recurso de Communication Services (portal: Communication Services > Email > Domains > Connect domain).
+# La API envía con su identidad administrada:
+az role assignment create --assignee <apiPrincipalId> --role "Communication and Email Service Owner" --scope $(az communication show -n acs-toki-prod -g rg-toki-prod --query id -o tsv)
+az deployment group create -g rg-toki-prod -f deploy/azure/main.bicep -p sqlAdminLogin=... sqlAdminObjectId=... `
+  emailEndpoint=https://acs-toki-prod.unitedstates.communication.azure.com emailSender=DoNotReply@<dominio-administrado>.azurecomm.net
+```
+
+Costo: unos 0.00025 USD por correo; sin tráfico, nada. Desde ese momento las invitaciones del Equipo también van solo por correo (R8 #1).
+WhatsApp queda como complemento pagado futuro (solo la interfaz `IWhatsAppSender`).
 
 ## Desarrollo local
 

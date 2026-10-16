@@ -28,6 +28,19 @@ public sealed class OrdersTests(TokiApp app) : IClassFixture<TokiApp>
         return await admin.ProductAsync(await admin.CategoryAsync(), "Bistec " + Guid.NewGuid().ToString()[..4], price, unit: "Pound", rate: "Exempt", cost: 120m, stock: 100);
     }
 
+    private Task<List<string>> CatalogEventsAsync() => app.InScopeAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox
+        .Where(m => m.Type == typeof(CatalogItemChangedV1).FullName).OrderBy(m => m.Sequence).Select(m => m.Payload).ToListAsync());
+
+    private static async Task EditProductAsync(HttpClient admin, Guid id, string name, bool active)
+    {
+        var p = await admin.GetFromJsonAsync<JsonElement>($"/api/inventory/products/{id}");
+        (await admin.PutAsJsonAsync($"/api/inventory/products/{id}", new
+        {
+            Version = p.GetProperty("version").GetInt32(), Name = name, CategoryId = p.GetProperty("categoryId").GetGuid(), Unit = p.GetProperty("unit").GetString(),
+            ItbisRate = p.GetProperty("itbisRate").GetString(), Price = p.GetProperty("price").GetDecimal(), SellWithoutStock = false, MinimumStock = 0, IsActive = active,
+        })).EnsureSuccessStatusCode();
+    }
+
     private static async Task<JsonElement> OrderAsync(HttpClient c, Guid id) => await c.GetFromJsonAsync<JsonElement>($"/api/orders/{id}");
 
     private async Task<decimal> CreditBalanceAsync(Guid customer) =>
@@ -211,6 +224,16 @@ public sealed class OrdersTests(TokiApp app) : IClassFixture<TokiApp>
         events.Last(e => e.GetProperty("productId").GetGuid() == liver).GetProperty("visible").GetBoolean().ShouldBeFalse();
         events.Last(e => e.GetProperty("productId").GetGuid() == steak).GetProperty("visible").GetBoolean().ShouldBeTrue();
         events.ShouldAllBe(e => e.EnumerateObject().All(p => new[] { "productId", "name", "category", "unit", "price", "visible", "eventId", "occurredUtc", "aggregateId" }.Contains(p.Name)));
+
+        // R8 #17: renaming or deactivating a product on the catalog reaches the page without saving the catalog again; one not on it sends nothing.
+        var before = await CatalogEventsAsync();
+        await EditProductAsync(admin, steak, "Bistec de res", active: false);
+        await EditProductAsync(admin, liver, "Hígado", active: true);
+        await app.InScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Messaging.OutboxProcessor>().ProcessAsync(CancellationToken.None));
+        var follow = (await CatalogEventsAsync()).Skip(before.Count).Select(p => JsonDocument.Parse(p).RootElement)
+            .Where(e => e.GetProperty("productId").GetGuid() == steak || e.GetProperty("productId").GetGuid() == liver).ToList();
+        follow.ShouldHaveSingleItem().GetProperty("productId").GetGuid().ShouldBe(steak);
+        (follow[0].GetProperty("name").GetString(), follow[0].GetProperty("visible").GetBoolean()).ShouldBe(("Bistec de res", false));
 
         (await app.Client(await app.UserAsync(Roles.Cashier)).GetAsync("/api/catalog")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         var qr = await admin.GetFromJsonAsync<JsonElement>($"/api/catalog/qr?url={Uri.EscapeDataString("https://panel.toki.do/c/" + Guid.NewGuid())}");

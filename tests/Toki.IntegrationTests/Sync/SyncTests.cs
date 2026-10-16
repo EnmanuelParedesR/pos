@@ -285,6 +285,10 @@ public sealed class HeartbeatTests(TokiApp app) : IClassFixture<TokiApp>
         var setup = heartbeat.GetProperty("setup");
         (setup.GetProperty("businessNameSet").GetBoolean(), setup.GetProperty("rncSet").GetBoolean()).ShouldBe((true, true));
         setup.GetProperty("activeProducts").GetInt32().ShouldBeGreaterThanOrEqualTo(1);
+        // TK-222: what the cloud alerts on.
+        var fiscal = heartbeat.GetProperty("fiscal");
+        fiscal.GetProperty("rejectedWithoutReplacement").GetInt32().ShouldBe(0);
+        fiscal.GetProperty("oldestPendingUtc").ValueKind.ShouldNotBe(JsonValueKind.Undefined);
         var today = heartbeat.GetProperty("days")[1];
         today.GetProperty("day").GetString().ShouldBe(Toki.SharedKernel.BusinessDay.Of(app.Clock.GetUtcNow().UtcDateTime).ToString("yyyy-MM-dd"));
         (today.GetProperty("sales").GetInt32(), today.GetProperty("salesAmount").GetDecimal(), today.GetProperty("activeCashiers").GetInt32()).ShouldBe((1, 118m, 1));
@@ -297,6 +301,7 @@ public sealed class HeartbeatTests(TokiApp app) : IClassFixture<TokiApp>
             "nodeId", "appVersion", "os", "uptimeMinutes", "activeRegisters", "openShifts", "outboxBacklog", "lastErrorCode", "features", "setup", "days",
             "eventId", "occurredUtc", "aggregateId", "onAccount", "scaleConfigured", "printerConfigured", "fiscalProvider", "businessNameSet", "rncSet",
             "activeProducts", "day", "sales", "salesAmount", "activeCashiers", "voids", "returns", "license", "status", "endsUtc",
+            "fiscal", "rejectedWithoutReplacement", "oldestPendingUtc", "certificateExpiresUtc",
         };
         Names(heartbeat).ShouldAllBe(n => allowed.Contains(n));
         var users = await admin.GetFromJsonAsync<JsonElement>("/api/identity/users");

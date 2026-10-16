@@ -13,6 +13,8 @@ import { PlatformMetricsPage, PlatformStorePage, PlatformTenantPage, PlatformTen
 import { CatalogPage } from "./pages/CatalogPage";
 import { MembersPage } from "./pages/MembersPage";
 import { InvitePage } from "./pages/InvitePage";
+import { NotificationsPage, UnsubscribePage } from "./pages/NotificationsPage";
+import { ReceivedPage } from "./pages/ReceivedPage";
 
 /** What every screen gets from the frame: the tenant's stores, the selected one ("" = all) and whether this member may change things (TK-217: Owner). */
 export interface PanelContext {
@@ -31,8 +33,10 @@ export function App() {
   const isPublic = pathname.startsWith("/c/");
   // TK-217: the invite link works signed in or not; the page itself asks for the account. R8 #12: the token is after "#" (/invite#token).
   const isInvite = pathname === "/invite" || pathname.startsWith("/invite/");
+  // TK-222: the unsubscribe link of an alert e-mail works without a session.
+  const isUnsubscribe = pathname === "/unsubscribe";
   // undefined = checking a saved session, null = signed out.
-  const [me, setMe] = useState<Me | null | undefined>(hasSession() && !isPublic && !isInvite ? undefined : null);
+  const [me, setMe] = useState<Me | null | undefined>(hasSession() && !isPublic && !isInvite && !isUnsubscribe ? undefined : null);
 
   useEffect(() => {
     setOnSignedOut(() => setMe(null));
@@ -55,6 +59,8 @@ export function App() {
       </Routes>
     );
 
+  if (isUnsubscribe) return <UnsubscribePage />;
+
   if (me === undefined)
     return (
       <div className="esc-admin" style={{ minHeight: "100vh", display: "grid", placeItems: "center" }}>
@@ -72,6 +78,8 @@ export function App() {
         <Route path="shifts/:shiftId" element={<ShiftReportPage />} />
         <Route path="stores" element={<StoresPage />} />
         <Route path="assistant" element={<AssistantPage />} />
+        <Route path="received" element={<ReceivedPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
         {me.role === "Owner" && <Route path="members" element={<MembersPage me={me} />} />}
         {/* Toki staff only (TK-189); the API checks the role on every call anyway. */}
         {me.isPlatformAdmin && (
@@ -94,6 +102,8 @@ const sections: { to: string; label: string; icon: IconName }[] = [
   { to: "/shifts", label: "Cuadres", icon: "wallet" },
   { to: "/stores", label: "Tiendas", icon: "store" },
   { to: "/assistant", label: "Asistente", icon: "sparkles" },
+  { to: "/received", label: "Recibidos", icon: "inbox" },
+  { to: "/notifications", label: "Avisos", icon: "bell" },
 ];
 
 const membersSection = { to: "/members", label: "Equipo", icon: "users" as IconName };

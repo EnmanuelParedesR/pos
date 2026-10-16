@@ -48,7 +48,7 @@ public sealed class ProductMetricsTests
 
         funnel.ShouldBe(new Dictionary<string, int>
         {
-            [FunnelStages.Account] = 4, [FunnelStages.Store] = 3, [FunnelStages.Connected] = 3, [FunnelStages.FirstSale] = 2, [FunnelStages.SevenDays] = 1,
+            [FunnelStages.Account] = 4, [FunnelStages.Store] = 3, [FunnelStages.Connected] = 3, [FunnelStages.FirstSale] = 2, [FunnelStages.SevenDays] = 1, [FunnelStages.Certified] = 0,
         });
         Metrics().Stage(Lead.Id).ShouldBe(FunnelStages.Account);
         Metrics().Stage(Fresh.Id).ShouldBe(FunnelStages.Connected);

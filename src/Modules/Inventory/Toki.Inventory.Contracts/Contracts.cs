@@ -56,5 +56,9 @@ public interface IStockMovements
 public sealed record PriceChangedV1(Guid ProductId, decimal OldPrice, decimal NewPrice, decimal? OldWholesalePrice, decimal? NewWholesalePrice)
     : IntegrationEvent(ProductId);
 
+/// <summary>R8 #17: a product's name, category, unit or active flag changed (a price change is <see cref="PriceChangedV1"/>). Sales follows it to
+/// keep the public catalog current without the owner saving it again.</summary>
+public sealed record ProductChangedV1(Guid ProductId, string Name, bool IsActive) : IntegrationEvent(ProductId);
+
 public sealed record StockMovementRecordedV1(Guid MovementId, Guid ProductId, Guid WarehouseId, StockMovementType Type, decimal Quantity, decimal UnitCost, Guid? ReferenceId)
     : IntegrationEvent(ProductId);

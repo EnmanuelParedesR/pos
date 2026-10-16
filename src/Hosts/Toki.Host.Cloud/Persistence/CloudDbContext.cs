@@ -52,6 +52,9 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Fe.FeSignature> FeSignatures => Set<Fe.FeSignature>();
     public DbSet<Fe.FeReceivedDocument> FeReceived => Set<Fe.FeReceivedDocument>();
     public DbSet<Fe.FeApprovalReceived> FeApprovalsReceived => Set<Fe.FeApprovalReceived>();
+    public DbSet<ReplicaCertification> Certifications => Set<ReplicaCertification>();
+    public DbSet<Alerts.AlertPreference> AlertPreferences => Set<Alerts.AlertPreference>();
+    public DbSet<Alerts.SentAlert> SentAlerts => Set<Alerts.SentAlert>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -285,6 +288,12 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         });
         Catalog.PublicCatalogEndpoints.Configure(builder);
         Fe.FeModel.Configure(builder);
+        builder.Entity<ReplicaCertification>(e =>
+        {
+            e.ToTable("Certifications", "replica");
+            e.HasKey(c => new { c.TenantId, c.StoreId });
+        });
+        Alerts.AlertModel.Configure(builder);
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -732,6 +741,26 @@ public sealed class ReplicaNodeHeartbeat : IReplicaRow
     public string? LicenseStatus { get; set; }
     /// <summary>When the trial ends or the license expires; null before the first sale of a trial.</summary>
     public DateTime? LicenseEndsUtc { get; set; }
+    /// <summary>TK-222: the fiscal signals the alerts read; null from stores on versions before it.</summary>
+    public int? RejectedWithoutReplacement { get; set; }
+    public DateTime? OldestPendingUtc { get; set; }
+    public DateTime? CertificateExpiresUtc { get; set; }
+}
+
+/// <summary>TK-225: where a store is in the DGII certification (its newest <c>CertificationProgressedV1</c>).</summary>
+public sealed class ReplicaCertification : IReplicaRow
+{
+    public Guid TenantId { get; set; }
+    public Guid StoreId { get; set; }
+    /// <summary>The first step not ticked (0-based); <see cref="TotalSteps"/> when all are.</summary>
+    public int CurrentStep { get; set; }
+    public int TotalSteps { get; set; }
+    public int StepsDone { get; set; }
+    /// <summary>The last step (the authorization) is ticked.</summary>
+    public bool Certified { get; set; }
+    /// <summary>Since when the store is on <see cref="CurrentStep"/>: when its newest ticked step was ticked.</summary>
+    public DateTime StepSinceUtc { get; set; }
+    public DateTime ChangedUtc { get; set; }
 }
 
 /// <summary>A store day as its heartbeats reported it (the newest one wins). Sales also reach the replica one by one; this is the store's own count.</summary>

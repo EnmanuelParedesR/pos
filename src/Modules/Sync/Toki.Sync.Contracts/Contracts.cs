@@ -10,14 +10,21 @@ namespace Toki.Sync.Contracts;
 /// <param name="OutboxBacklog">Events not yet confirmed by the cloud.</param>
 /// <param name="LastErrorCode">Kind of the last upload failure ("http_503", "unreachable", "other"), never its text; null after a good upload.</param>
 /// <param name="Days">Yesterday and today (store days), so yesterday's last hour is not lost.</param>
+/// <param name="Fiscal">TK-222, added later: null from stores on older versions (the cloud then sends them no fiscal alert).</param>
 /// <param name="License">TK-196: added later, so heartbeats of older versions arrive without it (null).</param>
 public sealed record NodeHeartbeatV1(
     Guid NodeId, string AppVersion, string Os, int UptimeMinutes, int ActiveRegisters, int OpenShifts, int OutboxBacklog, string? LastErrorCode,
-    NodeFeaturesV1 Features, NodeSetupV1 Setup, IReadOnlyList<DailyUsageV1> Days, NodeLicenseV1? License = null) : IntegrationEvent(NodeId);
+    NodeFeaturesV1 Features, NodeSetupV1 Setup, IReadOnlyList<DailyUsageV1> Days, NodeLicenseV1? License = null, NodeFiscalV1? Fiscal = null) : IntegrationEvent(NodeId);
 
 /// <param name="Status">Trial, Active, Grace or Restricted.</param>
 /// <param name="EndsUtc">When the trial ends or the license expires; null for a trial that has not sold yet.</param>
 public sealed record NodeLicenseV1(string Status, DateTime? EndsUtc);
+
+/// <summary>TK-222: counts and dates the cloud alerts the owner on (no e-NCF, no amounts).</summary>
+/// <param name="RejectedWithoutReplacement">e-CF the DGII rejected in the last 30 days still without a replacement.</param>
+/// <param name="OldestPendingUtc">Signing time of the oldest e-CF not yet delivered to the DGII.</param>
+/// <param name="CertificateExpiresUtc">Expiry of the e-CF certificate; null without one.</param>
+public sealed record NodeFiscalV1(int RejectedWithoutReplacement, DateTime? OldestPendingUtc, DateTime? CertificateExpiresUtc);
 
 /// <param name="OnAccount">Some customer owes on credit (fiado in use).</param>
 /// <param name="ScaleConfigured">Null: the register (client) knows it, the store server does not; not reported yet.</param>

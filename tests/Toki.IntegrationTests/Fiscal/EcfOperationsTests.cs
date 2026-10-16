@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Xml.Linq;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -248,6 +249,12 @@ public sealed class CertificationTests(CerteCfTokiApp app) : IClassFixture<Certe
         var state = await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/certification");
         state.GetProperty("environment").GetString().ShouldBe("CerteCF");
         state.GetProperty("steps").EnumerateArray().Single().GetProperty("number").GetInt32().ShouldBe(3);
+        // TK-225: the progress goes up to the cloud.
+        var progressEvents = await app.InScopeAsync(sp => sp.GetRequiredService<Toki.BuildingBlocks.Persistence.InfraDbContext>().Outbox
+            .Where(m => m.Type == typeof(CertificationProgressedV1).FullName).OrderBy(m => m.Sequence).Select(m => m.Payload).ToListAsync());
+        var progress = JsonDocument.Parse(progressEvents[^1]).RootElement;
+        progress.GetProperty("doneSteps").EnumerateArray().Select(s => s.GetInt32()).ShouldBe([3]);
+        progress.GetProperty("totalSteps").GetInt32().ShouldBe(CertificationSteps.Count);
         state.GetProperty("cases").GetArrayLength().ShouldBe(2);
     }
 

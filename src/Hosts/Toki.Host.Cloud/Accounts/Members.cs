@@ -21,8 +21,8 @@ public interface IEmailSender
 }
 
 /// <summary>shortcut: no e-mail provider yet, so nothing is sent; the owner copies the invite link from the panel and hands it over (the dev and
-/// launch fallback of R8 #1: an account made from such a link is not marked e-mail-confirmed). Wire Azure Communication Services or SendGrid here,
-/// with <see cref="IEmailSender.Delivers"/> true, before the owners expect the e-mail. The body (it has the link) is logged only at Debug.</summary>
+/// launch fallback of R8 #1: an account made from such a link is not marked e-mail-confirmed). TK-222: <see cref="AcsEmailSender"/> sends for real
+/// once <c>Email:Provider</c> is set. The body (it has the link) is logged only at Debug.</summary>
 internal sealed class LoggingEmailSender(ILogger<LoggingEmailSender> log) : IEmailSender
 {
     public bool Delivers => false;
@@ -259,7 +259,7 @@ internal static class MemberEndpoints
     private static InviteResponse ToResponse(TenantInvite i) => new(i.Id, i.Email, i.Role, i.InvitedBy, i.CreatedUtc, i.ExpiresUtc);
 
     /// <summary><c>Panel:Url</c>, or the first allowed panel origin.</summary>
-    private static string PanelUrl(IConfiguration config) =>
+    internal static string PanelUrl(IConfiguration config) =>
         (config["Panel:Url"] ?? config.GetSection("Panel:Origins").Get<string[]>()?.FirstOrDefault() ?? "").TrimEnd('/');
 
     private static byte[] Hash(string token) => SHA256.HashData(Encoding.UTF8.GetBytes(token));

@@ -11,6 +11,7 @@ using Toki.BuildingBlocks.Persistence;
 using Toki.BuildingBlocks.Security;
 using Toki.CashRegister.Contracts;
 using Toki.Customers.Contracts;
+using Toki.Fiscal.Contracts;
 using Toki.Inventory.Contracts;
 using Toki.Sales.Contracts;
 using Toki.Settings.Contracts;
@@ -26,7 +27,7 @@ internal static class SendHeartbeat
     internal sealed record Command : ICommand<Ok>;
 
     internal sealed class Handler(SyncDbContext db, InfraDbContext infra, IOutbox outbox, ISalesReports sales, ICashRegisterReports cash,
-        ICustomerReports customers, IInventoryReports inventory, ISettingsQueries settings, IFeatureService license, IConfiguration config, TimeProvider clock)
+        ICustomerReports customers, IInventoryReports inventory, ISettingsQueries settings, IFeatureService license, IFiscalReports fiscal, IConfiguration config, TimeProvider clock)
         : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
@@ -46,6 +47,7 @@ internal static class SendHeartbeat
             }
             var shifts = await cash.ShiftsAsync(today.AddDays(-30), today, ct);
             var profile = await settings.GetBusinessProfileAsync(ct);
+            var fiscalHealth = await fiscal.HealthAsync(ct);
 
             outbox.Add(new NodeHeartbeatV1(
                 connection.NodeId, AppVersion, RuntimeInformation.OSDescription, UptimeMinutes(),
@@ -53,7 +55,8 @@ internal static class SendHeartbeat
                 await infra.Outbox.CountAsync(m => m.UploadedUtc == null, ct), CloudUploader.ErrorCode(connection.LastError),
                 new NodeFeaturesV1((await customers.ReceivablesAsync(ct)).Any(r => r.Total > 0), null, null, config["Fiscal:Provider"] ?? "Simulated"),
                 new NodeSetupV1(!string.IsNullOrWhiteSpace(profile.Name), !string.IsNullOrWhiteSpace(profile.Rnc), (await inventory.ValueAsync(ct)).Count(p => p.IsActive)),
-                days, new NodeLicenseV1(license.Status.ToString(), license.EndsUtc)));
+                days, new NodeLicenseV1(license.Status.ToString(), license.EndsUtc),
+                new NodeFiscalV1(fiscalHealth.RejectedWithoutReplacement, fiscalHealth.OldestPendingUtc, fiscalHealth.CertificateExpiresUtc)));
             return Ok.Value;
         }
 

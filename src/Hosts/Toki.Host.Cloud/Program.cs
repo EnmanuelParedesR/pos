@@ -68,7 +68,8 @@ builder.Services.AddSingleton<InboxApplier>();
 builder.Services.AddHostedService<InboxApplierWorker>();
 builder.Services.AddScoped<PanelQueries>();
 builder.Services.AddScoped<PlatformQueries>();
-builder.Services.AddSingleton<IEmailSender, LoggingEmailSender>();
+AcsEmailSender.AddEmail(builder.Services, config);
+builder.Services.AddScoped<Toki.Host.Cloud.Alerts.AlertNotifier>();
 builder.Services.AddColdArchive(config);
 builder.Services.AddFe(config, builder.Environment);
 
@@ -126,6 +127,7 @@ app.MapColdArchive();
 app.MapPlatform();
 app.MapPublicCatalog();
 app.MapFe();
+Toki.Host.Cloud.Alerts.AlertEndpoints.MapAlerts(app);
 
 await app.RunAsync();
 
