@@ -107,7 +107,7 @@ public sealed class QuotaTests(QuotaApp app) : IClassFixture<QuotaApp>
         var start = await staff.Client.GetFromJsonAsync<JsonElement>($"/api/platform/tenants/{owner.TenantId}/usage");
         start.GetProperty("usage").GetProperty("plan").GetString().ShouldBe("Default");
         start.GetProperty("plans").EnumerateArray().Select(p => p.GetString()).ShouldBe(["Default", "Essential", "MultiRegister", "MultiStore"]);
-        start.GetProperty("addOns").EnumerateArray().Select(p => p.GetString()).ShouldBe(["AssistantPack", "ExtraRegister", "ExtraStore", "ExtraUsers", "SupplierInvoiceReading"]);
+        start.GetProperty("addOns").EnumerateArray().Select(p => p.GetString()).ShouldBe(["AssistantPack", "ExtraCashier", "ExtraRegister", "ExtraStore", "ExtraUsers", "SupplierInvoiceReading"]);
 
         (await staff.Client.PutAsJsonAsync($"/api/platform/tenants/{owner.TenantId}/plan", new { plan = "Gold", addOns = Array.Empty<string>() }))
             .StatusCode.ShouldBe(HttpStatusCode.BadRequest);

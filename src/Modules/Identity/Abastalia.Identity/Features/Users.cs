@@ -30,7 +30,8 @@ internal static class CreateUser
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me, PinPepper pepper) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me, PinPepper pepper, IFeatureService license)
+        : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -39,6 +40,7 @@ internal static class CreateUser
             if (c.RoleId == Role.AdministratorId && !await db.IsAdministratorAsync(me.UserId, ct)) return IdentityErrors.AdministratorOnly;
             if (Escalation.NotHeld(me, role.Effective) is { Count: > 0 } missing) return IdentityErrors.PermissionsNotHeld(missing);
             if (await db.Users.AnyAsync(u => u.Code == User.NormalizeCode(c.Code), ct)) return IdentityErrors.DuplicateCode;
+            if (CashierSeats.Counts(role) && await CashierSeats.RoomForAsync(db, license, 1, ct) is { } full) return full; // TK-277
 
             var user = new User { Id = Guid.CreateVersion7(), Name = c.Name.Trim(), Code = User.NormalizeCode(c.Code), RoleId = c.RoleId };
             user.ChangePin(c.Pin, pepper.Value);
@@ -72,7 +74,8 @@ internal static class UpdateUser
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me, PinPepper pepper, TimeProvider clock) : ICommandHandler<Command, Ok>
+    internal sealed class Handler(IdentityDbContext db, IOutbox outbox, IAuditLog audit, IUserContext me, PinPepper pepper, TimeProvider clock, IFeatureService license)
+        : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
@@ -89,6 +92,10 @@ internal static class UpdateUser
             // At least one active Administrador always remains: only an active Administrador changes one, and never themselves (above).
             // R11 A15: a new PIN for someone else lets whoever types it sign in as them: only an Administrador resets it.
             if (c.Pin is not null && user.Id != me.UserId && !await db.IsAdministratorAsync(me.UserId, ct)) return IdentityErrors.PinResetAdministratorOnly;
+            // TK-277: enabling a cashier, or making someone one, needs a free seat; disabling and editing never do.
+            if (c.IsActive && CashierSeats.Counts(roles.Single(r => r.Id == c.RoleId)) && !(user.IsActive && CashierSeats.Counts(roles.Single(r => r.Id == user.RoleId)))
+                && await CashierSeats.RoomForAsync(db, license, 1, ct) is { } full)
+                return full;
 
             var before = new { user.Name, user.RoleId, user.IsActive };
             user.Name = c.Name.Trim();
@@ -135,6 +142,32 @@ internal static class ListUsers
                         .AsNoTracking().ToListAsync(ct);
                     return Results.Ok(items);
                 })
+                .RequirePermission(Permissions.UsersManage).WithTags("Identity");
+    }
+}
+
+/// <summary>TK-277: cashiers enabled and how many the license allows (null = no limit), for Configuración → Usuarios.</summary>
+internal static class GetCashierSeats
+{
+    public sealed record Response(int Used, int? Limit);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapGet("/api/identity/cashier-seats", async (IdentityDbContext db, IFeatureService license, CancellationToken ct) =>
+                    Results.Ok(new Response(await CashierSeats.CountAsync(db, ct), license.LimitOf(Limit.Cashiers) is var n && n != int.MaxValue ? n : null)))
+                .RequirePermission(Permissions.UsersManage).WithTags("Identity");
+    }
+}
+
+/// <summary>TK-277: who used one PIN at two registers at once in the last 7 days (the Resumen warns; nothing is blocked).</summary>
+internal static class ListSharedPins
+{
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapGet("/api/identity/shared-pins", async (IdentityDbContext db, TimeProvider clock, CancellationToken ct) =>
+                    Results.Ok(await SharedPins.SinceAsync(db, clock.GetUtcNow().UtcDateTime.AddDays(-7), ct)))
                 .RequirePermission(Permissions.UsersManage).WithTags("Identity");
     }
 }

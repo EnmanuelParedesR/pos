@@ -1,5 +1,6 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { ApiError, forgotPassword, identityMessages, register, resendConfirmation, signIn } from "../api";
+import { claimReferral } from "../referral";
 import { Notice } from "../ui";
 import { AuthFrame, PasswordChecklist, PasswordField } from "./AuthFrame";
 import { contactHref, site } from "./site/config";
@@ -65,6 +66,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
         if (err instanceof ApiError && err.code === "Auth.NotAllowed") setCheckEmail(true);
         throw err;
       }
+      await claimReferral(); // TK-276
       await onSignedIn();
     });
   }

@@ -39,7 +39,8 @@ public sealed record BillingChangeResponse(bool Changed);
 public sealed record PortalResponse(string Url);
 
 /// <summary>The store's license (TK-249), or null when its business has no paid time left.</summary>
-public sealed record NodeLicenseResponse(string? License);
+/// <param name="TrialDays">TK-276: the length of the store's trial when its business came with a referral code (30); null = the store's own 14.</param>
+public sealed record NodeLicenseResponse(string? License, int? TrialDays = null);
 
 /// <param name="ManualUntilUtc">Paid through this date whatever Paddle says; null removes the override.</param>
 public sealed record BillingOverrideRequest(DateTime? ManualUntilUtc, string? Note);
@@ -79,10 +80,13 @@ internal static class BillingEndpoints
         app.MapPost(PaddleWebhook.Path, (HttpRequest request, PaddleWebhook webhook, CancellationToken ct) => webhook.HandleAsync(request, ct))
             .AllowAnonymous().ExcludeFromDescription();
 
-        app.MapPost("/api/nodes/license", async (ClaimsPrincipal user, CloudLicenses licenses, CancellationToken ct) =>
+        app.MapPost("/api/nodes/license", async (ClaimsPrincipal user, CloudLicenses licenses, CloudDbContext db, PaddleOptions paddle, ReferralOptions referrals,
+            CancellationToken ct) =>
         {
             var node = NodeIdentity.From(user);
-            return Results.Ok(new NodeLicenseResponse(await licenses.IssueAsync(node.TenantId, node.StoreId, ct)));
+            var referred = ReferralEndpoints.On(paddle, referrals)
+                && await db.TenantSubscriptions.AnyAsync(s => s.TenantId == node.TenantId && s.ReferredByCode != null, ct);
+            return Results.Ok(new NodeLicenseResponse(await licenses.IssueAsync(node.TenantId, node.StoreId, ct), referred ? referrals.ReferredTrialDays : null));
         }).RequireAuthorization(CloudAuth.NodePolicy);
 
         // The public /precios page reads the real prices (no account; limited per IP like the public catalog).

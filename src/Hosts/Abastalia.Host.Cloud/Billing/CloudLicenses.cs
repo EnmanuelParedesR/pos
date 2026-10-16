@@ -82,8 +82,10 @@ internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, Bi
         string[]? Config(string p) => config.GetSection($"Billing:Plans:{p}:Features").Get<string[]>();
         var features = (own?.Features?.ToArray() ?? Config(plan) ?? basic?.Features?.ToArray() ?? Config(Quota.DefaultPlan) ?? [])
             .Concat(addOns.Where(a => Enum.TryParse<Feature>(a, out _))).Distinct().ToList();
-        var limits = Count(config, catalog, plan, addOns, nameof(Limit.Registers), t => t.Registers) is { } registers
-            ? new Dictionary<string, int> { [nameof(Limit.Registers)] = registers } : [];
+        var limits = new Dictionary<string, int>();
+        if (Count(config, catalog, plan, addOns, nameof(Limit.Registers), t => t.Registers) is { } registers) limits[nameof(Limit.Registers)] = registers;
+        // TK-277: the plan's cashiers plus each add-on's (ExtraCashier 1, ExtraRegister 2, ExtraStore 4); none = the store does not limit them.
+        if (Count(config, catalog, plan, addOns, nameof(Limit.Cashiers), t => t.Cashiers) is { } cashiers) limits[nameof(Limit.Cashiers)] = cashiers;
         return new LicenseData(store, config[$"Billing:Plans:{plan}:Name"] ?? catalog.Of(plan)?.Name ?? plan, features, limits, issuedUtc, expiresUtc);
     }
 

@@ -139,3 +139,14 @@ it("signs in and hands over to the panel", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
   await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalled());
 });
+
+it("TK-276: signing in sends the code kept from /precios?ref= so the store's trial is 30 days, and a failure does not stop it", async () => {
+  localStorage.setItem("abastalia.ref", "ABCD2345");
+  const { fetch, onSignedIn } = renderSignIn((path) => (path === "/api/auth/login" ? json(200, { accessToken: "a", refreshToken: "r" }) : json(403, { code: "Forbidden" })));
+  fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "duena@esquina.do" } });
+  fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carniceria2026" } });
+  fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+  await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalled());
+  const claim = fetch.mock.calls.find(([url]) => String(url).endsWith("/api/billing/referrals/claim")) as unknown as [string, RequestInit];
+  expect(JSON.parse(String(claim[1].body))).toEqual({ code: "ABCD2345" });
+});

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { apiUrl } from "./api";
+import { api, apiUrl } from "./api";
 
 /** TK-255: the code from /precios?ref=CODE, kept in this browser until the business's first checkout sends it (the cloud keeps it from then on). */
 const key = "abastalia.ref";
@@ -15,6 +15,18 @@ export function keptReferral(): string | null {
     return normalizeReferral(localStorage.getItem(key));
   } catch {
     return null;
+  }
+}
+
+/** TK-276: on signing in, the kept code goes to the cloud so the new business's store trial lasts 30 days. Best effort: a member who is not
+ *  the owner, an old business or no internet changes nothing, and the first checkout still sends the code. */
+export async function claimReferral() {
+  const code = keptReferral();
+  if (!code) return;
+  try {
+    await api("/api/billing/referrals/claim", "POST", { code });
+  } catch {
+    // not kept now; the checkout sends it
   }
 }
 

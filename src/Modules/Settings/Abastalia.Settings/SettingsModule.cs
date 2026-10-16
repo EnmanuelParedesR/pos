@@ -61,6 +61,8 @@ internal sealed class Business
     public string? SupervisorApprovals { get; set; }
     /// <summary>TK-196: the first sale, which starts the 14-day trial; null while the store has not sold.</summary>
     public DateTime? TrialStartedUtc { get; set; }
+    /// <summary>TK-276: the trial's length when the cloud said the business came recommended (30); null = 14.</summary>
+    public int? TrialDays { get; set; }
     /// <summary>TK-238: the backup schedule saved on screen; null follows appsettings (<see cref="BackupSchedule"/>). An empty folder means no copy.</summary>
     public string? BackupCopyTo { get; set; }
     public TimeSpan? BackupTime { get; set; }

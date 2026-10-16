@@ -605,16 +605,19 @@ function Pricing() {
         <div className="grid grid--3">
           <Plan name="Esencial" note="Para empezar con un solo punto de cobro." price={price("Essential")}>
             <li>Solo la PC principal</li>
+            <li>2 cajeros incluidos</li>
             <li>2 usuarios del panel</li>
             <li>100 preguntas al asistente al mes</li>
           </Plan>
           <Plan name="Estándar" note="La PC principal y una caja más." price={price("Default")} brand>
             <li>PC principal + 1 caja</li>
+            <li>4 cajeros incluidos</li>
             <li>3 usuarios del panel</li>
             <li>300 preguntas al asistente al mes</li>
           </Plan>
           <Plan name="Pro" note="Para la tienda con fila." price={price("MultiRegister")}>
             <li>PC principal + 3 cajas</li>
+            <li>8 cajeros incluidos</li>
             <li>5 usuarios del panel</li>
             <li>600 preguntas al asistente al mes</li>
             <li>Soporte más rápido</li>
@@ -622,7 +625,7 @@ function Pricing() {
         </div>
         <p className="muted">Todas las funciones en todos los planes: balanza, carnicería, mayoreo, e-CF, inventario, respaldo en la nube y 20 facturas de suplidor leídas con IA al mes.</p>
         {/* TK-249: the account first, then "Plan y facturación" in the panel (pago con tarjeta por Paddle). */}
-        {referred && <p className="note">Viene recomendado por un cliente de Abastalia. Cree su cuenta y elija su plan.</p>}
+        {referred && <p className="note">Viene recomendado por un cliente de Abastalia: su prueba gratis dura 30 días en lugar de 14. Cree su cuenta y elija su plan.</p>}
         <p className="actions">
           <Link className="btn" to="/app/billing">
             Crear su cuenta y elegir plan
@@ -635,14 +638,16 @@ function Pricing() {
           <table>
             <thead><tr><th>Adicional</th><th>Incluye</th><th>Precio al mes</th></tr></thead>
             <tbody>
-              <tr><td>Caja adicional</td><td>Una caja más, cuantas necesite.</td><td><Price value={price("ExtraRegister")} /></td></tr>
-              <tr><td>Sucursal adicional</td><td>Otra tienda con su licencia y las cajas de su plan.</td><td><Price value={price("ExtraStore")} /></td></tr>
+              <tr><td>Caja adicional</td><td>Una caja más, cuantas necesite, con 2 cajeros más.</td><td><Price value={price("ExtraRegister")} /></td></tr>
+              <tr><td>Cajero adicional</td><td>Un cajero más, con su propio usuario y PIN.</td><td><Price value={price("ExtraCashier")} /></td></tr>
+              <tr><td>Sucursal adicional</td><td>Otra tienda con su licencia, las cajas de su plan y 4 cajeros más.</td><td><Price value={price("ExtraStore")} /></td></tr>
               <tr><td>Lectura de facturas</td><td>300 facturas de suplidor más al mes, leídas con IA.</td><td><Price value={price("SupplierInvoiceReading")} /></td></tr>
               <tr><td>Asistente +1,000 preguntas</td><td>1,000 preguntas más al mes al asistente del panel.</td><td><Price value={price("AssistantPack")} /></td></tr>
               <tr><td>Usuarios del panel +5</td><td>Cinco invitaciones más al panel cada mes.</td><td><Price value={price("ExtraUsers")} /></td></tr>
             </tbody>
           </table>
         </div>
+        <p className="muted">Cajeros: cada persona que vende con su usuario y PIN; el dueño no cuenta. Si alguien deja de trabajar, se desactiva y su lugar queda libre.</p>
         <p className="muted">Pago anual: 10 meses por 12. Paddle cobra por Abastalia y calcula los impuestos.</p>
       </Section>
       <Section className="counter">
