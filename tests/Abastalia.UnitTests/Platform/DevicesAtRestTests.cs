@@ -26,10 +26,14 @@ public sealed class DevicesAtRestTests
         DiskEncryptionHealthCheck.Evaluate(json).Status.ShouldBe(status);
 
     [Fact]
-    public void C14_from_the_screen_a_copy_goes_to_a_local_drive_or_a_folder_an_administrator_listed()
+    public void C14_from_the_screen_a_copy_goes_to_a_local_drive() =>
+        BackupSettings.CopyAllowed(Path.Combine(Path.GetTempPath(), "copia"), new ConfigurationBuilder().Build()).ShouldBeTrue();
+
+    [Fact, Trait("Category", "Windows")]
+    public void C14_a_network_folder_only_when_an_administrator_listed_it()
     {
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only: \\\\server\\share is a UNC path only on Windows (the Windows CI job runs it).");
         var none = new ConfigurationBuilder().Build();
-        BackupSettings.CopyAllowed(Path.Combine(Path.GetTempPath(), "copia"), none).ShouldBeTrue();
         BackupSettings.CopyAllowed(@"\\intruso\respaldos", none).ShouldBeFalse();
 
         var listed = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
