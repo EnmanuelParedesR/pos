@@ -10,8 +10,10 @@ namespace Abastalia.Host.Cloud.Accounts;
 /// cloud's <see cref="IEmailSender"/> (logged in dev, ACS when configured). Links go to the panel with the code after "#" (R8 #12), never to the API.
 /// Identity sends a reset code only to a confirmed address and answers forgotPassword the same either way (no account enumeration).</summary>
 /// <remarks>TK-248: they count as the business's e-mails but are never refused (a reset must always arrive); the per-IP limits hold them back,
-/// and R11 B-Med2 caps them per recipient (<see cref="IdentityEmailCap"/>).</remarks>
-internal sealed class IdentityEmails(IEmailSender email, IConfiguration config, IQuota quota, IdentityEmailCap cap, ILogger<IdentityEmails> log)
+/// and R11 B-Med2 caps them per recipient (<see cref="IdentityEmailCap"/>).
+/// MapIdentityApi resolves this once from the root provider, so the scoped <see cref="IQuota"/> is taken from a scope per e-mail (e2e 2026-10-16:
+/// with scope validation, as in Development, the host did not start).</remarks>
+internal sealed class IdentityEmails(IEmailSender email, IConfiguration config, IServiceScopeFactory scopes, IdentityEmailCap cap, ILogger<IdentityEmails> log)
     : IEmailSender<CloudUser>
 {
     /// <summary>TK-231: POST /api/auth/resendConfirmationEmail, per IP (Program.cs).</summary>
@@ -56,6 +58,8 @@ internal sealed class IdentityEmails(IEmailSender email, IConfiguration config, 
             return;
         }
         await email.SendAsync(to, subject, body, CancellationToken.None);
-        if (user.TenantId != Guid.Empty) await quota.AddAsync(user.TenantId, Meter.Emails, 1);
+        if (user.TenantId == Guid.Empty) return;
+        await using var scope = scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IQuota>().AddAsync(user.TenantId, Meter.Emails, 1);
     }
 }

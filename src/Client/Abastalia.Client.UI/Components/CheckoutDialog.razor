@@ -78,17 +78,21 @@
                     @if (_method is PaymentMethod.Card or PaymentMethod.Transfer)
                     {
                         <label class="esc-field">
-                            <span>Referencia (opcional)</span>
-                            <input class="esc-input" maxlength="60" @bind="_reference" placeholder="@(_method == PaymentMethod.Card ? "Aprobación del verifone" : "Número de la transferencia")" />
+                            <span>@(_referenceRequired ? "Referencia" : "Referencia (opcional)")</span>
+                            <input class="esc-input" maxlength="60" @bind="_reference" @bind:event="oninput" aria-required="@(_referenceRequired ? "true" : "false")" placeholder="@(_method == PaymentMethod.Card ? "Aprobación del verifone" : "Número de la transferencia")" />
                         </label>
                     }
                     @if (_method == PaymentMethod.OnAccount && Cart.Customer is { } c)
                     {
                         <div class="esc-subtitle">Debe @Format.WithCurrency(c.Debt) de un límite de @Format.WithCurrency(c.CreditLimit).</div>
                     }
+                    @if (MissingReference)
+                    {
+                        <div class="esc-subtitle">Escriba el número de autorización para cobrar.</div>
+                    }
                     @if (CurrentAmount < Pending)
                     {
-                        <Button OnClick="AddPayment">Agregar este pago y cobrar el resto con otro medio</Button>
+                        <Button Disabled="MissingReference" OnClick="AddPayment">Agregar este pago y cobrar el resto con otro medio</Button>
                     }
                 }
             </div>
@@ -121,6 +125,9 @@
     private string? _reference, _notice;
     private Notice.Kinds _noticeKind = Notice.Kinds.Error;
     private bool _sending, _suggested, _focusInput = true;
+    /// <summary>R11 A16: the store asks for the card authorization or transfer number (on unless the owner turned it off); the server refuses
+    /// the sale without it, so the checkout does not let it through (e2e 2026-10-16: the field said "opcional").</summary>
+    private bool _referenceRequired = true;
     private readonly List<Payment> _payments = [];
     private readonly List<Guid> _approvals = [];
     private ElementReference _input;
@@ -146,9 +153,10 @@
     /// <summary>Nobody hands over more than one extra RD$ 2,000 bill: more is a typo or a scanned code.</summary>
     private bool TooMuchCash => Received > MinimumCash + 2000;
     // TK-239: a RD$ 0 sale (100 % discount) is confirmed without payments.
+    private bool MissingReference => _referenceRequired && _method is PaymentMethod.Card or PaymentMethod.Transfer && string.IsNullOrWhiteSpace(_reference);
     private bool CanConfirm => _total == 0 || (_method == PaymentMethod.Cash
         ? Received >= MinimumCash && Received == Math.Floor(Received) && !TooMuchCash
-        : CurrentAmount == Pending && Pending > 0);
+        : CurrentAmount == Pending && Pending > 0 && !MissingReference);
 
     private IEnumerable<decimal> QuickAmounts => new[] { MinimumCash, Math.Ceiling(Pending / 100) * 100, Math.Ceiling(Pending / 500) * 500, Math.Ceiling(Pending / 1000) * 1000, 2000m }
         .Where(v => v >= MinimumCash).Distinct().Order().Take(5);
@@ -164,6 +172,9 @@
         if (Cart.CheckoutUncertain)
             Fail(Notice.Kinds.Warning, "El último intento de cobro no recibió respuesta. Confirme de nuevo: si ya se guardó, no se cobra dos veces.");
     }
+
+    protected override async Task OnInitializedAsync() =>
+        _referenceRequired = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value?.RequirePaymentReference ?? true;
 
     // The field is focused after the render that shows it (switching cash ↔ card replaces the input).
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -193,7 +204,7 @@
 
     private void AddPayment()
     {
-        if (CurrentAmount <= 0 || CurrentAmount >= Pending) return;
+        if (CurrentAmount <= 0 || CurrentAmount >= Pending || MissingReference) return;
         _payments.Add(new Payment(_method, Math.Round(CurrentAmount, 2), string.IsNullOrWhiteSpace(_reference) ? null : _reference.Trim()));
         _reference = null;
         _method = PaymentMethod.Cash;
