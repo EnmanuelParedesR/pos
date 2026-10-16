@@ -32,7 +32,7 @@ export interface PanelContext {
 export const usePanel = () => useOutletContext<PanelContext>();
 
 /** Signed-in screens live under /app (TK-228); these older addresses forward there so saved links and older e-mails keep working. */
-const movedToApp = ["sales", "shifts", "stores", "assistant", "received", "notifications", "members", "platform"];
+export const movedToApp = ["sales", "shifts", "stores", "assistant", "received", "notifications", "members", "platform"];
 
 function ToApp() {
   const { pathname, search, hash } = useLocation();

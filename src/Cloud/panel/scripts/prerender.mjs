@@ -1,15 +1,16 @@
 // TK-228: after `vite build` and `vite build --ssr src/prerender.tsx`, writes each public page as real HTML (title, description, content) so
 // search engines and link previews read it without JavaScript. The app then takes over in the browser.
 //   dist/index.html, dist/precios.html, …  the public pages
-//   dist/shell.html                        the empty app, for every other address (/app, /c/…, /invite)
+//   dist/shell.html                        the empty app, for the app's own addresses (/app, /c/…, /invite); see swa-config.mjs
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { swaConfig } from "./swa-config.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
 const ssr = join(root, ".ssr");
-const { render, pages, site } = await import(pathToFileURL(join(ssr, "prerender.js")).href);
+const { render, pages, site, movedToApp } = await import(pathToFileURL(join(ssr, "prerender.js")).href);
 
 const shell = readFileSync(join(dist, "index.html"), "utf8");
 writeFileSync(join(dist, "shell.html"), shell);
@@ -36,16 +37,9 @@ for (const page of pages) {
   writeFileSync(join(dist, file(page.path)), html);
 }
 
-// Static Web Apps: each public path serves its page; every other address falls back to the app.
+// Static Web Apps: public pages, the app's own addresses and a real 404 for everything else.
 const configPath = join(dist, "staticwebapp.config.json");
-const config = JSON.parse(readFileSync(configPath, "utf8"));
-config.routes = [
-  ...pages.filter((p) => p.path !== "/" && p.path !== "/404").map((p) => ({ route: p.path, rewrite: `/${file(p.path)}` })),
-  ...(config.routes ?? []),
-];
-config.navigationFallback.rewrite = "/shell.html";
-config.responseOverrides = { 404: { rewrite: "/404.html", statusCode: 404 } };
-writeFileSync(configPath, JSON.stringify(config, null, 2));
+writeFileSync(configPath, JSON.stringify(swaConfig(JSON.parse(readFileSync(configPath, "utf8")), pages, movedToApp), null, 2));
 
 rmSync(ssr, { recursive: true, force: true });
 console.log(`Prerendered ${pages.length} public pages`);
