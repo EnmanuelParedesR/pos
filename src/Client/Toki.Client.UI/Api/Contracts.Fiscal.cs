@@ -27,3 +27,14 @@ public sealed record EcfIssued(Guid DocumentId, string ENcf);
 /// <summary><c>GET /api/fiscal/certificate</c>. <c>InUse</c>: the store signs with it; <c>ExpiresSoon</c>: 30 days or less left.</summary>
 public sealed record EcfCertificateStatus(bool Installed, bool InUse, string? Subject, string? TaxId, string? Issuer, DateTime? NotAfterUtc, string? Thumbprint,
     string? Store, int? DaysLeft, bool ExpiresSoon);
+
+/// <summary><c>GET /api/fiscal/receiver</c> (TK-151): the receiver services in the cloud and the URLs to register in the DGII, per environment.</summary>
+public sealed record EcfReceiverStatus(bool Active, string? Rnc, string? Subject, DateTime? NotAfterUtc, DateTime? ConsentedUtc, string? OwnerName,
+    string? HolderName, List<EcfReceiverUrls>? Urls);
+
+public sealed record EcfReceiverUrls(string Environment, string Reception, string Approval, string Authentication);
+
+/// <summary>A row of <c>GET /api/fiscal/received</c> (TK-154): an e-CF a supplier sent to the business. <c>Approval</c>: Approved, Rejected or null.</summary>
+public sealed record ReceivedEcf(Guid Id, string Environment, string IssuerRnc, string IssuerName, string ENcf, int Type, DateOnly IssuedOn, decimal Total,
+    decimal Itbis, DateTime ReceivedUtc, string? Approval, string? ApprovalReason, DateTime? ApprovalUtc, DateTime? ApprovalDeliveredUtc,
+    DateTime? ApprovalDgiiUtc, string? ApprovalMessage);

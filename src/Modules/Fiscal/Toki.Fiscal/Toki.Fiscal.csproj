@@ -12,5 +12,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.UnitTests" />
     <InternalsVisibleTo Include="Toki.IntegrationTests" />
+    <!-- TK-152: the cloud receiver is tested with e-CF built and signed exactly as a store does -->
+    <InternalsVisibleTo Include="Toki.Cloud.Tests" />
   </ItemGroup>
 </Project>

@@ -48,6 +48,11 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Catalog.ReplicaCatalogItem> CatalogItems => Set<Catalog.ReplicaCatalogItem>();
     public DbSet<Catalog.ReplicaCatalogSettings> CatalogSettings => Set<Catalog.ReplicaCatalogSettings>();
 
+    public DbSet<Fe.FeCertificate> FeCertificates => Set<Fe.FeCertificate>();
+    public DbSet<Fe.FeSignature> FeSignatures => Set<Fe.FeSignature>();
+    public DbSet<Fe.FeReceivedDocument> FeReceived => Set<Fe.FeReceivedDocument>();
+    public DbSet<Fe.FeApprovalReceived> FeApprovalsReceived => Set<Fe.FeApprovalReceived>();
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -276,6 +281,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.HasKey(u => new { u.TenantId, u.StoreId, u.Day });
         });
         Catalog.PublicCatalogEndpoints.Configure(builder);
+        Fe.FeModel.Configure(builder);
     }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

@@ -76,6 +76,9 @@ resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: true
     enableSoftDelete: true
     softDeleteRetentionInDays: 30
+    // TK-151: the stores' e-CF certificates live here; a withdrawn consent leaves the key soft-deleted and unusable for 30 days, never purgeable
+    // by a stolen credential. Irreversible once deployed.
+    enablePurgeProtection: true
   }
 }
 
@@ -197,11 +200,33 @@ resource apiReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = 
   }
 }
 
+// TK-151: the API imports and deletes the stores' certificates (Key Vault Certificates Officer) and signs receiver acknowledgements with their
+// non-exportable keys (Key Vault Crypto User). The cloud signer refuses in code anything but ARECF, ACECF and seeds.
+resource apiManagesCertificates 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(vault.id, api.id, 'a4417e6f-fecd-4de8-b567-7b0420556985')
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a4417e6f-fecd-4de8-b567-7b0420556985')
+    principalId: api.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource apiSignsWithKeys 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(vault.id, api.id, '12338af0-0e69-4776-bea7-57ae8d297424')
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')
+    principalId: api.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // Set after the Key Vault role exists: App Service resolves Key Vault references once and caches a denial for up to a day.
 resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: api
   name: 'appsettings'
-  dependsOn: [apiReadsSecrets]
+  dependsOn: [apiReadsSecrets, apiManagesCertificates, apiSignsWithKeys]
   properties: {
     ASPNETCORE_ENVIRONMENT: 'Production'
     ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
@@ -214,6 +239,8 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     AzureOpenAI__ApiVersion: openAiApiVersion
     AzureOpenAI__ApiKey: '@Microsoft.KeyVault(SecretUri=${openAiKey.properties.secretUri})'
     Panel__Origins__0: 'https://${panel.properties.defaultHostname}'
+    Fe__Vault: 'KeyVault'
+    Fe__KeyVaultUri: vault.properties.vaultUri
   }
 }
 

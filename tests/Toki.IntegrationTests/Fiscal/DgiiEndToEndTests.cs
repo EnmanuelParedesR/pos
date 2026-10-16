@@ -20,7 +20,7 @@ namespace Toki.IntegrationTests.Fiscal;
 
 /// <summary>The real configuration of a certified store in pre-certification: XMLDSig with a (self-signed) certificate and the DGII provider in
 /// TesteCF, against <see cref="FakeDgii"/>.</summary>
-public sealed class DgiiTokiApp : TokiApp
+public class DgiiTokiApp : TokiApp
 {
     private static readonly Lazy<string> Pfx = new(() =>
     {

@@ -104,6 +104,7 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
         (await Send<C.EcfVoided>(api, HttpMethod.Post, $"/api/fiscal/sequences/{notes.Id}/void", new { To = 999 })).To.ShouldBe("E340000000999");
         (await Send<List<C.EcfVoidRow>>(api, HttpMethod.Get, "/api/fiscal/voids")).ShouldHaveSingleItem().Status.ShouldBe("Simulated");
         (await Send<C.EcfCertificateStatus>(api, HttpMethod.Get, "/api/fiscal/certificate")).Installed.ShouldBeFalse();
+        (await Send<List<C.ReceivedEcf>>(api, HttpMethod.Get, "/api/fiscal/received")).ShouldBeEmpty(); // TK-154; filled from the cloud (EcfExchangeTests)
 
         // Customers
         var customer = (await Send<C.Created>(api, HttpMethod.Post, "/api/customers", new C.NewCustomer("Ana Pérez", null, "809-555-0102", null, false))).Id;
