@@ -1,0 +1,10 @@
+@* TK-252: the taxpayer's status as the DGII shows it today, next to the RNC field. Nothing when the DGII did not answer. *@
+@if (Status is not null)
+{
+    <span class="esc-pill @(Status == "Activo" ? "esc-pill--success" : "esc-pill--warning")" title="Estado en la DGII" style="align-self:flex-start">@Status</span>
+}
+
+@code {
+    /// <summary>From <c>TaxpayerLookup.FindAsync</c>: "Activo", "Suspendido"…</summary>
+    [Parameter] public string? Status { get; set; }
+}

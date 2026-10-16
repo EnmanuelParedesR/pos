@@ -85,7 +85,7 @@
                             <ul style="margin:0;padding-left:18px">@foreach (var w in f.Review) { <li>@w</li> }</ul>
                         </Notice>
                     }
-                    <SupplierFields Suppliers="_suppliers" @bind-SupplierId="f.SupplierId" @bind-Ncf="f.Ncf" @bind-Date="f.Date" Errors="_errors" />
+                    <SupplierFields Suppliers="_suppliers" @bind-SupplierId="f.SupplierId" @bind-Ncf="f.Ncf" @bind-Date="f.Date" @bind-NcfOverrideReason="f.NcfOverrideReason" Errors="_errors" />
                     @if (_warehouses.Count > 1)
                     {
                         <Field Label="Entra a">
@@ -218,7 +218,7 @@
 
     private sealed class PurchaseForm
     {
-        public Guid Id = Guid.CreateVersion7(); public long? Number; public bool Saved; public Guid? SupplierId; public string? Ncf, Warehouse, CreditDays, InvoiceTotal, Notes;
+        public Guid Id = Guid.CreateVersion7(); public long? Number; public bool Saved; public Guid? SupplierId; public string? Ncf, Warehouse, CreditDays, InvoiceTotal, Notes, NcfOverrideReason;
         public DateOnly Date = Format.Today; public PaymentTerms Terms = PaymentTerms.Credit; public SupplierPaymentMethod? Method = SupplierPaymentMethod.Cash;
         public List<LineForm> Lines = [];
         /// <summary>What to check after the AI read the invoice (TK-224).</summary>
@@ -374,7 +374,7 @@
         var body = new SavePurchase(f.SupplierId!.Value, (f.Ncf ?? "").Trim().ToUpperInvariant(), f.Date, f.Terms,
             [.. f.Lines.Select(l => new PurchaseLineInput(l.ProductId, l.PresentationId, Format.ParseNumber(l.Quantity)!.Value, Format.ParseNumber(l.Cost)!.Value, l.Rate))],
             Guid.TryParse(f.Warehouse, out var w) ? w : null, days, string.IsNullOrWhiteSpace(f.Notes) ? null : f.Notes.Trim(), null, invoiceTotal,
-            f.Saved ? null : f.Id, f.Terms == PaymentTerms.Cash ? f.Method : null);
+            f.Saved ? null : f.Id, f.Terms == PaymentTerms.Cash ? f.Method : null, f.NcfOverrideReason);
         _sending = true;
         var saved = f.Saved ? await Api.PutAsync<PurchaseSaved>($"/api/purchasing/purchases/{f.Id}", body) : await Api.PostAsync<PurchaseSaved>("/api/purchasing/purchases", body);
         if (saved.Problem is { } p)

@@ -9,6 +9,10 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\FakeDgiiPublic.cs" Link="Fiscal\FakeDgiiPublic.cs" />
+    <None Include="..\DgiiPages\*.html" Link="DgiiPages\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Hosts\Toki.Host.Local\Toki.Host.Local.csproj" />
   </ItemGroup>
 </Project>

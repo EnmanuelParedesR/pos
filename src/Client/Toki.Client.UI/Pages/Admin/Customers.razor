@@ -214,6 +214,7 @@
                             </Field>
                             <Field Label="RNC o cédula" Error="@Err("taxId")" Hint="@(_taxHint ?? "9 u 11 números, sin guiones.")">
                                 <input class="esc-input" inputmode="numeric" maxlength="13" @bind="f.TaxId" @bind:after='() => LookupAsync(f)' aria-invalid="@Invalid("taxId")" />
+                                <TaxpayerBadge Status="@_taxStatus" />
                             </Field>
                             <Field Label="Teléfono">
                                 <input class="esc-input" inputmode="tel" maxlength="30" @bind="f.Phone" />
@@ -295,14 +296,14 @@
         public PriceLevel PriceLevel; public bool FiscalCredit, IsActive = true, WasActive = true;
     }
 
-    private string? _taxHint, _filledName;
+    private string? _taxHint, _filledName, _taxStatus;
 
     /// <summary>TK-239: the DGII registry fills the name (editable).</summary>
     private async Task LookupAsync(CustomerForm f)
     {
         Clear("taxId");
-        var (name, hint) = await TaxpayerLookup.FindAsync(Api, f.TaxId);
-        (f.Name, _filledName, _taxHint) = (TaxpayerLookup.Fill(f.Name, _filledName, name) ?? "", name ?? _filledName, hint);
+        var (name, hint, status) = await TaxpayerLookup.FindAsync(Api, f.TaxId);
+        (f.Name, _filledName, _taxHint, _taxStatus) = (TaxpayerLookup.Fill(f.Name, _filledName, name) ?? "", name ?? _filledName, hint, status);
     }
     private sealed record Voiding(Guid PaymentId, decimal Amount);
 
@@ -397,12 +398,13 @@
     private void New()
     {
         _errors = [];
-        (_form, _view, _error, _account) = (new CustomerForm(), View.Edit, null, null);
+        (_form, _view, _error, _account, _taxHint, _taxStatus) = (new CustomerForm(), View.Edit, null, null, null, null);
     }
 
     private void Edit(CustomerRow c)
     {
         _errors = [];
+        (_taxHint, _taxStatus) = (null, null);
         (_form, _view, _error) = (new CustomerForm
         {
             Id = c.Id, Name = c.Name, TaxId = c.TaxId, Phone = c.Phone, Address = c.Address, PriceLevel = c.PriceLevel, FiscalCredit = c.FiscalCredit,

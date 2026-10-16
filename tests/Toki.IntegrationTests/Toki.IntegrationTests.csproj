@@ -12,6 +12,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\SqlServerImage.cs" Link="SqlServerImage.cs" />
+    <Compile Include="..\FakeDgiiPublic.cs" Link="Infra\FakeDgiiPublic.cs" />
+    <None Include="..\DgiiPages\*.html" Link="DgiiPages\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hosts\Toki.Host.Local\Toki.Host.Local.csproj" />

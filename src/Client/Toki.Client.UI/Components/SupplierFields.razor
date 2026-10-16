@@ -16,6 +16,13 @@
     <Field Label="Fecha de la factura *" Error="@Errors.GetValueOrDefault("date")">
         <input type="date" class="esc-input" value="@Date.ToString("yyyy-MM-dd")" @onchange="e => DateAsync(e.Value)" aria-invalid="@(Errors.ContainsKey("date") ? "true" : "false")" />
     </Field>
+    @* TK-252: the DGII says the NCF is not valid; it can still be saved with a reason (audited). *@
+    @if (Errors.ContainsKey(NotValidAtDgii) || !string.IsNullOrEmpty(NcfOverrideReason))
+    {
+        <Field Label="Motivo para guardarlo de todas formas" Wide="true" Hint="Queda en la auditoría. Déjelo vacío para corregir el NCF.">
+            <input class="esc-input" maxlength="200" value="@NcfOverrideReason" @onchange="e => NcfOverrideReasonChanged.InvokeAsync(Blank(e.Value))" />
+        </Field>
+    }
 </div>
 
 @code {
@@ -27,6 +34,13 @@
     [Parameter] public DateOnly Date { get; set; }
     [Parameter] public EventCallback<DateOnly> DateChanged { get; set; }
     [Parameter, EditorRequired] public Dictionary<string, string> Errors { get; set; } = [];
+    [Parameter] public string? NcfOverrideReason { get; set; }
+    [Parameter] public EventCallback<string?> NcfOverrideReasonChanged { get; set; }
+
+    /// <summary>Marks in <see cref="Errors"/> that the DGII refused the NCF, so the reason box shows.</summary>
+    private const string NotValidAtDgii = "ncfDgii";
+
+    private static string? Blank(object? value) => value?.ToString()?.Trim() is { Length: > 0 } s ? s : null;
 
     private Task ChangeAsync(object? value)
     {
@@ -34,10 +48,13 @@
         return SupplierIdChanged.InvokeAsync(Guid.TryParse(value?.ToString(), out var id) ? id : null);
     }
 
-    private Task NcfAsync(object? value)
+    private async Task NcfAsync(object? value)
     {
         Errors.Remove("ncf");
-        return NcfChanged.InvokeAsync(value?.ToString()?.Trim().ToUpperInvariant());
+        Errors.Remove(NotValidAtDgii);
+        // A new NCF is asked to the DGII again: the reason given for the previous one does not carry over.
+        if (NcfOverrideReason is not null) await NcfOverrideReasonChanged.InvokeAsync(null);
+        await NcfChanged.InvokeAsync(value?.ToString()?.Trim().ToUpperInvariant());
     }
 
     private Task DateAsync(object? value)
@@ -63,6 +80,7 @@
         switch (p.Code)
         {
             case "Purchasing.DuplicateNcf": errors["ncf"] = "Ya se registró ese NCF de este suplidor."; return true;
+            case "Purchasing.NcfNotValidAtDgii": errors["ncf"] = p.Message; errors[NotValidAtDgii] = ""; return true;
             case "Purchasing.SupplierWithoutRnc": errors["supplier"] = "Este suplidor no tiene RNC. Agréguelo en Suplidores."; return true;
             case "Purchasing.SupplierNotFound": errors["supplier"] = "El suplidor no existe o está desactivado."; return true;
         }
