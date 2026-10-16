@@ -78,7 +78,7 @@ public sealed class OrdersTests(TokiApp app) : IClassFixture<TokiApp>
         (await CreditBalanceAsync(customer)).ShouldBe(0m);
         var x = await app.XReportAsync(cashier.ShiftId);
         x.GetProperty("expectedCash").GetDecimal().ShouldBe(1650m); // float + deposit + the rest in cash
-        x.GetProperty("customerPayments").GetDecimal().ShouldBe(300m);
+        (x.GetProperty("orderDeposits").GetDecimal(), x.GetProperty("customerPayments").GetDecimal()).ShouldBe((300m, 0m)); // R8 #15: not a payment on credit
 
         // Delivered: it cannot be charged again.
         (await (await cashier.SellAsync(sale with { SaleId = Guid.CreateVersion7() })).ErrorCode()).ShouldBe("Orders.Closed");
@@ -97,13 +97,64 @@ public sealed class OrdersTests(TokiApp app) : IClassFixture<TokiApp>
 
         var cancel = (Guid? approval) => cashier.Client.PostAsJsonAsync($"/api/orders/{orderId}/cancel", new { cashier.ShiftId, Reason = "No vino", SupervisorApprovalId = approval });
         (await (await cancel(null)).ErrorCode()).ShouldBe("Approval.Required");
-        (await cancel(await cashier.Client.ApproveAsync("sales.void", orderId))).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await (await cancel(await cashier.Client.ApproveAsync("sales.void", orderId))).Json()).GetProperty("refunded").GetDecimal().ShouldBe(200m);
 
         (await OrderAsync(cashier.Client, orderId)).GetProperty("status").GetString().ShouldBe("Cancelled");
         (await CreditBalanceAsync(customer)).ShouldBe(0m);
         var x = await app.XReportAsync(cashier.ShiftId);
         x.GetProperty("expectedCash").GetDecimal().ShouldBe(500m); // the deposit came in and went back out
         x.GetProperty("byMethod").EnumerateArray().Single().GetProperty("refunds").GetDecimal().ShouldBe(200m);
+    }
+
+    [Fact]
+    public async Task A_deposit_is_whole_pesos_in_cash_reserved_for_its_order_charged_only_to_its_customer_and_published()
+    {
+        var cashier = await app.CashierWithShiftAsync(openingFloat: 1000m);
+        var (customer, other, steak) = (await CustomerAsync(), await CustomerAsync(), await SteakAsync());
+        var orderId = Guid.CreateVersion7();
+
+        // R8 #6: centavos in cash do not reach the drawer.
+        (await (await cashier.Client.PostAsJsonAsync("/api/orders", NewOrder(orderId, customer, steak, 2m, new { cashier.ShiftId, Method = "Cash", Amount = 200.50m })))
+            .ErrorCode()).ShouldBe("Validation");
+        (await cashier.Client.PostAsJsonAsync("/api/orders", NewOrder(orderId, customer, steak, 2m, new { cashier.ShiftId, Method = "Cash", Amount = 200m })))
+            .StatusCode.ShouldBe(HttpStatusCode.Created);
+
+        // R8 #13: the cloud hears of the balance the deposit made.
+        var balances = await app.InScopeAsync(async sp => (await sp.GetRequiredService<InfraDbContext>().Outbox
+                .Where(m => m.Type == typeof(Toki.Customers.Contracts.CustomerBalanceChangedV1).FullName).Select(m => m.Payload).ToListAsync())
+            .Select(p => JsonDocument.Parse(p).RootElement.Clone()).Where(e => e.GetProperty("customerId").GetGuid() == customer).ToList());
+        balances.Last().GetProperty("creditBalance").GetDecimal().ShouldBe(200m);
+
+        // R8 #7: the deposit is the order's, not for another purchase.
+        object Sale(Guid? customerId, Guid? order, object[] payments, decimal total) => new
+        {
+            SaleId = Guid.CreateVersion7(), cashier.ShiftId, CustomerId = customerId, OrderId = order, Lines = new[] { Line(steak, total / 200m) },
+            Payments = payments, ExpectedTotal = total,
+        };
+        (await (await cashier.SellAsync(Sale(customer, null, [new { Method = "CreditBalance", Amount = 100m }], 100m))).ErrorCode())
+            .ShouldBe("Customers.InsufficientCreditBalance");
+        // R8 #14: nor charged to someone else.
+        (await (await cashier.SellAsync(Sale(other, orderId, [new { Method = "Cash", Amount = 400m }], 400m))).ErrorCode()).ShouldBe("Orders.OtherCustomer");
+
+        // A deposit spent before it was reserved (data from before R8): the order is cancelled anyway, handing back only what is left.
+        await app.InScopeAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<Toki.Customers.CustomersDbContext>();
+            db.BalanceMovements.Add(new Toki.Customers.Domain.CreditBalanceMovement
+            {
+                Id = Guid.CreateVersion7(), CustomerId = customer, Type = Toki.Customers.Domain.CreditBalanceMovementType.UsedInSale, Amount = -150m,
+                ReferenceId = Guid.NewGuid(), DateUtc = DateTime.UtcNow,
+            });
+            return await db.SaveChangesAsync();
+        });
+        var cancel = await cashier.Client.PostAsJsonAsync($"/api/orders/{orderId}/cancel",
+            new { cashier.ShiftId, Reason = "No vino", SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.void", orderId) });
+        (await cancel.Json()).GetProperty("refunded").GetDecimal().ShouldBe(50m);
+        (await CreditBalanceAsync(customer)).ShouldBe(0m);
+        (await app.InScopeAsync(sp => sp.GetRequiredService<Toki.Sales.SalesDbContext>().Orders.Where(o => o.Id == orderId).Select(o => o.CancelReason).SingleAsync()))
+            .ShouldBe("Abono ya usado: se devolvieron RD$ 50.00 de RD$ 200.00. No vino");
+        var x = await app.XReportAsync(cashier.ShiftId);
+        (x.GetProperty("orderDeposits").GetDecimal(), x.GetProperty("expectedCash").GetDecimal()).ShouldBe((200m, 1150m));
     }
 
     [Fact]

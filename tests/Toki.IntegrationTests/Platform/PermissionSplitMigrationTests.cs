@@ -28,7 +28,7 @@ public sealed class PermissionSplitMigrationTests
             INSERT INTO Roles VALUES ('C', 'Vendedor', 'sales.create');
             """);
 
-        await ExecAsync(c, PermissionSplit.Expand("Roles"));
+        await ExecAsync(c, Toki.Identity.Persistence.Migrations.SegmentedPermissionsIdentity.Expand("Roles"));
 
         (await PermissionsAsync(c, "A")).ShouldBe(["sales.create", "register.operate", "customers.manage", "register.open", "register.close", "register.cash-in", "credit.collect"]);
         (await PermissionsAsync(c, "B")).ShouldBe(["settings.manage", "reports.view", "purchasing.manage", "register.close",

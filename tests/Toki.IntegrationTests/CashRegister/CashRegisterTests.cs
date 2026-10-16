@@ -121,6 +121,25 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
+    public async Task After_three_counts_off_every_count_needs_a_supervisor_so_the_blind_count_cannot_be_probed()
+    {
+        // R8 #19: expected 2000. Without a limit, trying counts until one closes without a supervisor finds the expected cash.
+        var (cashier, shift) = await ShiftAsync(openingFloat: 2000m);
+        object Count(int thousands) => new { CashCount = new[] { new { Denomination = 1000m, Quantity = thousands } } };
+        foreach (var wrong in new[] { 1, 3, 4 })
+            (await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close", Count(wrong))).ErrorCode()).ShouldBe("Approval.Required");
+
+        (await (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close", Count(2))).ErrorCode()).ShouldBe("Approval.Required"); // right, but no longer telling
+        var close = await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/close",
+            new { CashCount = new[] { new { Denomination = 1000m, Quantity = 2 } }, SupervisorApprovalId = await ApproveAsync(cashier, "register.approve-close", shift) });
+        (await close.Json()).GetProperty("difference").GetDecimal().ShouldBe(0m);
+
+        // Another shift with the right count at once closes alone.
+        var (other, otherShift) = await ShiftAsync(openingFloat: 2000m);
+        (await other.PostAsJsonAsync($"/api/cash/shifts/{otherShift}/close", Count(2))).StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task A_denomination_that_does_not_exist_is_rejected()
     {
         var (cashier, shift) = await ShiftAsync();

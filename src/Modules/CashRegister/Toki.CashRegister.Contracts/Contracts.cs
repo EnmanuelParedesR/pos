@@ -27,6 +27,9 @@ public interface ICashRegisterOperations
     /// <param name="rounding">Cash centavos kept because the customer paid in whole pesos.</param>
     Task<Result> RecordCustomerPaymentAsync(Guid shiftId, Guid customerPaymentId, PaymentMethod method, decimal amount, decimal rounding, CancellationToken ct);
 
+    /// <summary>An order's deposit (TK-193): money in like a customer payment, on its own line of the Z (R8 #15).</summary>
+    Task<Result> RecordOrderDepositAsync(Guid shiftId, Guid orderId, PaymentMethod method, decimal amount, CancellationToken ct);
+
     /// <summary>A supplier is paid in cash from the drawer (a withdrawal with reason SupplierPayment).</summary>
     Task<Result> RecordSupplierPaymentAsync(Guid shiftId, Guid supplierPaymentId, decimal amount, CancellationToken ct);
 

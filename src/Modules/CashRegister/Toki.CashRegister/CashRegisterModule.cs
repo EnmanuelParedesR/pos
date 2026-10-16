@@ -19,6 +19,7 @@ public static class CashRegisterModule
         services.AddScoped<CashRegisterOperations>();
         services.AddScoped<ICashRegisterOperations>(sp => sp.GetRequiredService<CashRegisterOperations>());
         services.AddScoped<ICashRegisterReports, CashRegisterReports>();
+        services.AddSingleton<Features.CloseShift.BlindCloseAttempts>();
         services.AddScoped<ICloudSnapshot, RegisterSnapshot>();
         return services;
     }
@@ -129,6 +130,14 @@ internal sealed class CashRegisterOperations(CashRegisterDbContext db, IUserCont
         if (shift.IsFailure) return shift.Error!;
         Add(shiftId, CashMovementType.CustomerPayment, method, amount, customerPaymentId, null);
         if (rounding > 0) Add(shiftId, CashMovementType.Rounding, PaymentMethod.Cash, rounding, customerPaymentId, null);
+        return Result.Success();
+    }
+
+    public async Task<Result> RecordOrderDepositAsync(Guid shiftId, Guid orderId, PaymentMethod method, decimal amount, CancellationToken ct)
+    {
+        var shift = await GetOpenShiftAsync(shiftId, ct);
+        if (shift.IsFailure) return shift.Error!;
+        Add(shiftId, CashMovementType.CustomerPayment, method, amount, orderId, ZReport.OrderDepositReference);
         return Result.Success();
     }
 

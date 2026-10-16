@@ -39,7 +39,7 @@
                     <div class="esc-card__head">
                         <div>
                             <h2 class="esc-section-title">@(g.Supplier ?? "Sin compras anteriores")</h2>
-                            <span class="esc-muted">@(g.SupplierId is null ? "No se han comprado a un suplidor activo: agréguelos en “Nueva compra”." : $"{g.Lines.Length} {(g.Lines.Length == 1 ? "producto" : "productos")} · {Format.WithCurrency(g.Subtotal)} sin ITBIS")</span>
+                            <span class="esc-muted">@(g.SupplierId is null ? "No se han comprado a un suplidor activo: agréguelos en “Nueva compra”." : $"{g.Lines.Length} {(g.Lines.Length == 1 ? "producto" : "productos")}{(g.Subtotal is { } subtotal ? $" · {Format.WithCurrency(subtotal)} sin ITBIS" : "")}")</span>
                         </div>
                         @if (g.SupplierId is { } supplier)
                         {

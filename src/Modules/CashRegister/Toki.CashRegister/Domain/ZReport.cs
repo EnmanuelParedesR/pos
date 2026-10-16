@@ -2,18 +2,23 @@ using Toki.CashRegister.Contracts;
 
 namespace Toki.CashRegister.Domain;
 
-/// <param name="CustomerPayments">Customer payments on credit, by method (they are in the card terminal's batch too).</param>
+/// <param name="CustomerPayments">Customer payments on credit and order deposits, by method (they are in the card terminal's batch too).</param>
 internal sealed record MethodTotal(PaymentMethod Method, decimal SalePayments, decimal Voids, decimal Refunds, decimal CustomerPayments, decimal Net);
 
 /// <summary>Z report (closed shift) or X report (open shift, for a supervisor).</summary>
+/// <param name="CustomerPayments">Payments on credit ("abonos de fiado"), without order deposits.</param>
+/// <param name="OrderDeposits">R8 #15: deposits taken for orders (TK-193), their own line.</param>
 internal sealed record ZReport(
     Guid ShiftId, int? ZNumber, string Register, string Cashier, DateTime OpenedUtc, DateTime? ClosedUtc, decimal OpeningFloat,
     IReadOnlyList<MethodTotal> ByMethod, int SaleCount, int VoidedCount, decimal CustomerPayments, decimal Rounding, decimal CashIn, decimal Withdrawals, decimal Expenses,
     decimal ExpectedCash, decimal? CountedCash, decimal? Difference, IReadOnlyList<DenominationCount>? CashCount, Guid? ClosingSupervisorId,
-    string? AuditChainHead)
+    string? AuditChainHead, decimal OrderDeposits)
 {
     /// <summary>Marks the reversal of a sale's rounding (so it is not counted as a voided payment).</summary>
     public const string RoundingReference = "rounding";
+
+    /// <summary>Marks a customer payment that is an order's deposit, not a payment on credit.</summary>
+    public const string OrderDepositReference = "order-deposit";
 
     /// <param name="auditChainHead">Head of the audit chain ("#seq hash"), printed so a rewound chain shows on paper. A closed shift keeps the one from its closing.</param>
     public static ZReport Build(Shift s, string register, IReadOnlyList<CashMovement> movements, IReadOnlyList<DenominationCount>? cashCount, string? auditChainHead)
@@ -37,10 +42,13 @@ internal sealed record ZReport(
         var voided = movements.Where(m => m.Type == CashMovementType.SalePaymentVoid && !VoidsRounding(m)).Select(m => m.ReferenceId).ToHashSet();
         var sales = movements.Where(m => m.Type == CashMovementType.SalePayment).Select(m => m.ReferenceId).Distinct().Count();
         var rounding = Sum(CashMovementType.Rounding) - movements.Where(VoidsRounding).Sum(m => m.Amount);
+        var orderDeposits = movements.Where(m => m.Reference == OrderDepositReference)
+            .Sum(m => m.Type == CashMovementType.CustomerPayment ? m.Amount : m.Type == CashMovementType.CustomerPaymentVoid ? -m.Amount : 0);
 
         return new ZReport(s.Id, s.ZNumber, register, s.CashierName, s.OpenedUtc, s.ClosedUtc, s.OpeningFloat, byMethod,
-            sales - voided.Count, voided.Count, Sum(CashMovementType.CustomerPayment) - Sum(CashMovementType.CustomerPaymentVoid), rounding,
+            sales - voided.Count, voided.Count, Sum(CashMovementType.CustomerPayment) - Sum(CashMovementType.CustomerPaymentVoid) - orderDeposits, rounding,
             Sum(CashMovementType.CashIn), Sum(CashMovementType.Withdrawal), Sum(CashMovementType.Expense),
-            s.ExpectedCash ?? ShiftBalance.ExpectedCash(s.OpeningFloat, movements), s.CountedCash, s.Difference, cashCount, s.ClosingSupervisorId, s.AuditChainHead ?? auditChainHead);
+            s.ExpectedCash ?? ShiftBalance.ExpectedCash(s.OpeningFloat, movements), s.CountedCash, s.Difference, cashCount, s.ClosingSupervisorId, s.AuditChainHead ?? auditChainHead,
+            orderDeposits);
     }
 }

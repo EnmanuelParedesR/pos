@@ -84,7 +84,7 @@ public sealed class AdminGapsTests
                 shiftId = shift, zNumber = 7, register = "Caja 1", cashier = "Yudelka M.", openedUtc = DateTime.UtcNow.AddHours(-8), closedUtc = DateTime.UtcNow, openingFloat = 1000m,
                 byMethod = new[] { new { method = "Cash", salePayments = 2500m, voids = 0m, refunds = 0m, customerPayments = 100m, net = 2600m } },
                 saleCount = 12, voidedCount = 1, customerPayments = 100m, rounding = 0m, cashIn = 0m, withdrawals = 100m, expenses = 0m,
-                expectedCash = 3500m, countedCash = 3450m, difference = -50m, closingSupervisorId = supervisor, auditChainHead = "#42 abc",
+                expectedCash = 3500m, countedCash = 3450m, difference = -50m, closingSupervisorId = supervisor, auditChainHead = "#42 abc", orderDeposits = 300m,
             })
            .Json("GET", "/api/settings/business", new { name = "Carnicería La Esquina", rnc = "131245678", address = "Calle 1", phone = "809-555-0101", receiptFooter = (string?)null, discountCapPercent = 10m })
            .Json("GET", "/api/identity/users/active", new[] { new { id = supervisor, name = "Ramón D.", code = "02" } });
@@ -102,6 +102,9 @@ public sealed class AdminGapsTests
         html.ShouldContain("RNC 131245678");
         html.ShouldContain("Faltaron RD$ 50.00");
         html.ShouldContain("Ramón D.");
+        // R8 #15: order deposits on their own line, apart from payments on credit.
+        html.ShouldContain("<tr><td>Abonos de fiado</td><td class=\"num\">100.00</td></tr>");
+        html.ShouldContain("<tr><td>Abonos de pedidos</td><td class=\"num\">300.00</td></tr>");
         html.ShouldContain("aria-label=\"Toki\""); // logo C5
         html.ShouldContain("@page { size: A4");
     }

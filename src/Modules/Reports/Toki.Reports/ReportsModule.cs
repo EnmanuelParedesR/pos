@@ -80,8 +80,18 @@ internal sealed class ReportsEndpoints : IEndpoint
                 $"inventario-{BusinessDay.Of(clock.GetUtcNow().UtcDateTime):yyyyMMdd}"));
 
         // shortcut: rows of the 607, 606 and 608 as CSV/Excel to paste into the DGII tool, which writes the TXT; the TXT layout comes with TK-055.
-        dgii.MapGet("/dgii/607", async ([AsParameters] Period p, ISalesReports sales, CancellationToken ct) =>
-            p.Invalid() ?? Export.As(await sales.Report607Async(p.From, p.To, ct), p.Format, p.Name("607")));
+        // R8 #3: blocked while an e-CF of the period is voided or rejected without its replacement (its sale would be missing from the 607).
+        dgii.MapGet("/dgii/607", async ([AsParameters] Period p, ISalesReports sales, IFiscalDocuments fiscal, CancellationToken ct) =>
+        {
+            if (p.Invalid() is { } invalid) return invalid;
+            var (f, t) = BusinessDay.UtcRange(p.From, p.To);
+            var pending = (await fiscal.UnreplacedENcfsAsync(f, t, ct)).Count;
+            return pending > 0
+                ? EndpointExtensions.Problem(Error.Conflict("Reports.DocumentsToReplace",
+                    $"Hay {pending} {(pending == 1 ? "comprobante anulado o rechazado" : "comprobantes anulados o rechazados")} por reemplazar en el período. " +
+                    "Reemplácelos en Comprobantes electrónicos antes de sacar el 607."))
+                : Export.As(await sales.Report607Async(p.From, p.To, ct), p.Format, p.Name("607"));
+        });
         dgii.MapGet("/dgii/606", async ([AsParameters] Period p, IPurchasingReports purchasing, CancellationToken ct) =>
             p.Invalid() ?? Export.As(await purchasing.Report606Async(p.From, p.To, ct), p.Format, p.Name("606")));
         dgii.MapGet("/dgii/608", async ([AsParameters] Period p, IFiscalReports fiscal, CancellationToken ct) =>

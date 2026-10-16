@@ -19,6 +19,29 @@ namespace Toki.Identity.Persistence.Migrations
             (new Guid("0199e000-0000-7000-8000-000000000006"), "Contador", "reports.view,fiscal.reports,costs.view,shifts.view"),
         ];
 
+        /// <summary>docs/permisos.md, "Migración sin sorpresas": a role that had an old, wide permission gets the new ones that cover the same actions,
+        /// so nobody loses what they could do. A literal copy inside the migration (R8 #23): a migration never changes meaning with later code.</summary>
+        internal static readonly (string Old, string[] New)[] Split =
+        [
+            ("register.operate", ["register.open", "register.close", "register.cash-in", "credit.collect"]),
+            ("settings.manage", ["registers.manage", "backups.manage", "audit.view"]),
+            ("reports.view", ["shifts.view", "fiscal.reports"]),
+            ("purchasing.manage", ["payables.pay"]),
+        ];
+
+        /// <summary>Portable SQL (SQL Server 2017+ and Sqlite 3.44+): appends each new permission to every role that has the old one and lacks the new one.
+        /// Administrador is left out: it always has everything.</summary>
+        /// <param name="table">"[identity].[Roles]" on SQL Server; "Roles" on Sqlite, which has no schemas.</param>
+        internal static string Expand(string table) => string.Concat(
+            from m in Split
+            from n in m.New
+            select $"""
+                UPDATE {table} SET Permissions = CONCAT(Permissions, ',{n}')
+                WHERE Id <> '0199E000-0000-7000-8000-000000000001'
+                  AND CONCAT(',', Permissions, ',') LIKE '%,{m.Old},%' AND CONCAT(',', Permissions, ',') NOT LIKE '%,{n},%';
+
+                """);
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -30,7 +53,7 @@ namespace Toki.Identity.Persistence.Migrations
                 column: "Permissions",
                 value: "users.manage,devices.manage,settings.manage,registers.manage,backups.manage,audit.view,products.manage,prices.change,inventory.view,inventory.adjust,inventory.count,inventory.transfer,register.open,register.close,register.cash-in,register.withdraw,register.approve-close,register.open-drawer,sales.create,sales.void,sales.return,sales.large-discount,sales.price-override,sales.remove-line,purchasing.manage,payables.pay,customers.manage,credit.collect,credit.manage,credit.exceed-limit,fiscal.manage,fiscal.reports,reports.view,shifts.view,costs.view");
 
-            migrationBuilder.Sql(PermissionSplit.Expand("[identity].[Roles]"));
+            migrationBuilder.Sql(Expand("[identity].[Roles]"));
             migrationBuilder.Sql("""
                 UPDATE [identity].[Roles] SET Permissions = TRIM(',' FROM REPLACE(',' + Permissions + ',', ',register.operate,', ','))
                 WHERE ',' + Permissions + ',' LIKE '%,register.operate,%'
@@ -56,7 +79,7 @@ namespace Toki.Identity.Persistence.Migrations
                 WHERE ',' + Permissions + ',' LIKE '%,register.open,%' OR ',' + Permissions + ',' LIKE '%,register.close,%'
                    OR ',' + Permissions + ',' LIKE '%,register.cash-in,%' OR ',' + Permissions + ',' LIKE '%,credit.collect,%'
                 """);
-            foreach (var (_, added) in PermissionSplit.Map)
+            foreach (var (_, added) in Split)
                 foreach (var p in added)
                     migrationBuilder.Sql($"""
                         UPDATE [identity].[Roles] SET Permissions = TRIM(',' FROM REPLACE(',' + Permissions + ',', ',{p},', ','))

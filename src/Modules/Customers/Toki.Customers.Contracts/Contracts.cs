@@ -19,7 +19,8 @@ public interface ICustomerAccounts
     Task<Result> ChargeOnAccountAsync(Guid customerId, Guid saleId, string document, decimal amount, bool allowOverLimit, CancellationToken ct);
 
     /// <summary>Pays part of a sale with the customer's credit balance.</summary>
-    Task<Result> UseCreditBalanceAsync(Guid customerId, Guid saleId, decimal amount, CancellationToken ct);
+    /// <param name="reserved">Part of the balance that is other orders' deposits (R8 #7): this sale cannot spend it.</param>
+    Task<Result> UseCreditBalanceAsync(Guid customerId, Guid saleId, decimal amount, decimal reserved, CancellationToken ct);
 
     /// <summary>A voided sale: its on-account charge is cancelled (anything already paid on it becomes credit balance) and used balance comes back.</summary>
     Task VoidSaleAsync(Guid saleId, CancellationToken ct);
@@ -30,7 +31,7 @@ public interface ICustomerAccounts
     /// <summary>An order's deposit (TK-193): kept as the customer's credit balance until the order is charged with it.</summary>
     Task<Result> AddDepositAsync(Guid customerId, Guid orderId, decimal amount, CancellationToken ct);
 
-    /// <summary>A cancelled order gives its deposit back. Fails with Customers.InsufficientCreditBalance if the customer already spent it.</summary>
+    /// <summary>A cancelled order gives its deposit (or what is left of it) back. Fails with Customers.InsufficientCreditBalance if the balance is short.</summary>
     Task<Result> RefundDepositAsync(Guid customerId, Guid orderId, decimal amount, CancellationToken ct);
 }
 

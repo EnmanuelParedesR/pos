@@ -40,6 +40,14 @@ public sealed class SuggestedOrderTests(TokiApp app) : IClassFixture<TokiApp>
         (neverBought.GetProperty("productId").GetGuid(), neverBought.GetProperty("suggested").GetDecimal()).ShouldBe((salt, 8m));
         neverBought.GetProperty("lastCost").ValueKind.ShouldBe(JsonValueKind.Null);
 
+        // R8 #16: who buys without costs.view gets the quantities, not the costs.
+        var role = (await (await c.PostAsJsonAsync("/api/identity/roles", new { Name = "Comprador", Permissions = new[] { "purchasing.manage" } })).Json()).GetProperty("id").GetGuid();
+        var buyer = (await app.Client(await app.UserAsync(role)).GetFromJsonAsync<JsonElement>("/api/purchasing/suggested-order")).EnumerateArray().ToList();
+        buyer.Select(g => g.GetProperty("supplier").GetString()).ShouldBe(["Agro del Cibao", "Bodega Central", null]);
+        buyer.ShouldAllBe(g => g.GetProperty("subtotal").ValueKind == JsonValueKind.Null
+            && g.GetProperty("lines").EnumerateArray().All(l => l.GetProperty("lastCost").ValueKind == JsonValueKind.Null));
+        buyer[1].GetProperty("lines")[0].GetProperty("suggested").GetDecimal().ShouldBe(35m);
+
         // "Crear compra": a draft without NCF per supplier, with those lines; it is received once the invoice's NCF is written.
         var draft = await DraftAsync(c, bodega, ribs, 35m, 125m);
         (await DraftAsync(c, bodega, ribs, 1m, 125m)).ShouldNotBe(draft); // two drafts waiting for their invoice do not collide

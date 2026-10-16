@@ -99,7 +99,8 @@ internal sealed class FiscalConfiguration : IEntityTypeConfiguration<NcfSequence
         b.HasIndex(d => d.ReferenceId);
         b.HasIndex(d => new { d.Status, d.SubmitDeadlineUtc });
         b.Property(d => d.Type).HasConversion<int>();
-        b.Property(d => d.Status).HasConversion<string>().HasMaxLength(20);
+        // R8 #2: the queue and a void never both win; the loser of a race fails instead of overwriting the other's status.
+        b.Property(d => d.Status).HasConversion<string>().HasMaxLength(20).IsConcurrencyToken();
         b.Property(d => d.SecurityCode).HasMaxLength(6);
         b.Property(d => d.ModifiedENcf).HasMaxLength(13);
         b.Property(d => d.BuyerRnc).HasMaxLength(11);
@@ -241,6 +242,11 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
             i.SequenceExpiresOn));
         return issued;
     }
+
+    public async Task<IReadOnlySet<string>> UnreplacedENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct) =>
+        (await db.Documents.Where(d => d.SignedUtc >= fromUtc && d.SignedUtc < toUtc && d.ReplacedByENcf == null
+                && (d.Status == SubmissionStatus.Voided || d.Status == SubmissionStatus.Rejected))
+            .Select(d => d.ENcf).ToListAsync(ct)).ToHashSet(StringComparer.Ordinal);
 
     public async Task<IReadOnlySet<string>> TestENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct) =>
         (await db.Documents.Where(d => d.SignedUtc >= fromUtc && d.SignedUtc < toUtc

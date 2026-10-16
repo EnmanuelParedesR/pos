@@ -4,10 +4,10 @@
 
 @* TK-162: the DGII registry (~700k rows) is imported in the background on the server; this card uploads it and shows the progress. *@
 <section class="esc-card esc-setting">
-    <div class="esc-setting__about"><h2>Padrón de RNC</h2><p>El archivo DGII_RNC.TXT que publica la DGII (descomprimido). Con él la caja llena el nombre del cliente al escribir su RNC o cédula. Cárguelo de nuevo cada mes.</p></div>
+    <div class="esc-setting__about"><h2>Padrón de RNC</h2><p>El archivo del padrón que publica la DGII: el .zip tal como se descarga, o el DGII_RNC.TXT que trae adentro. Con él la caja llena el nombre del cliente al escribir su RNC o cédula. Cárguelo de nuevo cada mes.</p></div>
     <div class="esc-setting__body">
         <Field Label="Archivo del padrón" Hint="Puede seguir usando Toki mientras se carga.">
-            <InputFile class="esc-input" accept=".txt,.TXT" OnChange="UploadAsync" disabled="@(_uploading || _status?.Running == true)" />
+            <InputFile class="esc-input" accept=".txt,.TXT,.zip,.ZIP" OnChange="UploadAsync" disabled="@(_uploading || _status?.Running == true)" />
         </Field>
         @if (_uploading)
         {

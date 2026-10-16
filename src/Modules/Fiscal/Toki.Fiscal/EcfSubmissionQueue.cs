@@ -40,6 +40,9 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
 
         foreach (var d in documents)
         {
+            // R8 #2: claims a pending document before calling the DGII. A void needs SentUtc null, so it can no longer win; one that already won
+            // (it changed the status after the load above) leaves 0 rows and the document is skipped.
+            if (d.Status == SubmissionStatus.Pending && !await ClaimAsync(d, now, ct)) continue;
             try
             {
                 var answer = d.Status == SubmissionStatus.Sent ? await provider.GetResultAsync(d.TrackId!, ct) : await SendAsync(d, rnc, ct);
@@ -49,6 +52,7 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 Failed(d.ENcf, ex, ++d.Attempts, now, (next, error) => (d.NextAttemptUtc, d.LastError) = (next, error));
+                if (d.Status == SubmissionStatus.Pending) d.SentUtc = null; // releases the claim: it can be voided again (the void asks the DGII first)
             }
             // One save per document: a crash after the DGII answered loses at most one answer, and the next pass asks before resending.
             await db.SaveChangesAsync(ct);
@@ -70,6 +74,19 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
 
         if (!provider.IsSimulated) await ArchiveAsync(ct);
         return documents.Count + voids.Count;
+    }
+
+    private async Task<bool> ClaimAsync(FiscalDocument d, DateTime now, CancellationToken ct)
+    {
+        if (await db.Documents.Where(x => x.Id == d.Id && x.Status == SubmissionStatus.Pending)
+                .ExecuteUpdateAsync(x => x.SetProperty(q => q.SentUtc, now), ct) != 1)
+        {
+            db.Entry(d).State = EntityState.Detached;
+            return false;
+        }
+        var sent = db.Entry(d).Property(x => x.SentUtc);
+        (sent.OriginalValue, sent.CurrentValue) = (now, now);
+        return true;
     }
 
     private async Task<DgiiAnswer> SendAsync(FiscalDocument d, string rnc, CancellationToken ct)

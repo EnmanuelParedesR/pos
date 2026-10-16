@@ -186,6 +186,11 @@
             (_errorKind, _error) = (Notice.Kinds.Error, "Escriba el abono como un monto, o déjelo vacío.");
             return;
         }
+        if (_kind == OrderKind.Order && deposit is { } cash && _depositMethod == PaymentMethod.Cash && cash != Math.Truncate(cash))
+        {
+            (_errorKind, _error) = (Notice.Kinds.Error, "El efectivo se recibe en pesos enteros."); // R8 #6
+            return;
+        }
         var order = _kind == OrderKind.Order
             ? new CreateOrder(_orderId, OrderKind.Order, Cart.Customer?.Id, Lines(), _pickupDate, _pickupTime, Blank(_notes), null,
                 deposit is { } d ? new DepositInput(ShiftId, _depositMethod, Math.Round(d, 2)) : null)
@@ -227,20 +232,22 @@
     {
         if (string.IsNullOrWhiteSpace(_reason)) { (_errorKind, _error) = (Notice.Kinds.Error, "Escriba el motivo."); return; }
         _sending = true;
-        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/orders/{o.Id}/cancel", new { ShiftId, Reason = _reason.Trim(), SupervisorApprovalId = id }),
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<OrderCancelled>($"/api/orders/{o.Id}/cancel", new { ShiftId, Reason = _reason.Trim(), SupervisorApprovalId = id }),
             o.Id, $"Cancelar el pedido de {o.CustomerName}");
         _sending = false;
-        if (!r.Ok)
-        {
-            Show(r.Problem!.Code == "Customers.InsufficientCreditBalance"
-                ? r.Problem with { Message = "El cliente ya usó el abono en otra compra; no hay abono que devolver." } : r.Problem);
-            return;
-        }
-        if (o.Deposit > 0 && o.DepositMethod == PaymentMethod.Cash && Peripherals.Printer is not null)
+        if (r.Value is not { } cancelled) { Show(r.Problem); return; }
+        if (cancelled.Refunded > 0 && o.DepositMethod == PaymentMethod.Cash && Peripherals.Printer is not null)
             await Peripherals.TryAsync(p => p.OpenDrawerAsync(CancellationToken.None));
         _cancelling = null;
         await LoadAsync();
-        (_errorKind, _error) = (Notice.Kinds.Success, o.Deposit > 0 ? $"Pedido cancelado. Devuelva {Format.WithCurrency(o.Deposit)} al cliente." : "Pedido cancelado.");
+        // R8 #7: a deposit already spent elsewhere is not handed back (the order notes it).
+        (_errorKind, _error) = (Notice.Kinds.Success, (o.Deposit, cancelled.Refunded) switch
+        {
+            (0m, _) => "Pedido cancelado.",
+            (var d, var back) when back == d => $"Pedido cancelado. Devuelva {Format.WithCurrency(back)} al cliente.",
+            (_, 0m) => "Pedido cancelado. El cliente ya usó el abono: no hay nada que devolver.",
+            (_, var back) => $"Pedido cancelado. El cliente ya usó parte del abono: devuelva {Format.WithCurrency(back)}.",
+        });
     }
 
     private async Task ChargeAsync(OrderItem o)

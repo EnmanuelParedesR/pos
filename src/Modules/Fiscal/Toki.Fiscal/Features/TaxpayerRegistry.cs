@@ -1,4 +1,5 @@
 using System.Data;
+using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
@@ -7,6 +8,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -18,7 +20,7 @@ using Toki.SharedKernel;
 
 namespace Toki.Fiscal.Features;
 
-/// <summary>DGII taxpayer registry: the owner uploads DGII_RNC.TXT (pipe-separated, ANSI) and the register looks names up by RNC or cédula.</summary>
+/// <summary>DGII taxpayer registry: the owner uploads DGII_RNC.TXT (pipe-separated, ANSI), or the .zip DGII publishes it in, and the register looks names up by RNC or cédula.</summary>
 internal static class TaxpayerRegistry
 {
     private const int BatchSize = 5000;
@@ -61,17 +63,41 @@ internal static class TaxpayerRegistry
         }
     }
 
-    /// <summary>Replaces the whole registry with the file; a failure leaves the previous one. Returns how many taxpayers it loaded.</summary>
+    /// <summary>R8 #8: fewer taxpayers than <paramref name="Minimum"/>: the file is something else, and the previous registry stays.</summary>
+    internal sealed class NotTheRegistryException(int count, int minimum)
+        : Exception($"El archivo no parece el padrón de la DGII: trae {count:#,##0} contribuyentes y el padrón tiene más de {minimum:#,##0}. El anterior sigue igual.");
+
+    /// <summary>Replaces the whole registry with the file (the TXT, or the .zip as DGII publishes it); a failure leaves the previous one.
+    /// Returns how many taxpayers it loaded.</summary>
+    /// <param name="minimum">R8 #8: below this many taxpayers nothing is replaced (<see cref="NotTheRegistryException"/>).</param>
     /// <param name="progress">Called after each batch with the taxpayers loaded so far.</param>
-    internal static async Task<int> ImportAsync(FiscalDbContext db, DbProvider provider, Stream file, Action<int> progress, CancellationToken ct)
+    internal static async Task<int> ImportAsync(FiscalDbContext db, DbProvider provider, Stream file, int minimum, Action<int> progress, CancellationToken ct)
     {
-        var encoding = await DetectEncodingAsync(file, ct);
+        var magic = new byte[4];
+        var isZip = await file.ReadAtLeastAsync(magic, 4, throwOnEndOfStream: false, ct) == 4 && magic is [(byte)'P', (byte)'K', 3, 4];
         file.Position = 0;
-        using var reader = new StreamReader(file, encoding);
+        if (!isZip) return await ImportTextAsync(db, provider, () => { file.Position = 0; return file; }, owns: false, minimum, progress, ct);
+
+        using var zip = new ZipArchive(file, ZipArchiveMode.Read, leaveOpen: true);
+        var entry = zip.Entries.Where(e => e.Name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)).MaxBy(e => e.Length)
+            ?? throw new NotTheRegistryException(0, minimum);
+        return await ImportTextAsync(db, provider, entry.Open, owns: true, minimum, progress, ct);
+    }
+
+    /// <param name="open">Opens the text from its start: once to detect the encoding, once to read it.</param>
+    /// <param name="owns">The opened streams are ours to close (a zip entry), not the caller's file.</param>
+    private static async Task<int> ImportTextAsync(FiscalDbContext db, DbProvider provider, Func<Stream> open, bool owns, int minimum, Action<int> progress,
+        CancellationToken ct)
+    {
+        var head = open();
+        var encoding = await DetectEncodingAsync(head, ct);
+        if (owns) await head.DisposeAsync();
+        using var reader = new StreamReader(open(), encoding, leaveOpen: !owns);
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        void Check() { if (seen.Count < minimum) throw new NotTheRegistryException(seen.Count, minimum); }
         db.Database.SetCommandTimeout(TimeSpan.FromMinutes(5));
-        if (provider == DbProvider.SqlServer) await BulkCopyAsync(db, Batches(reader, seen, ct), () => progress(seen.Count), ct);
-        else await InsertAsync(db, Batches(reader, seen, ct), () => progress(seen.Count), ct);
+        if (provider == DbProvider.SqlServer) await BulkCopyAsync(db, Batches(reader, seen, ct), () => progress(seen.Count), Check, ct);
+        else await InsertAsync(db, Batches(reader, seen, ct), () => progress(seen.Count), Check, ct);
         return seen.Count;
     }
 
@@ -90,7 +116,7 @@ internal static class TaxpayerRegistry
     }
 
     /// <summary>Sqlite (development, tests): EF batches in one transaction.</summary>
-    private static async Task InsertAsync(FiscalDbContext db, IAsyncEnumerable<List<Taxpayer>> batches, Action progress, CancellationToken ct)
+    private static async Task InsertAsync(FiscalDbContext db, IAsyncEnumerable<List<Taxpayer>> batches, Action progress, Action check, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.Taxpayers.ExecuteDeleteAsync(ct);
@@ -102,6 +128,7 @@ internal static class TaxpayerRegistry
             db.ChangeTracker.Clear();
             progress();
         }
+        check(); // throws: the transaction rolls back and the previous registry stays
         await tx.CommitAsync(ct);
     }
 
@@ -109,7 +136,7 @@ internal static class TaxpayerRegistry
     /// old registry meanwhile; then one short transaction swaps the rows in.</summary>
     /// <remarks>shortcut: the swap still locks the table for the few seconds the INSERT … SELECT of ~700k rows takes; a checkout asking
     /// for a buyer's name waits that long.</remarks>
-    private static async Task BulkCopyAsync(FiscalDbContext db, IAsyncEnumerable<List<Taxpayer>> batches, Action progress, CancellationToken ct)
+    private static async Task BulkCopyAsync(FiscalDbContext db, IAsyncEnumerable<List<Taxpayer>> batches, Action progress, Action check, CancellationToken ct)
     {
         await db.Database.OpenConnectionAsync(ct);
         await db.Database.ExecuteSqlRawAsync(
@@ -130,6 +157,7 @@ internal static class TaxpayerRegistry
                 await bulk.WriteToServerAsync(table, ct);
                 progress();
             }
+            check(); // before the swap: a wrong file never empties the registry
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             await db.Database.ExecuteSqlRawAsync(
                 "TRUNCATE TABLE fiscal.Taxpayers; INSERT INTO fiscal.Taxpayers WITH (TABLOCK) (Rnc, Name, TradeName, IsActive) SELECT Rnc, Name, TradeName, IsActive FROM fiscal.TaxpayersImport;", ct);
@@ -180,9 +208,13 @@ internal static class TaxpayerRegistry
 }
 
 /// <summary>TK-162: one registry import at a time, off the request and in its own scope; the admin screen polls <see cref="Status"/>.</summary>
-internal sealed class TaxpayerImport(IServiceScopeFactory scopes, IHostApplicationLifetime life, TimeProvider clock, ILogger<TaxpayerImport> log)
+internal sealed class TaxpayerImport(IServiceScopeFactory scopes, IHostApplicationLifetime life, IConfiguration config, TimeProvider clock,
+    ILogger<TaxpayerImport> log)
 {
     public static readonly Error AlreadyRunning = Error.Conflict("Fiscal.RegistryImportRunning", "Ya se está cargando un padrón. Espere a que termine.");
+
+    /// <summary>R8 #8: DGII's registry has ~700k taxpayers; a file with fewer than this is not it. <c>Fiscal:RegistryMinimumTaxpayers</c> overrides it.</summary>
+    public const int MinimumTaxpayers = 100_000;
 
     private readonly Lock _gate = new();
     private bool _running;
@@ -220,7 +252,7 @@ internal sealed class TaxpayerImport(IServiceScopeFactory scopes, IHostApplicati
             await using var scope = scopes.CreateAsyncScope();
             await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16, FileOptions.Asynchronous);
             var count = await TaxpayerRegistry.ImportAsync(scope.ServiceProvider.GetRequiredService<FiscalDbContext>(),
-                scope.ServiceProvider.GetRequiredService<DatabaseOptions>().Provider, file, n =>
+                scope.ServiceProvider.GetRequiredService<DatabaseOptions>().Provider, file, config.GetValue("Fiscal:RegistryMinimumTaxpayers", MinimumTaxpayers), n =>
                 {
                     Volatile.Write(ref _taxpayers, n);
                     Interlocked.Exchange(ref _read, file.Position);
@@ -232,6 +264,11 @@ internal sealed class TaxpayerImport(IServiceScopeFactory scopes, IHostApplicati
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             error = "La carga se detuvo porque el servidor se apagó. El padrón anterior sigue igual; cárguelo de nuevo.";
+        }
+        catch (TaxpayerRegistry.NotTheRegistryException e)
+        {
+            log.LogWarning("RNC taxpayer registry rejected: {Reason}", e.Message);
+            error = e.Message;
         }
         catch (Exception e)
         {
