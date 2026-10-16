@@ -1,0 +1,93 @@
+@* Configuración → Balanza y etiquetas (TK-239): how the scale prints its EAN-13 labels (prefix 20–29, PLU, weight or price). *@
+@inject AbastaliaApi Api
+
+<section class="esc-card esc-setting">
+    <div class="esc-setting__about">
+        <h2>Etiquetas de la balanza</h2>
+        <p>Cómo lee la caja las etiquetas que imprime la balanza: el prefijo, cuántos números son el PLU y si el resto es el peso o el precio.</p>
+        <div style="margin-top:12px"><Button OnClick="Add"><Icon Name="plus" /> Agregar formato</Button></div>
+    </div>
+    <div class="esc-setting__body">
+        <div class="esc-table-wrap">
+            <table class="esc-table">
+                <thead><tr><th>Prefijo</th><th>Dígitos del PLU</th><th>Trae</th><th>Decimales</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var f in _formats)
+                    {
+                        <tr>
+                            <td><input class="esc-input" style="width:72px" inputmode="numeric" maxlength="2" aria-label="Prefijo" @bind="f.Prefix" /></td>
+                            <td><select class="esc-select" aria-label="Dígitos del PLU" @bind="f.PluLength">@for (var n = 4; n <= 6; n++) { <option value="@n">@n</option> }</select></td>
+                            <td><select class="esc-select" aria-label="Trae" @bind="f.IsPrice"><option value="False">Peso (lb)</option><option value="True">Precio (RD$)</option></select></td>
+                            <td><select class="esc-select" aria-label="Decimales" @bind="f.Decimals">@for (var n = 0; n <= 3; n++) { <option value="@n">@n</option> }</select></td>
+                            <td class="esc-num"><Button class="esc-button esc-button--small" aria-label="@($"Quitar el prefijo {f.Prefix}")" OnClick="() => _formats.Remove(f)">Quitar</Button></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        <Field Label="Pruebe una etiqueta" Hint="Escanee o escriba los 13 números de una etiqueta para ver cómo la lee la caja.">
+            <input class="esc-input" inputmode="numeric" maxlength="13" aria-label="Etiqueta de prueba" @bind="_sample" @bind:event="oninput" />
+        </Field>
+        <div class="esc-muted" role="status">@Preview</div>
+        @if (_message is not null) { <Notice Kind="_messageKind" Title="@_message" /> }
+        <div class="esc-form-actions"><Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SaveAsync">Guardar formatos</Button></div>
+    </div>
+</section>
+
+@code {
+    private sealed class Row { public string Prefix = ""; public int PluLength = 5; public bool IsPrice; public int Decimals = 3; }
+    private sealed record LabelFormat(string Prefix, int PluLength, bool IsPrice, int Decimals);
+
+    private List<Row> _formats = [];
+    private string? _sample, _message;
+    private Notice.Kinds _messageKind;
+    private bool _sending;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _formats = [.. ((await Api.GetAsync<List<LabelFormat>>("/api/inventory/label-formats")).Value ?? [])
+            .Select(f => new Row { Prefix = f.Prefix, PluLength = f.PluLength, IsPrice = f.IsPrice, Decimals = f.Decimals })];
+        // An example label of the first format: PLU 123 and the value 2345 (2.345 lb, or RD$ 23.45), with its check digit.
+        if (_formats.FirstOrDefault() is { } first)
+        {
+            var head = first.Prefix + "123".PadLeft(first.PluLength, '0');
+            _sample = WithCheckDigit(head + "2345".PadLeft(12 - head.Length, '0'));
+        }
+    }
+
+    private void Add() => _formats.Add(new Row { Prefix = "2" + Enumerable.Range(0, 10).Select(d => d.ToString()).FirstOrDefault(d => _formats.All(f => f.Prefix != "2" + d), "9") });
+
+    /// <summary>The same reading as the server (Inventory ScaleLabel.Read).</summary>
+    private string Preview
+    {
+        get
+        {
+            var code = _sample?.Trim() ?? "";
+            if (code.Length == 0) return "";
+            if (code.Length != 13 || !code.All(char.IsAsciiDigit)) return "Una etiqueta tiene 13 números.";
+            if (_formats.FirstOrDefault(f => code.StartsWith(f.Prefix, StringComparison.Ordinal)) is not { } f) return "Ningún formato tiene ese prefijo: la caja la buscaría como código de barras.";
+            if (WithCheckDigit(code[..12]) != code) return "El último dígito (verificador) no cuadra: la etiqueta se leyó mal.";
+            var start = f.Prefix.Length + f.PluLength;
+            if (start >= 12) return "El prefijo y el PLU no dejan espacio para el valor.";
+            var value = decimal.Parse(code[start..12], System.Globalization.CultureInfo.InvariantCulture) / (decimal)Math.Pow(10, f.Decimals);
+            var plu = code.Substring(f.Prefix.Length, f.PluLength).TrimStart('0');
+            return $"PLU {plu} · {(f.IsPrice ? Format.WithCurrency(value) : value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) + " lb")}";
+        }
+    }
+
+    private static string WithCheckDigit(string twelve)
+    {
+        var sum = 0;
+        for (var i = 0; i < 12; i++) sum += (twelve[i] - '0') * (i % 2 == 0 ? 1 : 3);
+        return twelve + (10 - sum % 10) % 10;
+    }
+
+    private async Task SaveAsync()
+    {
+        _sending = true;
+        var r = await Api.PutAsync<Empty>("/api/inventory/label-formats",
+            new { Formats = _formats.Select(f => new LabelFormat(f.Prefix.Trim(), f.PluLength, f.IsPrice, f.Decimals)) });
+        _sending = false;
+        (_messageKind, _message) = r.Problem is { } p ? (Notice.Kinds.Error, p.Message) : (Notice.Kinds.Success, "Formatos guardados.");
+    }
+}

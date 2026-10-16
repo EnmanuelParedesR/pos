@@ -13,8 +13,8 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 
 | Pieza | Dónde | Qué hace |
 |---|---|---|
-| `Toki.Sync` (módulo) | PC principal (host local) | Conecta la tienda a la nube con un código; un `BackgroundService` sube los eventos del outbox por lotes y marca `UploadedUtc` solo con los ids confirmados. Nunca da un evento por perdido. |
-| `Toki.Host.Cloud` (API .NET 10) | Azure App Service | Registro de tiendas, ingesta (`/ingest/v1/events`), inbox idempotente, proyectores a la réplica, API del panel, asistente y relevo e-CF. |
+| `Abastalia.Sync` (módulo) | PC principal (host local) | Conecta la tienda a la nube con un código; un `BackgroundService` sube los eventos del outbox por lotes y marca `UploadedUtc` solo con los ids confirmados. Nunca da un evento por perdido. |
+| `Abastalia.Host.Cloud` (API .NET 10) | Azure App Service | Registro de tiendas, ingesta (`/ingest/v1/events`), inbox idempotente, proyectores a la réplica, API del panel, asistente y relevo e-CF. |
 | `src/Cloud/panel` (React + Vite + TypeScript) | Azure Static Web Apps | Panel del dueño: resumen, ventas, cuadres, productos más vendidos y el asistente. En español; usa los mismos tokens de color de Escuadra. |
 | Azure SQL (base serverless) | Azure | Esquemas `cloud` (tenants, tiendas, usuarios del panel), `ingest` (inbox, versiones) y `replica` (proyecciones por `TenantId`). |
 | Azure OpenAI | Azure | El modelo más económico disponible en la región con *function calling*. El asistente solo lee la réplica, siempre filtrada por el tenant del usuario. |
@@ -34,7 +34,7 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 - `POST /ingest/v1/events` con `{ events: [{ id, type, aggregateId, occurredUtc, payload }] }`, hasta 200 por lote. Responde `{ accepted: [ids] }`, incluidos los duplicados ya recibidos. Recibir es barato; aplicar va aparte.
 - Un worker de la nube aplica cada evento de `ingest.Inbox` con su proyector en la misma transacción que marca `AppliedUtc`. Un tipo desconocido queda guardado sin aplicar: se proyecta cuando exista su proyector.
 - Las proyecciones hacen *upsert* por id; nunca suman sobre lo ya aplicado.
-- Lo que manda el nodo: `type` es el nombre completo del evento en .NET (por ejemplo `Toki.Sales.Contracts.SaleRecordedV1`), `payload` es el JSON del evento como objeto (camelCase, enums como texto), no como texto escapado, y `occurredUtc` va en ISO 8601 con `Z`. El cuerpo va comprimido (`Content-Encoding: gzip`), así que la nube lo descomprime (`UseRequestDecompression`). Solo se marca como subido lo que viene en `accepted`; una respuesta que no sea 200 deja todo el lote pendiente.
+- Lo que manda el nodo: `type` es el nombre completo del evento en .NET (por ejemplo `Abastalia.Sales.Contracts.SaleRecordedV1`), `payload` es el JSON del evento como objeto (camelCase, enums como texto), no como texto escapado, y `occurredUtc` va en ISO 8601 con `Z`. El cuerpo va comprimido (`Content-Encoding: gzip`), así que la nube lo descomprime (`UseRequestDecompression`). Solo se marca como subido lo que viene en `accepted`; una respuesta que no sea 200 deja todo el lote pendiente.
 
 **Réplica (V1)**: ventas (cabecera, líneas, pagos), anulaciones, devoluciones con sus líneas, turnos abiertos y cerrados (Z), movimientos de caja, movimientos de inventario, cambios de precio, documentos fiscales, compras y sus anulaciones, cargos a crédito (fiado) y abonos de clientes, el saldo y el nombre de cada cliente, y los nombres de usuarios y cajas. Toda tabla lleva `TenantId` como primera columna de sus índices. `SupplierPaymentRecordedV1` todavía se guarda sin aplicar.
 
@@ -42,27 +42,27 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 
 | Evento | Tabla | Notas |
 |---|---|---|
-| `Toki.Sales.Contracts.SaleRecordedV1` | `Sales`, `SaleLines`, `SalePayments` | Ya no se emite; se sigue aplicando (líneas sin unidad). |
-| `Toki.Sales.Contracts.SaleRecordedV2` | `Sales`, `SaleLines`, `SalePayments` | V1 + `unit` en cada línea (`Pound` o `Unit`, como en el recibo; TK-180). Los más vendidos traen `unit` (la de la venta más reciente que la tenga). |
-| `Toki.Sales.Contracts.SaleVoidedV1` | `SaleVoids` | |
-| `Toki.Sales.Contracts.ReturnRecordedV1` | `Returns` | Sin líneas. Ya no se emite; se sigue aplicando por lo que ya se subió. |
-| `Toki.Sales.Contracts.ReturnRecordedV2` | `Returns`, `ReturnLines` | V1 + `lines: [{ productId, presentationId, description, quantity, total, itbis, cost }]` (cantidad en la unidad de la línea vendida, `total` con ITBIS, `cost` unitario como en `SaleLineV1`). Los más vendidos restan lo devuelto el día de la devolución. |
-| `Toki.CashRegister.Contracts.ShiftOpenedV1` | `OpenedShifts` | |
-| `Toki.CashRegister.Contracts.ShiftClosedV1` | `ClosedShifts` | |
-| `Toki.CashRegister.Contracts.CashMovementRecordedV1` | `CashMovements` | Por `EventId`: el movimiento no trae id propio. |
-| `Toki.CashRegister.Contracts.RegisterChangedV1` | `Registers` | `{ registerId, name }`. Al crear una caja. |
-| `Toki.Identity.Contracts.UserProfileChangedV1` | `StoreUsers` | `{ userId, name, active }`. Al crear o editar un usuario y en el asistente inicial. Nunca lleva PIN, código ni permisos. |
-| `Toki.Inventory.Contracts.StockMovementRecordedV1` | `StockMovements` | |
-| `Toki.Inventory.Contracts.PriceChangedV1` | `PriceChanges` | Por `EventId`. |
-| `Toki.Fiscal.Contracts.FiscalDocumentIssuedV1` | `FiscalDocuments` | |
-| `Toki.Purchasing.Contracts.PurchasePostedV1` / `PurchaseVoidedV1` | `Purchases`, `PurchaseVoids` | |
-| `Toki.Customers.Contracts.OnAccountChargeRecordedV1` | `CustomerCharges` | Uno por venta. |
-| `Toki.Customers.Contracts.CustomerPaymentRecordedV1` | `CustomerPayments` | |
-| `Toki.Customers.Contracts.CustomerBalanceChangedV1` | `Customers` | `{ customerId, name, debt, creditBalance }` con las cifras de la propia tienda (TK-174): al crear o editar un cliente, y tras cada fiado, abono, abono anulado, venta anulada, devolución a la cuenta o uso del saldo a favor. Gana el más reciente según `occurredUtc`. También va en la foto inicial. |
-| `Toki.Sync.Contracts.NodeHeartbeatV1` | `NodeHeartbeats`, `DailyUsage` | El latido del nodo (TK-190): el más reciente por nodo y por tienda y día. Ver abajo. |
+| `Abastalia.Sales.Contracts.SaleRecordedV1` | `Sales`, `SaleLines`, `SalePayments` | Ya no se emite; se sigue aplicando (líneas sin unidad). |
+| `Abastalia.Sales.Contracts.SaleRecordedV2` | `Sales`, `SaleLines`, `SalePayments` | V1 + `unit` en cada línea (`Pound` o `Unit`, como en el recibo; TK-180). Los más vendidos traen `unit` (la de la venta más reciente que la tenga). |
+| `Abastalia.Sales.Contracts.SaleVoidedV1` | `SaleVoids` | |
+| `Abastalia.Sales.Contracts.ReturnRecordedV1` | `Returns` | Sin líneas. Ya no se emite; se sigue aplicando por lo que ya se subió. |
+| `Abastalia.Sales.Contracts.ReturnRecordedV2` | `Returns`, `ReturnLines` | V1 + `lines: [{ productId, presentationId, description, quantity, total, itbis, cost }]` (cantidad en la unidad de la línea vendida, `total` con ITBIS, `cost` unitario como en `SaleLineV1`). Los más vendidos restan lo devuelto el día de la devolución. |
+| `Abastalia.CashRegister.Contracts.ShiftOpenedV1` | `OpenedShifts` | |
+| `Abastalia.CashRegister.Contracts.ShiftClosedV1` | `ClosedShifts` | |
+| `Abastalia.CashRegister.Contracts.CashMovementRecordedV1` | `CashMovements` | Por `EventId`: el movimiento no trae id propio. |
+| `Abastalia.CashRegister.Contracts.RegisterChangedV1` | `Registers` | `{ registerId, name }`. Al crear una caja. |
+| `Abastalia.Identity.Contracts.UserProfileChangedV1` | `StoreUsers` | `{ userId, name, active }`. Al crear o editar un usuario y en el asistente inicial. Nunca lleva PIN, código ni permisos. |
+| `Abastalia.Inventory.Contracts.StockMovementRecordedV1` | `StockMovements` | |
+| `Abastalia.Inventory.Contracts.PriceChangedV1` | `PriceChanges` | Por `EventId`. |
+| `Abastalia.Fiscal.Contracts.FiscalDocumentIssuedV1` | `FiscalDocuments` | |
+| `Abastalia.Purchasing.Contracts.PurchasePostedV1` / `PurchaseVoidedV1` | `Purchases`, `PurchaseVoids` | |
+| `Abastalia.Customers.Contracts.OnAccountChargeRecordedV1` | `CustomerCharges` | Uno por venta. |
+| `Abastalia.Customers.Contracts.CustomerPaymentRecordedV1` | `CustomerPayments` | |
+| `Abastalia.Customers.Contracts.CustomerBalanceChangedV1` | `Customers` | `{ customerId, name, debt, creditBalance }` con las cifras de la propia tienda (TK-174): al crear o editar un cliente, y tras cada fiado, abono, abono anulado, venta anulada, devolución a la cuenta o uso del saldo a favor. Gana el más reciente según `occurredUtc`. También va en la foto inicial. |
+| `Abastalia.Sync.Contracts.NodeHeartbeatV1` | `NodeHeartbeats`, `DailyUsage` | El latido del nodo (TK-190): el más reciente por nodo y por tienda y día. Ver abajo. |
 
 - Los nombres (usuarios y cajas) se quedan con el evento más reciente según `occurredUtc`: uno viejo que llegue tarde no deshace un cambio.
-- **Foto inicial**: al conectar la tienda (`/api/sync/connect`), en la misma transacción, Identity, CashRegister y Customers escriben en el outbox un `UserProfileChangedV1` por cada usuario, un `RegisterChangedV1` por cada caja y un `CustomerBalanceChangedV1` por cada cliente (`ICloudSnapshot` en `Toki.Sync.Contracts`). Así una tienda que se conecta tarde también manda los nombres que ya existían. Se repite en cada conexión; no hace daño.
+- **Foto inicial**: al conectar la tienda (`/api/sync/connect`), en la misma transacción, Identity, CashRegister y Customers escriben en el outbox un `UserProfileChangedV1` por cada usuario, un `RegisterChangedV1` por cada caja y un `CustomerBalanceChangedV1` por cada cliente (`ICloudSnapshot` en `Abastalia.Sync.Contracts`). Así una tienda que se conecta tarde también manda los nombres que ya existían. Se repite en cada conexión; no hace daño.
 - Un evento publicado no se cambia: si su forma cambia, se crea `V2` y la nube proyecta las dos versiones.
 
 **Panel**: ASP.NET Core Identity con *bearer tokens* (`MapIdentityApi`) para los usuarios del panel. Cada usuario es miembro de uno o más tenants (TK-217, abajo), y todas las consultas filtran por el tenant del token.
@@ -77,7 +77,7 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 - `shortcut:` todavía no hay proveedor de correo: `IEmailSender` es `LoggingEmailSender` (anota destinatario y asunto; el cuerpo con el enlace solo en Debug) y el panel le muestra el enlace al Dueño para copiarlo. Conectar Azure Communication Services o SendGrid después.
 - El invitado abre `/invite#{token}` en el panel: el panel manda el token en el cuerpo, nunca en la ruta (R8 #12). Ve la invitación (`POST /api/invites/preview { token }`, sin sesión), crea su cuenta con el correo invitado (`POST /api/invites/register { token, password }`, no crea negocio propio) o entra con su cuenta y acepta (`POST /api/invites/accept { token }`, el correo de la cuenta debe ser el invitado).
 - Una cuenta puede ser miembro de varios negocios. `CloudUser.TenantId` es el negocio actual y es el que va en el token; `POST /api/me/tenant` lo cambia y el panel renueva el token. `GET /api/me` trae `role` y `tenants`. Al entrar, el token toma el negocio actual si la cuenta sigue siendo miembro y está activo; si no, el primer negocio activo. Se puede entrar mientras quede alguno activo (R8 #18).
-- Equipo (`/api/members`): listar, cambiar rol (`PUT /{userId}/role`) y quitar (`DELETE /{userId}`). Nunca el último Dueño: la condición va en la misma sentencia que el cambio. `shortcut:` con `READ_COMMITTED_SNAPSHOT` dos Dueños que se bajan a la vez en el mismo instante podrían quedar sin Dueño; el equipo de Toki lo arregla a mano.
+- Equipo (`/api/members`): listar, cambiar rol (`PUT /{userId}/role`) y quitar (`DELETE /{userId}`). Nunca el último Dueño: la condición va en la misma sentencia que el cambio. `shortcut:` con `READ_COMMITTED_SNAPSHOT` dos Dueños que se bajan a la vez en el mismo instante podrían quedar sin Dueño; el equipo de Abastalia lo arregla a mano.
 - La consola de plataforma (TK-189) lista los miembros de cada cliente con su rol.
 
 **Latido del nodo (TK-190)**
@@ -85,8 +85,8 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 - Sube con los demás eventos, así que sin internet llega después. Los datos los lee de los reportes de los otros módulos (`ISalesReports`, `ICashRegisterReports`, `ICustomerReports`, `IInventoryReports`, `ISettingsQueries`).
 - **Nunca** lleva nombres, PIN, códigos, clientes, RNC ni productos. Las definiciones de las métricas y las notas de privacidad están en `docs/metricas-producto.md`.
 
-**Plataforma: consola del equipo de Toki (TK-189)**
-- Rol de plataforma `PlatformAdmin`: un *claim* `platform_role=admin` en el token. Solo se guarda en la cuenta con el comando de consola `dotnet run --project src/Hosts/Toki.Host.Cloud -- grant-platform-admin <correo>` (y `revoke-platform-admin`). La cuenta debe existir (registrada en el panel) y el cambio cuenta desde su siguiente entrada. Nunca se pide desde el panel. (R8 #1: la lista de correos `Platform:Admins` se quitó; cualquiera podía registrarse con uno de esos correos sin confirmarlo.)
+**Plataforma: consola del equipo de Abastalia (TK-189)**
+- Rol de plataforma `PlatformAdmin`: un *claim* `platform_role=admin` en el token. Solo se guarda en la cuenta con el comando de consola `dotnet run --project src/Hosts/Abastalia.Host.Cloud -- grant-platform-admin <correo>` (y `revoke-platform-admin`). La cuenta debe existir (registrada en el panel) y el cambio cuenta desde su siguiente entrada. Nunca se pide desde el panel. (R8 #1: la lista de correos `Platform:Admins` se quitó; cualquiera podía registrarse con uno de esos correos sin confirmarlo.)
 - `/api/platform/*` exige la política `PlatformAdmin` y lee todos los tenants. Cada llamada (también las que fallan) deja una fila en `cloud.PlatformAudit` con quién, ruta y consulta y cuándo; el comando de consola también.
 - Clientes: `GET /tenants?search=` (correo, tienda, caja o id), `GET /tenants/{id}` (tiendas, nodos con versión, último envío, pendientes y fallidos, cajas, usuarios, códigos de conexión sin el código, avisos de sincronización y faltantes de 7 días), `GET /stores/{id}` (lista de puesta en marcha, funciones, nodos y los últimos 14 días). Métricas en `/metrics/*` (`docs/metricas-producto.md`).
 - Solo lectura, salvo: `POST /tenants/{id}/disable` y `/enable` (`Tenants.DisabledUtc`), y `POST /nodes/{id}/revoke` (`Nodes.RevokedUtc`). Un tenant desactivado no puede subir (la autenticación del nodo falla con 401 y la tienda guarda sus eventos y reintenta), sus usuarios no pueden entrar (el login responde 401 `NotAllowed`) y un token emitido antes recibe 403 en el panel. Un nodo revocado recibe 401; la tienda se conecta de nuevo con un código.
@@ -119,7 +119,7 @@ La tienda funciona sola contra su PC principal. El dueño quiere ver su negocio 
 - En el nodo, `Fiscal:Provider` elige el proveedor: `Simulated` (por defecto) o `Relay`. Hoy la nube responde `Simulated`.
 
 **Despliegue**
-- `deploy/azure/main.bicep` crea un grupo de recursos `rg-toki-<env>` con App Service Linux (B1), Azure SQL serverless con pausa automática, Static Web App (Free), Key Vault, Application Insights y Azure OpenAI con el despliegue del modelo.
+- `deploy/azure/main.bicep` crea un grupo de recursos `rg-abastalia-<env>` con App Service Linux (B1), Azure SQL serverless con pausa automática, Static Web App (Free), Key Vault, Application Insights y Azure OpenAI con el despliegue del modelo.
 - Los secretos se leen con identidad administrada desde Key Vault.
 
 ## Consecuencias

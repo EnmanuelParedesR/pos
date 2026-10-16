@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hosts\Abastalia.Host.Cloud\Abastalia.Host.Cloud.csproj" />
+    <!-- An event type the cloud does not project yet -->
+    <ProjectReference Include="..\..\src\Modules\Purchasing\Abastalia.Purchasing.Contracts\Abastalia.Purchasing.Contracts.csproj" />
+    <!-- e-CF built and signed as a store does, for the receiver tests (TK-152) -->
+    <ProjectReference Include="..\..\src\Modules\Fiscal\Abastalia.Fiscal\Abastalia.Fiscal.csproj" />
+  </ItemGroup>
+</Project>

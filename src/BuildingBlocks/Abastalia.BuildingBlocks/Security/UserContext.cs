@@ -1,0 +1,46 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+
+namespace Abastalia.BuildingBlocks.Security;
+
+public static class AbastaliaClaims
+{
+    public const string User = "sub";
+    public const string Name = "name";
+    public const string Device = "device";
+    public const string Session = "session";
+    public const string Permission = "permission";
+}
+
+/// <summary>Who is calling: the cashier's session on a paired device.</summary>
+public interface IUserContext
+{
+    Guid UserId { get; }
+    string Name { get; }
+    Guid? DeviceId { get; }
+    Guid? SessionId { get; }
+    bool Has(string permission);
+
+    /// <summary>Supervisor who approved the current command, if any. Recorded in the audit trail.</summary>
+    Guid? SupervisorId { get; set; }
+}
+
+internal sealed class HttpUserContext(IHttpContextAccessor accessor) : IUserContext
+{
+    private ClaimsPrincipal User => accessor.HttpContext?.User ?? new ClaimsPrincipal();
+
+    public Guid UserId => Guid.TryParse(User.FindFirstValue(AbastaliaClaims.User), out var id) ? id : Guid.Empty;
+    // "sistema" is a display name the store can see, so it stays in Spanish.
+    public string Name => User.FindFirstValue(AbastaliaClaims.Name) ?? "sistema";
+    public Guid? DeviceId => Guid.TryParse(User.FindFirstValue(AbastaliaClaims.Device), out var id) ? id : null;
+    public Guid? SessionId => Guid.TryParse(User.FindFirstValue(AbastaliaClaims.Session), out var id) ? id : null;
+    public bool Has(string permission) => User.HasClaim(AbastaliaClaims.Permission, permission);
+    public Guid? SupervisorId { get; set; }
+}
+
+public static class UserContextExtensions
+{
+    /// <summary>Whether the caller can do everything (the Administrador role, or a role the owner gave every permission): R11 A3, for the
+    /// few actions that open the way to everyone else's access (the backup passphrase, a copy to a network folder).</summary>
+    public static bool IsAdministrator(this IUserContext user) => Permissions.All.All(user.Has);
+}

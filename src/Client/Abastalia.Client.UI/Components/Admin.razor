@@ -1,0 +1,164 @@
+@* Back office shell (Escuadra Admin): icon menu on the PC (collapsible), top bar and bottom tabs on a narrow screen.
+   "Vender" goes to the register (F2; F1 is the help, TK-242). The register's dark status bar is not shown here (Frame skips it for admin routes). *@
+@implements IDisposable
+@inject Session Session
+@inject BackOffice BackOffice
+@inject AbastaliaApi Api
+@inject NavigationManager Nav
+@inject Cart Cart
+
+@* data-keys: escuadra.js sends here the keys pressed while nothing has the focus (F2 right after the page loads). *@
+<div class="esc-admin esc-shell @(BackOffice.MenuCollapsed ? "esc-shell--collapsed" : "")" data-keys @onkeydown="KeyDown">
+    <aside class="esc-side">
+        <div class="esc-side__brand">
+            <Logo Size="28" />
+            <span class="esc-spacer"></span>
+            <button type="button" class="esc-side__item esc-side__toggle" aria-label="@(BackOffice.MenuCollapsed ? "Mostrar el menú" : "Contraer el menú")"
+                    title="@(BackOffice.MenuCollapsed ? "Mostrar el menú" : "Contraer el menú")" @onclick="() => BackOffice.MenuCollapsed = !BackOffice.MenuCollapsed">
+                <Icon Name="panel" Size="18" />
+            </button>
+        </div>
+        @if (BackOffice.BusinessName is { } business)
+        {
+            <div class="esc-side__store"><b>@business</b>Administración</div>
+        }
+        <nav class="esc-side__nav" aria-label="Secciones">
+            @foreach (var s in Sections)
+            {
+                <NavLink href="@s.Href" Match="@(s.Href == "admin" ? NavLinkMatch.All : NavLinkMatch.Prefix)" title="@s.Label">
+                    <Icon Name="@s.Icon" /><span class="esc-side__label">@s.Label</span>
+                </NavLink>
+            }
+        </nav>
+        <div class="esc-side__foot">
+            <a href="sale" class="esc-side__sell" title="Ir a vender (F2)"><Icon Name="cart" /><span class="esc-side__label">Ir a vender</span><span class="esc-spacer"></span><Keycap>F2</Keycap></a>
+            <button type="button" class="esc-side__item esc-side__sell" title="Ayuda de esta pantalla (F1)" @onclick="() => Frame?.ShowHelp()"><Icon Name="info" /><span class="esc-side__label">Ayuda</span><span class="esc-spacer"></span><Keycap>F1</Keycap></button>
+            <div class="esc-side__user">
+                <span class="esc-avatar" aria-hidden="true">@Names.Initials(Session.Name)</span>
+                <div><b>@Session.Name</b>@(Session.Online ? "En línea" : "Sin conexión · reintentando")</div>
+            </div>
+            <ThemeToggle />
+            <a href="" title="Salir" @onclick="SignOutAsync" @onclick:preventDefault="true"><Icon Name="sign-out" /><span class="esc-side__label">Salir</span></a>
+        </div>
+    </aside>
+
+    <header class="esc-topbar">
+        <Logo Size="26" />
+        <span class="esc-topbar__store">@BackOffice.BusinessName</span>
+        <a href="sale" class="esc-button esc-button--small"><Icon Name="cart" Size="16" /> Vender</a>
+        <ThemeToggle Class="esc-button esc-button--ghost esc-button--small" ShowLabel="false" Size="18" />
+        <a href="" class="esc-button esc-button--ghost esc-button--small" aria-label="Salir" @onclick="SignOutAsync" @onclick:preventDefault="true"><Icon Name="sign-out" Size="18" /></a>
+    </header>
+
+    <main class="esc-main">
+        <div class="esc-page">
+            @if (!Session.Online)
+            {
+                <span class="esc-offline" role="status">Sin conexión con el servidor de la tienda · reintentando. Las cifras pueden no estar al día.</span>
+            }
+            <div class="esc-page-head">
+                <div>
+                    <h1>@Title</h1>
+                    @if (Subtitle is not null)
+                    {
+                        <p>@Subtitle</p>
+                    }
+                </div>
+                @if (Actions is not null)
+                {
+                    <div class="esc-page-head__actions">@Actions</div>
+                }
+            </div>
+            @ChildContent
+        </div>
+    </main>
+
+    @* A phone fits five tabs: past that, the fifth is "Más" with the rest. *@
+    <nav class="esc-tabbar" aria-label="Secciones">
+        @{ var sections = Sections.ToList(); var tabs = sections.Count > 5 ? 4 : sections.Count; }
+        @foreach (var s in sections.Take(tabs))
+        {
+            <NavLink href="@s.Href" Match="@(s.Href == "admin" ? NavLinkMatch.All : NavLinkMatch.Prefix)"><Icon Name="@s.Icon" Size="22" />@s.Short</NavLink>
+        }
+        @if (sections.Count > tabs)
+        {
+            var current = sections.Skip(tabs).Any(s => Nav.Uri.Contains("/" + s.Href, StringComparison.Ordinal));
+            <button type="button" class="esc-tabbar__more @(current ? "active" : "")" aria-expanded="@(_more ? "true" : "false")" @onclick="() => _more = !_more"><Icon Name="dashboard" Size="22" />Más</button>
+            @if (_more)
+            {
+                <div class="esc-tabbar__sheet" role="menu" @onclick="() => _more = false">
+                    @foreach (var s in sections.Skip(tabs))
+                    {
+                        <NavLink href="@s.Href" Match="NavLinkMatch.Prefix" role="menuitem"><Icon Name="@s.Icon" />@s.Label</NavLink>
+                    }
+                </div>
+            }
+        }
+    </nav>
+</div>
+
+@if (_leaving)
+{
+    <Dialog Title="Salir" OnClose="() => _leaving = false"><UnpaidSaleChoice OnCleared="SignOutAsync" /></Dialog>
+}
+
+@code {
+    private sealed record SectionLink(string Href, string Label, string Short, string Icon);
+    private bool _more;
+
+    [CascadingParameter] public Frame? Frame { get; set; }
+
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private IEnumerable<SectionLink> Sections
+    {
+        get
+        {
+            yield return new("admin", "Resumen", "Resumen", "dashboard");
+            yield return new("admin/products", "Productos", "Productos", "package");
+            // TK-184 Inventario, TK-185 Compras
+            if (SectionTabs.Inventory(Session).Count > 0) yield return new("admin/inventory", "Inventario", "Inventario", "boxes");
+            if (SectionTabs.Purchasing(Session) is [var (purchasing, _), ..]) yield return new(purchasing, "Compras y gastos", "Compras", "truck");
+            if (Session.Can("shifts.view")) yield return new("admin/shifts", "Turnos y cuadres", "Cuadres", "wallet"); // TK-213
+            if (Session.Can("customers.manage")) yield return new("admin/customers", "Clientes", "Clientes", "users");
+            if (Session.Can("sales.create") || Session.Can("products.manage")) yield return new("admin/orders", "Pedidos y catálogo", "Pedidos", "calendar"); // TK-193..195
+            yield return new("admin/invoices", "Facturas", "Facturas", "receipt");
+            if (Pages.Admin.Reports.Allowed(Session)) yield return new("admin/reports", "Reportes", "Reportes", "chart");
+            if (Session.Can("audit.view")) yield return new("admin/audit", "Auditoría", "Auditoría", "shield"); // TK-213
+            if (Session.Can("fiscal.manage")) yield return new("admin/ecf", "Comprobantes electrónicos", "e-CF", "send"); // TK-204
+            if (Pages.Admin.Settings.Allowed(Session)) yield return new("admin/settings", "Configuración", "Ajustes", "settings");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += OnSessionChanged;
+        BackOffice.BusinessName ??= (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value?.Name;
+    }
+
+    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+
+    private void KeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "F2") Nav.NavigateTo("sale");
+    }
+
+    private bool _leaving;
+
+    private async Task SignOutAsync()
+    {
+        if (!Cart.IsEmpty)
+        {
+            _leaving = true; // the next user must not inherit the sale (R7 #26)
+            return;
+        }
+        await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
+        Session.Close();
+        Nav.NavigateTo("sign-in");
+    }
+
+    public void Dispose() => Session.Changed -= OnSessionChanged;
+}

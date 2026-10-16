@@ -1,0 +1,61 @@
+@inject AbastaliaApi Api
+
+@* TK-153/TK-240: the 31 handed to electronic buyers (their reception service), with attempts, last error and "Reintentar". *@
+<section class="esc-card esc-card--padded" aria-labelledby="deliveries-title">
+    <div class="esc-card__head">
+        <h2 id="deliveries-title" class="esc-card__title">Entregas a compradores electrónicos</h2>
+        <span class="esc-card__aside">Cada crédito fiscal (31) aceptado se envía al comprador si es emisor electrónico; se reintenta 72 horas</span>
+    </div>
+    @if (_message is not null) { <p role="status" class="@(_error ? "esc-error" : "esc-muted")">@_message</p> }
+    @if (_rows.Count == 0)
+    {
+        <EmptyState Icon="send" Title="Todavía no hay entregas">Cuando la DGII acepte un crédito fiscal a un comprador electrónico, aparece aquí.</EmptyState>
+    }
+    else
+    {
+        <div class="esc-table-wrap">
+            <table class="esc-table" aria-label="Entregas a compradores">
+                <thead><tr><th>e-NCF</th><th>Comprador</th><th>Estado</th><th class="esc-num">Intentos</th><th><span class="esc-visually-hidden">Acción</span></th></tr></thead>
+                <tbody>
+                    @foreach (var d in _rows)
+                    {
+                        var (text, pill) = Status(d.Status);
+                        <tr><td><span style="font-weight:600;font-variant-numeric:tabular-nums">@d.ENcf</span><span class="esc-table__sub esc-muted">@Format.Date(d.CreatedUtc)</span></td>
+                            <td>RNC @d.BuyerRnc</td>
+                            <td><span class="esc-pill esc-pill--@pill">@text</span>@if (d.Message is { } m) { <span class="esc-table__sub esc-muted">@m</span> }</td>
+                            <td class="esc-num">@d.Attempts</td>
+                            <td class="esc-num">@if (d.Status != "Delivered") { <Button class="esc-button esc-button--small" Disabled="_sending" OnClick="() => RetryAsync(d)">Reintentar</Button> }</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private List<EcfDelivery> _rows = [];
+    private string? _message;
+    private bool _sending, _error;
+
+    internal static (string Text, string Pill) Status(string status) => status switch
+    {
+        "Delivered" => ("Entregado", "success"),
+        "Pending" => ("Reintentando", "warning"),
+        "NotReceived" => ("No lo recibió", "error"),
+        "NotElectronic" => ("No es emisor electrónico", "neutral"),
+        _ => ("Falló", "error"),
+    };
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync() => _rows = (await Api.GetAsync<List<EcfDelivery>>("/api/fiscal/deliveries")).Value ?? _rows;
+
+    private async Task RetryAsync(EcfDelivery d)
+    {
+        _sending = true;
+        var r = await Api.PostAsync<EcfDelivery>($"/api/fiscal/deliveries/{d.DocumentId}/retry");
+        _sending = false;
+        (_error, _message) = (r.Problem is not null, r.Problem?.Message ?? $"{d.ENcf} vuelve a la cola: se envía en menos de un minuto.");
+        await LoadAsync();
+    }
+}

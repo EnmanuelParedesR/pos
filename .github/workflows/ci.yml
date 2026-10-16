@@ -21,12 +21,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
-      - run: dotnet build Toki.slnx -c Release
+      - run: dotnet build Abastalia.slnx -c Release
       - name: Pruebas
-        run: dotnet test --solution Toki.slnx -c Release --no-build
+        run: dotnet test --solution Abastalia.slnx -c Release --no-build
         env:
           # sqlserver: a Testcontainers SQL Server, image pinned in tests/SqlServerImage.cs
-          TOKI_TEST_DB: ${{ matrix.db }}
+          ABASTALIA_TEST_DB: ${{ matrix.db }}
           # Run as a store PC would (UTC-4) so time-zone bugs show up in CI.
           TZ: America/Santo_Domingo
 
@@ -63,10 +63,10 @@ jobs:
           cache-dependency-path: src/Cloud/panel/package-lock.json
       - run: npm ci
         working-directory: src/Cloud/panel
-      - run: dotnet build tests/Toki.UiTests/Toki.UiTests.csproj -c Release
+      - run: dotnet build tests/Abastalia.UiTests/Abastalia.UiTests.csproj -c Release
       - name: Navegador
-        run: pwsh tests/Toki.UiTests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+        run: pwsh tests/Abastalia.UiTests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Pruebas
-        run: dotnet test --project tests/Toki.UiTests/Toki.UiTests.csproj -c Release --no-build
+        run: dotnet test --project tests/Abastalia.UiTests/Abastalia.UiTests.csproj -c Release --no-build
         env:
           TZ: America/Santo_Domingo

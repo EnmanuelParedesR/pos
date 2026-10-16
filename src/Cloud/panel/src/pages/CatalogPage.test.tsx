@@ -22,7 +22,7 @@ const catalog: PublicCatalog = {
 };
 
 it("TK-195: the catalog opens without a session and the WhatsApp button carries what was picked", async () => {
-  localStorage.setItem("toki.refreshToken", "old"); // even with an owner's session saved, the public page never asks for it
+  localStorage.setItem("abastalia.refreshToken", "old"); // even with an owner's session saved, the public page never asks for it
   const fetch = vi.fn(async () => json(200, catalog));
   vi.stubGlobal("fetch", fetch);
   render(

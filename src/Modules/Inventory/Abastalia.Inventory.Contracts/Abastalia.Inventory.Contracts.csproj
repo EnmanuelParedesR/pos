@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Abastalia.SharedKernel\Abastalia.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,127 @@
+@page "/admin/purchasing/suggested"
+@inject AbastaliaApi Api
+@inject Session Session
+@inject NavigationManager Nav
+
+@* TK-191: what to buy, by the supplier each product was last bought from. "Crear compra" leaves a draft without NCF in Compras. *@
+<Admin Title="Pedido sugerido" Subtitle="Productos en su mínimo o por debajo, con lo que falta para llegar al máximo. Agrupados por el último suplidor y con su último costo.">
+    <ChildContent>
+        <SectionTabs Label="Compras" Tabs="SectionTabs.Purchasing(Session)" />
+        @if (_notice is not null)
+        {
+            <Notice Kind="_noticeKind" Title="@_notice" />
+        }
+        @if (_groups is null)
+        {
+            <div class="esc-card esc-table-wrap">
+                <table class="esc-table">
+                    <tbody>
+                        @for (var i = 0; i < 4; i++)
+                        {
+                            <tr><td><Skeleton Width="170px" /></td><td><Skeleton Width="80px" /></td><td class="esc-hide-sm"><Skeleton /></td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else if (_groups.Count == 0)
+        {
+            <div class="esc-card">
+                <EmptyState Icon="check" Title="Nada por pedir">@(_message ?? "Ningún producto está en su mínimo. Defina el mínimo y el máximo de cada producto en Productos.")</EmptyState>
+            </div>
+        }
+        else
+        {
+            <span class="esc-muted">@Lines @(Lines == 1 ? "producto por pedir" : "productos por pedir") · @_groups.Count(g => g.SupplierId is not null) @(_groups.Count(g => g.SupplierId is not null) == 1 ? "suplidor" : "suplidores")</span>
+            @foreach (var g in _groups)
+            {
+                <section class="esc-card esc-card--padded esc-col" style="gap:12px" aria-label="@(g.Supplier ?? "Sin compras anteriores")">
+                    <div class="esc-card__head">
+                        <div>
+                            <h2 class="esc-section-title">@(g.Supplier ?? "Sin compras anteriores")</h2>
+                            <span class="esc-muted">@(g.SupplierId is null ? "No se han comprado a un suplidor activo: agréguelos en “Nueva compra”." : $"{g.Lines.Length} {(g.Lines.Length == 1 ? "producto" : "productos")}{(g.Subtotal is { } subtotal ? $" · {Format.WithCurrency(subtotal)} sin ITBIS" : "")}")</span>
+                        </div>
+                        @if (g.SupplierId is { } supplier)
+                        {
+                            @if (_created.ContainsKey(supplier))
+                            {
+                                <Button OnClick='() => Nav.NavigateTo("admin/purchasing")'><Icon Name="check" /> Borrador creado · Ver compras</Button>
+                            }
+                            else
+                            {
+                                <Button Variant="Button.Variants.Primary" Disabled="@_busy.Contains(supplier)" aria-label="@($"Crear compra a {g.Supplier}")" OnClick="() => CreateAsync(g)">
+                                    <Icon Name="plus" /> @(_busy.Contains(supplier) ? "Creando…" : "Crear compra")
+                                </Button>
+                            }
+                        }
+                    </div>
+                    <div class="esc-table-wrap">
+                        <table class="esc-table">
+                            <thead><tr><th>Producto</th><th class="esc-num esc-hide-sm">Existencia</th><th class="esc-num esc-hide-sm">Mín. / máx.</th><th class="esc-num">Pedir</th><th class="esc-num esc-hide-sm">Último costo</th><th class="esc-num esc-hide-sm">Subtotal</th></tr></thead>
+                            <tbody>
+                                @foreach (var l in g.Lines)
+                                {
+                                    <tr>
+                                        <td style="font-weight:600">@l.Product<span class="esc-table__sub esc-only-sm">Hay @AdminNames.Stock(l.Stock, l.Unit)@(l.LastCost is { } c ? $" · {Format.WithCurrency(c)} c/u" : "")</span></td>
+                                        <td class="esc-num esc-hide-sm"><span class="esc-pill esc-pill--warning">@AdminNames.Stock(l.Stock, l.Unit)</span></td>
+                                        <td class="esc-num esc-hide-sm esc-muted">@AdminNames.Number(l.MinimumStock) / @(l.MaximumStock > 0 ? AdminNames.Number(l.MaximumStock) : "—")</td>
+                                        <td class="esc-num" style="font-weight:700;white-space:nowrap">@Order(l)@if (l.PresentationId is not null)
+                                            {
+                                                <span class="esc-table__sub" style="font-weight:400">@BaseUnits(l)</span>
+                                            }</td>
+                                        <td class="esc-num esc-hide-sm">@(l.LastCost is { } cost ? Format.Amount(cost) : "—")</td>
+                                        <td class="esc-num esc-hide-sm">@(l.LastCost is { } price ? Format.Amount(Math.Round(price * l.Quantity, 2, MidpointRounding.AwayFromZero)) : "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            }
+        }
+    </ChildContent>
+</Admin>
+
+@code {
+    private List<SuggestedGroup>? _groups;
+    private readonly Dictionary<Guid, Guid> _created = [];
+    private readonly HashSet<Guid> _busy = [];
+    private string? _message, _notice;
+    private Notice.Kinds _noticeKind;
+
+    private int Lines => _groups?.Sum(g => g.Lines.Length) ?? 0;
+
+    /// <summary>"3 × Caja 12" in the presentation last bought; "35 lb" or "8" without one.</summary>
+    private static string Order(SuggestedLine l) =>
+        l.Presentation is { } name ? $"{AdminNames.Number(l.Quantity)} × {name}" : AdminNames.Stock(l.Suggested, l.Unit);
+
+    /// <summary>"36 unidades" or "50 lb": what the presentations add up to.</summary>
+    private static string BaseUnits(SuggestedLine l) =>
+        l.Unit == UnitOfMeasure.Pound ? AdminNames.Stock(l.Suggested, l.Unit) : $"{AdminNames.Number(l.Suggested)} {(l.Suggested == 1 ? "unidad" : "unidades")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var r = await Api.GetAsync<List<SuggestedGroup>>("/api/purchasing/suggested-order");
+        (_groups, _message) = (r.Value ?? [], r.Problem?.Message);
+    }
+
+    /// <summary>A draft per supplier with the suggested lines at the last cost; the NCF is written when the invoice arrives (Compras).</summary>
+    private async Task CreateAsync(SuggestedGroup g)
+    {
+        if (g.SupplierId is not { } supplier || !_busy.Add(supplier)) return;
+        _notice = null;
+        var id = Guid.CreateVersion7();
+        var body = new SavePurchase(supplier, "", Format.Today, PaymentTerms.Credit,
+            [.. g.Lines.Select(l => new PurchaseLineInput(l.ProductId, l.PresentationId, l.Quantity, l.LastCost ?? 0, l.ItbisRate))],
+            null, null, "Pedido sugerido", null, null, id, null);
+        var r = await Api.PostAsync<PurchaseSaved>("/api/purchasing/purchases", body);
+        _busy.Remove(supplier);
+        if (r.Problem is { } p)
+        {
+            (_noticeKind, _notice) = (Notice.Kinds.Error, $"No se creó la compra a {g.Supplier}: {p.Message}");
+            return;
+        }
+        _created[supplier] = id;
+        (_noticeKind, _notice) = (Notice.Kinds.Success, $"Compra en borrador para {g.Supplier}. Cuando llegue la factura, ábrala en Compras, escriba el NCF y reciba la mercancía.");
+    }
+}

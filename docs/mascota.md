@@ -1,6 +1,8 @@
 # Mascota — evaluación
 
-> **Decisión (15 oct 2026): el producto se llama Toki y su logo y mascota es un ticket de caja con cara** (borde dentado, ojos cuadrados, sonrisa en forma de ✓ en Azul Toki). Se eligió entre ticket, burbuja y tucán. Está en el lienzo ("Toki · marca") y en el sistema Escuadra (grupo Logos). La evaluación de abajo era para el nombre anterior (Cuadrino) y queda como historia; sus reglas de uso siguen valiendo: la mascota va en el celular, WhatsApp, bienvenida y estados vacíos, nunca en la venta, el cobro ni el cuadre.
+> **Decisión (16 oct 2026, TK-267): el producto se renombró de Toki a Abastalia (abastalia.com) y la asistente se llama Talia** (ADR-0012). El logo y la mascota se revisan en la siguiente sesión de diseño.
+
+> **Decisión (15 oct 2026): el producto se llamaba Toki y su logo y mascota es un ticket de caja con cara** (borde dentado, ojos cuadrados, sonrisa en forma de ✓ en Azul Abastalia). Se eligió entre ticket, burbuja y tucán. Está en el lienzo ("Abastalia · marca") y en el sistema Escuadra (grupo Logos). La evaluación de abajo era para el nombre anterior (Cuadrino) y queda como historia; sus reglas de uso siguen valiendo: la mascota va en el celular, WhatsApp, bienvenida y estados vacíos, nunca en la venta, el cobro ni el cuadre.
 
 > 14 oct 2026. Nombre de trabajo: **Cuadrino** (app y asistente). Pendiente: bocetos y logo final (siguiente sesión de diseño).
 

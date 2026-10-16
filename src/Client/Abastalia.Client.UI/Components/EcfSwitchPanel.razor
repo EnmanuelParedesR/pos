@@ -1,0 +1,123 @@
+@inject AbastaliaApi Api
+
+@* TK-221: a business that already issues e-CF with another program moves to Abastalia without certifying again (to be confirmed with the DGII,
+   docs/ecf-propio.md §11 #40). Certificate, directory URLs, the rest of the sequences and a checklist. Abastalia never enters the OFV. *@
+<section class="esc-card esc-card--padded" aria-labelledby="switch-title">
+    <details>
+        <summary><h2 id="switch-title" class="esc-card__title" style="display:inline">Ya emito e-CF con otro programa</h2></summary>
+        <p class="esc-muted">Si su RNC ya es emisor electrónico, no repite la certificación (por confirmar con la DGII): cambia el programa que firma, envía y recibe.
+            Siga la lista en orden. Abastalia nunca entra a la Oficina Virtual (OFV): los pasos con su clave los hace usted.</p>
+        @if (_message is not null)
+        {
+            <p role="status" class="@(_error ? "esc-error" : "esc-muted")">@_message</p>
+        }
+
+        <ol class="esc-steps" aria-label="Lista para cambiarse a Abastalia">
+            @foreach (var item in Items)
+            {
+                <li>
+                    <b>@item.Title</b>
+                    @if (item.Done is { } done)
+                    {
+                        <span class="esc-pill esc-pill--@(done ? "success" : "neutral")">@(done ? "Listo" : "Pendiente")</span>
+                    }
+                    else
+                    {
+                        <span class="esc-pill esc-pill--neutral">Lo confirma usted</span>
+                    }
+                    <span class="esc-table__sub esc-muted">@item.Hint</span>
+                </li>
+            }
+        </ol>
+
+        <h3 class="esc-card__title">1. Certificado</h3>
+        <p class="esc-muted">@(_certificate is { Installed: true } c
+            ? $"Importado: {c.Subject}, vence el {(c.NotAfterUtc is { } until ? Format.ShortDate(until) : "")}."
+            : "Todavía no hay certificado.") <a href="admin/settings?section=fiscal">Importar el .p12 en Configuración → Comprobantes</a></p>
+
+        <h3 class="esc-card__title">2. Direcciones en "Mantenimiento Directorio FE"</h3>
+        @if (_receiver is { Active: true } r && r.Urls?.Find(u => u.Environment == "ecf") is { } prod)
+        {
+            <p class="esc-muted">En la OFV, menú de facturación electrónica → "Mantenimiento Directorio FE", reemplace las direcciones del otro programa por estas:</p>
+            <dl class="esc-dl">
+                <dt>Recepción</dt><dd><code>@prod.Reception</code></dd>
+                <dt>Aprobación comercial</dt><dd><code>@prod.Approval</code></dd>
+                <dt>Autenticación</dt><dd><code>@prod.Authentication</code></dd>
+            </dl>
+            <Notice Kind="Notice.Kinds.Warning" Title="Copie cada dirección completa">
+                Con https:// y todo lo que sigue. El error más común es escribir solo el dominio: así ni la DGII ni sus suplidores encuentran el servicio de su negocio.
+            </Notice>
+        }
+        else
+        {
+            <p class="esc-muted">Primero active el receptor: <a href="admin/purchasing/received">Compras → Recibidos (e-CF) → Receptor en la nube</a>. Ahí salen las direcciones.</p>
+        }
+
+        <h3 class="esc-card__title">3. Los números que quedan</h3>
+        <p class="esc-muted">Escriba el último e-NCF que emitió el otro programa y el final de la secuencia autorizada (los ve en la OFV). Abastalia sigue en el número siguiente.
+            Si la DGII le pide anular los números que sobran y usar una secuencia nueva, anúlelos arriba y cargue la nueva en Configuración.</p>
+        <form @onsubmit="LoadAsync" novalidate>
+            <div class="esc-form-grid">
+                <Field Label="Último e-NCF emitido" Error="@_lastError" Hint="Ejemplo: E320000004817">
+                    <input class="esc-input esc-num" maxlength="13" @bind="_last" @bind:after="Clear" aria-invalid="@(_lastError is null ? "false" : "true")" />
+                </Field>
+                <Field Label="Hasta (número)" Error="@_toError">
+                    <input class="esc-input esc-num" inputmode="numeric" @bind="_to" @bind:after="Clear" aria-invalid="@(_toError is null ? "false" : "true")" />
+                </Field>
+                <Field Label="Vence el" Hint="Obligatorio en la E31 y la E33.">
+                    <input class="esc-input" type="date" @bind="_expires" />
+                </Field>
+            </div>
+            @if (EcfSwitch.After(_last) is { } next)
+            {
+                <p class="esc-muted" role="status">Abastalia empieza en <b>@next.ENcf</b> (@Names.DocumentType(next.Type)).</p>
+            }
+            <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Cargar los números que quedan</Button></div>
+        </form>
+
+        <h3 class="esc-card__title">4. Producción</h3>
+        <p class="esc-muted">Cuando lo anterior esté listo, deje de facturar con el otro programa y avise a Abastalia para pasar la tienda a Producción.
+            Haga una venta de prueba y revise que la DGII la acepte.</p>
+    </details>
+</section>
+
+@code {
+    /// <summary>The page reloads the queue; the environment comes from there.</summary>
+    [Parameter] public string? Environment { get; set; }
+
+    private EcfCertificateStatus? _certificate;
+    private EcfReceiverStatus? _receiver;
+    private List<EcfSequence> _sequences = [];
+    private string? _message, _last, _to, _lastError, _toError;
+    private DateOnly? _expires;
+    private bool _sending, _error;
+
+    private List<EcfSwitch.Item> Items => EcfSwitch.Checklist(_certificate, _receiver, _sequences, Environment);
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _certificate = (await Api.GetAsync<EcfCertificateStatus>("/api/fiscal/certificate")).Value;
+        _receiver = (await Api.GetAsync<EcfReceiverStatus>("/api/fiscal/receiver")).Value;
+        _sequences = (await Api.GetAsync<List<EcfSequence>>("/api/fiscal/sequences")).Value ?? [];
+    }
+
+    private void Clear() => (_lastError, _toError) = (null, null);
+
+    /// <summary>A production range from the next free number to the end of the authorization, whatever environment the store is in today.</summary>
+    private async Task LoadAsync()
+    {
+        Clear();
+        var next = EcfSwitch.After(_last);
+        if (next is null) _lastError = "Escriba un e-NCF completo: E, el tipo (31 a 34) y 10 dígitos.";
+        if (!long.TryParse(_to, out var to) || next is not null && to < next.Number) _toError = "Escriba el último número autorizado, mayor que el último emitido.";
+        if (_lastError is not null || _toError is not null) return;
+        _sending = true;
+        var r = await Api.PostAsync<Created>("/api/fiscal/sequences", new { next!.Type, From = next.Number, To = to, ExpiresOn = _expires, Environment = "eCF" });
+        _sending = false;
+        (_error, _message) = (r.Problem is not null, r.Problem?.Message ?? $"Listo: Abastalia emitirá desde {next.ENcf} en producción.");
+        if (r.Ok) (_last, _to) = (null, null);
+        await ReloadAsync();
+    }
+}

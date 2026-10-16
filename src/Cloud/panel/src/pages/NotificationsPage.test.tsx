@@ -26,7 +26,7 @@ const received: ReceivedEcf = {
 };
 
 function renderApp(me: Me | null, path: string) {
-  if (me) localStorage.setItem("toki.refreshToken", "saved");
+  if (me) localStorage.setItem("abastalia.refreshToken", "saved");
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url.endsWith("/api/me")) return json(200, me);

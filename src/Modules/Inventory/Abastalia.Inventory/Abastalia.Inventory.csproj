@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Abastalia.BuildingBlocks\Abastalia.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\Abastalia.Inventory.Contracts\Abastalia.Inventory.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Abastalia.UnitTests" />
+    <InternalsVisibleTo Include="Abastalia.IntegrationTests" />
+  </ItemGroup>
+</Project>

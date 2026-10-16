@@ -1,0 +1,37 @@
+@* TK-242: F1 on any screen (Frame) shows what is done there and its shortcuts. The texts live in Help/HelpContent.cs. Esc or F1 closes it. *@
+@using Abastalia.Client.UI.Help
+
+<Dialog Title="@($"Ayuda: {Topic.Title}")" OnClose="OnClose" OnKey='e => e.Key == "F1" ? OnClose.InvokeAsync() : Task.CompletedTask'>
+    <ChildContent>
+        <ul class="esc-help">
+            @foreach (var tip in Topic.Tips)
+            {
+                <li>@tip</li>
+            }
+        </ul>
+        @if (Topic.Shortcuts.Count > 0)
+        {
+            <h3 class="esc-help__title">Atajos de teclado</h3>
+            <dl class="esc-help__keys">
+                @foreach (var (key, action) in Topic.Shortcuts)
+                {
+                    <dt><Keycap>@key</Keycap></dt>
+                    <dd>@action</dd>
+                }
+            </dl>
+        }
+        @if (Route.StartsWith("admin", StringComparison.Ordinal) && !Route.StartsWith("admin/first-day", StringComparison.Ordinal))
+        {
+            <p><a href="admin/first-day" @onclick="OnClose">Guía del primer día</a></p>
+        }
+    </ChildContent>
+    <Footer><Button OnClick="OnClose">Cerrar</Button></Footer>
+</Dialog>
+
+@code {
+    /// <summary>The address on view, relative to the app (e.g. "sale", "admin/products?search=queso").</summary>
+    [Parameter, EditorRequired] public string Route { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private HelpTopic Topic => HelpContent.For(Route);
+}

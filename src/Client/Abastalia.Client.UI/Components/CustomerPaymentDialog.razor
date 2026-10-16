@@ -1,0 +1,251 @@
+@* TK-121: a customer pays on their credit at the register (F9 → Abono de cliente). The money enters this shift's drawer. *@
+@inject AbastaliaApi Api
+@inject Session Session
+
+<Dialog Title="Abono de cliente" Subtitle="@Subtitle" Wide="true" OnClose="BackAsync" OnKey="KeyAsync">
+    <ChildContent>
+        @if (_done is { } d)
+        {
+            <Notice Kind="Notice.Kinds.Success" Title="@($"Abono registrado · {Format.WithCurrency(d.Applied)}")" />
+            <div class="receipt" aria-label="Recibo de abono">
+                <div class="center" style="font-weight:700">RECIBO DE ABONO</div>
+                <hr />
+                <div class="row"><span>Fecha</span><span>@Format.Date(DateTimeOffset.UtcNow)</span></div>
+                <div class="row"><span>@(Session.Shift?.Register)</span><span>@Session.Name</span></div>
+                <div class="row"><span>Cliente</span><span>@_customer!.Name</span></div>
+                <hr />
+                <div class="row"><span>Debía</span><span>@Format.Amount(_customer.Debt)</span></div>
+                <div class="row" style="font-weight:700;font-size:16px"><span>ABONO (@Names.PaymentMethod(_method))</span><span>@Format.Amount(d.Applied)</span></div>
+                <div class="row" style="font-weight:700"><span>QUEDA DEBIENDO</span><span>@Format.Amount(d.RemainingDebt)</span></div>
+                @if (_reference is not null) { <div class="row"><span>Referencia</span><span>@_reference</span></div> }
+            </div>
+        }
+        else if (_customer is not { } c)
+        {
+            <form class="esc-row" style="flex-wrap:nowrap" @onsubmit="SearchAsync">
+                <input @ref="_searchBox" class="esc-input esc-input--large" placeholder="Nombre, RNC, cédula o teléfono" aria-label="Buscar cliente" @bind="_search" @bind:event="oninput" />
+                <Button Type="submit" Shortcut="Enter"><Icon Name="search" /> Buscar</Button>
+            </form>
+            @if (_results is { Count: > 0 })
+            {
+                <div class="esc-card esc-table-wrap">
+                    <table class="esc-table">
+                        <thead><tr><th>Cliente</th><th>RNC / cédula</th><th>Teléfono</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _results)
+                            {
+                                <tr class="selectable" tabindex="0" @onclick="() => ChooseAsync(r.Id)" @onkeydown='e => e.Key == "Enter" ? ChooseAsync(r.Id) : Task.CompletedTask'>
+                                    <td style="font-weight:600">@r.Name</td><td>@r.TaxId</td><td>@r.Phone</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+            else if (_results is not null)
+            {
+                <div class="esc-muted">No hay clientes con "@_search".</div>
+            }
+        }
+        else
+        {
+            <div class="checkout">
+                <div class="checkout__left">
+                    <div>
+                        <div style="font-size:var(--t-20);font-weight:700">@c.Name</div>
+                        <div class="esc-subtitle">@(c.TaxId ?? "Sin RNC ni cédula")</div>
+                    </div>
+                    <div>
+                        <div class="esc-label">Debe</div>
+                        <Money Value="c.Debt" Size="52" />
+                    </div>
+                    @if (c.Debt > 0)
+                    {
+                        <div class="checkout__methods" role="group" aria-label="Forma de pago">
+                            @foreach (var (m, key) in Methods)
+                            {
+                                <button type="button" class="esc-button" aria-pressed="@(m == _method ? "true" : "false")" onmousedown="event.preventDefault()" @onclick="() => Choose(m)">
+                                    <span>@Names.PaymentMethod(m)</span><Keycap>@key</Keycap>
+                                </button>
+                            }
+                        </div>
+                        <div>
+                            <div class="esc-label">Queda debiendo</div>
+                            <Money Value="Math.Max(0, c.Debt - Math.Min(Amount, c.Debt))" Size="32" />
+                        </div>
+                    }
+                </div>
+                <div class="checkout__right">
+                    @if (c.Debt <= 0)
+                    {
+                        <Notice Kind="Notice.Kinds.Info" Title="Este cliente no debe nada." />
+                    }
+                    else
+                    {
+                        <label class="esc-field">
+                            <span>@(_method == PaymentMethod.Cash ? "Abono en efectivo (pesos enteros)" : "Monto del abono")</span>
+                            @* maxlength: a barcode scanned here by habit never becomes a payment (escuadra.js also ignores the burst). *@
+                            <input @ref="_amountInput" data-no-scan class="esc-input esc-input--large esc-num" inputmode="@(_method == PaymentMethod.Cash ? "numeric" : "decimal")" maxlength="10"
+                                   @bind="_amount" @bind:event="oninput" onfocus="this.select()" />
+                        </label>
+                        @if (Problem is { } why)
+                        {
+                            <div class="esc-error-help">@why</div>
+                        }
+                        <div class="esc-row">
+                            @foreach (var quick in QuickAmounts(c.Debt))
+                            {
+                                <button type="button" class="esc-chip" onmousedown="event.preventDefault()" @onclick="() => Suggest(quick)">@(quick == All(c.Debt) ? $"Todo: {Format.Amount(quick)}" : Format.Amount(quick))</button>
+                            }
+                        </div>
+                        @if (_method == PaymentMethod.Cash)
+                        {
+                            <Keypad OnKey="CashKey" />
+                        }
+                        else
+                        {
+                            <label class="esc-field">
+                                <span>Referencia (opcional)</span>
+                                <input class="esc-input" maxlength="60" @bind="_reference" placeholder="@(_method == PaymentMethod.Card ? "Aprobación del verifone" : "Número de la transferencia")" />
+                            </label>
+                        }
+                    }
+                </div>
+            </div>
+        }
+        @if (_notice is not null)
+        {
+            <Notice Kind="_noticeKind" Title="@_notice" />
+        }
+    </ChildContent>
+    <Footer>
+        @if (_done is not null)
+        {
+            <Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="OnClose">Listo</Button>
+        }
+        else
+        {
+            <Button OnClick="BackAsync" Shortcut="Esc" Disabled="@(_sending || _uncertain)">@(_customer is null ? "Volver al menú" : "Otro cliente")</Button>
+            @if (_customer is { Debt: > 0 })
+            {
+                <Button Variant="Button.Variants.Primary" Money="true" Shortcut="F12" Disabled="@(!CanConfirm || _sending)" OnClick="ConfirmAsync">@(_sending ? "Guardando…" : "Registrar abono")</Button>
+            }
+        }
+    </Footer>
+</Dialog>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// <summary>Esc on the search goes back to the F9 menu.</summary>
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    private static readonly (PaymentMethod, string)[] Methods = [(PaymentMethod.Cash, "F5"), (PaymentMethod.Card, "F6"), (PaymentMethod.Transfer, "F7")];
+
+    private string? _search, _amount, _reference, _notice;
+    private Notice.Kinds _noticeKind;
+    private List<CustomerSummary>? _results;
+    private CustomerDetail? _customer;
+    private CustomerPaymentRecorded? _done;
+    private PaymentMethod _method = PaymentMethod.Cash;
+    private bool _sending, _suggested, _focusSearch = true, _focusAmount;
+    /// <summary>The last try got no answer: the server may have saved it, so the same id must be retried (no other customer meanwhile).</summary>
+    private bool _uncertain;
+    /// <summary>The payment's idempotency key: made when the customer is chosen, kept across retries until the server records it.</summary>
+    private Guid _paymentId;
+    private ElementReference _searchBox, _amountInput;
+
+    private string? Subtitle => _customer is null ? "Busque al cliente que viene a pagar." : "El dinero entra a esta caja y sale en su cuadre.";
+    private decimal Amount => Format.ParseNumber(_amount) ?? 0;
+    /// <summary>Cash is whole pesos: all of the debt is the debt rounded up (the centavos stay in the drawer as rounding).</summary>
+    private decimal All(decimal debt) => _method == PaymentMethod.Cash ? Math.Ceiling(debt) : debt;
+
+    private string? Problem => _customer is not { } c || Amount <= 0 ? null
+        : _method == PaymentMethod.Cash && Amount != Math.Truncate(Amount) ? "El efectivo se recibe en pesos enteros."
+        : Amount > All(c.Debt) ? $"Es más de lo que debe ({Format.WithCurrency(c.Debt)})."
+        : null;
+
+    private bool CanConfirm => _customer is { Debt: > 0 } && Amount > 0 && Problem is null;
+
+    private IEnumerable<decimal> QuickAmounts(decimal debt) =>
+        new[] { 100m, 500m, 1000m }.Where(v => v < All(debt)).Append(All(debt)).Distinct();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusSearch && _customer is null && _done is null)
+        {
+            _focusSearch = false;
+            await _searchBox.FocusAsync();
+        }
+        else if (_focusAmount && _customer is { Debt: > 0 })
+        {
+            _focusAmount = false;
+            await _amountInput.FocusAsync();
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        var r = await Api.GetAsync<List<CustomerSummary>>($"/api/customers?search={Uri.EscapeDataString(_search ?? "")}");
+        (_results, _notice, _noticeKind) = (r.Value, r.Problem?.Message, r.Problem?.Kind ?? Notice.Kinds.Error);
+    }
+
+    private async Task ChooseAsync(Guid id)
+    {
+        var r = await Api.GetAsync<CustomerDetail>($"/api/customers/{id}");
+        if (r.Value is not { } c) { (_noticeKind, _notice) = (r.Problem!.Kind, r.Problem.Message); return; }
+        (_customer, _notice, _method, _reference, _paymentId, _focusAmount) = (c, null, PaymentMethod.Cash, null, Guid.CreateVersion7(), true);
+        Suggest(All(c.Debt));
+    }
+
+    private void Choose(PaymentMethod m)
+    {
+        (_method, _notice, _focusAmount) = (m, null, true);
+        if (_customer is { } c && Amount > All(c.Debt) || _method == PaymentMethod.Cash && Amount != Math.Truncate(Amount)) Suggest(All(_customer!.Debt));
+    }
+
+    /// <summary>A suggested amount: the first keypad press replaces it instead of appending to it.</summary>
+    private void Suggest(decimal amount) => (_amount, _suggested) = (amount.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture), true);
+
+    private void CashKey(string k)
+    {
+        _amount = Keypad.Apply(_suggested ? "" : _amount ?? "", k);
+        _suggested = false;
+    }
+
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        if (_done is not null || _customer is null) return;
+        var m = Methods.FirstOrDefault(x => x.Item2 == e.Key);
+        if (m.Item2 is not null) Choose(m.Item1);
+        else if (e.Key is "F12" or "Enter" && CanConfirm) await ConfirmAsync();
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_sending || !CanConfirm || Session.Shift is not { } shift) return;
+        _sending = true;
+        _notice = null;
+        var reference = _method == PaymentMethod.Cash || string.IsNullOrWhiteSpace(_reference) ? null : _reference.Trim();
+        var r = await Api.PostAsync<CustomerPaymentRecorded>($"/api/customers/{_customer!.Id}/payments",
+            new RecordCustomerPayment(_paymentId, shift.ShiftId, Math.Round(Amount, 2), _method, reference));
+        _sending = false;
+        if (r.Value is { } done)
+        {
+            (_done, _reference, _uncertain) = (done, reference, false);
+            return;
+        }
+        _uncertain = r.Problem!.IsUncertain;
+        (_noticeKind, _notice) = (r.Problem.Kind, r.Problem.IsUncertain
+            ? "No se sabe si el abono se guardó. Registre de nuevo cuando vuelva la conexión: no se cobra dos veces."
+            : r.Problem.Code == "Customers.PaymentExceedsDebt" ? "El abono es mayor que la deuda del cliente." : r.Problem.Message);
+    }
+
+    private Task BackAsync()
+    {
+        if (_sending || _uncertain) return Task.CompletedTask;
+        if (_done is not null) return OnClose.InvokeAsync();
+        if (_customer is null) return OnBack.InvokeAsync();
+        (_customer, _notice, _focusSearch) = (null, null, true);
+        return Task.CompletedTask;
+    }
+}

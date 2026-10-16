@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  R11 C13: dot-sourced by remove-data.ps1 and update-service.ps1. C:\ProgramData\Toki is writable by the service account, so a link
+  R11 C13: dot-sourced by remove-data.ps1 and update-service.ps1. C:\ProgramData\Abastalia is writable by the service account, so a link
   (junction or symbolic link) planted there could make an administrator's or SYSTEM's recursive delete reach any folder. Remove-Tree
   refuses to delete a tree that is, or contains, a reparse point; it looks at each level without following links.
 #>

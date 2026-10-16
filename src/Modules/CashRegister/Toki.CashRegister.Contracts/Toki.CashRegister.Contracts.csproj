@@ -1,5 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <ItemGroup>
-    <ProjectReference Include="..\..\..\BuildingBlocks\Toki.SharedKernel\Toki.SharedKernel.csproj" />
-  </ItemGroup>
-</Project>

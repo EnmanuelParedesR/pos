@@ -18,7 +18,7 @@ describe("theme (TK-183)", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(getTheme()).toBe("dark");
     setTheme("system");
-    expect(localStorage.getItem("toki.theme")).toBeNull();
+    expect(localStorage.getItem("abastalia.theme")).toBeNull();
     expect(document.documentElement.dataset.theme).toBe("light");
   });
 });

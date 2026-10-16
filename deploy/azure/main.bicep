@@ -1,6 +1,6 @@
-// Toki cloud V1 (ADR-0008). Deploy into an existing resource group, e.g. rg-toki-prod:
-//   az group create -n rg-toki-prod -l eastus2
-//   az deployment group create -g rg-toki-prod -f deploy/azure/main.bicep -p deploy/azure/main.parameters.json
+// Abastalia cloud V1 (ADR-0008). Deploy into an existing resource group, e.g. rg-abastalia-prod:
+//   az group create -n rg-abastalia-prod -l eastus2
+//   az deployment group create -g rg-abastalia-prod -f deploy/azure/main.bicep -p deploy/azure/main.parameters.json
 // See docs/despliegue-azure.md.
 
 @description('Environment name, used in resource names.')
@@ -67,8 +67,8 @@ param licenseKeyName string = ''
 param allowCloudCustody bool = false
 
 var suffix = uniqueString(resourceGroup().id)
-var name = 'toki-${env}'
-var tags = { app: 'toki', env: env }
+var name = 'abastalia-${env}'
+var tags = { app: 'abastalia', env: env }
 
 resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: 'log-${name}'
@@ -92,7 +92,7 @@ resource insights 'Microsoft.Insights/components@2020-02-02' = {
 }
 
 resource vault 'Microsoft.KeyVault/vaults@2023-07-01' = {
-  name: 'kv-toki-${env}-${take(suffix, 6)}'
+  name: 'kv-abastalia-${env}-${take(suffix, 6)}'
   location: location
   tags: tags
   properties: {
@@ -134,7 +134,7 @@ resource sqlAllowAzure 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' 
 // Serverless, smallest vCore, pauses after 60 minutes without connections (the API never polls it while idle).
 resource database 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
-  name: 'toki'
+  name: 'abastalia'
   location: sqlLocation
   tags: tags
   sku: { name: 'GP_S_Gen5', tier: 'GeneralPurpose', family: 'Gen5', capacity: 1 }
@@ -174,7 +174,7 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-1
 // TK-207: cold archive of the signed e-CF (10 years, DGII). The API moves XML older than Archive:HotDays (90) out of SQL into here, as Cool.
 // Only the API's managed identity reaches it (no account keys, no public blobs).
 resource archive 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: 'sttoki${env}${take(suffix, 6)}'
+  name: 'stabastalia${env}${take(suffix, 6)}'
   location: location
   tags: tags
   kind: 'StorageV2'
@@ -431,7 +431,7 @@ resource alertGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(al
   location: 'global'
   tags: tags
   properties: {
-    groupShortName: 'toki-alerts'
+    groupShortName: 'abastalia-alerts'
     enabled: true
     emailReceivers: [{ name: 'owner', emailAddress: alertEmail, useCommonAlertSchema: true }]
   }

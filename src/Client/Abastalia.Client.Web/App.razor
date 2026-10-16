@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <title>Abastalia</title>
+    <link rel="stylesheet" href="_content/Abastalia.Escuadra/escuadra.css" />
+    <link rel="stylesheet" href="_content/Abastalia.Escuadra/escuadra-admin.css" />
+    <link rel="stylesheet" href="_content/Abastalia.Client.UI/client.css" />
+    <HeadOutlet @rendermode="InteractiveServer" />
+</head>
+<body>
+    <Abastalia.Client.UI.Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <div id="blazor-error-ui" role="alert">Algo falló en Abastalia. <a href="" class="reload">Volver a cargar</a></div>
+    <script src="_content/Abastalia.Escuadra/escuadra.js"></script>
+    <script src="_framework/blazor.web.js"></script>
+</body>
+</html>

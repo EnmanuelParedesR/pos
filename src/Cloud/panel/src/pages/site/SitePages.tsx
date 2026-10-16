@@ -66,7 +66,7 @@ function Home() {
         <Steps
           round
           items={[
-            ["Descargue Toki", <>En la PC de la tienda. <Link to="/descargar">Descargar</Link></>],
+            ["Descargue Abastalia", <>En la PC de la tienda. <Link to="/descargar">Descargar</Link></>],
             ["Cargue sus productos", "O empiece con los de ejemplo."],
             ["Venda", "Y vea el día desde el celular."],
           ]}
@@ -99,7 +99,7 @@ function Butcher() {
           [
             "¿Sirve para el e-CF?",
             <>
-              Sí: consumo, crédito fiscal y notas de crédito, firmadas en la tienda con su certificado. Vea <Link to="/e-cf">¿Ya le toca el e-CF?</Link> y <Link to="/certificacion">Certifíquese con Toki</Link>.
+              Sí: consumo, crédito fiscal y notas de crédito, firmadas en la tienda con su certificado. Vea <Link to="/e-cf">¿Ya le toca el e-CF?</Link> y <Link to="/certificacion">Certifíquese con Abastalia</Link>.
             </>,
           ],
           switching,
@@ -128,9 +128,9 @@ function Grocery() {
       <Faq
         items={[
           ["Tengo una sola caja. ¿Necesito una PC aparte?", "No. En una tienda de una caja, la misma PC es la caja y la principal."],
-          ["¿Qué pasa si se va el internet o la luz?", "Sin internet sigue vendiendo y los e-CF salen al volver la conexión (la DGII da 72 horas). Si la PC no puede emitir e-CF (por ejemplo, se venció el certificado), Toki lo guía para declarar la contingencia, facturar con serie B y luego regularizar."],
+          ["¿Qué pasa si se va el internet o la luz?", "Sin internet sigue vendiendo y los e-CF salen al volver la conexión (la DGII da 72 horas). Si la PC no puede emitir e-CF (por ejemplo, se venció el certificado), Abastalia lo guía para declarar la contingencia, facturar con serie B y luego regularizar."],
           ["¿El fiado sale en el cuadre de la caja?", "Sí. Lo vendido a crédito y lo cobrado de fiado salen separados en el cierre de cada turno."],
-          ["¿Hay un límite de facturas al mes?", "No. Toki no cobra por documento ni detiene la facturación por volumen."],
+          ["¿Hay un límite de facturas al mes?", "No. Abastalia no cobra por documento ni detiene la facturación por volumen."],
           [
             "¿Cuándo me toca el e-CF?",
             <>
@@ -163,7 +163,7 @@ function Deli() {
         items={[
           ["¿Puedo cobrar el encargo con el peso real?", "Sí. Se ajusta el peso y se descuenta lo que el cliente abonó."],
           ["¿Una cotización mueve el inventario?", "No. No toca el inventario ni la caja hasta que se convierte en venta."],
-          ["¿Puedo darle crédito fiscal a una empresa?", "Sí. Con el RNC del cliente, Toki emite el e-CF de crédito fiscal (tipo 31) y, si la empresa es emisora electrónica, se lo entrega directamente."],
+          ["¿Puedo darle crédito fiscal a una empresa?", "Sí. Con el RNC del cliente, Abastalia emite el e-CF de crédito fiscal (tipo 31) y, si la empresa es emisora electrónica, se lo entrega directamente."],
           ["¿Qué pasa si se va el internet?", "Sigue vendiendo. Los e-CF se firman en la tienda y se envían al volver la conexión, dentro de las 72 horas que da la DGII."],
           switching,
         ]}
@@ -207,7 +207,7 @@ function Ecf() {
         <h2>Con internet o sin él</h2>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>Situación</th><th>Qué hace Toki</th><th>Plazo de la DGII</th></tr></thead>
+            <thead><tr><th>Situación</th><th>Qué hace Abastalia</th><th>Plazo de la DGII</th></tr></thead>
             <tbody>
               <tr><td>Hay internet</td><td>Firma en su tienda y envía al momento.</td><td>—</td></tr>
               <tr><td>Se fue el internet</td><td>Sigue firmando con la leyenda de contingencia; envía al volver la conexión.</td><td>72 horas desde la emisión</td></tr>
@@ -216,19 +216,19 @@ function Ecf() {
             </tbody>
           </table>
         </div>
-        <p className="muted">La factura de consumo de menos de RD$250,000 se reporta con un resumen firmado; Toki guarda el e-CF completo 10 años, como pide la DGII.</p>
+        <p className="muted">La factura de consumo de menos de RD$250,000 se reporta con un resumen firmado; Abastalia guarda el e-CF completo 10 años, como pide la DGII.</p>
       </Section>
       <Faq
         items={[
           ["¿Hay una opción gratis de la DGII?", "Sí, el Facturador Gratuito, para negocios con poco volumen. Emite e-CF, pero no es un punto de venta con caja, inventario ni balanza."],
-          ["¿Puedo usar el certificado que regala la DGII?", "No con Toki. Ese certificado solo sirve para el Facturador Gratuito de la DGII."],
+          ["¿Puedo usar el certificado que regala la DGII?", "No con Abastalia. Ese certificado solo sirve para el Facturador Gratuito de la DGII."],
           [
             "¿Cuánto tarda la certificación?",
             <>
-              Depende en buena parte de la DGII. La parte técnica (set de pruebas y simulación) la hace Toki. Vea <Link to="/certificacion">Certifíquese con Toki</Link>.
+              Depende en buena parte de la DGII. La parte técnica (set de pruebas y simulación) la hace Abastalia. Vea <Link to="/certificacion">Certifíquese con Abastalia</Link>.
             </>,
           ],
-          ["¿Por cuánto tiempo hay que guardar los e-CF?", "Diez años. Toki los guarda en la tienda y una copia en la nube."],
+          ["¿Por cuánto tiempo hay que guardar los e-CF?", "Diez años. Abastalia los guarda en la tienda y una copia en la nube."],
         ]}
       />
       <Section>
@@ -236,7 +236,7 @@ function Ecf() {
           <p>Esta guía resume lo publicado por la DGII y no es asesoría legal. Las normas que mandan son la Ley 32-23, el Decreto 587-24 y las normas generales de la DGII. Ante cualquier duda, consulte a su contador o a la DGII.</p>
         </div>
         <div className="actions">
-          <Contact className="btn">Quiero facturar con Toki</Contact>
+          <Contact className="btn">Quiero facturar con Abastalia</Contact>
           <a className="btn btn--ghost" href="https://dgii.gov.do/" rel="noopener">
             Ir a la DGII
           </a>
@@ -249,20 +249,20 @@ function Ecf() {
 /** TK-235: what the owner prepares (docs/servicio-certificacion.md §5); the session-1 e-mail sends the same list (AccompanimentChecklist). */
 export const preparation = [
   "RNC activo y al día con la DGII (sin declaraciones pendientes).",
-  "Acceso a la Oficina Virtual (OFV) de la empresa y, si aplica, del representante: usuario y clave que solo usted conoce. Pruebe que entra antes de la cita. Toki nunca le pide esa clave.",
+  "Acceso a la Oficina Virtual (OFV) de la empresa y, si aplica, del representante: usuario y clave que solo usted conoce. Pruebe que entra antes de la cita. Abastalia nunca le pide esa clave.",
   "Alta de NCF (autorización para emitir comprobantes fiscales).",
   "Un representante vinculado al RNC, que será el Usuario Administrador e-CF.",
   "El certificado digital de persona física para procedimientos tributarios, a nombre de ese representante, comprado a Avansi (Viafirma) o a la Cámara de Comercio y Producción de Santo Domingo (Digifirma). Pídelo como archivo .p12 o .pfx con su contraseña (no en token USB ni en la nube del emisor).",
-  "La PC principal de la tienda con Toki instalado, encendida y con internet durante las citas.",
+  "La PC principal de la tienda con Abastalia instalado, encendida y con internet durante las citas.",
   "Una hora libre para cada cita, sin atender el mostrador.",
 ];
 
 function Certification() {
   return (
     <>
-      <Hero eyebrow="Certificación e-CF" title="Certifíquese con Toki." sub="Toki arma, firma y envía las pruebas. Usted hace los pasos con su clave de la Oficina Virtual." cta={<Contact className="btn">Quiero certificarme</Contact>}>
+      <Hero eyebrow="Certificación e-CF" title="Certifíquese con Abastalia." sub="Abastalia arma, firma y envía las pruebas. Usted hace los pasos con su clave de la Oficina Virtual." cta={<Contact className="btn">Quiero certificarme</Contact>}>
         <p className="hero__key">
-          <strong>Toki nunca le pide esa clave.</strong>
+          <strong>Abastalia nunca le pide esa clave.</strong>
         </p>
       </Hero>
       <Section id="preparacion">
@@ -270,7 +270,7 @@ function Certification() {
         <p className="muted">Con acompañamiento, se lo enviamos también en el correo que confirma la primera cita.</p>
         <ul className="checks">
           <li>
-            Toki instalado en la PC principal de su tienda. <Link to="/descargar">Descargar Toki</Link>
+            Abastalia instalado en la PC principal de su tienda. <Link to="/descargar">Descargar Abastalia</Link>
           </li>
           {preparation.map((item) => (
             <li key={item}>{item}</li>
@@ -282,12 +282,12 @@ function Certification() {
         <Steps
           items={[
             ["Solicitud", "Usted envía el formulario FI-GDF-016 desde la OFV."],
-            ["Pruebas libres", "Toki emite facturas de prueba de cada tipo."],
-            ["Postulación", "Registra el programa y sus direcciones; Toki firma el archivo."],
-            ["Set de pruebas", "Sube el Excel de la DGII; Toki arma, firma y envía cada comprobante."],
+            ["Pruebas libres", "Abastalia emite facturas de prueba de cada tipo."],
+            ["Postulación", "Registra el programa y sus direcciones; Abastalia firma el archivo."],
+            ["Set de pruebas", "Sube el Excel de la DGII; Abastalia arma, firma y envía cada comprobante."],
             ["Simulación", "Vende como un día normal, en el ambiente de certificación."],
-            ["Comunicación", "La nube de Toki responde los acuses, las 24 horas."],
-            ["Declaración jurada", "Toki la firma con su certificado; la acepta y la sube usted."],
+            ["Comunicación", "La nube de Abastalia responde los acuses, las 24 horas."],
+            ["Declaración jurada", "Abastalia la firma con su certificado; la acepta y la sube usted."],
             ["Producción", "La DGII lo habilita; carga sus secuencias e-NCF y factura."],
           ]}
         />
@@ -297,11 +297,11 @@ function Certification() {
         <h2>Quién hace qué</h2>
         <div className="table-wrap">
           <table>
-            <thead><tr><th></th><th>Por su cuenta</th><th>Con acompañamiento de Toki</th></tr></thead>
+            <thead><tr><th></th><th>Por su cuenta</th><th>Con acompañamiento de Abastalia</th></tr></thead>
             <tbody>
-              <tr><th scope="row">Quién usa el asistente de certificación</th><td>Usted, con la lista paso a paso</td><td>Un técnico de Toki, en una sesión remota con usted presente</td></tr>
-              <tr><th scope="row">Pasos con su clave de la OFV</th><td>Usted</td><td>Usted escribe su clave; el técnico le dice qué marcar. Toki no ve ni guarda la clave</td></tr>
-              <tr><th scope="row">Set de pruebas, simulación y acuses</th><td>Toki, automático</td><td>Toki, automático; el técnico vigila los rechazos</td></tr>
+              <tr><th scope="row">Quién usa el asistente de certificación</th><td>Usted, con la lista paso a paso</td><td>Un técnico de Abastalia, en una sesión remota con usted presente</td></tr>
+              <tr><th scope="row">Pasos con su clave de la OFV</th><td>Usted</td><td>Usted escribe su clave; el técnico le dice qué marcar. Abastalia no ve ni guarda la clave</td></tr>
+              <tr><th scope="row">Set de pruebas, simulación y acuses</th><td>Abastalia, automático</td><td>Abastalia, automático; el técnico vigila los rechazos</td></tr>
               <tr><th scope="row">Declaración jurada</th><td>La acepta usted</td><td>La acepta usted</td></tr>
               <tr>
                 <th scope="row">Precio</th>
@@ -320,9 +320,9 @@ function Certification() {
         </p>
         <Steps
           items={[
-            ["Su certificado", "Importe en Toki el mismo .p12, si sigue vigente."],
-            ["Las direcciones", "En la OFV, \"Mantenimiento Directorio FE\": ponga las de Toki completas, no solo el dominio."],
-            ["Los números que quedan", "Escriba el último e-NCF emitido; Toki sigue desde el siguiente (o anula los sobrantes si la DGII lo pide)."],
+            ["Su certificado", "Importe en Abastalia el mismo .p12, si sigue vigente."],
+            ["Las direcciones", "En la OFV, \"Mantenimiento Directorio FE\": ponga las de Abastalia completas, no solo el dominio."],
+            ["Los números que quedan", "Escriba el último e-NCF emitido; Abastalia sigue desde el siguiente (o anula los sobrantes si la DGII lo pide)."],
             ["El cambio", "Deje el otro programa (la misma secuencia repetiría números), pase a producción y revise la primera venta."],
           ]}
         />
@@ -336,12 +336,12 @@ function Download() {
     <>
       <Hero
         eyebrow="Descargar"
-        title="Instale Toki en su tienda."
+        title="Instale Abastalia en su tienda."
         sub="Un instalador para todas las PC. La prueba de 14 días empieza con su primera venta."
         cta={
           site.installerUrl ? (
             <a className="btn" href={site.installerUrl}>
-              Descargar Toki para Windows
+              Descargar Abastalia para Windows
             </a>
           ) : (
             <Tbd>[URL DEL INSTALADOR]</Tbd>
@@ -386,7 +386,7 @@ function Download() {
           ]}
         />
         <p className="muted">
-          ¿Quiere que lo instalemos por usted? <Contact className="">Hablemos</Contact> · ¿Se va a certificar para el e-CF? Vea <Link to="/certificacion">Certifíquese con Toki</Link>.
+          ¿Quiere que lo instalemos por usted? <Contact className="">Hablemos</Contact> · ¿Se va a certificar para el e-CF? Vea <Link to="/certificacion">Certifíquese con Abastalia</Link>.
         </p>
       </Section>
     </>
@@ -435,7 +435,7 @@ function Pricing() {
         </div>
         <p className="muted">Todas las funciones en todos los planes: balanza, carnicería, mayoreo, e-CF, inventario, respaldo en la nube y 20 facturas de suplidor leídas con IA al mes.</p>
         {/* TK-249: the account first, then "Plan y facturación" in the panel (pago con tarjeta por Paddle). */}
-        {referred && <p className="note">Viene recomendado por un cliente de Toki. Cree su cuenta y elija su plan.</p>}
+        {referred && <p className="note">Viene recomendado por un cliente de Abastalia. Cree su cuenta y elija su plan.</p>}
         <p className="actions">
           <Link className="btn" to="/app/billing">
             Crear su cuenta y elegir plan
@@ -456,7 +456,7 @@ function Pricing() {
             </tbody>
           </table>
         </div>
-        <p className="muted">Pago anual: 10 meses por 12. Paddle cobra por Toki y calcula los impuestos.</p>
+        <p className="muted">Pago anual: 10 meses por 12. Paddle cobra por Abastalia y calcula los impuestos.</p>
       </Section>
       <Section className="counter">
         <h2>En todos los planes</h2>
@@ -479,7 +479,7 @@ function Pricing() {
           <table>
             <thead><tr><th>Qué</th><th>Incluye</th><th>Precio</th></tr></thead>
             <tbody>
-              <tr><td>Instalación</td><td>Instalación de Toki en la tienda y puesta en marcha.</td><td><Price value={prices.installation} /></td></tr>
+              <tr><td>Instalación</td><td>Instalación de Abastalia en la tienda y puesta en marcha.</td><td><Price value={prices.installation} /></td></tr>
               <tr>
                 <td>Acompañamiento en la certificación e-CF</td>
                 <td>Un técnico lo guía en cada etapa ante la DGII. <Link to="/certificacion">Ver detalles</Link></td>
@@ -489,7 +489,7 @@ function Pricing() {
             </tbody>
           </table>
         </div>
-        <p className="muted">El certificado digital para el e-CF se compra directamente a la entidad certificadora; no lo vende Toki.</p>
+        <p className="muted">El certificado digital para el e-CF se compra directamente a la entidad certificadora; no lo vende Abastalia.</p>
       </Section>
       <Section className="counter">
         <h2>Reglas que no cambian</h2>
@@ -524,17 +524,17 @@ const News = ({ title, children }: { title: string; children: ReactNode }) => (
 function WhatsNew() {
   return (
     <>
-      <Hero eyebrow="Novedades" title="Lo nuevo en Toki" sub="Lo más reciente va primero." />
+      <Hero eyebrow="Novedades" title="Lo nuevo en Abastalia" sub="Lo más reciente va primero." />
       <Section>
         <h2>Octubre de 2026</h2>
         <ul className="log">
           <News title="Facturación electrónica directa con la DGII">Firma en la tienda y envía sin intermediarios. Un rechazo se reemplaza con un e-CF nuevo; los números sobrantes se anulan desde la pantalla. Cada e-CF se guarda 10 años en la nube.</News>
           <News title="Asistente de certificación y cambio desde otro programa">Las etapas en una lista, el set de pruebas que se envía solo y un camino para quien ya emite e-CF.</News>
-          <News title="Contingencia sin internet o sin certificado">Sin internet, los e-CF salen solos dentro de las 72 horas. Si no se puede firmar, Toki guía la contingencia con serie B y su regularización.</News>
+          <News title="Contingencia sin internet o sin certificado">Sin internet, los e-CF salen solos dentro de las 72 horas. Si no se puede firmar, Abastalia guía la contingencia con serie B y su regularización.</News>
           <News title="Comprobantes de sus suplidores">La nube recibe y acusa los e-CF de sus suplidores las 24 horas y los muestra en Compras. Su crédito fiscal llega solo al comprador emisor electrónico.</News>
           <News title="Encargos y cotizaciones">Encargos con fecha, hora y abono, cobrados con el peso real. Cotizaciones con vigencia que se convierten en venta.</News>
           <News title="Catálogo con QR y pedido por WhatsApp">Sus productos y precios en una página pública, sin costos ni existencias, con un QR para el mostrador.</News>
-          <News title="Pedido sugerido">Mínimos y máximos; Toki calcula cuánto pedir, a qué suplidor y crea la compra en borrador.</News>
+          <News title="Pedido sugerido">Mínimos y máximos; Abastalia calcula cuánto pedir, a qué suplidor y crea la compra en borrador.</News>
           <News title="Permisos más finos">Abrir caja, cerrar caja, cobrar fiado, ver costos y pagar a suplidores son permisos separados. Nadie da un permiso que no tiene.</News>
           <News title="Reportes y documentos">Reporte 608, ventas por medio de pago y por hora, y el cierre Z y el estado de cuenta del fiado en una página para PDF.</News>
           <News title="Panel del dueño">Quién le debe, lo más vendido, más de una persona con acceso por invitación y modo oscuro.</News>
@@ -547,7 +547,7 @@ function WhatsNew() {
 
 export const notFound: SitePage = {
   path: "*",
-  title: "Página no encontrada · Toki",
+  title: "Página no encontrada · Abastalia",
   description: "La página que buscas no existe.",
   element: (
     <Hero
@@ -567,28 +567,28 @@ export const sitePages: SitePage[] = [
   {
     path: "/",
     nav: "Inicio",
-    title: "Toki · Punto de venta para carnicerías, colmados y delis",
-    description: "Toki vende por libra, cuadra la caja, lleva el fiado y emite e-CF, aunque se vaya el internet. Hecho para el comercio de alimentos en República Dominicana.",
+    title: "Abastalia · Punto de venta para carnicerías, colmados y delis",
+    description: "Abastalia vende por libra, cuadra la caja, lleva el fiado y emite e-CF, aunque se vaya el internet. Hecho para el comercio de alimentos en República Dominicana.",
     element: <Home />,
   },
   {
     path: "/carniceria",
     nav: "Carnicería",
-    title: "Toki para carnicerías · Balanza, libras y e-CF sin internet",
+    title: "Abastalia para carnicerías · Balanza, libras y e-CF sin internet",
     description: "Punto de venta para carnicerías: venta por libra con etiquetas de balanza, encargos con abono, cuadre de caja y e-CF aunque se vaya el internet.",
     element: <Butcher />,
   },
   {
     path: "/colmado",
     nav: "Colmado",
-    title: "Toki para colmados · Fiado, venta rápida y e-CF",
+    title: "Abastalia para colmados · Fiado, venta rápida y e-CF",
     description: "Punto de venta para colmados: venta rápida con escáner, fiado con límite y estado de cuenta, catálogo con pedido por WhatsApp y e-CF aunque se vaya el internet.",
     element: <Grocery />,
   },
   {
     path: "/deli",
     nav: "Deli",
-    title: "Toki para delis · Por libra, encargos y cotizaciones",
+    title: "Abastalia para delis · Por libra, encargos y cotizaciones",
     description: "Punto de venta para delis: quesos y embutidos por libra, bandejas por encargo con abono, cotizaciones que se convierten en venta y e-CF sin internet.",
     element: <Deli />,
   },
@@ -596,35 +596,35 @@ export const sitePages: SitePage[] = [
     path: "/e-cf",
     nav: "e-CF",
     title: "¿Ya le toca el e-CF? · Plazo del 15 de noviembre de 2026",
-    description: "Guía corta sobre la facturación electrónica (e-CF) en República Dominicana: a quién le toca el 15 de noviembre de 2026, qué necesita y cómo Toki factura sin internet.",
+    description: "Guía corta sobre la facturación electrónica (e-CF) en República Dominicana: a quién le toca el 15 de noviembre de 2026, qué necesita y cómo Abastalia factura sin internet.",
     element: <Ecf />,
   },
   {
     path: "/certificacion",
     nav: "Certifíquese",
-    title: "Certifíquese con Toki · Facturación electrónica ante la DGII",
+    title: "Certifíquese con Abastalia · Facturación electrónica ante la DGII",
     description: "Qué necesita para certificarse como emisor electrónico, las etapas ante la DGII, quién hace qué y qué pasa si ya emite e-CF con otro programa.",
     element: <Certification />,
   },
   {
     path: "/descargar",
     nav: "Descargar",
-    title: "Descargar Toki · Instalador para Windows",
-    description: "Descarga el instalador de Toki para Windows 10 y 11: PC principal con servidor y base de datos, o caja. Requisitos y pasos para instalar.",
+    title: "Descargar Abastalia · Instalador para Windows",
+    description: "Descarga el instalador de Abastalia para Windows 10 y 11: PC principal con servidor y base de datos, o caja. Requisitos y pasos para instalar.",
     element: <Download />,
   },
   {
     path: "/precios",
     nav: "Precios",
-    title: "Precios de Toki · Planes por tamaño de tienda",
-    description: "Planes de Toki según el número de cajas y sucursales. Lo básico está en todos: balanza, e-CF sin cupo, inventario, cuadre ciego, fiado, 606/607/608 y respaldo.",
+    title: "Precios de Abastalia · Planes por tamaño de tienda",
+    description: "Planes de Abastalia según el número de cajas y sucursales. Lo básico está en todos: balanza, e-CF sin cupo, inventario, cuadre ciego, fiado, 606/607/608 y respaldo.",
     element: <Pricing />,
   },
   {
     path: "/novedades",
     nav: "Novedades",
-    title: "Novedades de Toki",
-    description: "Lo nuevo en Toki: facturación electrónica directa con la DGII, encargos, cotizaciones, catálogo por WhatsApp, permisos por acción y más.",
+    title: "Novedades de Abastalia",
+    description: "Lo nuevo en Abastalia: facturación electrónica directa con la DGII, encargos, cotizaciones, catálogo por WhatsApp, permisos por acción y más.",
     element: <WhatsNew />,
   },
 ];

@@ -1,6 +1,6 @@
 # Rename map, phase B: Fiscal module
 
-Spanish → English renames done in `src/Modules/Fiscal/Toki.Fiscal/**`. Follows `docs/rename-map.md` (phase A) and `docs/glosario-codigo.md`. Behavior did not change: only names, comments, log text and the regenerated migration.
+Spanish → English renames done in `src/Modules/Fiscal/Abastalia.Fiscal/**`. Follows `docs/rename-map.md` (phase A) and `docs/glosario-codigo.md`. Behavior did not change: only names, comments, log text and the regenerated migration.
 
 The API uses camelCase JSON and string enums, so every property below appears on the wire in camelCase (`ENcf` → `eNcf`, `SignedUtc` → `signedUtc`, …).
 
@@ -14,7 +14,7 @@ The API uses camelCase JSON and string enums, so every property below appears on
 | `Features/Secuencias.cs` | `Features/Sequences.cs` |
 | `Domain/Fiscal.cs` | (unchanged) |
 | `FiscalModule.cs` | (unchanged) |
-| `Persistence/Migraciones/` (`20261015095646_InicialFiscal`) | `Persistence/Migrations/` (`20261015152435_InitialFiscal`, regenerated; namespace `Toki.Fiscal.Persistence.Migrations`) |
+| `Persistence/Migraciones/` (`20261015095646_InicialFiscal`) | `Persistence/Migrations/` (`20261015152435_InitialFiscal`, regenerated; namespace `Abastalia.Fiscal.Persistence.Migrations`) |
 
 ## Routes
 
@@ -113,7 +113,7 @@ Swagger tag `Fiscal` unchanged. Permission constant `Permisos.FiscalGestionar` �
 
 ## Enum values
 
-`EstadoEnvio` → `SubmissionStatus` (internal, `Toki.Fiscal.Domain`; serialized as string on the wire and stored as string in `EcfDocuments.Status`, max 20):
+`EstadoEnvio` → `SubmissionStatus` (internal, `Abastalia.Fiscal.Domain`; serialized as string on the wire and stored as string in `EcfDocuments.Status`, max 20):
 
 | Old | New |
 |---|---|
@@ -152,8 +152,8 @@ Swagger tag `Fiscal` unchanged. Permission constant `Permisos.FiscalGestionar` �
 
 | Old | New | Read by |
 |---|---|---|
-| `Fiscal:EnvioAutomatico` (bool, default false) | `Fiscal:AutoSubmit` | `EcfSubmissionWorker` (also in `src/Hosts/Toki.Host.Local/appsettings.json`) |
-| `Fiscal:IntervaloEnvioSegundos` (int, default 30) | `Fiscal:SubmitIntervalSeconds` | `EcfSubmissionWorker` (also in `src/Hosts/Toki.Host.Local/appsettings.json`) |
+| `Fiscal:EnvioAutomatico` (bool, default false) | `Fiscal:AutoSubmit` | `EcfSubmissionWorker` (also in `src/Hosts/Abastalia.Host.Local/appsettings.json`) |
+| `Fiscal:IntervaloEnvioSegundos` (int, default 30) | `Fiscal:SubmitIntervalSeconds` | `EcfSubmissionWorker` (also in `src/Hosts/Abastalia.Host.Local/appsettings.json`) |
 
 ## Health check
 
@@ -218,7 +218,7 @@ Migration command used (from the repo root):
 
 ```
 dotnet tool restore
-dotnet dotnet-ef migrations add InitialFiscal --project src/Modules/Fiscal/Toki.Fiscal --startup-project src/Modules/Fiscal/Toki.Fiscal --context FiscalDbContext --output-dir Persistence/Migrations --no-build
+dotnet dotnet-ef migrations add InitialFiscal --project src/Modules/Fiscal/Abastalia.Fiscal --startup-project src/Modules/Fiscal/Abastalia.Fiscal --context FiscalDbContext --output-dir Persistence/Migrations --no-build
 ```
 
 ## e-CF XML
@@ -229,7 +229,7 @@ DGII_RNC.TXT parsing is unchanged (pipe-separated, column 10 `ACTIVO`, ANSI/UTF-
 
 ## Internal types and members (for tests and the Host)
 
-All in namespace `Toki.Fiscal` unless noted. The project keeps `InternalsVisibleTo` for `Toki.UnitTests` and `Toki.IntegrationTests`.
+All in namespace `Abastalia.Fiscal` unless noted. The project keeps `InternalsVisibleTo` for `Abastalia.UnitTests` and `Abastalia.IntegrationTests`.
 
 ### Module registration and DbContext
 
@@ -243,7 +243,7 @@ All in namespace `Toki.Fiscal` unless noted. The project keeps `InternalsVisible
 | `FiscalConfiguration` | (unchanged) |
 | `DisenoFiscal : DisenoDbContext<FiscalDbContext>` | `FiscalDesignTimeFactory : DesignTimeFactory<FiscalDbContext>` |
 
-### Domain (`Toki.Fiscal.Domain`)
+### Domain (`Abastalia.Fiscal.Domain`)
 
 | Old | New |
 |---|---|
@@ -288,7 +288,7 @@ All in namespace `Toki.Fiscal` unless noted. The project keeps `InternalsVisible
 | `EnvioEcfWorker` (hosted service) | `EcfSubmissionWorker` |
 | `ColaEcfHealthCheck` | `EcfQueueHealthCheck` |
 
-### Feature classes (`Toki.Fiscal.Features`)
+### Feature classes (`Abastalia.Fiscal.Features`)
 
 | Old | New |
 |---|---|
@@ -304,7 +304,7 @@ All in namespace `Toki.Fiscal` unless noted. The project keeps `InternalsVisible
 
 ## For the test, host and client agents
 
-- `src/Hosts/Toki.Host.Local/appsettings.json`: section `Fiscal` keys `EnvioAutomatico` → `AutoSubmit`, `IntervaloEnvioSegundos` → `SubmitIntervalSeconds`. `Program.cs` needs no change (`FiscalModule`, `AddFiscalModule` kept).
+- `src/Hosts/Abastalia.Host.Local/appsettings.json`: section `Fiscal` keys `EnvioAutomatico` → `AutoSubmit`, `IntervaloEnvioSegundos` → `SubmitIntervalSeconds`. `Program.cs` needs no change (`FiscalModule`, `AddFiscalModule` kept).
 - Tests that build a queue by hand: `new EcfSubmissionQueue(db, provider, clock, NullLogger<EcfSubmissionQueue>.Instance)`; a test provider implements `IEcfProvider.SubmitAsync` and returns `SubmissionResult`.
 - Tests that seed documents: `new FiscalDocument { …, Type = EcfType.Consumer32, ReferenceId, SignedUtc, SecurityCode, SignedXml, Status = SubmissionStatus.Pending, SubmitDeadlineUtc, NextAttemptUtc }` into `db.Documents`.
 - JSON reads: e.g. the taxpayer lookup returns `name` (was `nombre`), `tradeName`, `isActive`; the queue returns `pending`, `overdue`, `nextDeadlineUtc`, `rejected`, `simulated`.

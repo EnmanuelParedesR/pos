@@ -114,7 +114,7 @@ export function ShiftReportPage() {
             <dd style={{ fontWeight: 700 }}>{s.difference === 0 ? "Cuadró" : `${s.difference < 0 ? "Faltaron" : "Sobraron"} ${money(Math.abs(s.difference))}`}</dd>
           </dl>
           <p className="esc-muted" style={{ fontSize: 12 }}>
-            Copia del panel de Toki con los datos que la tienda envió a la nube. El Z original se imprime en la caja.
+            Copia del panel de Abastalia con los datos que la tienda envió a la nube. El Z original se imprime en la caja.
           </p>
         </article>
       )}

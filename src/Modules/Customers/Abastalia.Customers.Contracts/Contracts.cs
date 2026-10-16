@@ -1,0 +1,47 @@
+using Abastalia.SharedKernel;
+
+namespace Abastalia.Customers.Contracts;
+
+public enum PriceLevel { Retail, Wholesale }
+
+/// <param name="Debt">Unpaid credit (on account) right now.</param>
+/// <param name="CreditBalance">Money the store owes the customer (from returns), usable as payment.</param>
+public sealed record CustomerForSale(Guid Id, string Name, string? TaxId, bool FiscalCredit, PriceLevel PriceLevel,
+    decimal CreditLimit, decimal Debt, decimal CreditBalance, bool IsActive);
+
+/// <summary>Customer account operations called inside a sale's transaction.</summary>
+public interface ICustomerAccounts
+{
+    Task<CustomerForSale?> GetAsync(Guid customerId, CancellationToken ct);
+
+    /// <summary>Charges a credit sale. Locks the customer so two registers cannot both pass the limit.
+    /// Fails with Customers.CreditLimitExceeded unless <paramref name="allowOverLimit"/>.</summary>
+    Task<Result> ChargeOnAccountAsync(Guid customerId, Guid saleId, string document, decimal amount, bool allowOverLimit, CancellationToken ct);
+
+    /// <summary>Pays part of a sale with the customer's credit balance.</summary>
+    /// <param name="reserved">Part of the balance that is other orders' deposits (R8 #7): this sale cannot spend it.</param>
+    Task<Result> UseCreditBalanceAsync(Guid customerId, Guid saleId, decimal amount, decimal reserved, CancellationToken ct);
+
+    /// <summary>A voided sale: its on-account charge is cancelled (anything already paid on it becomes credit balance) and used balance comes back.</summary>
+    Task VoidSaleAsync(Guid saleId, CancellationToken ct);
+
+    /// <summary>A return credited to the customer: first it pays down that sale's unpaid charge, the rest becomes credit balance.</summary>
+    Task CreditReturnAsync(Guid customerId, Guid saleId, Guid returnId, decimal amount, CancellationToken ct);
+
+    /// <summary>An order's deposit (TK-193): kept as the customer's credit balance until the order is charged with it.</summary>
+    Task<Result> AddDepositAsync(Guid customerId, Guid orderId, decimal amount, CancellationToken ct);
+
+    /// <summary>A cancelled order gives its deposit (or what is left of it) back. Fails with Customers.InsufficientCreditBalance if the balance is short.</summary>
+    Task<Result> RefundDepositAsync(Guid customerId, Guid orderId, decimal amount, CancellationToken ct);
+}
+
+public sealed record OnAccountChargeRecordedV1(Guid CustomerId, Guid SaleId, decimal Amount) : IntegrationEvent(CustomerId);
+
+public sealed record CustomerPaymentRecordedV1(Guid CustomerId, Guid CustomerPaymentId, decimal Amount) : IntegrationEvent(CustomerId);
+
+/// <summary>A customer's account as the store sees it right after it changed (TK-174): created or edited, a credit sale, a payment,
+/// a voided payment, a voided sale or a return to the account. It carries the store's own figures, so the cloud never has to rebuild them.
+/// Also written for every customer when the store connects to the cloud.</summary>
+/// <param name="Debt">Unpaid credit (fiado) right now.</param>
+/// <param name="CreditBalance">Money the store owes the customer (from returns).</param>
+public sealed record CustomerBalanceChangedV1(Guid CustomerId, string Name, decimal Debt, decimal CreditBalance) : IntegrationEvent(CustomerId);

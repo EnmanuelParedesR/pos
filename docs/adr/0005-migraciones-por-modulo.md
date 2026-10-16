@@ -18,8 +18,8 @@ Para agregar una migración:
 
 ```
 dotnet tool restore
-dotnet build Toki.slnx
-dotnet dotnet-ef migrations add <Name><Module> --project src/Modules/<Módulo>/Toki.<Módulo> --startup-project src/Modules/<Módulo>/Toki.<Módulo> --context <Módulo>DbContext --output-dir Persistence/Migrations --no-build
+dotnet build Abastalia.slnx
+dotnet dotnet-ef migrations add <Name><Module> --project src/Modules/<Módulo>/Abastalia.<Módulo> --startup-project src/Modules/<Módulo>/Abastalia.<Módulo> --context <Módulo>DbContext --output-dir Persistence/Migrations --no-build
 ```
 
 - Las migraciones corren en el `StartingAsync` del host (después de avisar a Windows que el servicio arrancó y antes de que Kestrel escuche), con 30 minutos por comando.

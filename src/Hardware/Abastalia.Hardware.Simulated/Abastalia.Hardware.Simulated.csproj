@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Abastalia.Hardware.EscPos\Abastalia.Hardware.EscPos.csproj" />
+  </ItemGroup>
+</Project>

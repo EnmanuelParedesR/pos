@@ -1,0 +1,167 @@
+@page "/admin/purchasing/suppliers"
+@inject AbastaliaApi Api
+@inject Session Session
+
+<Admin Title="Suplidores" Subtitle="A quién le compra. Toque uno para ver su estado de cuenta o pagarle.">
+    <Actions>
+        <Button Variant="Button.Variants.Primary" OnClick="New"><Icon Name="plus" /> Nuevo suplidor</Button>
+    </Actions>
+    <ChildContent>
+        <SectionTabs Label="Compras" Tabs="SectionTabs.Purchasing(Session)" />
+        <label class="esc-search">
+            <Icon Name="search" Size="18" />
+            <input placeholder="Buscar por nombre o RNC" aria-label="Buscar suplidor" @bind="_search" @bind:event="oninput" @bind:after="SearchAsync" />
+        </label>
+        <div class="esc-card esc-table-wrap esc-table-wrap--tall">
+            <table class="esc-table esc-table--wide">
+                <thead><tr><th>Suplidor</th><th class="esc-hide-sm">RNC o cédula</th><th class="esc-hide-sm">Teléfono</th><th class="esc-num esc-hide-sm">Días de crédito</th><th class="esc-table__chev"><span class="esc-visually-hidden">Acciones</span></th></tr></thead>
+                <tbody>
+                    @if (_suppliers is null)
+                    {
+                        @for (var i = 0; i < 5; i++)
+                        {
+                            <tr><td><Skeleton Width="180px" /></td><td class="esc-hide-sm"><Skeleton Width="100px" /></td><td class="esc-hide-sm"><Skeleton Width="100px" /></td><td class="esc-hide-sm"><Skeleton Width="30px" /></td><td></td></tr>
+                        }
+                    }
+                    else
+                    {
+                        @foreach (var s in _suppliers)
+                        {
+                            <tr class="selectable" tabindex="0" @onclick="() => _account = s.Id" @onkeydown='e => { if (e.Key == "Enter") _account = s.Id; }'>
+                                <td style="font-weight:600">@s.Name @if (!s.IsActive) { <span class="esc-pill esc-pill--neutral" style="margin-left:6px">Inactivo</span> }
+                                    <span class="esc-table__sub">@(s.Contact is { Length: > 0 } c ? c : "")<span class="esc-only-sm">@(s.Rnc ?? "Sin RNC")</span></span></td>
+                                <td class="esc-hide-sm">@(s.Rnc is { } rnc ? rnc : "")@if (s.Rnc is null) { <span class="esc-pill esc-pill--warning" title="Sin RNC no se pueden registrar sus facturas con NCF">Sin RNC</span> }</td>
+                                <td class="esc-muted esc-hide-sm">@s.Phone</td>
+                                <td class="esc-num esc-hide-sm">@(s.CreditDays == 0 ? "Contado" : s.CreditDays.ToString())</td>
+                                <td class="esc-table__chev"><button type="button" class="esc-button esc-button--ghost esc-button--small" @onclick="() => Edit(s)" @onclick:stopPropagation="true">Editar</button></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+            @if (_suppliers is { Count: 0 })
+            {
+                <EmptyState Icon="truck" Title="@(string.IsNullOrWhiteSpace(_search) ? "Todavía no hay suplidores" : $"Nada coincide con “{_search}”")">
+                    @(string.IsNullOrWhiteSpace(_search) ? "Agregue el primero con “Nuevo suplidor”: la carnicería que le vende la res, el colmado mayorista…" : "Pruebe con otra palabra o con el RNC.")
+                </EmptyState>
+            }
+        </div>
+
+        @if (_editing is { } f)
+        {
+            <Dialog Title="@(f.Id is null ? "Nuevo suplidor" : f.Name)" Subtitle="El RNC hace falta para registrar sus facturas con NCF (606)." OnClose="() => _editing = null">
+                <ChildContent>
+                    <div class="esc-form-grid">
+                        <Field Label="Nombre *" Wide="true" Error="@Err("name")">
+                            <input class="esc-input" maxlength="150" @bind="f.Name" @bind:after='() => _errors.Remove("name")' aria-invalid="@Invalid("name")" autofocus />
+                        </Field>
+                        <Field Label="RNC o cédula" Error="@Err("rnc")" Hint="@(_taxHint ?? "9 u 11 números, sin guiones.")">
+                            <input class="esc-input" inputmode="numeric" maxlength="13" @bind="f.Rnc" @bind:after='() => LookupAsync(f)' aria-invalid="@Invalid("rnc")" />
+                            <TaxpayerBadge Status="@_taxStatus" />
+                        </Field>
+                        <Field Label="Días de crédito" Error="@Err("days")" Hint="0 si le paga al contado.">
+                            <input class="esc-input esc-num" inputmode="numeric" @bind="f.CreditDays" @bind:after='() => _errors.Remove("days")' aria-invalid="@Invalid("days")" />
+                        </Field>
+                        <Field Label="Teléfono">
+                            <input class="esc-input" maxlength="30" @bind="f.Phone" />
+                        </Field>
+                        <Field Label="Contacto" Hint="Con quién habla.">
+                            <input class="esc-input" maxlength="100" @bind="f.Contact" />
+                        </Field>
+                    </div>
+                    @if (f.Id is not null)
+                    {
+                        <label class="esc-check"><input type="checkbox" @bind="f.IsActive" /> Activo</label>
+                    }
+                    @if (_error is not null) { <Notice Title="@_error" /> }
+                </ChildContent>
+                <Footer>
+                    <Button OnClick="() => _editing = null" Shortcut="Esc">Cancelar</Button>
+                    <Button Variant="Button.Variants.Primary" Disabled="_sending" OnClick="SaveAsync">@(_sending ? "Guardando…" : "Guardar")</Button>
+                </Footer>
+            </Dialog>
+        }
+
+        @if (_account is { } id)
+        {
+            <SupplierAccount SupplierId="id" OnClose="() => _account = null" />
+        }
+    </ChildContent>
+</Admin>
+
+@code {
+    private sealed class SupplierForm
+    {
+        public Guid? Id; public string Name = ""; public string? Rnc, Phone, Contact, CreditDays = "0"; public bool IsActive = true;
+    }
+
+    private string? _taxHint, _filledName, _taxStatus;
+
+    /// <summary>TK-239: the DGII registry fills the name (editable).</summary>
+    private async Task LookupAsync(SupplierForm f)
+    {
+        _errors.Remove("rnc");
+        var (name, hint, status) = await TaxpayerLookup.FindAsync(Api, f.Rnc);
+        (f.Name, _filledName, _taxHint, _taxStatus) = (TaxpayerLookup.Fill(f.Name, _filledName, name) ?? "", name ?? _filledName, hint, status);
+    }
+
+    private List<Supplier>? _suppliers;
+    private SupplierForm? _editing;
+    private Guid? _account;
+    private string? _search, _error;
+    private bool _sending;
+    private readonly Dictionary<string, string> _errors = [];
+    private CancellationTokenSource? _typing;
+
+    private string? Err(string field) => _errors.GetValueOrDefault(field);
+    private string Invalid(string field) => _errors.ContainsKey(field) ? "true" : "false";
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task SearchAsync()
+    {
+        _typing?.Cancel();
+        _typing = new CancellationTokenSource();
+        try { await Task.Delay(250, _typing.Token); } catch (TaskCanceledException) { return; }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() =>
+        _suppliers = (await Api.GetAsync<List<Supplier>>($"/api/purchasing/suppliers?search={Uri.EscapeDataString(_search ?? "")}")).Value ?? [];
+
+    private void New() => (_editing, _error, _taxHint, _taxStatus) = (new SupplierForm(), null, null, null);
+
+    private void Edit(Supplier s)
+    {
+        _errors.Clear();
+        (_editing, _error) = (new SupplierForm { Id = s.Id, Name = s.Name, Rnc = s.Rnc, Phone = s.Phone, Contact = s.Contact, CreditDays = s.CreditDays.ToString(), IsActive = s.IsActive }, null);
+        (_taxHint, _taxStatus) = (null, null);
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_editing is not { } f) return;
+        _errors.Clear();
+        var rnc = new string((f.Rnc ?? "").Where(char.IsAsciiDigit).ToArray());
+        if (string.IsNullOrWhiteSpace(f.Name)) _errors["name"] = "Escriba el nombre.";
+        if (rnc.Length is not (0 or 9 or 11)) _errors["rnc"] = "El RNC tiene 9 números y la cédula 11.";
+        if (!int.TryParse(f.CreditDays, out var days) || days is < 0 or > 365) _errors["days"] = "De 0 a 365 días.";
+        if (_errors.Count > 0) return;
+        var body = new SaveSupplier(f.Name.Trim(), rnc.Length == 0 ? null : rnc, Blank(f.Phone), Blank(f.Contact), days, f.IsActive);
+        _sending = true;
+        var p = f.Id is { } id
+            ? (await Api.PutAsync<Empty>($"/api/purchasing/suppliers/{id}", body)).Problem
+            : (await Api.PostAsync<Created>("/api/purchasing/suppliers", body)).Problem;
+        _sending = false;
+        if (p is not null)
+        {
+            if ((p.Error("rnc") ?? p.Error("Rnc")) is { } rncError) _errors["rnc"] = rncError;
+            else _error = p.Message;
+            return;
+        }
+        _editing = null;
+        await LoadAsync();
+    }
+
+    private static string? Blank(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+}

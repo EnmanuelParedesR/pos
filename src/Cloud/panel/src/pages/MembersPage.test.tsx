@@ -31,13 +31,13 @@ const summary = { date: "2026-10-15", salesTotal: 0, salesCount: 0, averageTicke
 
 /** The whole app signed in as `me`, at `path`; returns the fetch mock. */
 function renderApp(me: Me, path: string) {
-  localStorage.setItem("toki.refreshToken", "saved");
+  localStorage.setItem("abastalia.refreshToken", "saved");
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url.endsWith("/api/me")) return json(200, me);
     if (url.endsWith("/api/members") && method === "GET") return json(200, members);
     if (url.endsWith("/api/members/invites") && method === "POST")
-      return json(200, { invite: { ...members.invites[0], id: "i2", email: "nuevo@example.com" }, link: "https://panel.toki.do/invite#abc" });
+      return json(200, { invite: { ...members.invites[0], id: "i2", email: "nuevo@example.com" }, link: "https://panel.abastalia.com/invite#abc" });
     if (url.includes("/api/members/") && (method === "PUT" || method === "DELETE")) return json(204);
     if (url.includes("/api/panel/summary")) return json(200, summary);
     return json(200, []);
@@ -66,7 +66,7 @@ it("TK-217: an owner sees the team, invites someone and gets the link to copy", 
   fireEvent.click(screen.getByRole("button", { name: /Invitar/ }));
 
   expect(await screen.findByText("Invitación lista para nuevo@example.com.")).toBeTruthy();
-  expect(screen.getByText("https://panel.toki.do/invite#abc")).toBeTruthy();
+  expect(screen.getByText("https://panel.abastalia.com/invite#abc")).toBeTruthy();
   expect(calls(fetch, "POST")).toContainEqual(["/api/members/invites", JSON.stringify({ email: "nuevo@example.com", role: "Owner" })]);
 });
 

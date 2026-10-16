@@ -1,6 +1,6 @@
-# Rename map, phase B: Sales module (`src/Modules/Sales/Toki.Sales`)
+# Rename map, phase B: Sales module (`src/Modules/Sales/Abastalia.Sales`)
 
-Spanish → English renames in `Toki.Sales`. Follows `docs/glosario-codigo.md` and `docs/rename-map.md` (phase A: SharedKernel, BuildingBlocks, Contracts). Behavior did not change, except the two display-text points marked **(display)** below.
+Spanish → English renames in `Abastalia.Sales`. Follows `docs/glosario-codigo.md` and `docs/rename-map.md` (phase A: SharedKernel, BuildingBlocks, Contracts). Behavior did not change, except the two display-text points marked **(display)** below.
 
 The API uses camelCase JSON and string enums: every record property below appears on the wire in camelCase (`SaleId` → `saleId`), every enum by its English name.
 
@@ -23,7 +23,7 @@ The API uses camelCase JSON and string enums: every record property below appear
 
 | Old | New |
 |---|---|
-| `Toki.Sales.VentasModule` | `Toki.Sales.SalesModule` |
+| `Abastalia.Sales.VentasModule` | `Abastalia.Sales.SalesModule` |
 | `VentasModule.AddVentasModule(services)` | `SalesModule.AddSalesModule(services)` |
 | `VentasDbContext` | `SalesDbContext` |
 | `VentasDbContext.Ventas` / `Lineas` / `Pagos` / `Devoluciones` / `EnEspera` | `SalesDbContext.Sales` / `Lines` / `Payments` / `Returns` / `HeldSales` |
@@ -35,7 +35,7 @@ The API uses camelCase JSON and string enums: every record property below appear
 | `VentasReportes : IVentasReportes` | `SalesReports : ISalesReports` (methods per phase A map: `ByDayAsync`, `ByProductAsync`, `ByCashierAsync`, `Report607Async`) |
 | `VentasErrors` | `SalesErrors` (members below) |
 
-Feature classes (all `internal static`, in `Toki.Sales.Features`):
+Feature classes (all `internal static`, in `Abastalia.Sales.Features`):
 
 | Old | New |
 |---|---|
@@ -52,7 +52,7 @@ Feature classes (all `internal static`, in `Toki.Sales.Features`):
 
 Private helpers in `RegisterSale.Handler`: `AutorizarAsync` → `ApproveAsync`, `Repetida` → `Repeated`, `Respuesta` → `ToResponse`. In `ReturnSale.Handler`: `YaRegistradaAsync` → `AlreadyRecordedAsync`. In `SalesReports`: `Movida` → `MovedLine(ProductId, CategoryId, Description, WithoutPresentation, Quantity, Net, Cost)`, `Devuelto` → `Returned(DateUtc, Total, Itbis, RestockedCost, Lines)`, `DevueltoAsync` → `ReturnedAsync`, local `Fila` → `Row`, `TipoId` → `IdType`, `Medio` → `ByMethod`.
 
-## Totals calculator and payments (`Toki.Sales.Domain`, used by unit tests)
+## Totals calculator and payments (`Abastalia.Sales.Domain`, used by unit tests)
 
 | Old | New |
 |---|---|
@@ -75,7 +75,7 @@ Unit-test cheat sheet: `MedioPago.Efectivo` → `PaymentMethod.Cash`, `Tarjeta` 
 
 | Old | New | Where |
 |---|---|---|
-| `NivelPrecio { Detalle, Mayorista }` (public) | `SalePriceLevel { Retail, Wholesale }` | `RegisterSale.Command.PriceLevel` (wire), `Sale.PriceLevel` (DB). Named `SalePriceLevel` to avoid clashing with `Toki.Customers.Contracts.PriceLevel`. |
+| `NivelPrecio { Detalle, Mayorista }` (public) | `SalePriceLevel { Retail, Wholesale }` | `RegisterSale.Command.PriceLevel` (wire), `Sale.PriceLevel` (DB). Named `SalePriceLevel` to avoid clashing with `Abastalia.Customers.Contracts.PriceLevel`. |
 | `EstadoVenta { Completada, Anulada }` (internal) | `SaleStatus { Completed, Voided }` | DB column `Sales.Status`; the `status` strings on the wire (below) |
 
 Enums from Contracts that appear on the wire (phase A): `PaymentMethod` (`Cash`, `Card`, `Transfer`, `OnAccount`, `CreditBalance`), `EcfType` (`FiscalCredit31`, `Consumer32`, `DebitNote33`, `CreditNote34`), `UnitOfMeasure` (`Unit`, `Pound`).
@@ -395,5 +395,5 @@ Migration command used (from the repo root):
 
 ```
 dotnet tool restore
-dotnet dotnet-ef migrations add InitialSales --project src/Modules/Sales/Toki.Sales --startup-project src/Modules/Sales/Toki.Sales --context SalesDbContext --output-dir Persistence/Migrations --no-build
+dotnet dotnet-ef migrations add InitialSales --project src/Modules/Sales/Abastalia.Sales --startup-project src/Modules/Sales/Abastalia.Sales --context SalesDbContext --output-dir Persistence/Migrations --no-build
 ```

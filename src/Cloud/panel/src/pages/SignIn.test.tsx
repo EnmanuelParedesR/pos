@@ -102,7 +102,7 @@ it("R11: an account with two-step verification asks for the app's code and sends
   const { fetch, onSignedIn } = renderSignIn((path) =>
     path === "/api/auth/login" ? (++calls === 1 ? json(401, { detail: "RequiresTwoFactor" }) : json(200, { accessToken: "a", refreshToken: "r" })) : undefined,
   );
-  fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "staff@toki.do" } });
+  fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "staff@abastalia.com" } });
   fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
   fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
 
@@ -110,7 +110,7 @@ it("R11: an account with two-step verification asks for the app's code and sends
   fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
   await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalled());
   const [, init] = fetch.mock.calls.filter(([url]) => String(url).endsWith("/api/auth/login"))[1] as unknown as [string, RequestInit];
-  expect(JSON.parse(String(init.body))).toEqual({ email: "staff@toki.do", password: "Carne2026", twoFactorCode: "123456" });
+  expect(JSON.parse(String(init.body))).toEqual({ email: "staff@abastalia.com", password: "Carne2026", twoFactorCode: "123456" });
 });
 
 it("TK-230: ¿La olvidó? asks for the reset e-mail and answers the same whether the account exists or not", async () => {

@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <ItemGroup>
+    <ProjectReference Include="..\Abastalia.Client.UI\Abastalia.Client.UI.csproj" />
+    <ProjectReference Include="..\..\Hardware\Abastalia.Hardware.Simulated\Abastalia.Hardware.Simulated.csproj" />
+  </ItemGroup>
+</Project>

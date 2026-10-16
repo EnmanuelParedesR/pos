@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Abastalia.BuildingBlocks\Abastalia.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\Abastalia.Fiscal.Contracts\Abastalia.Fiscal.Contracts.csproj" />
+    <ProjectReference Include="..\..\Settings\Abastalia.Settings.Contracts\Abastalia.Settings.Contracts.csproj" />
+    <ProjectReference Include="..\..\Sync\Abastalia.Sync.Contracts\Abastalia.Sync.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.Xml" />
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="QRCoder" />
+    <EmbeddedResource Include="Schemas\*.xsd" LogicalName="Abastalia.Fiscal.Schemas.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Abastalia.UnitTests" />
+    <InternalsVisibleTo Include="Abastalia.IntegrationTests" />
+    <!-- TK-152: the cloud receiver is tested with e-CF built and signed exactly as a store does -->
+    <InternalsVisibleTo Include="Abastalia.Cloud.Tests" />
+  </ItemGroup>
+</Project>

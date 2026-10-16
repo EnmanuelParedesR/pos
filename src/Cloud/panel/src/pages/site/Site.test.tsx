@@ -20,7 +20,7 @@ function Where() {
 }
 
 function renderAt(path: string, me?: Me) {
-  if (me) localStorage.setItem("toki.refreshToken", "saved");
+  if (me) localStorage.setItem("abastalia.refreshToken", "saved");
   const fetch = vi.fn(async (url: string) => (url.endsWith("/api/me") ? json(200, me) : url.endsWith("/api/auth/refresh") ? json(200, { accessToken: "a", refreshToken: "r" }) : url.endsWith("/api/stores") ? json(200, []) : json(404)));
   vi.stubGlobal("fetch", fetch);
   render(
@@ -33,7 +33,7 @@ function renderAt(path: string, me?: Me) {
 }
 
 it.each(sitePages.map((p) => [p.path, p.title]))("TK-228: %s is public: it renders without a session, never asks for the account and sets its title", (path, title) => {
-  localStorage.setItem("toki.refreshToken", "saved"); // even signed in, the site never asks for the account
+  localStorage.setItem("abastalia.refreshToken", "saved"); // even signed in, the site never asks for the account
   const fetch = renderAt(path);
 
   expect(screen.getByRole("heading", { level: 1 })).toBeTruthy();
@@ -78,7 +78,7 @@ it("TK-242: /descargar shows both roles and the installer placeholder until it i
   expect(screen.getAllByRole("link", { name: "Descargar" })[0].getAttribute("href")).toBe("/descargar");
   cleanup();
   renderAt("/certificacion");
-  expect(screen.getByRole("link", { name: "Descargar Toki" }).getAttribute("href")).toBe("/descargar");
+  expect(screen.getByRole("link", { name: "Descargar Abastalia" }).getAttribute("href")).toBe("/descargar");
 });
 
 it("TK-228: an unknown address shows the site's 404", () => {
@@ -108,7 +108,7 @@ it("TK-235: /certificacion lists everything the owner prepares before the first 
   const list = document.getElementById("preparacion")!;
   for (const item of preparation) expect(list.textContent).toContain(item);
   expect(list.textContent).toContain(".p12 o .pfx");
-  expect(list.textContent).toContain("Toki nunca le pide esa clave");
+  expect(list.textContent).toContain("Abastalia nunca le pide esa clave");
 });
 
 it("TK-245: the home page shows the product: deadline banner, trial and contact calls to action, decorative art and the price placeholder", () => {

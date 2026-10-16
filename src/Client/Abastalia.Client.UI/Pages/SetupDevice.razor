@@ -1,0 +1,186 @@
+@page "/setup"
+@inject AbastaliaApi Api
+@inject Session Session
+@inject NavigationManager Nav
+@inject NodeCertificatePin Pin
+@inject ServerAddress Server
+
+<div class="esc-page" style="max-width:960px;margin:0 auto;width:100%">
+    <div>
+        <h1 class="esc-title">Configurar este equipo</h1>
+        <p class="esc-subtitle">Se hace una sola vez. Elija si esta es la PC principal de una tienda nueva o una caja más de una tienda que ya usa Abastalia.</p>
+    </div>
+
+    <div class="esc-row" role="tablist" aria-label="Modo">
+        <button type="button" role="tab" class="esc-chip" aria-pressed="@(_mode == Mode.Join ? "true" : "false")" aria-selected="@(_mode == Mode.Join)" @onclick="() => Switch(Mode.Join)">Unir a una tienda</button>
+        <button type="button" role="tab" class="esc-chip" aria-pressed="@(_mode == Mode.Install ? "true" : "false")" aria-selected="@(_mode == Mode.Install)" @onclick="() => Switch(Mode.Install)">Primera instalación</button>
+    </div>
+
+    @if (_mode == Mode.Join)
+    {
+        <form class="esc-card esc-card--padded esc-col" style="gap:16px;max-width:520px" @onsubmit="JoinAsync">
+            <div>
+                <div style="font-size:var(--t-20);font-weight:700">Código del dueño</div>
+                <div class="esc-subtitle">En la PC principal: Configuración → Equipos → Generar código. Vale 10 minutos.</div>
+                <div class="esc-subtitle">Si esta PC ya estaba unida antes, el dueño debe revocar su entrada vieja en Configuración → Equipos: si no, sigue contando como una caja de la licencia.</div>
+            </div>
+            @* TK-251: a register reaches the server on the main PC; its address is kept on this PC, so an update does not lose it. *@
+            <div class="esc-row" style="gap:8px;align-items:flex-end">
+                <label class="esc-field" style="flex:1 1 auto">
+                    <span>PC principal (nombre o IP)</span>
+                    <input class="esc-input" id="server" autocomplete="off" maxlength="253" placeholder="Ej.: CAJA-PRINCIPAL o 192.168.1.10" @bind="_server" />
+                </label>
+                <Button Disabled="@_sending" OnClick="ConnectAsync">Buscar</Button>
+            </div>
+            <label class="esc-field">
+                <span>Código de 8 dígitos</span>
+                <input class="esc-input esc-input--large" inputmode="numeric" autocomplete="off" maxlength="8" @bind="_code" @bind:event="oninput"
+                       aria-invalid="@(_error is not null)" style="letter-spacing:0.3em" autofocus />
+            </label>
+            @if (_fingerprint is not null)
+            {
+                @* TK-122, R8 #11: this PC pairs only with the server whose fingerprint is shown here; the owner sees the same one next to the code. *@
+                <Notice Kind="Notice.Kinds.Info" Title="@($"Huella del servidor: {_fingerprint}")">Debe ser igual a la que ve el dueño junto al código. Si no es igual, no una este equipo y avise al técnico.</Notice>
+                @* R9 #9: the code goes out only after the fingerprint was compared, as in Install. *@
+                @if (MustConfirm)
+                {
+                    <label class="esc-row" style="gap:8px;align-items:center"><input type="checkbox" @bind="_confirmed" /> La huella es igual a la que ve el dueño</label>
+                }
+            }
+            @if (_error is not null)
+            {
+                <Notice Title="@_error" />
+            }
+            <Button Type="submit" Variant="Button.Variants.Primary" Shortcut="Enter" Disabled="@(_code?.Length != 8 || _sending || (MustConfirm && !_confirmed))">Unir este equipo</Button>
+        </form>
+    }
+    else
+    {
+        <form class="esc-card esc-card--padded esc-col" style="gap:16px;max-width:620px" @onsubmit="InstallAsync">
+            <div>
+                <div style="font-size:var(--t-20);font-weight:700">Tienda nueva</div>
+                <div class="esc-subtitle">Esta PC queda como la principal y usted como administrador. Después agrega cajeros y cajas.</div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                <label class="esc-field"><span>Su nombre</span><input class="esc-input" @bind="_name" maxlength="100" autocomplete="name" /></label>
+                <label class="esc-field"><span>Su código para entrar</span><input class="esc-input" @bind="_userCode" maxlength="20" autocomplete="off" /></label>
+                <label class="esc-field"><span>PIN (4 a 8 dígitos)</span><input class="esc-input" type="password" inputmode="numeric" @bind="_pin" maxlength="8" autocomplete="new-password" /></label>
+                <label class="esc-field"><span>Nombre de este equipo</span><input class="esc-input" @bind="_deviceName" maxlength="100" /></label>
+            </div>
+            @* TK-238: the business data goes on every receipt; saved at the owner's first sign-in (it needs the session). *@
+            <div style="font-size:var(--t-16);font-weight:700">Su negocio</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                <label class="esc-field"><span>Nombre del negocio</span><input class="esc-input" @bind="_businessName" maxlength="150" /></label>
+                <label class="esc-field"><span>RNC o cédula (9 u 11 números)</span><input class="esc-input" inputmode="numeric" @bind="_rnc" maxlength="13" aria-invalid="@(RncError is not null ? "true" : "false")" /></label>
+                <label class="esc-field"><span>Teléfono</span><input class="esc-input" @bind="_phone" maxlength="30" autocomplete="tel" /></label>
+                <label class="esc-field"><span>Dirección</span><input class="esc-input" @bind="_address" maxlength="200" /></label>
+                <label class="esc-field"><span>Pie de la factura</span><input class="esc-input" @bind="_footer" maxlength="500" placeholder="¡Gracias por su compra!" /></label>
+            </div>
+            <p class="esc-subtitle" style="margin:0">Puede dejarlos para después: el Resumen se los recordará. Sin RNC no se emiten comprobantes fiscales.</p>
+            @* TK-196: a single PC is enough to start; sample products let the owner try the register right away (removable with one click). *@
+            <label class="esc-row" style="gap:8px;align-items:center"><input type="checkbox" @bind="_sampleData" /> Cargar productos de ejemplo para probar la caja (se quitan con un clic)</label>
+            <p class="esc-subtitle" style="margin:0">Prueba gratis de 14 días con todo incluido. Los días empiezan a contar con su primera venta, no hoy.</p>
+            @if (MustConfirm)
+            {
+                @* R8 #11: the owner's code and PIN only go to a server whose fingerprint was compared (or that runs on this PC). *@
+                <Notice Kind="Notice.Kinds.Info" Title="@($"Huella del servidor: {_fingerprint}")">La PC principal la anota en su registro al arrancar (C:\ProgramData\Abastalia\logs). Si no es igual, no instale desde este equipo y avise al técnico.</Notice>
+                <label class="esc-row" style="gap:8px;align-items:center"><input type="checkbox" @bind="_confirmed" /> La huella es igual a la de la PC principal</label>
+            }
+            @if (_error is not null)
+            {
+                <Notice Title="@_error" />
+            }
+            <Button Type="submit" Variant="Button.Variants.Primary" Disabled="@(_sending || (MustConfirm && !_confirmed))">Instalar Abastalia</Button>
+        </form>
+    }
+</div>
+
+@code {
+    private enum Mode { Join, Install }
+    private Mode _mode = Mode.Join;
+    private string? _server, _code, _error, _name, _userCode, _pin, _fingerprint, _shown, _businessName, _rnc, _phone, _address, _footer;
+
+    private string? Rnc => string.IsNullOrWhiteSpace(_rnc) ? null : new string(_rnc.Where(char.IsAsciiDigit).ToArray());
+    private string? RncError => _rnc is null || Rnc is null or { Length: 9 or 11 } ? null : "El RNC tiene 9 números y la cédula 11.";
+    private string _deviceName = "PC principal";
+    private bool _sending, _confirmed, _sampleData;
+    private const string ServerChanged = "El servidor cambió desde que se mostró la huella, así que este equipo no se unió. Vuelva a abrir esta pantalla y compare la huella otra vez.";
+
+    private bool MustConfirm => _fingerprint is not null && !Api.ServerIsThisPc;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.LoadAsync();
+        if (Session.IsPaired) { Nav.NavigateTo("sign-in"); return; }
+        _server = Server.Current.IsLoopback ? null : Server.Current.Host;
+        // TK-196: on the PC that runs the server this is almost always the first installation (a single-PC store).
+        if (await ReachServerAsync() && Api.ServerIsThisPc) _mode = Mode.Install;
+    }
+
+    /// <summary>Connects, so the server's certificate is known before the code is typed. False when nothing answers there.</summary>
+    private async Task<bool> ReachServerAsync()
+    {
+        var health = await Api.GetAsync<Empty>("/health");
+        (_shown, _confirmed) = (Pin.Seen, false);
+        _fingerprint = NodeCertificatePin.Fingerprint(_shown);
+        return health.Problem is not { Code: Problem.NoServer };
+    }
+
+    private async Task ConnectAsync()
+    {
+        if (!await Session.UseServerAsync(_server)) { _error = "Escriba el nombre o la IP de la PC principal (por ejemplo CAJA-PRINCIPAL o 192.168.1.10)."; return; }
+        _sending = true;
+        _error = await ReachServerAsync() ? null : $"No se encontró la PC principal en {Server.Current.Host}. Revise el nombre o la IP y que esté encendida.";
+        _sending = false;
+    }
+
+    private void Switch(Mode m) => (_mode, _error) = (m, null);
+
+    private async Task JoinAsync()
+    {
+        if (_code?.Length != 8 || (MustConfirm && !_confirmed)) return; // Enter submits the form even with the button disabled
+        if (!string.Equals(Pin.Seen, _shown, StringComparison.OrdinalIgnoreCase)) { _error = ServerChanged; return; }
+        _sending = true;
+        var r = await Api.PostAsync<Paired>("/api/identity/devices/pair", new { Code = _code, CertificateRequest = Session.CertificateRequest() });
+        _sending = false;
+        if (r.Value is { } p)
+        {
+            // The code is used up: the owner revokes this half-made entry in Configuración → Equipos.
+            if (!await Session.PairAsync(_shown, p.Token, p.Certificate, p.StoreCa)) { _error = ServerChanged; return; }
+            Nav.NavigateTo("sign-in");
+            return;
+        }
+        _error = r.Problem!.Code switch
+        {
+            "Identity.InvalidPairingCode" => "Ese código no sirve o ya venció. Pida uno nuevo al dueño.",
+            "Identity.RegisterLimitReached" => "La licencia no permite más cajas. El dueño puede revocar una que ya no use.",
+            _ => r.Problem.Message,
+        };
+    }
+
+    private async Task InstallAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || string.IsNullOrWhiteSpace(_userCode) || _pin is not { Length: >= 4 and <= 8 } || !_pin.All(char.IsAsciiDigit))
+        {
+            _error = "Complete su nombre, su código y un PIN de 4 a 8 dígitos.";
+            return;
+        }
+        if (RncError is { } rncError) { _error = rncError; return; }
+        if (!string.Equals(Pin.Seen, _shown, StringComparison.OrdinalIgnoreCase)) { _error = ServerChanged; return; }
+        _sending = true;
+        var r = await Api.PostAsync<SetupResult>("/api/identity/setup",
+            new SetupRequest(_name.Trim(), _userCode.Trim(), _pin, _deviceName.Trim(), Session.CertificateRequest()));
+        _sending = false;
+        if (r.Value is { } s)
+        {
+            if (!await Session.PairAsync(_shown, s.DeviceToken, s.Certificate, s.StoreCa)) { _error = ServerChanged; return; }
+            if (_sampleData) await Session.AskForSampleDataAsync();
+            if (!string.IsNullOrWhiteSpace(_businessName) || Rnc is not null)
+                await Session.AskForBusinessAsync(new BusinessProfile(string.IsNullOrWhiteSpace(_businessName) ? "Mi tienda" : _businessName.Trim(), Rnc,
+                    _address?.Trim(), _phone?.Trim(), _footer?.Trim(), 10));
+            Nav.NavigateTo("sign-in");
+            return;
+        }
+        _error = r.Problem!.Code == "Identity.AlreadySetUp" ? "Esta tienda ya está instalada. Use \"Unir a una tienda\" con un código del dueño." : r.Problem.Message;
+    }
+}

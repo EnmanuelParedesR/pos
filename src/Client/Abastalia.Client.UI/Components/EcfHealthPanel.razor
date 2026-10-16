@@ -1,0 +1,72 @@
+@inject AbastaliaApi Api
+
+@* TK-156: what keeps the store issuing e-CF, in one card: the oldest unsent e-CF, the last DGII answer, the certificate, and what needs the
+   owner (same list as the Resumen). "Consultar a la DGII" asks right now whether the DGII answers. The help panel is the short version of
+   docs/contingencia-ecf.md. *@
+<section class="esc-card esc-card--padded" aria-labelledby="health-title">
+    <div class="esc-card__head">
+        <h2 id="health-title" class="esc-card__title">Salud de la operación</h2>
+        <Button class="esc-button esc-button--small" Disabled="_checking" OnClick="CheckDgiiAsync">@(_checking ? "Consultando…" : "Consultar a la DGII")</Button>
+    </div>
+    @if (_dgii is { } d)
+    {
+        <p role="status" class="esc-muted"><span class="esc-pill esc-pill--@(d.State == "Up" ? "success" : d.State == "Down" ? "warning" : "neutral")">@(d.State == "Up" ? "La DGII responde" : d.State == "Down" ? "La DGII no responde" : "Simulado")</span> @d.Message</p>
+    }
+    @if (_health is { } h)
+    {
+        <dl class="esc-dl">
+            <dt>Comprobante más viejo sin enviar</dt><dd>@(h.OldestPendingUtc is { } o ? $"{Format.Date(o)} (plazo: 72 horas)" : "Ninguno")</dd>
+            <dt>Último contacto con la DGII</dt><dd>@(h.Environment == "Simulated" ? "No aplica (modo simulado)" : h.LastDgiiContactUtc is { } l ? Format.Date(l) : "Todavía no")</dd>
+            <dt>Certificado digital</dt><dd>@(h.CertificateExpiresUtc is { } c ? $"Vence el {Format.Date(c)}" : "No hay")@(h.CanSign ? "" : " · no se puede firmar")</dd>
+        </dl>
+        @if (h.Items.Count == 0)
+        {
+            <p class="esc-muted" role="status"><Icon Name="check" Size="16" /> Todo en orden.</p>
+        }
+        else
+        {
+            <ul class="esc-alerts" aria-label="Asuntos de los comprobantes">
+                @foreach (var i in h.Items)
+                {
+                    <li class="esc-alert esc-alert--@i.Level">
+                        <span class="esc-alert__icon"><Icon Name="alert" Size="18" /></span>
+                        <div class="esc-alert__body"><div class="esc-alert__title">@i.Title</div><div class="esc-alert__meta">@i.Detail</div></div>
+                    </li>
+                }
+            </ul>
+        }
+    }
+    <details class="esc-help">
+        <summary>Qué hacer si no se puede facturar con e-CF</summary>
+        <ol>
+            <li><b>Sin internet o la DGII caída:</b> siga vendiendo. Los comprobantes se firman y quedan en la cola; salen solos al volver. El plazo es de 72 horas desde la firma.</li>
+            <li><b>Sin certificado, certificado vencido o la PC principal dañada:</b> eso es "imposibilidad de emitir". Declare la contingencia en la Oficina Virtual (OFV) de la DGII y actívela abajo: la caja factura con comprobantes serie B en papel.</li>
+            <li>La contingencia dura como máximo <b>15 días</b>. Resuelva el certificado o la PC en ese tiempo.</li>
+            <li>Al terminar: declare la salida en la OFV, termine la contingencia aquí y pulse <b>Regularizar</b>. Cada comprobante serie B se reemplaza con un e-CF que va solo a la DGII, en <b>30 días</b> como máximo.</li>
+            <li><b>Si la certificación no está lista el 15/11/2026:</b> para poco volumen, use el Facturador Gratuito de la DGII mientras termina. Confirme con la DGII o su contador que le aplica; pídalo en la OFV (trae su propio certificado, que no sirve en Abastalia); siga vendiendo en Abastalia y emita allí solo las facturas que deben ser e-CF, con los mismos datos; anote cada e-NCF junto al número de la venta para el 607. Al quedar autorizado, cargue las secuencias de producción en Abastalia y deje de usarlo.</li>
+            <li>Dudas: DGII, 809-689-3444 opción 4, o facturacionelectronica@dgii.gov.do.</li>
+        </ol>
+    </details>
+</section>
+
+@code {
+    private EcfHealth? _health;
+    private DgiiStatus? _dgii;
+    private bool _checking;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    public async Task ReloadAsync()
+    {
+        _health = (await Api.GetAsync<EcfHealth>("/api/fiscal/health")).Value;
+        StateHasChanged();
+    }
+
+    private async Task CheckDgiiAsync()
+    {
+        _checking = true;
+        _dgii = (await Api.PostAsync<DgiiStatus>("/api/fiscal/dgii-status", timeout: TimeSpan.FromSeconds(20))).Value
+            ?? new DgiiStatus("Down", "No se pudo consultar. Revise la conexión con la PC principal.", DateTime.UtcNow);
+        _checking = false;
+    }
+}

@@ -1,4 +1,4 @@
-## Crítica de diseño: administración de Toki (PC de la tienda y panel en la nube)
+## Crítica de diseño: administración de Abastalia (PC de la tienda y panel en la nube)
 
 Ticket: TK-171. Se revisó la pantalla Resumen de la administración en Blazor (captura del 15 de octubre de 2026) y el panel React, que usa los mismos tokens. Se puede rediseñar todo, incluida la paleta.
 
@@ -44,7 +44,7 @@ Funciona, pero parece una plantilla de administración genérica: todo es una ta
 ### Recomendaciones prioritarias
 1. **Resumen que cuenta una historia.** Una cifra héroe con comparación y mini-tendencia, "Para revisar" arriba, la gráfica con la referencia de la semana pasada, y los más vendidos con barras de proporción.
 2. **Capa visual "Escuadra Admin".** Neutros cálidos (fondo #F6F5F2, tinta #14181D), la marca como acento con una escala de 50 a 900, semánticos suaves, una paleta de datos de 4 colores, superficies sin borde con sombra muy sutil, radio de 14 px, íconos y una escala tipográfica real. La caja no cambia.
-3. **Navegación moderna y adaptable.** Barra lateral con íconos y colapsable en la PC, barra inferior en el celular, asistente siempre visible ("Pregúntale a Toki…"), estados vacíos y de carga (*skeletons*) cuidados, y cero tablas sin estilo.
+3. **Navegación moderna y adaptable.** Barra lateral con íconos y colapsable en la PC, barra inferior en el celular, asistente siempre visible ("Pregúntale a Talia…"), estados vacíos y de carga (*skeletons*) cuidados, y cero tablas sin estilo.
 
 ## Rondas de diseño (TK-173)
 
@@ -64,7 +64,7 @@ Ciclo: implementar → capturar (PC 1366×768 y celular 375×812) → criticar �
   - 🟡 Celular: Productos y Turnos se volvían una tabla con desplazamiento lateral y el precio quedaba fuera de vista. → Columnas secundarias ocultas en el celular; la categoría o la caja pasan a un segundo renglón.
 
 ### Ronda 2: Productos, Turnos, Configuración y el panel en la nube
-- **Qué se hizo:** tablas con encabezado fijo, números a la derecha, fila con tinte al pasar el mouse, esqueletos de carga y estados vacíos con qué hacer; formularios con el error al lado de cada campo; Configuración con la descripción a la izquierda y el formulario a la derecha; el panel React con el mismo marco, la barra "Pregúntale a Toki…" en todas las pantallas, Resumen con comparación "a esta hora" contra el mismo día de la semana pasada, Ventas con el periodo anterior en gris y Tiendas que se refresca sola al conectar una caja (TK-170).
+- **Qué se hizo:** tablas con encabezado fijo, números a la derecha, fila con tinte al pasar el mouse, esqueletos de carga y estados vacíos con qué hacer; formularios con el error al lado de cada campo; Configuración con la descripción a la izquierda y el formulario a la derecha; el panel React con el mismo marco, la barra "Pregúntale a Talia…" en todas las pantallas, Resumen con comparación "a esta hora" contra el mismo día de la semana pasada, Ventas con el periodo anterior en gris y Tiendas que se refresca sola al conectar una caja (TK-170).
 - **Hallazgos:**
   - 🔴 Los renglones pensados para el celular (categoría, caja) también salían en la PC por un empate de especificidad en el CSS. → Corregido.
   - 🔴 El diálogo de producto es más alto que 768 px y el botón Guardar quedaba fuera de vista. → Pie del diálogo fijo abajo.

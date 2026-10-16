@@ -1,12 +1,12 @@
 # Despliegue de la nube en Azure
 
-Cómo se crea y se publica la nube de Toki (ADR-0008): la API `Toki.Host.Cloud`, el panel del dueño y lo que necesitan. Todo vive en un solo grupo de recursos por ambiente (`rg-toki-prod`).
+Cómo se crea y se publica la nube de Abastalia (ADR-0008): la API `Abastalia.Host.Cloud`, el panel del dueño y lo que necesitan. Todo vive en un solo grupo de recursos por ambiente (`rg-abastalia-prod`).
 
 ## Qué crea `deploy/azure/main.bicep`
 
 | Recurso | Para qué | Costo en reposo |
 |---|---|---|
-| App Service Linux B1 + Web App .NET 10 | La API (`Toki.Host.Cloud`). Siempre encendida, solo HTTPS, con identidad administrada. | ~13 USD/mes |
+| App Service Linux B1 + Web App .NET 10 | La API (`Abastalia.Host.Cloud`). Siempre encendida, solo HTTPS, con identidad administrada. | ~13 USD/mes |
 | Azure SQL serverless (Gen5, 1 vCore, mínimo 0.5, pausa a los 60 min) | Esquemas `cloud`, `ingest` y `replica`. Solo cuentas de Entra ID: no hay usuario ni contraseña de SQL. | Casi nada mientras está en pausa; se cobra el almacenamiento |
 | Key Vault (RBAC) | La clave de Azure OpenAI. La API la lee con su identidad administrada (referencia `@Microsoft.KeyVault(...)`). Las copias de certificados e-CF (CloudCustody, TK-151) están apagadas desde TK-246. | Centavos |
 | Log Analytics + Application Insights | Logs y trazas de la API (agente automático de App Service). | Según el volumen |
@@ -20,24 +20,24 @@ R11 (TK-253): la API entra a Azure OpenAI con su identidad administrada (rol "Co
 
 ## Lo que está desplegado hoy (TK-139, 2026-10-15)
 
-**Redespliegue del 16/10/2026** (main `ac83666`): infraestructura con la cuenta de almacenamiento del archivo frío (sttokiprodjhzq7n, retención inmutable sin bloquear), los roles de Key Vault del receptor y la protección contra purga del Key Vault (irreversible); API con todas las migraciones hasta TK-231 y las raíces de INDOTEL; sitio y panel en la Static Web App (/ sitio, /app panel). /health/ready responde Healthy.
+**Redespliegue del 16/10/2026** (main `ac83666`): infraestructura con la cuenta de almacenamiento del archivo frío (stabastaliaprod5qsy5n, retención inmutable sin bloquear), los roles de Key Vault del receptor y la protección contra purga del Key Vault (irreversible); API con todas las migraciones hasta TK-231 y las raíces de INDOTEL; sitio y panel en la Static Web App (/ sitio, /app panel). /health/ready responde Healthy.
 
-Suscripción **Visual Studio Enterprise Subscription – MPN** (`fc0b2ba5-daf7-43fd-a6a2-7dc6f60b8dff`, tenant `8d025706-…`), grupo **`rg-toki-prod`**.
+Suscripción **Visual Studio Enterprise Subscription – MPN** (`fc0b2ba5-daf7-43fd-a6a2-7dc6f60b8dff`, tenant `8d025706-…`), grupo **`rg-abastalia-prod`**.
 
 | Recurso | Nombre | Región | SKU |
 |---|---|---|---|
-| API (Web App Linux, .NET 10) | `app-toki-prod-jhzq7n` → https://app-toki-prod-jhzq7n.azurewebsites.net | eastus2 | Plan `asp-toki-prod` B1 |
-| Panel (Static Web App) | `stapp-toki-prod` → https://black-coast-0594b990f.5.azurestaticapps.net | eastus2 | Free |
-| Azure SQL | servidor `sql-toki-prod-e7csjd`, base `toki` | **centralus** | GP_S_Gen5, 1 vCore, mínimo 0.5, pausa a los 60 min, 32 GB máx., respaldo local |
-| Azure OpenAI | `oai-toki-prod-jhzq7n`, despliegue `chat` = `gpt-5-nano` (`2025-08-07`) | eastus2 | S0, GlobalStandard, 10K tokens/min |
-| Key Vault | `kv-toki-prod-jhzq7n` (secreto `AzureOpenAI--ApiKey`) | eastus2 | Standard, RBAC |
-| Log Analytics / Application Insights | `log-toki-prod` / `appi-toki-prod` | eastus2 | Por GB, 30 días |
+| API (Web App Linux, .NET 10) | `app-abastalia-prod-5qsy5n` → https://app-abastalia-prod-5qsy5n.azurewebsites.net | eastus2 | Plan `asp-abastalia-prod` B1 |
+| Panel (Static Web App) | `stapp-abastalia-prod` → https://black-coast-0594b990f.5.azurestaticapps.net | eastus2 | Free |
+| Azure SQL | servidor `sql-abastalia-prod-eigklc`, base `abastalia` | **centralus** | GP_S_Gen5, 1 vCore, mínimo 0.5, pausa a los 60 min, 32 GB máx., respaldo local |
+| Azure OpenAI | `oai-abastalia-prod-5qsy5n`, despliegue `chat` = `gpt-5-nano` (`2025-08-07`) | eastus2 | S0, GlobalStandard, 10K tokens/min |
+| Key Vault | `kv-abastalia-prod-5qsy5n` (secreto `AzureOpenAI--ApiKey`) | eastus2 | Standard, RBAC |
+| Log Analytics / Application Insights | `log-abastalia-prod` / `appi-abastalia-prod` | eastus2 | Por GB, 30 días |
 
 - **SQL en centralus:** eastus2 y eastus respondieron *"Provisioning is restricted in this region"* para servidores SQL nuevos en esta suscripción. centralus es la región disponible más cercana (parámetro `sqlLocation`). La latencia extra es de unos pocos milisegundos.
 - **Firewall de SQL:** solo `AllowAzureServices`. Para conectarse desde una PC se agrega una regla temporal con su IP y se borra al terminar.
-- **Acceso de la API a SQL:** usuario contenido `[app-toki-prod-jhzq7n]` (identidad administrada) con `db_owner`. Ya está creado. No hay inicios de sesión de SQL (solo Entra).
+- **Acceso de la API a SQL:** usuario contenido `[app-abastalia-prod-5qsy5n]` (identidad administrada) con `db_owner`. Ya está creado. No hay inicios de sesión de SQL (solo Entra).
 - **Migraciones:** las aplica la API al arrancar (`CreateCloudDatabaseOnStartup`). No hay paso aparte.
-- **Logs del contenedor:** están activados en el sistema de archivos (`az webapp log config --docker-container-logging filesystem`). Se leen con `az webapp log tail -g rg-toki-prod -n app-toki-prod-jhzq7n`.
+- **Logs del contenedor:** están activados en el sistema de archivos (`az webapp log config --docker-container-logging filesystem`). Se leen con `az webapp log tail -g rg-abastalia-prod -n app-abastalia-prod-5qsy5n`.
 
 ### Modelo del asistente: por qué `gpt-5-nano`
 
@@ -83,11 +83,11 @@ La tienda sube cada e-CF firmado (XML, RFCE y respuesta de la DGII) a `POST /fis
 - Registro de dueño, inicio de sesión, `/api/me`, alta de tienda y código de conexión de 8 dígitos: OK.
 - `/api/assistant/ask` con "¿Cuánto vendí hoy?" → 200 en ~8 s, respuesta en español (RD$ 0.00, todavía sin datos).
 - Panel: carga en la URL de la Static Web App, una ruta profunda (`/sales`) responde 200 y el *preflight* de CORS a la API devuelve el origen del panel.
-- La cuenta de prueba está en `src/Client/Toki.Client.Web/appsettings.Development.local.json` (clave `AzureTestOwner`, ignorado por git).
+- La cuenta de prueba está en `src/Client/Abastalia.Client.Web/appsettings.Development.local.json` (clave `AzureTestOwner`, ignorado por git).
 
 ### Conectar una tienda local a esta nube
 
-En la caja, el ajuste `Cloud:Url` (en `appsettings.json` del host local o con la variable `Cloud__Url`) tiene que ser `https://app-toki-prod-jhzq7n.azurewebsites.net`; el instalador ya lo trae (`deploy/installer/store-settings.ps1`, TK-251). Después, en **Configuración → Nube**, se pega el código de conexión que da el panel. Los valores por defecto del repositorio no cambian.
+En la caja, el ajuste `Cloud:Url` (en `appsettings.json` del host local o con la variable `Cloud__Url`) tiene que ser `https://app-abastalia-prod-5qsy5n.azurewebsites.net`; el instalador ya lo trae (`deploy/installer/store-settings.ps1`, TK-251). Después, en **Configuración → Nube**, se pega el código de conexión que da el panel. Los valores por defecto del repositorio no cambian.
 
 ## Antes de desplegar
 
@@ -110,8 +110,8 @@ En la caja, el ajuste `Cloud:Url` (en `appsettings.json` del host local o con la
 ## Desplegar
 
 ```
-az group create -n rg-toki-prod -l eastus2
-az deployment group create -g rg-toki-prod -f deploy/azure/main.bicep -p deploy/azure/main.parameters.json `
+az group create -n rg-abastalia-prod -l eastus2
+az deployment group create -g rg-abastalia-prod -f deploy/azure/main.bicep -p deploy/azure/main.parameters.json `
   -p sqlAdminLogin=<correo> sqlAdminObjectId=<object id>
 ```
 
@@ -119,28 +119,28 @@ Las salidas dan el nombre de la Web App, su identidad, el servidor SQL y la URL 
 
 ## Después del primer despliegue (una sola vez)
 
-1. **Dar acceso a la API en la base.** Conectado a la base `toki` como el administrador de Entra (por ejemplo, desde el editor de consultas del portal):
+1. **Dar acceso a la API en la base.** Conectado a la base `abastalia` como el administrador de Entra (por ejemplo, desde el editor de consultas del portal):
 
    ```sql
-   CREATE USER [app-toki-prod-xxxxxx] FROM EXTERNAL PROVIDER;  -- el nombre de la Web App
-   ALTER ROLE db_owner ADD MEMBER [app-toki-prod-xxxxxx];
+   CREATE USER [app-abastalia-prod-xxxxxx] FROM EXTERNAL PROVIDER;  -- el nombre de la Web App
+   ALTER ROLE db_owner ADD MEMBER [app-abastalia-prod-xxxxxx];
    ```
 
    `db_owner` porque la API aplica sus migraciones al arrancar (`InitialCloud` y las siguientes).
 
-   Sin portal: abrir una regla temporal con la IP de la PC (`az sql server firewall-rule create -g rg-toki-prod -s <servidor> -n tmp-pc --start-ip-address <ip> --end-ip-address <ip>`), conectarse con un token de Entra (`az account get-access-token --resource https://database.windows.net/`) desde cualquier cliente que acepte *access token* (por ejemplo un script de `Microsoft.Data.SqlClient` con `SqlConnection.AccessToken`), correr las dos líneas y borrar la regla (`az sql server firewall-rule delete … -n tmp-pc`).
+   Sin portal: abrir una regla temporal con la IP de la PC (`az sql server firewall-rule create -g rg-abastalia-prod -s <servidor> -n tmp-pc --start-ip-address <ip> --end-ip-address <ip>`), conectarse con un token de Entra (`az account get-access-token --resource https://database.windows.net/`) desde cualquier cliente que acepte *access token* (por ejemplo un script de `Microsoft.Data.SqlClient` con `SqlConnection.AccessToken`), correr las dos líneas y borrar la regla (`az sql server firewall-rule delete … -n tmp-pc`).
 2. **Publicar la API:**
 
    ```
-   dotnet publish src/Hosts/Toki.Host.Cloud -c Release -o publish/cloud
+   dotnet publish src/Hosts/Abastalia.Host.Cloud -c Release -o publish/cloud
    Compress-Archive publish/cloud/* publish/cloud.zip -Force
-   az webapp deploy -g rg-toki-prod -n <nombre de la Web App> --src-path publish/cloud.zip --type zip
+   az webapp deploy -g rg-abastalia-prod -n <nombre de la Web App> --src-path publish/cloud.zip --type zip
    ```
 
    Al arrancar crea las tablas. Si la base estaba en pausa, el primer arranque tarda hasta un minuto más.
 3. **Publicar el panel** en la Static Web App con su token de despliegue (`az staticwebapp secrets list -n <nombre del panel>`), como dice la sección siguiente. El origen del panel ya está permitido en CORS (`Panel__Origins__0`). Si se le pone un dominio propio, se agrega como `Panel__Origins__1`.
 4. Revisar `https://<api>/health/ready` con el token de un administrador de la plataforma: tiene que responder `Healthy`.
-5. **Equipo de Toki (consola Plataforma):** cada cuenta se registra en el panel y luego `dotnet run --project src/Hosts/Toki.Host.Cloud -- grant-platform-admin <correo>` contra la base de producción. La lista `Platform__Admins` ya no da el rol (R8 #1): si estaba en la configuración de la Web App, se borra.
+5. **Equipo de Abastalia (consola Plataforma):** cada cuenta se registra en el panel y luego `dotnet run --project src/Hosts/Abastalia.Host.Cloud -- grant-platform-admin <correo>` contra la base de producción. La lista `Platform__Admins` ya no da el rol (R8 #1): si estaba en la configuración de la Web App, se borra.
 
 ## Publicar el sitio y el panel (Static Web App)
 
@@ -149,17 +149,17 @@ El panel (`src/Cloud/panel`, React + Vite) es un sitio estático: se compila con
 ```
 cd src/Cloud/panel
 npm ci
-$env:VITE_API_URL = "https://app-toki-prod-jhzq7n.azurewebsites.net"
+$env:VITE_API_URL = "https://app-abastalia-prod-5qsy5n.azurewebsites.net"
 npm run build
-$env:SWA_CLI_DEPLOYMENT_TOKEN = az staticwebapp secrets list -n stapp-toki-prod -g rg-toki-prod --query properties.apiKey -o tsv
+$env:SWA_CLI_DEPLOYMENT_TOKEN = az staticwebapp secrets list -n stapp-abastalia-prod -g rg-abastalia-prod --query properties.apiKey -o tsv
 npx @azure/static-web-apps-cli deploy dist --env production
 ```
 
-El token va en una variable de entorno, nunca en el repositorio. El panel importa el CSS del sistema de diseño desde `src/Client/Toki.Escuadra/wwwroot`, así que si se compila desde una copia (por ejemplo `git archive HEAD src/Cloud/panel src/Client/Toki.Escuadra/wwwroot`) hay que incluir esa carpeta.
+El token va en una variable de entorno, nunca en el repositorio. El panel importa el CSS del sistema de diseño desde `src/Client/Abastalia.Escuadra/wwwroot`, así que si se compila desde una copia (por ejemplo `git archive HEAD src/Cloud/panel src/Client/Abastalia.Escuadra/wwwroot`) hay que incluir esa carpeta.
 
 ### Una sola app: sitio público y panel (TK-228)
 
-La misma Static Web App sirve el sitio de Toki y el panel del dueño, porque son una sola app React:
+La misma Static Web App sirve el sitio de Abastalia y el panel del dueño, porque son una sola app React:
 
 | Dirección | Qué es | Sesión |
 |---|---|---|
@@ -175,26 +175,26 @@ Las rutas viven en `src/App.tsx`; los textos del sitio en `src/pages/site/SitePa
 
 **Pendiente del dueño antes de anunciar el sitio:** los precios y los límites de cada plan (TK-203; hoy dicen "Precio por confirmar"), el precio de la instalación y del acompañamiento en la certificación (TK-219), el dominio y el número de WhatsApp. Todo va en `config.ts` (`url` sin barra final, `whatsapp` solo dígitos con el código de país, `prices` con el texto a mostrar): con `url` salen `canonical` y `og:url`; con `whatsapp`, los botones "Hablemos" abren WhatsApp. Las novedades se escriben a mano en `SitePages.tsx` (en lenguaje del cliente, no los textos del backlog). Que un contador revise "¿Ya te toca el e-CF?" antes de anunciarla (TK-198).
 
-**Dominio propio (después):** un solo dominio para sitio y panel. Se agrega con `az staticwebapp hostname set -n stapp-toki-prod --hostname <dominio>` después de crear el CNAME (o el registro TXT para el dominio raíz) en el DNS; Azure emite el certificado solo. Luego: `url` en `config.ts`, `Panel__Origins__1` en la API (CORS) y `Panel:Url` para los enlaces de los correos.
+**Dominio propio (después):** un solo dominio para sitio y panel. Se agrega con `az staticwebapp hostname set -n stapp-abastalia-prod --hostname <dominio>` después de crear el CNAME (o el registro TXT para el dominio raíz) en el DNS; Azure emite el certificado solo. Luego: `url` en `config.ts`, `Panel__Origins__1` en la API (CORS) y `Panel:Url` para los enlaces de los correos.
 
 ## Volver a publicar la API
 
 ```
-dotnet publish src/Hosts/Toki.Host.Cloud -c Release -o publish/cloud
+dotnet publish src/Hosts/Abastalia.Host.Cloud -c Release -o publish/cloud
 Compress-Archive publish/cloud/* publish/cloud.zip -Force
-az webapp deploy -g rg-toki-prod -n app-toki-prod-jhzq7n --src-path publish/cloud.zip --type zip
+az webapp deploy -g rg-abastalia-prod -n app-abastalia-prod-5qsy5n --src-path publish/cloud.zip --type zip
 ```
 
 Las migraciones nuevas se aplican solas al arrancar. Después, revisar `/health/ready`. Si cambia la infraestructura, se vuelve a correr el `az deployment group create` de arriba: es idempotente.
 
-Las configuraciones de la Web App están en un recurso aparte (`apiSettings`) que se aplica después del rol de Key Vault: App Service resuelve las referencias `@Microsoft.KeyVault(...)` una vez y guarda el "acceso denegado" hasta un día. Si el asistente responde 503 `Assistant.Unavailable` justo después de crear todo, revisar `az rest --method get --url "https://management.azure.com/subscriptions/<suscripción>/resourceGroups/rg-toki-prod/providers/Microsoft.Web/sites/app-toki-prod-jhzq7n/config/configreferences/appsettings?api-version=2022-03-01"` (tiene que decir `Resolved`) y reiniciar la Web App.
+Las configuraciones de la Web App están en un recurso aparte (`apiSettings`) que se aplica después del rol de Key Vault: App Service resuelve las referencias `@Microsoft.KeyVault(...)` una vez y guarda el "acceso denegado" hasta un día. Si el asistente responde 503 `Assistant.Unavailable` justo después de crear todo, revisar `az rest --method get --url "https://management.azure.com/subscriptions/<suscripción>/resourceGroups/rg-abastalia-prod/providers/Microsoft.Web/sites/app-abastalia-prod-5qsy5n/config/configreferences/appsettings?api-version=2022-03-01"` (tiene que decir `Resolved`) y reiniciar la Web App.
 
 ## Borrar todo
 
 ```
-az group delete -n rg-toki-prod --yes
-az keyvault purge -n kv-toki-prod-jhzq7n          # el Key Vault queda 30 días en borrado temporal
-az cognitiveservices account purge -g rg-toki-prod -n oai-toki-prod-jhzq7n -l eastus2
+az group delete -n rg-abastalia-prod --yes
+az keyvault purge -n kv-abastalia-prod-5qsy5n          # el Key Vault queda 30 días en borrado temporal
+az cognitiveservices account purge -g rg-abastalia-prod -n oai-abastalia-prod-5qsy5n -l eastus2
 ```
 
 Borra la base con todos los datos de las tiendas: no tiene vuelta atrás.
@@ -220,31 +220,31 @@ del latido y de los eventos que las tiendas ya suben: se revisan justo después 
 base serverless. Uno por condición, tienda y día. Cada miembro los elige en **Avisos** del panel; el enlace del correo da de baja sin entrar.
 También van por correo las invitaciones del Equipo (solo por correo, R8 #1) y los de confirmar la cuenta y cambiar la contraseña (TK-230).
 
-Lo que hay en `rg-toki-prod` (creado con az el 2026-10-16, TK-241):
+Lo que hay en `rg-abastalia-prod` (creado con az el 2026-10-16, TK-241):
 
 | Recurso | Qué es |
 |---|---|
-| `ecs-toki-prod` (Email Communication Service, datos en Estados Unidos) | Con el dominio administrado de Azure `AzureManagedDomain` = `b5097b41-7b79-41ea-92e5-b99f21c07125.azurecomm.net` (gratis, sin DNS propio; seguimiento de lectura apagado). Remitente `DoNotReply`, nombre visible "Toki". |
-| `acs-toki-prod` (Communication Services, datos en Estados Unidos) | Enlazado a ese dominio. Endpoint `https://acs-toki-prod.unitedstates.communication.azure.com`. La identidad administrada de `app-toki-prod-jhzq7n` tiene "Communication and Email Service Owner" sobre él. |
+| `ecs-abastalia-prod` (Email Communication Service, datos en Estados Unidos) | Con el dominio administrado de Azure `AzureManagedDomain` = `03a51e41-8b38-4672-bdb5-8ae7432a35f7.azurecomm.net` (gratis, sin DNS propio; seguimiento de lectura apagado). Remitente `DoNotReply`, nombre visible "Abastalia". |
+| `acs-abastalia-prod` (Communication Services, datos en Estados Unidos) | Enlazado a ese dominio. Endpoint `https://acs-abastalia-prod.unitedstates.communication.azure.com`. La identidad administrada de `app-abastalia-prod-5qsy5n` tiene "Communication and Email Service Owner" sobre él. |
 
-Configuración de la Web App: `Email__Provider=AzureCommunicationServices`, `Email__Endpoint=https://acs-toki-prod.unitedstates.communication.azure.com`,
-`Email__Sender=DoNotReply@b5097b41-7b79-41ea-92e5-b99f21c07125.azurecomm.net`. Los mismos valores están en `main.parameters.json`
+Configuración de la Web App: `Email__Provider=AzureCommunicationServices`, `Email__Endpoint=https://acs-abastalia-prod.unitedstates.communication.azure.com`,
+`Email__Sender=DoNotReply@03a51e41-8b38-4672-bdb5-8ae7432a35f7.azurecomm.net`. Los mismos valores están en `main.parameters.json`
 (`emailEndpoint`, `emailSender`, `emailResourceName`); con `emailResourceName` el Bicep también da el rol a la API.
 
 Cómo se creó (por si hay que repetirlo en otro grupo; en PowerShell, porque Git Bash cambia las rutas `/subscriptions/...`):
 
 ```powershell
 az extension add --name communication
-az communication email create -n ecs-toki-prod -g rg-toki-prod --location global --data-location "United States"
-az communication email domain create --email-service-name ecs-toki-prod -g rg-toki-prod -n AzureManagedDomain --location global `
+az communication email create -n ecs-abastalia-prod -g rg-abastalia-prod --location global --data-location "United States"
+az communication email domain create --email-service-name ecs-abastalia-prod -g rg-abastalia-prod -n AzureManagedDomain --location global `
   --domain-management AzureManaged --user-engmnt-tracking Disabled
-az communication create -n acs-toki-prod -g rg-toki-prod --location global --data-location "United States" `
-  --linked-domains $(az communication email domain show --email-service-name ecs-toki-prod -g rg-toki-prod -n AzureManagedDomain --query id -o tsv)
-az communication email domain sender-username update --email-service-name ecs-toki-prod -g rg-toki-prod --domain-name AzureManagedDomain -n donotreply --display-name Toki
+az communication create -n acs-abastalia-prod -g rg-abastalia-prod --location global --data-location "United States" `
+  --linked-domains $(az communication email domain show --email-service-name ecs-abastalia-prod -g rg-abastalia-prod -n AzureManagedDomain --query id -o tsv)
+az communication email domain sender-username update --email-service-name ecs-abastalia-prod -g rg-abastalia-prod --domain-name AzureManagedDomain -n donotreply --display-name Abastalia
 az role assignment create --assignee-object-id <apiPrincipalId> --assignee-principal-type ServicePrincipal `
-  --role "Communication and Email Service Owner" --scope $(az communication show -n acs-toki-prod -g rg-toki-prod --query id -o tsv)
-az webapp config appsettings set -n app-toki-prod-jhzq7n -g rg-toki-prod --settings Email__Provider=AzureCommunicationServices `
-  Email__Endpoint=https://acs-toki-prod.unitedstates.communication.azure.com Email__Sender=DoNotReply@<dominio>.azurecomm.net
+  --role "Communication and Email Service Owner" --scope $(az communication show -n acs-abastalia-prod -g rg-abastalia-prod --query id -o tsv)
+az webapp config appsettings set -n app-abastalia-prod-5qsy5n -g rg-abastalia-prod --settings Email__Provider=AzureCommunicationServices `
+  Email__Endpoint=https://acs-abastalia-prod.unitedstates.communication.azure.com Email__Sender=DoNotReply@<dominio>.azurecomm.net
 ```
 
 Prueba: un correo a la cuenta del dueño con `az communication email send --sender DoNotReply@<dominio> --to <correo> ...` (lee la cadena de
@@ -256,23 +256,23 @@ WhatsApp queda como complemento pagado futuro (solo la interfaz `IWhatsAppSender
 
 ### Alertas (TK-241)
 
-El Bicep crea tres alertas de Azure Monitor; con `alertEmail` también un grupo de acción `ag-toki-prod` que avisa por correo (vacío = las alertas
+El Bicep crea tres alertas de Azure Monitor; con `alertEmail` también un grupo de acción `ag-abastalia-prod` que avisa por correo (vacío = las alertas
 existen, se ven en el portal y no avisan a nadie):
 
 | Alerta | Señal |
 |---|---|
-| `alert-toki-prod-5xx` | Métrica `Http5xx` de la Web App: más de 5 en 15 minutos. |
-| `alert-toki-prod-health` | Métrica `HealthCheckStatus` (el chequeo de `/health` de App Service) por debajo de 100 en 5 minutos. |
-| `alert-toki-prod-inbox` | Registro: un evento de una tienda que el inbox no pudo aplicar (`could not be applied`) o una corrida fallida del aplicador. |
+| `alert-abastalia-prod-5xx` | Métrica `Http5xx` de la Web App: más de 5 en 15 minutos. |
+| `alert-abastalia-prod-health` | Métrica `HealthCheckStatus` (el chequeo de `/health` de App Service) por debajo de 100 en 5 minutos. |
+| `alert-abastalia-prod-inbox` | Registro: un evento de una tienda que el inbox no pudo aplicar (`could not be applied`) o una corrida fallida del aplicador. |
 
 A Application Insights solo llegan las solicitudes (Serilog escribe en la consola), así que el Bicep manda los registros de consola de la Web App
-(`AppServiceConsoleLogs`) al área de trabajo `log-toki-prod` y la alerta del inbox los consulta. Validado con `az bicep build`; se aplica con el
+(`AppServiceConsoleLogs`) al área de trabajo `log-abastalia-prod` y la alerta del inbox los consulta. Validado con `az bicep build`; se aplica con el
 próximo `az deployment group create`.
 
 ### Certificados e-CF en Key Vault: prueba real (TK-151, 2026-10-16)
 
 Con el código de la nube (`KeyVaultFeVault`, el mismo archivo enlazado en un programa de prueba) y la sesión de az del dueño, contra
-`kv-toki-prod-jhzq7n`, con un .p12 autofirmado de usar y tirar: importar como no exportable (política `exportable=False`, RSA) ✅, firmar RS256 un
+`kv-abastalia-prod-5qsy5n`, con un .p12 autofirmado de usar y tirar: importar como no exportable (política `exportable=False`, RSA) ✅, firmar RS256 un
 SHA-256 con la llave del vault y verificarla con el certificado ✅, borrar ✅ (después da 404 y la llave ya no firma). El certificado
 `tk151-test-20261016042431` quedó en borrado suave hasta el 2026-11-15 (la protección contra purga no deja borrarlo antes). Para la prueba se le
 dieron al usuario "Key Vault Certificates Officer" y "Key Vault Crypto User" en el vault y se quitaron al terminar.
@@ -296,7 +296,7 @@ de ADR-0008); mientras haya una sola instancia, no cambia nada.
 
 ## Desarrollo local
 
-`dotnet run --project src/Hosts/Toki.Host.Cloud` levanta la API en `http://localhost:5100` contra `.\SQLEXPRESS` (base `TokiCloud`, se crea sola). El perfil `Sqlite` usa un archivo local. En Development, la referencia de la API está en `/scalar`.
+`dotnet run --project src/Hosts/Abastalia.Host.Cloud` levanta la API en `http://localhost:5100` contra `.\SQLEXPRESS` (base `AbastaliaCloud`, se crea sola). El perfil `Sqlite` usa un archivo local. En Development, la referencia de la API está en `/scalar`.
 
 ## Pendiente
 

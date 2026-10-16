@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Abastalia.Client.Wpf</RootNamespace>
+    <AssemblyName>Abastalia</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Wpf" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Abastalia.Client.UI\Abastalia.Client.UI.csproj" />
+    <ProjectReference Include="..\..\Hardware\Abastalia.Hardware.Scales\Abastalia.Hardware.Scales.csproj" />
+    <ProjectReference Include="..\..\Hardware\Abastalia.Hardware.Simulated\Abastalia.Hardware.Simulated.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

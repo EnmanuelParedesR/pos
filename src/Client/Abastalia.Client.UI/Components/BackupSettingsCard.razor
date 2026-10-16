@@ -1,0 +1,69 @@
+@inject AbastaliaApi Api
+
+@* TK-238: when the automatic backup runs, how many are kept and the copy off this PC (USB or shared folder), with the last one and whether it was copied. *@
+<form class="esc-card esc-setting" @onsubmit="SaveAsync" novalidate>
+    <div class="esc-setting__about"><h2>Respaldo automático</h2><p>Se hace solo cada noche y al encender la PC si el último tiene más de 20 horas. Una copia fuera de la PC protege si esta se daña o se pierde.</p></div>
+    <div class="esc-setting__body">
+        @if (_info is { } i)
+        {
+            @if (i.PassphraseProblem is { } problem)
+            {
+                <Notice Kind="Notice.Kinds.Warning" Title="Los respaldos no se están haciendo">@problem</Notice>
+            }
+            <dl class="esc-dl">
+                <dt>Último respaldo</dt><dd>@(i.Last is { } last ? $"{Format.Date(last.DateUtc)} · {last.FileName}" : "Todavía ninguno")</dd>
+                <dt>Copia fuera de la PC</dt>
+                <dd>@if (i.CopyTo is null) { <span class="esc-pill esc-pill--neutral">Sin copia</span> }
+                    else if (i.CopyProblem is { } copyProblem) { <span class="esc-pill esc-pill--warning">Falló</span> <span class="esc-muted">@copyProblem</span> }
+                    else { <span class="esc-pill esc-pill--success">Al día</span> <span class="esc-muted">@i.CopyTo</span> }</dd>
+                <dt>Carpeta en esta PC</dt><dd class="esc-muted">@i.Folder</dd>
+            </dl>
+            <div class="esc-form-grid">
+                <Field Label="Copiar también a" Wide="true" Error="@_errors.GetValueOrDefault("CopyTo")" Hint="Una memoria USB u otro disco de esta PC, por ejemplo E:\Respaldos. Una carpeta de otra PC la agrega el técnico en la configuración de Abastalia. Vacío: sin copia.">
+                    <input class="esc-input" maxlength="260" @bind="_copyTo" />
+                </Field>
+                <Field Label="Hora" Error="@_errors.GetValueOrDefault("Time")">
+                    <input class="esc-input" type="time" @bind="_time" />
+                </Field>
+                <Field Label="Cuántos guardar" Error="@_errors.GetValueOrDefault("Keep")">
+                    <input class="esc-input esc-num" inputmode="numeric" @bind="_keep" />
+                </Field>
+            </div>
+            <label class="esc-check"><input type="checkbox" role="switch" @bind="_automatic" /> Respaldar automáticamente</label>
+            @if (_message is not null) { <p role="status" class="@(_error ? "esc-error" : "esc-muted")">@_message</p> }
+            <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Guardar</Button></div>
+        }
+        else
+        {
+            <Skeleton Height="120px" />
+        }
+    </div>
+</form>
+
+@code {
+    private BackupSettingsInfo? _info;
+    private string? _copyTo, _message;
+    private TimeOnly? _time;
+    private static readonly System.Globalization.CultureInfo Invariant = System.Globalization.CultureInfo.InvariantCulture;
+    private int _keep;
+    private bool _automatic, _sending, _error;
+    private Dictionary<string, string> _errors = [];
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _info = (await Api.GetAsync<BackupSettingsInfo>("/api/backups/settings")).Value;
+        if (_info is { } i) (_copyTo, _time, _keep, _automatic) = (i.CopyTo, TimeOnly.ParseExact(i.Time, "HH:mm", Invariant), i.Keep, i.Automatic);
+    }
+
+    private async Task SaveAsync()
+    {
+        _sending = true;
+        var r = await Api.PutAsync<Empty>("/api/backups/settings", new { CopyTo = _copyTo, Time = _time?.ToString("HH:mm", Invariant) ?? "", Keep = _keep, Automatic = _automatic });
+        _sending = false;
+        _errors = r.Problem?.Errors?.ToDictionary(e => e.Key, e => e.Value.FirstOrDefault() ?? "", StringComparer.OrdinalIgnoreCase) ?? [];
+        (_error, _message) = (r.Problem is not null, r.Problem is null ? "Guardado. Se aplica desde ya." : _errors.Count > 0 ? "Revise los campos marcados." : r.Problem.Message);
+        if (r.Ok) await LoadAsync();
+    }
+}

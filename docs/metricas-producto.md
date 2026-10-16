@@ -1,6 +1,6 @@
 # Métricas de producto (TK-190)
 
-Qué mide el equipo de Toki sobre el uso del producto, de dónde sale cada número y qué datos **no** se recogen. Las ve solo el equipo de Toki en el área **Plataforma** del panel (TK-189, ADR-0008). El código está en `src/Hosts/Toki.Host.Cloud/Platform/ProductMetrics.cs` (cálculo) y `PlatformQueries.cs` (lecturas); las pruebas con datos de ejemplo, en `tests/Toki.Cloud.Tests/ProductMetricsTests.cs`.
+Qué mide el equipo de Abastalia sobre el uso del producto, de dónde sale cada número y qué datos **no** se recogen. Las ve solo el equipo de Abastalia en el área **Plataforma** del panel (TK-189, ADR-0008). El código está en `src/Hosts/Abastalia.Host.Cloud/Platform/ProductMetrics.cs` (cálculo) y `PlatformQueries.cs` (lecturas); las pruebas con datos de ejemplo, en `tests/Abastalia.Cloud.Tests/ProductMetricsTests.cs`.
 
 ## Fuentes
 
@@ -10,7 +10,7 @@ Qué mide el equipo de Toki sobre el uso del producto, de dónde sale cada núme
 | Réplica | Cada venta, anulación, cierre, etc. que sube la tienda | `replica.Sales`, `replica.SaleVoids`, … |
 | Latido del nodo (`NodeHeartbeatV1`) | Estado y uso de la PC principal: al arrancar y cada hora mientras está conectada | `replica.NodeHeartbeats` (el más reciente por nodo) y `replica.DailyUsage` (por tienda y día) |
 
-### El latido (`Toki.Sync.Contracts.NodeHeartbeatV1`)
+### El latido (`Abastalia.Sync.Contracts.NodeHeartbeatV1`)
 
 Lo escribe el módulo Sync en el outbox (`SendHeartbeat`, `HeartbeatWorker`, `Sync:HeartbeatMinutes`, 240 por defecto: cada 4 horas, para que el SQL serverless de la nube se pueda pausar, R8 #21) y sube con los demás eventos, así que si no hay internet llega después y nunca se pierde. Si la tienda no está conectada a la nube, no se escribe. La nube se queda con el más reciente por `occurredUtc`: uno viejo que llega tarde no deshace uno nuevo.
 
@@ -66,9 +66,9 @@ Todo bajo `/api/platform`, con la política `PlatformAdmin` y auditado:
 
 ## Privacidad
 
-- El latido lleva **solo conteos, sí/no y totales**. Nunca nombres de personas, PIN, códigos de usuario, permisos, clientes, cédulas, RNC, nombres de productos ni montos por persona. Una prueba de integración (`HeartbeatTests` en `tests/Toki.IntegrationTests/Sync`) revisa que el evento solo traiga los campos de esta tabla y que no contenga el nombre del negocio, el RNC, los nombres, códigos ni PIN de los usuarios ni los nombres de los productos.
+- El latido lleva **solo conteos, sí/no y totales**. Nunca nombres de personas, PIN, códigos de usuario, permisos, clientes, cédulas, RNC, nombres de productos ni montos por persona. Una prueba de integración (`HeartbeatTests` en `tests/Abastalia.IntegrationTests/Sync`) revisa que el evento solo traiga los campos de esta tabla y que no contenga el nombre del negocio, el RNC, los nombres, códigos ni PIN de los usuarios ni los nombres de los productos.
 - El error de subida viaja como tipo (`http_503`), no como texto: el texto puede llevar una dirección o un mensaje del sistema.
-- Las métricas las ve solo el equipo de Toki (`PlatformAdmin`). Cada consulta a `/api/platform` queda en `cloud.PlatformAudit` con quién, qué (ruta y consulta) y cuándo.
+- Las métricas las ve solo el equipo de Abastalia (`PlatformAdmin`). Cada consulta a `/api/platform` queda en `cloud.PlatformAudit` con quién, qué (ruta y consulta) y cuándo.
 - Los correos de los dueños aparecen en la consola porque son las cuentas del panel (para poder darles soporte); los nombres de cajeros solo aparecen en los avisos de cuadre, igual que en el panel del dueño.
 - Los datos de ventas que usan las métricas son los mismos que el dueño ya sube para su panel (ADR-0008); no se suben datos nuevos para medir, salvo el latido.
 

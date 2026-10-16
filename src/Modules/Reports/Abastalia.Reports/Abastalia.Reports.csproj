@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\Abastalia.BuildingBlocks\Abastalia.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\..\Sales\Abastalia.Sales.Contracts\Abastalia.Sales.Contracts.csproj" />
+    <ProjectReference Include="..\..\CashRegister\Abastalia.CashRegister.Contracts\Abastalia.CashRegister.Contracts.csproj" />
+    <ProjectReference Include="..\..\Inventory\Abastalia.Inventory.Contracts\Abastalia.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\Purchasing\Abastalia.Purchasing.Contracts\Abastalia.Purchasing.Contracts.csproj" />
+    <ProjectReference Include="..\..\Customers\Abastalia.Customers.Contracts\Abastalia.Customers.Contracts.csproj" />
+    <ProjectReference Include="..\..\Fiscal\Abastalia.Fiscal.Contracts\Abastalia.Fiscal.Contracts.csproj" />
+    <ProjectReference Include="..\..\Identity\Abastalia.Identity.Contracts\Abastalia.Identity.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Abastalia.UnitTests" />
+    <InternalsVisibleTo Include="Abastalia.IntegrationTests" />
+  </ItemGroup>
+</Project>

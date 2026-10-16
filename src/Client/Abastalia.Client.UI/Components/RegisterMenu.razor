@@ -1,0 +1,198 @@
+@inject AbastaliaApi Api
+@inject Session Session
+@inject Approver Approver
+@inject Cart Cart
+@inject NavigationManager Nav
+@inject Peripherals Peripherals
+
+@if (_customerPayment)
+{
+    <CustomerPaymentDialog OnClose="OnClose" OnBack="() => _customerPayment = false" />
+}
+else
+{
+<Dialog Title="@Title" OnClose="Back" OnKey="KeyAsync">
+    <ChildContent>
+        @if (_leaving)
+        {
+            <UnpaidSaleChoice OnCleared="SignOutAsync" />
+        }
+        else if (_drawer)
+        {
+            <label class="esc-field">
+                <span>Motivo (obligatorio)</span>
+                <input @ref="_amountInput" class="esc-input" maxlength="200" placeholder="Por ejemplo: cambio para un cliente" @bind="_note" @bind:event="oninput" />
+            </label>
+            <div class="esc-row esc-muted"><Icon Name="lock" /> Cada apertura queda en el turno y sale en el cierre Z.</div>
+        }
+        else if (_kind is null)
+        {
+            <div class="esc-col">
+                <Button Wide="true" OnClick="() => Choose(CashMovementKind.CashIn)" style="justify-content:space-between"><span>Entrada de efectivo</span></Button>
+                <Button Wide="true" OnClick="() => Choose(CashMovementKind.Withdrawal)" style="justify-content:space-between"><span>Salida de efectivo (retiro o gasto)</span></Button>
+                @if (Peripherals.Printer is not null)
+                {
+                    <Button Wide="true" Disabled="_sending" OnClick="() => (_drawer, _note, _message, _focusAmount) = (true, null, null, true)" style="justify-content:space-between"><span>Abrir la gaveta sin venta</span>@if (!Session.Can("register.open-drawer")) { <Icon Name="lock" /> }</Button>
+                }
+                @if (Session.Can("credit.collect"))
+                {
+                    <Button Wide="true" OnClick="() => (_customerPayment, _message) = (true, null)" style="justify-content:space-between"><span>Abono de cliente (paga su fiado)</span></Button>
+                }
+                <Button Wide="true" OnClick='() => Nav.NavigateTo("shift-sales")' style="justify-content:space-between"><span>Ventas de este turno · anular y devolver</span></Button>
+                @* Without register.close a supervisor authorizes the closing with their PIN (TK-212). *@
+                <Button Wide="true" OnClick='() => Nav.NavigateTo("close-register")' style="justify-content:space-between"><span>Cerrar caja</span>@if (!Session.Can("register.close")) { <Icon Name="lock" /> }</Button>
+                @if (Session.IsBackOffice)
+                {
+                    <Button Wide="true" OnClick='() => Nav.NavigateTo("admin")' style="justify-content:space-between"><span>Ir a administración</span></Button>
+                }
+                <Button Wide="true" Variant="Button.Variants.Ghost" OnClick="SignOutAsync" style="justify-content:space-between"><span>Cambiar de usuario (el turno sigue abierto)</span><Icon Name="sign-out" /></Button>
+            </div>
+        }
+        else
+        {
+            @if (_kind != CashMovementKind.CashIn)
+            {
+                <div class="esc-row" role="group" aria-label="Tipo de salida">
+                    <button type="button" class="esc-chip" aria-pressed="@(_kind == CashMovementKind.Withdrawal ? "true" : "false")" @onclick="() => _kind = CashMovementKind.Withdrawal">Retiro</button>
+                    <button type="button" class="esc-chip" aria-pressed="@(_kind == CashMovementKind.Expense ? "true" : "false")" @onclick="() => _kind = CashMovementKind.Expense">Gasto</button>
+                </div>
+            }
+            <label class="esc-field">
+                <span>Monto RD$</span>
+                <input @ref="_amountInput" data-no-scan class="esc-input esc-input--large esc-num" inputmode="decimal" @bind="_amount" @bind:event="oninput" />
+            </label>
+            <label class="esc-field">
+                <span>Motivo</span>
+                <select class="esc-select" @bind="_reason">
+                    @foreach (var m in Reasons)
+                    {
+                        <option value="@m.Item1">@m.Item2</option>
+                    }
+                </select>
+            </label>
+            <label class="esc-field">
+                <span>Nota @(_reason == MovementReason.Other ? "(obligatoria)" : "(opcional)")</span>
+                <input class="esc-input" maxlength="200" @bind="_note" @bind:event="oninput" />
+            </label>
+            @if (_kind != CashMovementKind.CashIn)
+            {
+                <div class="esc-row esc-muted"><Icon Name="lock" /> Sacar efectivo pide la autorización de un supervisor.</div>
+            }
+        }
+        @if (_message is not null)
+        {
+            <Notice Kind="_messageKind" Title="@_message" />
+        }
+    </ChildContent>
+    <Footer>
+        <Button OnClick="Back" Shortcut="Esc">@(_kind is null && !_leaving && !_drawer ? "Cerrar" : "Volver")</Button>
+        @if (_drawer && !_leaving)
+        {
+            <Button Variant="Button.Variants.Primary" Shortcut="Enter" Disabled="_sending" OnClick="OpenDrawerAsync">Abrir la gaveta</Button>
+        }
+        else if (_kind is not null && !_leaving)
+        {
+            <Button Variant="Button.Variants.Primary" Money="true" Shortcut="Enter" Disabled="_sending" OnClick="RecordAsync">Registrar</Button>
+        }
+    </Footer>
+</Dialog>
+}
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private CashMovementKind? _kind;
+    private MovementReason _reason = MovementReason.CashPickup;
+    private string? _amount, _note, _message;
+    private Notice.Kinds _messageKind;
+    private bool _sending, _leaving, _focusAmount, _customerPayment, _drawer;
+    /// <summary>The movement's idempotency key: made when the form opens, kept across retries until the server records it.</summary>
+    private Guid _movementId;
+    private ElementReference _amountInput;
+
+    private string Title => _leaving ? "Cambiar de usuario" : _drawer ? "Abrir la gaveta sin venta" : _kind is null ? "Caja" : _kind == CashMovementKind.CashIn ? "Entrada de efectivo" : "Salida de efectivo";
+
+    // No "Pago a suplidor" here: it would take the cash out without lowering the supplier's balance. That payment belongs to Compras (TK-120).
+    private IEnumerable<(MovementReason, string)> Reasons => _kind == CashMovementKind.CashIn
+        ? [(MovementReason.ExtraChange, "Cambio adicional"), (MovementReason.Other, "Otro")]
+        : [(MovementReason.CashPickup, "Recogida a la bóveda"), (MovementReason.BankDeposit, "Depósito al banco"),
+           (MovementReason.PettyExpense, "Gasto menor"), (MovementReason.Other, "Otro")];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusAmount) return;
+        _focusAmount = false;
+        await _amountInput.FocusAsync();
+    }
+
+    private void Choose(CashMovementKind k)
+    {
+        (_kind, _amount, _note, _message, _movementId, _focusAmount) = (k, null, null, null, Guid.CreateVersion7(), true);
+        _reason = Reasons.First().Item1;
+    }
+
+    private Task Back()
+    {
+        if (_kind is null && !_leaving && !_drawer) return OnClose.InvokeAsync();
+        (_kind, _leaving, _drawer) = (null, false, false);
+        return Task.CompletedTask;
+    }
+
+    private async Task KeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || _leaving) return;
+        if (_drawer) await OpenDrawerAsync();
+        else if (_kind is not null) await RecordAsync();
+    }
+
+    private async Task RecordAsync()
+    {
+        if (_sending || _kind is not { } kind) return;
+        var amount = Format.ParseNumber(_amount);
+        if (amount is not > 0) { (_messageKind, _message) = (Notice.Kinds.Error, "Escriba el monto."); return; }
+        if (_reason == MovementReason.Other && string.IsNullOrWhiteSpace(_note)) { (_messageKind, _message) = (Notice.Kinds.Error, "Escriba una nota para \"Otro\"."); return; }
+        var shift = Session.Shift!.ShiftId;
+        _sending = true;
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/cash/shifts/{shift}/movements",
+                new { MovementId = _movementId, MovementType = kind, Amount = Math.Round(amount.Value, 2), Reason = _reason, Note = string.IsNullOrWhiteSpace(_note) ? null : _note.Trim(), SupervisorApprovalId = id }),
+            shift, $"{(kind == CashMovementKind.CashIn ? "Entrada" : "Salida")} de {Format.WithCurrency(amount.Value)}");
+        _sending = false;
+        if (r.Ok)
+        {
+            (_messageKind, _message, _kind) = (Notice.Kinds.Success, $"Registrado: {Format.WithCurrency(amount.Value)}.", null);
+            return;
+        }
+        (_messageKind, _message) = (r.Problem!.Kind, r.Problem.IsUncertain
+            ? "No se sabe si se registró. Toque Registrar de nuevo cuando vuelva la conexión: no se registra dos veces."
+            : r.Problem.Message);
+    }
+
+    /// <summary>TK-239 (arquitectura §6.3): the server records the opening first (register.open-drawer, or a supervisor who has it);
+    /// only then does the drawer open.</summary>
+    private async Task OpenDrawerAsync()
+    {
+        if (_sending) return;
+        if (string.IsNullOrWhiteSpace(_note)) { (_messageKind, _message) = (Notice.Kinds.Error, "Escriba el motivo."); return; }
+        var shift = Session.Shift!.ShiftId;
+        _sending = true;
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/cash/shifts/{shift}/drawer-openings", new { Reason = _note.Trim(), SupervisorApprovalId = id }),
+            shift, "Abrir la gaveta sin venta");
+        var opened = r.Ok && await Peripherals.TryAsync(p => p.OpenDrawerAsync(CancellationToken.None));
+        _sending = false;
+        if (opened) (_drawer, _messageKind, _message) = (false, Notice.Kinds.Success, "Gaveta abierta.");
+        else if (r.Ok) (_messageKind, _message) = (Notice.Kinds.Error, "No se pudo abrir la gaveta. Revise la impresora: la gaveta se conecta a ella.");
+        else if (r.Problem!.Code != "Cancelled") (_messageKind, _message) = (r.Problem.Kind, r.Problem.IsUncertain ? "No hubo respuesta del servidor. Intente de nuevo." : r.Problem.Message);
+    }
+
+    private async Task SignOutAsync()
+    {
+        if (!Cart.IsEmpty)
+        {
+            (_leaving, _message) = (true, null);
+            return;
+        }
+        await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
+        Session.Close();
+        Nav.NavigateTo("sign-in");
+    }
+}

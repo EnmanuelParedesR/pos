@@ -1,37 +1,37 @@
 ﻿#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
-  Installs Toki on the store's main PC as a Windows service that runs without admin rights.
+  Installs Abastalia on the store's main PC as a Windows service that runs without admin rights.
 .DESCRIPTION
-  1. Copies the published API to C:\Program Files\Toki.
-  2. Creates the "Toki" service under its own virtual account (NT SERVICE\Toki), delayed start, restart on failure,
+  1. Copies the published API to C:\Program Files\Abastalia.
+  2. Creates the "Abastalia" service under its own virtual account (NT SERVICE\Abastalia), delayed start, restart on failure,
      with only SeChangeNotifyPrivilege (R11 C7).
-  3. Runs `Toki.Host.Local prepare-service`: C:\ProgramData\Toki for logs, backups, keys and the license, and the SQL Server login of the
-     service in the instance of the connection string (.\TOKI, which the setup installs; R11 C1).
+  3. Runs `Abastalia.Host.Local prepare-service`: C:\ProgramData\Abastalia for logs, backups, keys and the license, and the SQL Server login of the
+     service in the instance of the connection string (.\ABASTALIA, which the setup installs; R11 C1).
   4. Opens TCP 5443 (HTTPS) in the firewall for private networks only, and starts the service.
-  Publish first:  dotnet publish src/Hosts/Toki.Host.Local -c Release -r win-x64 --self-contained -o publish
+  Publish first:  dotnet publish src/Hosts/Abastalia.Host.Local -c Release -r win-x64 --self-contained -o publish
 .EXAMPLE
   .\deploy\install.ps1 -Source .\publish
 #>
 param(
     [Parameter(Mandatory)] [string] $Source,
-    [string] $Destination = "$env:ProgramFiles\Toki",
-    [string] $Service = "Toki"
+    [string] $Destination = "$env:ProgramFiles\Abastalia",
+    [string] $Service = "Abastalia"
 )
 $ErrorActionPreference = 'Stop'
 $account = "NT SERVICE\$Service"
-$exe = Join-Path $Destination 'Toki.Host.Local.exe'
+$exe = Join-Path $Destination 'Abastalia.Host.Local.exe'
 
 if (Get-Service $Service -ErrorAction SilentlyContinue) { Stop-Service $Service -Force }
 New-Item -ItemType Directory -Force $Destination | Out-Null
-# The setup (deploy/installer/toki.iss) already put the files in place: then there is nothing to copy.
+# The setup (deploy/installer/abastalia.iss) already put the files in place: then there is nothing to copy.
 if ((Resolve-Path $Source).Path.TrimEnd('\') -ne (Resolve-Path $Destination).Path.TrimEnd('\')) {
     Copy-Item -Path (Join-Path $Source '*') -Destination $Destination -Recurse -Force
 }
 
 if (-not (Get-Service $Service -ErrorAction SilentlyContinue)) {
-    sc.exe create $Service binPath= "`"$exe`"" start= delayed-auto obj= $account DisplayName= "Toki (punto de venta)" | Out-Null
-    sc.exe description $Service "API de Toki para las cajas de la tienda." | Out-Null
+    sc.exe create $Service binPath= "`"$exe`"" start= delayed-auto obj= $account DisplayName= "Abastalia (punto de venta)" | Out-Null
+    sc.exe description $Service "API de Abastalia para las cajas de la tienda." | Out-Null
 }
 sc.exe failure $Service reset= 86400 actions= restart/5000/restart/15000/restart/60000 | Out-Null
 # R11 C7: only the privilege it needs. A service keeps SeImpersonatePrivilege by default, which turns any code run inside it into SYSTEM.
@@ -41,9 +41,9 @@ if ($LASTEXITCODE -ne 0) { throw "sc.exe privs falló ($LASTEXITCODE)" }
 & $exe prepare-service $account
 if ($LASTEXITCODE -ne 0) { throw "prepare-service falló ($LASTEXITCODE)" }
 
-if (-not (Get-NetFirewallRule -DisplayName 'Toki HTTPS' -ErrorAction SilentlyContinue)) {
-    New-NetFirewallRule -DisplayName 'Toki HTTPS' -Direction Inbound -Protocol TCP -LocalPort 5443 -Action Allow -Profile Private | Out-Null
+if (-not (Get-NetFirewallRule -DisplayName 'Abastalia HTTPS' -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -DisplayName 'Abastalia HTTPS' -Direction Inbound -Protocol TCP -LocalPort 5443 -Action Allow -Profile Private | Out-Null
 }
 
 Start-Service $Service
-Write-Host "Toki está corriendo. Pruebe: https://localhost:5443/health"
+Write-Host "Abastalia está corriendo. Pruebe: https://localhost:5443/health"

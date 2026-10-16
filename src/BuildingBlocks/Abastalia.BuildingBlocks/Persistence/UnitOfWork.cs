@@ -1,0 +1,59 @@
+using System.Data.Common;
+using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
+
+namespace Abastalia.BuildingBlocks.Persistence;
+
+public enum DbProvider { SqlServer, Sqlite }
+
+public sealed class DatabaseOptions
+{
+    public const string Section = "Database";
+
+    /// <summary>SqlServer in production. Sqlite for development and tests on machines without SQL Server (ADR-0002).</summary>
+    public DbProvider Provider { get; set; } = DbProvider.SqlServer;
+    public string ConnectionString { get; set; } = "";
+    /// <summary>Create or migrate the database when the host starts.</summary>
+    public bool CreateOnStartup { get; set; }
+}
+
+/// <summary>One connection and one transaction per request, shared by every module's DbContext,
+/// so a sale writes sales, inventory, cash, fiscal, outbox and audit atomically.</summary>
+public sealed class UnitOfWork(DatabaseOptions options) : IAsyncDisposable
+{
+    public DbConnection Connection { get; } = options.Provider == DbProvider.Sqlite
+        ? new SqliteConnection(options.ConnectionString)
+        : new SqlConnection(options.ConnectionString);
+
+    public DbTransaction? Transaction { get; private set; }
+
+    public async Task<DbTransaction> BeginAsync(CancellationToken ct)
+    {
+        if (Connection.State != System.Data.ConnectionState.Open) await Connection.OpenAsync(ct);
+        // Sqlite: BEGIN IMMEDIATE (the default) takes the write lock up front, so two writers queue instead of deadlocking.
+        Transaction = await Connection.BeginTransactionAsync(ct);
+        return Transaction;
+    }
+
+    /// <summary>Commits or rolls back. Never cancellable: a dropped client must not leave the outcome ambiguous.</summary>
+    public async Task EndAsync(bool commit)
+    {
+        if (Transaction is not { } tx) return;
+        try
+        {
+            if (commit) await tx.CommitAsync(CancellationToken.None);
+            else await tx.RollbackAsync(CancellationToken.None);
+        }
+        finally
+        {
+            Transaction = null;
+            await tx.DisposeAsync();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Transaction is not null) await Transaction.DisposeAsync();
+        await Connection.DisposeAsync();
+    }
+}

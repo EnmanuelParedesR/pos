@@ -35,10 +35,10 @@ describe("staticwebapp.config.json (TK-228)", () => {
   });
 
   it("R11: sends a strict CSP that allows only this site, the API and Paddle's checkout, HSTS and no framing", () => {
-    const headers = swaConfig(base, pages, movedToApp, "https://api.toki.example/").globalHeaders;
+    const headers = swaConfig(base, pages, movedToApp, "https://api.abastalia.example/").globalHeaders;
     const csp = Object.fromEntries(headers["Content-Security-Policy"].split("; ").map((d) => [d.split(" ")[0], d.split(" ").slice(1).join(" ")]));
     expect(csp["script-src"]).toBe("'self' https://cdn.paddle.com");
-    expect(csp["connect-src"]).toBe("'self' https://api.toki.example https://*.paddle.com");
+    expect(csp["connect-src"]).toBe("'self' https://api.abastalia.example https://*.paddle.com");
     expect(csp["frame-src"]).toBe("https://buy.paddle.com https://sandbox-buy.paddle.com");
     expect(csp["frame-ancestors"]).toBe("'none'");
     expect(csp["default-src"]).toBe("'self'");

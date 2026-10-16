@@ -128,7 +128,7 @@ export function BillingPage() {
 
   return (
     <>
-      <PageHead title="Plan y facturación" subtitle="Su plan de Toki, cómo va el pago y su consumo del mes. Paddle cobra por Toki y le envía la factura." />
+      <PageHead title="Plan y facturación" subtitle="Su plan de Abastalia, cómo va el pago y su consumo del mes. Paddle cobra por Abastalia y le envía la factura." />
 
       {data.status === "PastDue" && (
         <Notice kind="warning" title="No pudimos cobrar su tarjeta.">
@@ -169,7 +169,7 @@ export function BillingPage() {
           )}
           {data.manualUntilUtc && (
             <li>
-              <span>Acuerdo con Toki</span>
+              <span>Acuerdo con Abastalia</span>
               <span>Hasta el {day(data.manualUntilUtc)}</span>
             </li>
           )}
@@ -249,7 +249,7 @@ export function BillingPage() {
   );
 }
 
-/** Toki staff (TK-249): the business's Paddle subscription and the override for special deals (audited like every platform call). */
+/** Abastalia staff (TK-249): the business's Paddle subscription and the override for special deals (audited like every platform call). */
 export function PlatformBillingCard({ tenantId }: { tenantId: string }) {
   const { data, error, reload } = useApi<PlatformBilling>(`/api/platform/tenants/${tenantId}/billing`);
   const [until, setUntil] = useState("");

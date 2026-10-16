@@ -1,6 +1,6 @@
 # Rename map, phase B: Purchasing module
 
-Spanish → English renames in `src/Modules/Purchasing/Toki.Purchasing/**`. Behavior did not change: only names, comments, routes, JSON fields, enum values, codes, audit strings and the database schema. Follows `docs/glosario-codigo.md` and `docs/rename-map.md` (the Contracts names, `Toki.Purchasing.Contracts`, were already renamed in phase A).
+Spanish → English renames in `src/Modules/Purchasing/Abastalia.Purchasing/**`. Behavior did not change: only names, comments, routes, JSON fields, enum values, codes, audit strings and the database schema. Follows `docs/glosario-codigo.md` and `docs/rename-map.md` (the Contracts names, `Abastalia.Purchasing.Contracts`, were already renamed in phase A).
 
 The API uses camelCase JSON and string enums, so every property below appears on the wire as its camelCase form (`SupplierId` → `supplierId`) and every enum value as its English name (`"Contado"` → `"Cash"`).
 
@@ -398,13 +398,13 @@ Indexes: `IX_Suppliers_Name`; `IX_Purchases_InvoiceDate`; `IX_Purchases_Supplier
 
 No seed data in this module.
 
-Migration command used (from `src/Modules/Purchasing/Toki.Purchasing`):
+Migration command used (from `src/Modules/Purchasing/Abastalia.Purchasing`):
 
 ```
 dotnet tool restore
 dotnet dotnet-ef migrations add InitialPurchasing --project . --startup-project . --context PurchasingDbContext --output-dir Persistence/Migrations --no-build
 ```
 
-## Reports (consumers: `Toki.Reports`)
+## Reports (consumers: `Abastalia.Reports`)
 
 `IPurchasingReports` names are from phase A. The 606 rows (`Report606Row`) keep the DGII column order and values; only the C# member names changed (see `docs/rename-map.md`).
