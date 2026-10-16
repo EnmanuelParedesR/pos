@@ -73,21 +73,6 @@ public sealed class SessionsTests(TokiApp app) : IClassFixture<TokiApp>
     }
 
     [Fact]
-    public async Task Changing_my_pin_asks_for_the_current_one_and_closes_my_other_sessions()
-    {
-        var cashier = await app.UserAsync(Roles.Cashier, pin: "2468");
-        var other = await app.SignInAsync(await CodeOf(cashier.UserId), "2468", cashier.Device);
-        var c = app.Client(cashier);
-
-        var wrong = await c.PostAsJsonAsync("/api/identity/me/pin", new { CurrentPin = "0000", NewPin = "1357" });
-        wrong.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-
-        (await c.PostAsJsonAsync("/api/identity/me/pin", new { CurrentPin = "2468", NewPin = "1357" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await Me(c)).ShouldBe(HttpStatusCode.OK);
-        (await Me(app.Client(other))).ShouldBe(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
     public async Task The_code_is_case_insensitive()
     {
         var admin = await app.AdminAsync();

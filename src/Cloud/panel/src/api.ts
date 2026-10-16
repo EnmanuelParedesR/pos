@@ -307,7 +307,7 @@ export interface ArchivedEcf {
 /** TK-195: a store's public catalog (no sign-in). Never cost or stock. */
 export interface PublicCatalogItem { productId: string; name: string; category: string; unit: "Unit" | "Pound"; price: number }
 export interface PublicCatalog { storeName: string; whatsApp: string | null; items: PublicCatalogItem[] }
-export interface NodeStatus { nodeId: string; name: string; lastEventUtc: string | null; lastSyncUtc: string | null; usesSecret: boolean }
+export interface NodeStatus { nodeId: string; name: string; lastEventUtc: string | null; lastSyncUtc: string | null }
 export interface StoreSyncStatus {
   storeId: string;
   storeName: string;

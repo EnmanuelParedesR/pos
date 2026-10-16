@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -9,6 +11,7 @@ using Microsoft.Extensions.Time.Testing;
 using Toki.BuildingBlocks.Persistence;
 using Toki.Host.Cloud.Assistant;
 using Toki.Host.Cloud.Ingest;
+using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Persistence;
 using Toki.SharedKernel;
 
@@ -112,12 +115,45 @@ public class CloudApp : WebApplicationFactory<Program>
     {
         var store = (await (await owner.Client.PostAsJsonAsync("/api/stores", new { name })).Json()).GetProperty("id").GetGuid();
         var code = (await (await owner.Client.PostAsync($"/api/stores/{store}/connection-codes", null)).Json()).GetProperty("code").GetString();
-        var r = await CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "PC principal" });
+        var (nodeId, node) = await RegisterNodeAsync(this, Clock, code);
+        return new StoreNode(store, nodeId, node);
+    }
+
+    /// <summary>Registers a node with its own key (TK-241) and returns a client that signs every call as the store's CloudClient does.</summary>
+    public static async Task<(Guid NodeId, HttpClient Client)> RegisterNodeAsync(WebApplicationFactory<Program> factory, TimeProvider clock, string? code)
+    {
+        var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var r = await factory.CreateClient().PostAsJsonAsync("/api/nodes/register",
+            new { code, nodeName = "PC principal", publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) });
         r.EnsureSuccessStatusCode();
-        var json = await r.Json();
-        var node = CreateClient();
-        node.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Node", $"{json.GetProperty("nodeId").GetGuid()}.{json.GetProperty("nodeSecret").GetString()}");
-        return new StoreNode(store, json.GetProperty("nodeId").GetGuid(), node);
+        var nodeId = (await r.Json()).GetProperty("nodeId").GetGuid();
+        return (nodeId, factory.CreateDefaultClient(new NodeSigner(nodeId, key, clock)));
+    }
+
+    private sealed class NodeSigner(Guid nodeId, ECDsa key, TimeProvider clock) : DelegatingHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            byte[] body = [];
+            if (request.Content is not null)
+            {
+                await request.Content.LoadIntoBufferAsync(cancellationToken);
+                body = await request.Content.ReadAsByteArrayAsync(cancellationToken);
+                if (request.Content.Headers.ContentEncoding.Contains("gzip")) // signed as the cloud reads it, like the store does
+                {
+                    using var inflated = new MemoryStream();
+                    using (var z = new System.IO.Compression.GZipStream(new MemoryStream(body), System.IO.Compression.CompressionMode.Decompress))
+                        await z.CopyToAsync(inflated, cancellationToken);
+                    body = inflated.ToArray();
+                }
+            }
+            var seconds = clock.GetUtcNow().ToUnixTimeSeconds();
+            var nonce = NodeSignature.Base64Url(RandomNumberGenerator.GetBytes(16));
+            var payload = NodeSignature.Payload(nodeId, seconds, nonce, request.Method.Method, request.RequestUri!.PathAndQuery, NodeSignature.BodyHash(body));
+            var signature = NodeSignature.Base64Url(key.SignData(Encoding.UTF8.GetBytes(payload), HashAlgorithmName.SHA256));
+            request.Headers.Authorization = new AuthenticationHeaderValue("Node", $"{nodeId}.{seconds}.{nonce}.{signature}");
+            return await base.SendAsync(request, cancellationToken);
+        }
     }
 
     protected override void Dispose(bool disposing)

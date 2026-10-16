@@ -5,6 +5,7 @@ using Toki.CashRegister.Contracts;
 using Toki.Customers.Contracts;
 using Toki.Fiscal.Contracts;
 using Toki.Host.Cloud.Catalog;
+using Toki.Host.Cloud.Fe;
 using Toki.Host.Cloud.Persistence;
 using Toki.Identity.Contracts;
 using Toki.Inventory.Contracts;
@@ -25,13 +26,6 @@ internal static class Projectors
 {
     public static readonly IReadOnlyDictionary<string, Projector> ByType = new Dictionary<string, Projector>
     {
-        // V1 lines have no unit (empty, stored as null): the panel shows their quantity without one.
-        [Name<SaleRecordedV1>()] = (db, e, ct) =>
-        {
-            var s = Read<SaleRecordedV1>(e);
-            return Sale(db, e, new SaleRecordedV2(s.SaleId, s.Number, s.ShiftId, s.CashierId, s.CustomerId, s.ENcf, s.Total, s.Itbis, s.Discount,
-                [.. s.Lines.Select(l => new SaleLineV2(l.ProductId, l.PresentationId, l.Description, l.Quantity, "", l.Total, l.Itbis, l.Cost))], s.Payments), ct);
-        },
         [Name<SaleRecordedV2>()] = (db, e, ct) => Sale(db, e, Read<SaleRecordedV2>(e), ct),
         [Name<SaleVoidedV1>()] = async (db, e, ct) =>
         {
@@ -42,11 +36,6 @@ internal static class Projectors
                 TenantId = e.TenantId, SaleId = v.SaleId, StoreId = e.StoreId, CreditNoteENcf = v.CreditNoteENcf, Reason = v.Reason,
                 SupervisorId = v.SupervisorId, VoidedUtc = e.OccurredUtc,
             });
-        },
-        [Name<ReturnRecordedV1>()] = (db, e, ct) =>
-        {
-            var r = Read<ReturnRecordedV1>(e);
-            return Return(db, e, new ReturnRecordedV2(r.ReturnId, r.SaleId, r.CreditNoteENcf, r.Method, r.Total, r.Itbis, []), ct);
         },
         [Name<ReturnRecordedV2>()] = (db, e, ct) => Return(db, e, Read<ReturnRecordedV2>(e), ct),
         [Name<ShiftClosedV1>()] = async (db, e, ct) =>
@@ -189,7 +178,7 @@ internal static class Projectors
             var row = await db.Customers.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.Id == c.CustomerId, ct);
             if (row is null) db.Customers.Add(row = new ReplicaCustomer { TenantId = e.TenantId, Id = c.CustomerId });
             else if (row.ChangedUtc > e.OccurredUtc) return;
-            (row.StoreId, row.Name, row.Debt, row.CreditBalance, row.ChangedUtc) = (e.StoreId, Cut(c.Name, 150), c.Debt, c.CreditBalance, e.OccurredUtc);
+            (row.StoreId, row.Name, row.Debt, row.CreditBalance, row.ChangedUtc) = (e.StoreId, FeXml.Cut(c.Name, 150), c.Debt, c.CreditBalance, e.OccurredUtc);
         },
         [Name<ShiftOpenedV1>()] = async (db, e, ct) =>
         {
@@ -219,11 +208,11 @@ internal static class Projectors
             if (node is null) db.NodeHeartbeats.Add(node = new ReplicaNodeHeartbeat { TenantId = e.TenantId, NodeId = e.NodeId });
             if (node.SentUtc <= e.OccurredUtc)
             {
-                (node.StoreId, node.SentUtc, node.AppVersion, node.Os, node.UptimeMinutes) = (e.StoreId, e.OccurredUtc, Cut(h.AppVersion, 50), Cut(h.Os, 200), h.UptimeMinutes);
-                (node.ActiveRegisters, node.OpenShifts, node.OutboxBacklog, node.LastErrorCode) = (h.ActiveRegisters, h.OpenShifts, h.OutboxBacklog, h.LastErrorCode is null ? null : Cut(h.LastErrorCode, 30));
-                (node.OnAccount, node.ScaleConfigured, node.PrinterConfigured, node.FiscalProvider) = (h.Features.OnAccount, h.Features.ScaleConfigured, h.Features.PrinterConfigured, Cut(h.Features.FiscalProvider, 30));
+                (node.StoreId, node.SentUtc, node.AppVersion, node.Os, node.UptimeMinutes) = (e.StoreId, e.OccurredUtc, FeXml.Cut(h.AppVersion, 50), FeXml.Cut(h.Os, 200), h.UptimeMinutes);
+                (node.ActiveRegisters, node.OpenShifts, node.OutboxBacklog, node.LastErrorCode) = (h.ActiveRegisters, h.OpenShifts, h.OutboxBacklog, h.LastErrorCode is null ? null : FeXml.Cut(h.LastErrorCode, 30));
+                (node.OnAccount, node.ScaleConfigured, node.PrinterConfigured, node.FiscalProvider) = (h.Features.OnAccount, h.Features.ScaleConfigured, h.Features.PrinterConfigured, FeXml.Cut(h.Features.FiscalProvider, 30));
                 (node.BusinessNameSet, node.RncSet, node.ActiveProducts) = (h.Setup.BusinessNameSet, h.Setup.RncSet, h.Setup.ActiveProducts);
-                (node.LicenseStatus, node.LicenseEndsUtc) = (h.License is null ? null : Cut(h.License.Status, 20), h.License?.EndsUtc);
+                (node.LicenseStatus, node.LicenseEndsUtc) = (h.License is null ? null : FeXml.Cut(h.License.Status, 20), h.License?.EndsUtc);
                 (node.RejectedWithoutReplacement, node.OldestPendingUtc, node.CertificateExpiresUtc) =
                     (h.Fiscal?.RejectedWithoutReplacement, h.Fiscal?.OldestPendingUtc, h.Fiscal?.CertificateExpiresUtc);
             }
@@ -237,7 +226,6 @@ internal static class Projectors
         },
     };
 
-    private static string Cut(string value, int max) => value.Length > max ? value[..max] : value;
 
     private static async Task Sale(CloudDbContext db, InboxEvent e, SaleRecordedV2 s, CancellationToken ct)
     {
@@ -252,7 +240,7 @@ internal static class Projectors
         db.SaleLines.AddRange(s.Lines.Select((l, i) => new ReplicaSaleLine
         {
             TenantId = e.TenantId, SaleId = s.SaleId, LineNumber = i + 1, StoreId = e.StoreId, ProductId = l.ProductId, PresentationId = l.PresentationId,
-            Description = l.Description, Quantity = l.Quantity, Unit = string.IsNullOrEmpty(l.Unit) ? null : Cut(l.Unit, 10), Total = l.Total, Itbis = l.Itbis, UnitCost = l.Cost,
+            Description = l.Description, Quantity = l.Quantity, Unit = string.IsNullOrEmpty(l.Unit) ? null : FeXml.Cut(l.Unit, 10), Total = l.Total, Itbis = l.Itbis, UnitCost = l.Cost,
         }));
         db.SalePayments.AddRange(s.Payments.Select((p, i) => new ReplicaSalePayment
         {

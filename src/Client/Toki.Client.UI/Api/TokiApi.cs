@@ -33,13 +33,13 @@ public readonly record struct ApiResult<T>(T? Value, Problem? Problem)
 }
 
 /// <summary>Typed calls to the store's local API. Every request carries this PC's device token and, once someone logged in, their session.</summary>
-public sealed class TokiApi(HttpClient http, Session session)
+public sealed class TokiApi(HttpClient http, Session session, ServerAddress server)
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(30);
 
     /// <summary>The store server runs on this same PC (the main PC): nobody else on the LAN can answer in its place.</summary>
-    public bool ServerIsThisPc => http.BaseAddress?.IsLoopback == true;
+    public bool ServerIsThisPc => server.Current.IsLoopback;
 
     public Task<ApiResult<T>> GetAsync<T>(string url) => SendAsync<T>(HttpMethod.Get, url, null, DefaultTimeout);
     /// <param name="timeout">Longer than the 30 s default only for slow commands (a backup).</param>
@@ -60,7 +60,7 @@ public sealed class TokiApi(HttpClient http, Session session)
 
     private async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string url, object? body, TimeSpan timeout)
     {
-        using var request = new HttpRequestMessage(method, url);
+        using var request = new HttpRequestMessage(method, new Uri(server.Current, url));
         if (session.DeviceToken is { } device) request.Headers.Add("X-Device", device);
         if (session.Token is { } token) request.Headers.Authorization = new("Bearer", token);
         // A file upload (the DGII registry) goes as is; everything else as JSON.

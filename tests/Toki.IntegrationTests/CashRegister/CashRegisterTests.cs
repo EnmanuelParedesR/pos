@@ -64,6 +64,16 @@ public sealed class CashRegisterTests(TokiApp app) : IClassFixture<TokiApp>
 
         var other = new { MovementId = Guid.NewGuid(), MovementType = "Expense", Amount = 10m, Reason = "Other" };
         (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", other)).StatusCode.ShouldBe(HttpStatusCode.BadRequest); // "Other" needs a note
+        // TK-251: no coins under RD$ 1, so drawer cash moves in whole pesos (like customer payments).
+        (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/movements", new { MovementId = Guid.NewGuid(), MovementType = "CashIn", Amount = 100.50m, Reason = "ExtraChange" }))
+            .StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task The_opening_float_is_in_whole_pesos()
+    {
+        var cashier = app.Client(await app.UserAsync(Roles.Cashier));
+        (await cashier.PostAsJsonAsync("/api/cash/shifts", new { RegisterId = await RegisterAsync(), OpeningFloat = 1000.25m })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 
     [Fact]

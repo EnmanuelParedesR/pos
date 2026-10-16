@@ -43,19 +43,12 @@ El protocolo del servidor no cambia: el código de 8 dígitos, `POST /api/identi
 8. **R8 #9.** Si el certificado del servidor no es el fijado, la caja no lo confunde con "sin conexión": muestra "El servidor cambió de certificado: vuelva a unir este equipo" con un botón que olvida el emparejamiento. Con la CA fijada, renovar el certificado del servidor ya no lo provoca.
 9. **R8 #11.** La caja recuerda la huella que mostró y `PairAsync` la recibe: si la última conexión no fue a ese mismo certificado, no guarda nada ("El servidor cambió desde que se mostró la huella"). En "Primera instalación", si el servidor no está en la misma PC (`localhost`), la caja muestra la huella y no manda el nombre, el código ni el PIN del dueño hasta que se marca "La huella es igual a la de la PC principal".
 
-### Cajas emparejadas antes de TK-091 (modo doble)
+### Sin modo doble (TK-251)
 
-Una tienda que ya tenía cajas con secreto pone `"Toki:LegacyDeviceSecrets": true` en `appsettings.Production.json` al actualizar. Así:
-
-- el servidor sigue presentando el certificado autofirmado viejo (`NodeCertificate`, almacén de la máquina), que esas cajas fijaron;
-- acepta el secreto `X-Device` además de los certificados, y no exige certificado en todas las rutas;
-- una caja que se une en modo doble recibe certificado y fija la CA **y** el certificado viejo que vio (no lo emitió la CA), así funciona antes y después del cambio.
-
-Para salir del modo doble: el dueño revoca y vuelve a unir cada caja vieja, y después quita la opción (o la pone en `false`). El servidor pasa al certificado de la CA; las cajas viejas que quedaran ven el aviso de "servidor cambió" y se vuelven a unir. En una instalación nueva la opción no se pone.
+Había un modo doble (`Toki:LegacyDeviceSecrets`) para cajas emparejadas antes de TK-091: el servidor seguía mostrando su certificado autofirmado viejo (`NodeCertificate`) y aceptaba el secreto por https. Ninguna tienda real se instaló antes de TK-091, así que se quitó: por https solo vale el certificado de la caja; el secreto `X-Device`, solo por `http` (desarrollo y pruebas).
 
 ### Pendiente
 
 - `shortcut:` el certificado de la caja vence a los 10 años y no se renueva solo: hay que re-emparejar.
 - `shortcut:` la llave de la caja vive en el almacén DPAPI del usuario, no en el almacén de certificados de Windows ni en el TPM (no exportable).
 - `shortcut:` la llave de la CA está protegida con DPAPI de la máquina: cualquier proceso con permisos en esa PC puede leerla, igual que la llave de los respaldos.
-- `shortcut:` el certificado del servidor de una tienda en modo doble sigue siendo el autofirmado, que no se renueva sin re-emparejar las cajas viejas.

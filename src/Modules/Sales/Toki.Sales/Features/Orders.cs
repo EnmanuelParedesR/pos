@@ -213,6 +213,9 @@ internal static class CancelOrder
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
+            // TK-251: shift before order, as RegisterSale takes them, so a cancel and a sale charging the order cannot deadlock.
+            // A closed shift is only an error when there is cash to give back (the refund below says so).
+            if (c.ShiftId is { } lockShift) await cash.GetOpenShiftAsync(lockShift, ct);
             var order = await db.LockOrderAsync(c.OrderId, ct);
             if (order is null) return OrdersErrors.NotFound;
             if (order.Kind != OrderKind.Order) return OrdersErrors.NotAnOrder;

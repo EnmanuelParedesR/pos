@@ -952,11 +952,6 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.Property<DateTime?>("RevokedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<byte[]>("SecretHash")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("varbinary(32)");
-
                     b.Property<Guid>("StoreId")
                         .HasColumnType("uniqueidentifier");
 

@@ -66,7 +66,7 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
 
         // Sale, receipt, list and detail
         var sold = await Send<C.SaleRegistered>(api, HttpMethod.Post, "/api/sales", new C.RegisterSale(Guid.CreateVersion7(), shift,
-            [new C.SaleLine(steak, null, 2)], [new C.Payment(C.PaymentMethod.Cash, 1000)], 500, C.EcfType.Consumer32, null, null, null, C.PriceLevel.Retail, null, []));
+            [new C.SaleLine(steak, null, 2)], [new C.Payment(C.PaymentMethod.Cash, 1000)], 500, C.EcfType.Consumer32, null, null, null, C.PriceLevel.Retail, []));
         (sold.Total, sold.Change, sold.Number).ShouldBe((500m, 500m, 1L));
         var line = sold.Receipt.Lines.ShouldHaveSingleItem();
         (line.Quantity, line.Price, line.Total).ShouldBe((2m, 250m, 500m));
@@ -174,7 +174,7 @@ public sealed class ClientContractTests(TokiApp app) : IClassFixture<TokiApp>
             new C.SaveCustomer("Ana Pérez", null, "809-555-0102", "Calle 2", false, C.PriceLevel.Retail, 5_000, true));
         (await Send<List<C.CustomerRow>>(api, HttpMethod.Get, "/api/customers?includeInactive=true")).ShouldHaveSingleItem().Address.ShouldBe("Calle 2");
         var onAccount = await Send<C.SaleRegistered>(api, HttpMethod.Post, "/api/sales", new C.RegisterSale(Guid.CreateVersion7(), shift,
-            [new C.SaleLine(steak, null, 1)], [new C.Payment(C.PaymentMethod.OnAccount, 250)], 250, C.EcfType.Consumer32, customer, null, null, C.PriceLevel.Retail, null, []));
+            [new C.SaleLine(steak, null, 1)], [new C.Payment(C.PaymentMethod.OnAccount, 250)], 250, C.EcfType.Consumer32, customer, null, null, C.PriceLevel.Retail, []));
         (await Send<List<C.ReceivableAging>>(api, HttpMethod.Get, "/api/reports/receivables")).ShouldHaveSingleItem().Days0To30.ShouldBe(250m);
         var paid = await Send<C.CustomerPaymentRecorded>(api, HttpMethod.Post, $"/api/customers/{customer}/payments",
             new C.RecordCustomerPayment(Guid.CreateVersion7(), shift, 100, C.PaymentMethod.Cash, null));

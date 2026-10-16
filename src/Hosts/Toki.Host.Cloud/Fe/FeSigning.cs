@@ -157,6 +157,9 @@ internal static class FeXml
     /// <summary>Text Toki wrote (UTF-8).</summary>
     public static string Unzip(byte[] gzip) => Encoding.UTF8.GetString(UnzipBytes(gzip));
 
+    /// <summary>A value trimmed to its column's length (null becomes empty).</summary>
+    public static string Cut(string? s, int max) => s is null ? "" : s.Length > max ? s[..max] : s;
+
     /// <summary>A received document as text, decoded with the encoding it declares (UTF-8 when it declares none or cannot be read).</summary>
     public static string ReceivedText(byte[] gzip)
     {

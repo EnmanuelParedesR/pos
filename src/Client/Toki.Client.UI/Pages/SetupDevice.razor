@@ -3,6 +3,7 @@
 @inject Session Session
 @inject NavigationManager Nav
 @inject NodeCertificatePin Pin
+@inject ServerAddress Server
 
 <div class="esc-page" style="max-width:960px;margin:0 auto;width:100%">
     <div>
@@ -22,6 +23,14 @@
                 <div style="font-size:var(--t-20);font-weight:700">Código del dueño</div>
                 <div class="esc-subtitle">En la PC principal: Configuración → Equipos → Generar código. Vale 10 minutos.</div>
                 <div class="esc-subtitle">Si esta PC ya estaba unida antes, el dueño debe revocar su entrada vieja en Configuración → Equipos: si no, sigue contando como una caja de la licencia.</div>
+            </div>
+            @* TK-251: a register reaches the server on the main PC; its address is kept on this PC, so an update does not lose it. *@
+            <div class="esc-row" style="gap:8px;align-items:flex-end">
+                <label class="esc-field" style="flex:1 1 auto">
+                    <span>PC principal (nombre o IP)</span>
+                    <input class="esc-input" id="server" autocomplete="off" maxlength="253" placeholder="Ej.: CAJA-PRINCIPAL o 192.168.1.10" @bind="_server" />
+                </label>
+                <Button Disabled="@_sending" OnClick="ConnectAsync">Buscar</Button>
             </div>
             <label class="esc-field">
                 <span>Código de 8 dígitos</span>
@@ -89,7 +98,7 @@
 @code {
     private enum Mode { Join, Install }
     private Mode _mode = Mode.Join;
-    private string? _code, _error, _name, _userCode, _pin, _fingerprint, _shown, _businessName, _rnc, _phone, _address, _footer;
+    private string? _server, _code, _error, _name, _userCode, _pin, _fingerprint, _shown, _businessName, _rnc, _phone, _address, _footer;
 
     private string? Rnc => string.IsNullOrWhiteSpace(_rnc) ? null : new string(_rnc.Where(char.IsAsciiDigit).ToArray());
     private string? RncError => _rnc is null || Rnc is null or { Length: 9 or 11 } ? null : "El RNC tiene 9 números y la cédula 11.";
@@ -103,11 +112,26 @@
     {
         await Session.LoadAsync();
         if (Session.IsPaired) { Nav.NavigateTo("sign-in"); return; }
-        await Api.GetAsync<Empty>("/health"); // connects, so the server's certificate is known before the code is typed
-        _shown = Pin.Seen;
-        _fingerprint = NodeCertificatePin.Fingerprint(_shown);
+        _server = Server.Current.IsLoopback ? null : Server.Current.Host;
         // TK-196: on the PC that runs the server this is almost always the first installation (a single-PC store).
-        if (Api.ServerIsThisPc) _mode = Mode.Install;
+        if (await ReachServerAsync() && Api.ServerIsThisPc) _mode = Mode.Install;
+    }
+
+    /// <summary>Connects, so the server's certificate is known before the code is typed. False when nothing answers there.</summary>
+    private async Task<bool> ReachServerAsync()
+    {
+        var health = await Api.GetAsync<Empty>("/health");
+        (_shown, _confirmed) = (Pin.Seen, false);
+        _fingerprint = NodeCertificatePin.Fingerprint(_shown);
+        return health.Problem is not { Code: Problem.NoServer };
+    }
+
+    private async Task ConnectAsync()
+    {
+        if (!await Session.UseServerAsync(_server)) { _error = "Escriba el nombre o la IP de la PC principal (por ejemplo CAJA-PRINCIPAL o 192.168.1.10)."; return; }
+        _sending = true;
+        _error = await ReachServerAsync() ? null : $"No se encontró la PC principal en {Server.Current.Host}. Revise el nombre o la IP y que esté encendida.";
+        _sending = false;
     }
 
     private void Switch(Mode m) => (_mode, _error) = (m, null);

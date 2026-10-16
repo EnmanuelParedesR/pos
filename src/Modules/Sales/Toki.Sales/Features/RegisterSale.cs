@@ -35,7 +35,7 @@ internal static class RegisterSale
     public sealed record Command(
         Guid SaleId, Guid ShiftId, IReadOnlyList<Line> Lines, IReadOnlyList<Payment> Payments, decimal ExpectedTotal,
         EcfType DocumentType = EcfType.Consumer32, Guid? CustomerId = null, string? CustomerRnc = null, string? CustomerName = null,
-        SalePriceLevel PriceLevel = SalePriceLevel.Retail, Discount? GlobalDiscount = null, IReadOnlyList<Guid>? SupervisorApprovals = null,
+        SalePriceLevel PriceLevel = SalePriceLevel.Retail, IReadOnlyList<Guid>? SupervisorApprovals = null,
         Guid? OrderId = null) : ICommand<Response>;
 
     public sealed record Response(Guid SaleId, long Number, string ENcf, decimal Total, decimal Change, Receipt Receipt);
@@ -131,8 +131,7 @@ internal static class RegisterSale
             }
 
             var totals = TotalsCalculator.Calculate(
-                inputs.Select(e => new LineInput(e.Price, e.Quantity, e.Product.ItbisRate, e.Line.Discount, e.FixedAmount)).ToList(),
-                c.GlobalDiscount);
+                inputs.Select(e => new LineInput(e.Price, e.Quantity, e.Product.ItbisRate, e.Line.Discount, e.FixedAmount)).ToList());
             if (totals.IsFailure) return totals.Error!;
             var t = totals.Value;
             if (t.Total != c.ExpectedTotal) return SalesErrors.TotalChanged(t.Total);

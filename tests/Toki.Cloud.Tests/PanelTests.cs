@@ -36,7 +36,7 @@ public sealed class PanelTests(CloudApp app) : IClassFixture<CloudApp>
             Events.Envelope(kept, now),
             Events.Envelope(voided, now.AddMinutes(5)),
             Events.Envelope(new SaleVoidedV1(voided.SaleId, "E340000000001", "Cliente se arrepintió", null), now.AddMinutes(10)),
-            Events.Envelope(new ReturnRecordedV1(Guid.CreateVersion7(), kept.SaleId, "E340000000002", "Cash", 100, 15.25m), now.AddMinutes(20)),
+            Events.Envelope(new ReturnRecordedV2(Guid.CreateVersion7(), kept.SaleId, "E340000000002", "Cash", 100, 15.25m, []), now.AddMinutes(20)),
             Events.Envelope(shift, now.AddHours(6)),
             Events.Envelope(new StockMovementRecordedV1(Guid.CreateVersion7(), Steak, Guid.CreateVersion7(), StockMovementType.Sale, -2, 100, kept.SaleId), now),
             Events.Envelope(new PriceChangedV1(Steak, 250, 275, null, null), now),

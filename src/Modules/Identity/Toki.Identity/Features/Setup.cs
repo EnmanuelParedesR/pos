@@ -1,3 +1,4 @@
+using System.Net;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -61,8 +62,12 @@ internal static class Setup
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/identity/setup", async (Command c, ICommandHandler<Command, Response> h, CancellationToken ct) =>
-                    (await h.Handle(c, ct)).ToHttp(r => Results.Created($"/api/identity/users/{r.UserId}", r)))
+            app.MapPost("/api/identity/setup", async (Command c, ICommandHandler<Command, Response> h, HttpContext http, CancellationToken ct) =>
+                    // TK-251: anonymous, so only from the main PC itself; a fresh install is not claimable from the network.
+                    // (No address at all is the in-process test server.)
+                    http.Connection.RemoteIpAddress is { } ip && !IPAddress.IsLoopback(ip.IsIPv4MappedToIPv6 ? ip.MapToIPv4() : ip)
+                        ? Results.Problem("La configuración inicial solo se hace en la PC principal.", statusCode: StatusCodes.Status403Forbidden)
+                        : (await h.Handle(c, ct)).ToHttp(r => Results.Created($"/api/identity/users/{r.UserId}", r)))
                 .AllowAnonymous().WithTags("Identity");
     }
 }

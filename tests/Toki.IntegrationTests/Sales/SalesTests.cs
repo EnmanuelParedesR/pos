@@ -102,7 +102,7 @@ public sealed class SalesTests(TokiApp app) : IClassFixture<TokiApp>
         var saleId = Guid.CreateVersion7();
         object Body(params Guid[] approvals) => new
         {
-            SaleId = saleId, ShiftId = cashier.ShiftId, Lines = new[] { Line(soda, 2) }, GlobalDiscount = new { IsPercentage = true, Value = 20m },
+            SaleId = saleId, ShiftId = cashier.ShiftId, Lines = new[] { new { ProductId = soda, Quantity = 2m, Discount = new { IsPercentage = true, Value = 20m } } },
             Payments = new[] { new { Method = "Cash", Amount = 100m } }, ExpectedTotal = 94.40m, SupervisorApprovals = approvals,
         };
 

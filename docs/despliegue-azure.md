@@ -85,7 +85,7 @@ La tienda sube cada e-CF firmado (XML, RFCE y respuesta de la DGII) a `POST /fis
 
 ### Conectar una tienda local a esta nube
 
-En la caja, el ajuste `Cloud:Url` (en `appsettings.json` del host local o con la variable `Cloud__Url`) tiene que ser `https://app-toki-prod-jhzq7n.azurewebsites.net`. Después, en **Configuración → Nube**, se pega el código de conexión que da el panel. Los valores por defecto del repositorio no cambian.
+En la caja, el ajuste `Cloud:Url` (en `appsettings.json` del host local o con la variable `Cloud__Url`) tiene que ser `https://app-toki-prod-jhzq7n.azurewebsites.net`; el instalador ya lo trae (`deploy/installer/store-settings.ps1`, TK-251). Después, en **Configuración → Nube**, se pega el código de conexión que da el panel. Los valores por defecto del repositorio no cambian.
 
 ## Antes de desplegar
 
@@ -207,7 +207,6 @@ Borra la base con todos los datos de las tiendas: no tiene vuelta atrás.
 | `AzureOpenAI:Endpoint`, `Deployment`, `ApiKey`, `ApiVersion` | El asistente. Si falta alguno, `/api/assistant/ask` responde 503 `Assistant.NotConfigured`. |
 | `Ingest:ApplyInBackground` | `false` solo en pruebas. |
 | `Nodes:RegisterPerMinute` | Intentos de conectar una tienda por minuto y por IP (10). |
-| `Nodes:AcceptSharedSecret` | TK-241, ADR-0008: `true` (por defecto) mientras haya tiendas conectadas antes de TK-241 con secreto compartido; `false` cuando todas se reconectaron (firman con su llave). |
 | `Email:Provider` | `AzureCommunicationServices` envía correos de verdad (avisos de TK-222 e invitaciones). Sin él, los correos solo quedan en el log y el panel muestra el enlace de la invitación. |
 | `Email:Endpoint`, `Email:Sender` | El recurso de Azure Communication Services (`https://<nombre>.communication.azure.com`, con la identidad administrada) y el remitente verificado (`DoNotReply@<dominio>`). |
 | `Email:ConnectionString` | Alternativa a `Email:Endpoint` (fuera de Azure): es un secreto, va en user-secrets o en una referencia a Key Vault, nunca en el repositorio. |

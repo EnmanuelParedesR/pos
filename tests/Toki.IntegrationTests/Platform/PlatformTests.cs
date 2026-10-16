@@ -1,5 +1,4 @@
 using System.Net;
-using System.Security.Cryptography.X509Certificates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
@@ -51,27 +50,5 @@ public sealed class PlatformTests(TokiApp app) : IClassFixture<TokiApp>
             return await db.SaveChangesAsync();
         });
         (await HealthAsync()).ShouldBe((HttpStatusCode.ServiceUnavailable, "Unhealthy"));
-    }
-
-    [Fact]
-    public void The_node_certificate_is_created_once_and_reused()
-    {
-        var subject = $"CN=Toki Prueba {Guid.NewGuid():N}";
-        using var first = NodeCertificate.GetOrCreate(StoreLocation.CurrentUser, TimeProvider.System, subject);
-        try
-        {
-            first.HasPrivateKey.ShouldBeTrue();
-            first.NotAfter.ShouldBeGreaterThan(DateTime.Now.AddYears(4));
-            using var second = NodeCertificate.GetOrCreate(StoreLocation.CurrentUser, TimeProvider.System, subject);
-            second.Thumbprint.ShouldBe(first.Thumbprint);
-        }
-        finally
-        {
-            using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
-            store.Open(OpenFlags.ReadWrite);
-            store.Remove(first);
-            // The private key was persisted next to the store: remove it too, or every run leaves one behind.
-            if (OperatingSystem.IsWindows() && first.GetRSAPrivateKey() is System.Security.Cryptography.RSACng rsa) rsa.Key.Delete();
-        }
     }
 }

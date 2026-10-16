@@ -79,3 +79,41 @@ public sealed class CertificateSigningTests(TokiApp app) : IClassFixture<TokiApp
         (await IssueAsync(Document(EcfType.CreditNote34, "E310000099999"))).Result.Error!.Code.ShouldBe("Fiscal.ReferenceNotFound");
     }
 }
+
+/// <summary>TK-251: each environment numbers from 1, so the same e-NCF lives once per environment. Own app: it issues in two environments.</summary>
+public sealed class ENcfPerEnvironmentTests(TokiApp app) : IClassFixture<TokiApp>
+{
+    private static readonly X509Certificate2 Certificate = new CertificateRequest("CN=Firmante de Prueba, SERIALNUMBER=00112345678", RSA.Create(2048),
+        HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1).CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+
+    private static readonly FiscalLine[] Lines = [new("Arroz selecto 1 lb", 1, 45m, 0m, ItbisRate.Exempt, 0m, 45m)];
+
+    private Task<(string ENcf, IssuedIn IssuedIn)> SellAsync(FiscalEnvironment env) => app.InScopeAsync(async sp =>
+    {
+        var db = sp.GetRequiredService<FiscalDbContext>();
+        var fiscal = new FiscalDocuments(db, sp.GetRequiredService<ISettingsQueries>(), new CertificateEcfSigner(Certificate),
+            new TestEcfProvider { Environment = env }, sp.GetRequiredService<IOutbox>(), app.Clock);
+        var issued = await fiscal.IssueAsync(new DocumentToIssue(EcfType.Consumer32, Guid.NewGuid(), null, null, Lines, 0m, 45m, null, null,
+            Payments: [new FiscalPayment(EcfPaymentForm.Cash, 45m)]), CancellationToken.None);
+        await db.SaveChangesAsync();
+        return (issued.Value.ENcf, await fiscal.IssuedInAsync(issued.Value.ENcf, CancellationToken.None));
+    });
+
+    [Fact]
+    public async Task A_sale_in_TesteCF_then_production_with_a_range_from_1_reuses_the_number()
+    {
+        await app.WithAddressAsync();
+        (await SellAsync(FiscalEnvironment.TesteCF)).ShouldBe(("E320000000001", IssuedIn.Test));
+
+        await app.InScopeAsync(sp =>
+        {
+            var db = sp.GetRequiredService<FiscalDbContext>();
+            db.Sequences.Add(new NcfSequence
+            {
+                Id = Guid.CreateVersion7(), Type = EcfType.Consumer32, Environment = FiscalEnvironment.eCF, From = 1, To = 100, Next = 1, CreatedUtc = DateTime.UtcNow,
+            });
+            return db.SaveChangesAsync();
+        });
+        (await SellAsync(FiscalEnvironment.eCF)).ShouldBe(("E320000000001", IssuedIn.Production));
+    }
+}

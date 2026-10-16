@@ -15,8 +15,9 @@ public static class Services
         var pin = new NodeCertificatePin();
         services.AddSingleton(pin);
         var shared = handler ?? new StoreHandler(pin);
-        // TokiApi puts the time limit on each call (30 s, longer for a backup).
-        services.AddScoped(_ => new HttpClient(shared, disposeHandler: false) { BaseAddress = api, Timeout = Timeout.InfiniteTimeSpan });
+        services.AddSingleton(new ServerAddress(api));
+        // TokiApi puts the time limit on each call (30 s, longer for a backup) and the server address (it can change while joining a store).
+        services.AddScoped(_ => new HttpClient(shared, disposeHandler: false) { Timeout = Timeout.InfiniteTimeSpan });
         services.AddScoped<Session>();
         services.AddScoped<TokiApi>();
         services.AddScoped<Approver>();

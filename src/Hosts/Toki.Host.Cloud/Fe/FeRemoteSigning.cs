@@ -182,7 +182,7 @@ internal static class FeRemoteSigningEndpoints
             if (!FeTrust.BelongsTo(signer, rnc)) return EndpointExtensions.Problem(FeErrors.CertificateRncMismatch);
             var row = new FeCertificate
             {
-                Id = Guid.CreateVersion7(), TenantId = node.TenantId, Rnc = rnc, Subject = FeServices.Cut(signer.Subject, 500), Thumbprint = signer.Thumbprint,
+                Id = Guid.CreateVersion7(), TenantId = node.TenantId, Rnc = rnc, Subject = FeXml.Cut(signer.Subject, 500), Thumbprint = signer.Thumbprint,
                 NotAfterUtc = signer.NotAfter.ToUniversalTime(), SigningMode = FeSigningModes.StoreSigned, OwnerName = owner, HolderName = holder,
                 ConsentVersion = FeConsent.StoreSignedVersion, ConsentedByNodeId = node.NodeId, ConsentedUtc = now,
             };

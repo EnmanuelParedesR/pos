@@ -12,8 +12,9 @@ public interface ILocalStore
 }
 
 /// <summary>Who is at this PC: the paired device, the logged-in user and their open shift.</summary>
-public sealed class Session(ILocalStore store, NodeCertificatePin pin)
+public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAddress? server = null)
 {
+    private const string ServerKey = "server";
     private const string DeviceKey = "device";
     private const string NodeCertificateKey = "node-certificate";
     private const string StoreCaKey = "store-ca";
@@ -48,6 +49,7 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin)
     public async Task LoadAsync()
     {
         if (_loaded) return;
+        if (server is not null && await store.ReadAsync(ServerKey) is { } saved && Uri.TryCreate(saved, UriKind.Absolute, out var address)) server.Current = address;
         // The pin before the credentials: no request carries this PC's certificate or secret to a server it has not pinned.
         var ca = await store.ReadAsync(StoreCaKey) is { } caPem ? X509Certificate2.CreateFromPem(caPem) : null;
         pin.Pin(ca, await store.ReadAsync(NodeCertificateKey));
@@ -59,6 +61,15 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin)
         }
         DeviceToken = await store.ReadAsync(DeviceKey);
         _loaded = true;
+    }
+
+    /// <summary>TK-251: a register joining a store points at the main PC (name or IP). Kept for every later run; false when it is not a host.</summary>
+    public async Task<bool> UseServerAsync(string? host)
+    {
+        if (server?.With(host) is not { } address) return false;
+        await store.SaveAsync(ServerKey, address.ToString());
+        server.Current = address;
+        return true;
     }
 
     /// <summary>TK-091: a new key pair for this PC and its CSR, sent with the pairing code. Null over plain http (development): no TLS, no certificate.</summary>

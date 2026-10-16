@@ -95,7 +95,7 @@ public static class AdminNames
         ["fiscal.load-sequence"] = "Secuencia cargada", ["fiscal.void-sequence"] = "Secuencia anulada", ["fiscal.void-document"] = "Comprobante anulado",
         ["fiscal.replace-rejected"] = "Comprobante rechazado reemplazado", ["fiscal.import-certificate"] = "Certificado digital instalado",
         ["identity.setup"] = "Primera configuración", ["identity.create-user"] = "Usuario creado", ["identity.update-user"] = "Usuario editado",
-        ["identity.change-pin"] = "PIN cambiado", ["identity.pin-failed"] = "PIN equivocado", ["identity.save-role"] = "Rol guardado",
+        ["identity.pin-failed"] = "PIN equivocado", ["identity.save-role"] = "Rol guardado",
         ["identity.delete-role"] = "Rol borrado", ["identity.pair"] = "Equipo emparejado", ["identity.revoke"] = "Equipo desconectado",
         ["approval.granted"] = "Autorización de supervisor", ["approval.used"] = "Autorización usada",
         ["settings.business"] = "Datos del negocio", ["settings.approvals"] = "Autorizaciones", ["settings.backup-passphrase"] = "Frase de respaldos",

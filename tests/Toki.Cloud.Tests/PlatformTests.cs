@@ -103,8 +103,8 @@ public sealed class PlatformTests(CloudApp app) : IClassFixture<CloudApp>
     {
         var owner = await app.OwnerAsync();
         var store = await app.StoreWithNodeAsync(owner);
-        var sale = new SaleRecordedV1(Guid.CreateVersion7(), 1, Guid.NewGuid(), Guid.NewGuid(), null, "E320000000001", 900m, 0m, 0m,
-            [new SaleLineV1(Guid.NewGuid(), null, "Pollo", 1, 900m, 0m, 500m)], [new SalePaymentV1("Cash", 900m)]);
+        var sale = new SaleRecordedV2(Guid.CreateVersion7(), 1, Guid.NewGuid(), Guid.NewGuid(), null, "E320000000001", 900m, 0m, 0m,
+            [new SaleLineV2(Guid.NewGuid(), null, "Pollo", 1, "Unit", 900m, 0m, 500m)], [new SalePaymentV1("Cash", 900m)]);
 
         (await store.SendAsync(Events.Envelope(Heartbeat("1.4.0", sales: 3, license: new NodeLicenseV1("Trial", TrialEnds)), Now), Events.Envelope(sale, Now.AddHours(-1))))
             .EnsureSuccessStatusCode();

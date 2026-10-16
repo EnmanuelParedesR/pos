@@ -83,7 +83,7 @@ internal static class VoidDocument
             var d = await db.Documents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == c.DocumentId, ct);
             if (d is null) return FiscalErrors.NotFound;
             if (d.Status is not (SubmissionStatus.Pending or SubmissionStatus.Simulated) || d.SentUtc is not null || d.TrackId is not null) return FiscalErrors.AlreadySent;
-            if (await db.Documents.AnyAsync(x => x.ModifiedENcf == d.ENcf && x.Status != SubmissionStatus.Voided, ct)) return FiscalErrors.HasNotes;
+            if (await db.Documents.AnyAsync(x => x.Environment == d.Environment && x.ModifiedENcf == d.ENcf && x.Status != SubmissionStatus.Voided, ct)) return FiscalErrors.HasNotes;
             var business = await settings.GetBusinessProfileAsync(ct);
             if (!Rnc.IsValid(business.Rnc)) return FiscalErrors.MissingIssuerRnc;
             var dgii = provider.For(d.Environment); // R10 #2: asks the environment the document was signed for

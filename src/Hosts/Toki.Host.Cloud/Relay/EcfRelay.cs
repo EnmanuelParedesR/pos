@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Fiscal.Contracts;
+using Toki.Host.Cloud.Fe;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Persistence;
 using Toki.SharedKernel;
@@ -49,9 +50,9 @@ internal static class EcfArchiveEndpoint
                     });
                 if (row.ColdUtc is null) (row.SignedXmlGzip, row.RfceGzip) = (gzip, rfce);
                 (row.StoreId, row.NodeId, row.Status, row.TrackId, row.DgiiCode, row.Message) =
-                    (node.StoreId, node.NodeId, request.Status.Value, Cut(request.TrackId, 100), request.DgiiCode, Cut(request.Messages, 1000));
+                    (node.StoreId, node.NodeId, request.Status.Value, FeXml.Cut(request.TrackId, 100), request.DgiiCode, FeXml.Cut(request.Messages, 1000));
                 (row.SignedUtc, row.ReplacesENcf, row.ReplacedByENcf, row.UpdatedUtc) =
-                    (request.SignedUtc, Cut(request.ReplacesENcf, 13), Cut(request.ReplacedByENcf, 13), now);
+                    (request.SignedUtc, FeXml.Cut(request.ReplacesENcf, 13), FeXml.Cut(request.ReplacedByENcf, 13), now);
                 try
                 {
                     await db.SaveChangesAsync(ct);
@@ -65,7 +66,6 @@ internal static class EcfArchiveEndpoint
             }
         }).RequireAuthorization(CloudAuth.NodePolicy);
 
-    private static string Cut(string? s, int max) => s is null ? "" : s.Length > max ? s[..max] : s;
 
     /// <summary>The DGII environments a document is archived for, as the store names them.</summary>
     public static readonly string[] Environments = ["TesteCF", "CerteCF", "eCF"];

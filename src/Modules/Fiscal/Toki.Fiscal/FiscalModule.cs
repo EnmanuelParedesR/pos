@@ -96,7 +96,8 @@ internal sealed class FiscalConfiguration : IEntityTypeConfiguration<NcfSequence
     {
         b.ToTable("EcfDocuments");
         b.Property(d => d.ENcf).HasMaxLength(13);
-        b.HasIndex(d => d.ENcf).IsUnique();
+        // TK-251: each environment numbers from 1 (a TesteCF E320000000001 and the eCF one are different documents).
+        b.HasIndex(d => new { d.Environment, d.ENcf }).IsUnique();
         b.HasIndex(d => d.ReferenceId);
         b.HasIndex(d => new { d.Status, d.SubmitDeadlineUtc });
         b.Property(d => d.Type).HasConversion<int>();
@@ -201,7 +202,8 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
         DateOnly? modifiedIssuedOn = null;
         if (doc.ModifiedENcf is not null)
         {
-            var original = await db.Documents.Where(d => d.ENcf == doc.ModifiedENcf).Select(d => (DateTime?)d.SignedUtc).FirstOrDefaultAsync(ct)
+            var env = Environment;
+            var original = await db.Documents.Where(d => d.Environment == env && d.ENcf == doc.ModifiedENcf).Select(d => (DateTime?)d.SignedUtc).FirstOrDefaultAsync(ct)
                 ?? await db.Set<PaperDocument>().Where(d => d.Ncf == doc.ModifiedENcf).Select(d => (DateTime?)d.IssuedUtc).FirstOrDefaultAsync(ct);
             if (original is null) return FiscalErrors.ReferenceNotFound;
             modifiedIssuedOn = BusinessDay.Of(original.Value);
@@ -267,7 +269,10 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
     public async Task<IssuedIn> IssuedInAsync(string ncf, CancellationToken ct)
     {
         if (PaperNcf.Is(ncf)) return IssuedIn.Production;
-        var env = await db.Documents.Where(d => d.ENcf == ncf).Select(d => (FiscalEnvironment?)d.Environment).FirstOrDefaultAsync(ct);
+        // TK-251: the same e-NCF can exist once per environment: the current one first, else the newest.
+        var current = Environment;
+        var env = await db.Documents.Where(d => d.ENcf == ncf).OrderByDescending(d => d.Environment == current).ThenByDescending(d => d.SignedUtc)
+            .Select(d => (FiscalEnvironment?)d.Environment).FirstOrDefaultAsync(ct);
         return env switch
         {
             FiscalEnvironment.eCF => IssuedIn.Production,

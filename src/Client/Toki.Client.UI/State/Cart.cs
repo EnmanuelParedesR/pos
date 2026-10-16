@@ -133,7 +133,7 @@ public sealed class Cart
 
     public RegisterSale ToRegisterSale(Guid shiftId, List<Payment> payments, decimal expectedTotal, List<Guid> approvals) =>
         new(SaleId, shiftId, [.. _lines.Select(l => l.ToSaleLine())], payments, expectedTotal, DocumentType, Customer?.Id,
-            Customer is null ? ManualRnc : null, Customer is null ? ManualName : null, IsWholesale ? PriceLevel.Wholesale : PriceLevel.Retail, null, approvals, OrderId);
+            Customer is null ? ManualRnc : null, Customer is null ? ManualName : null, IsWholesale ? PriceLevel.Wholesale : PriceLevel.Retail, approvals, OrderId);
 
     /// <summary>What a held sale stores on the server, and how it comes back.</summary>
     public SavedCart Save() => new([.. _lines], Customer, DocumentType, ManualRnc, ManualName, OrderId, Deposit);

@@ -55,26 +55,26 @@ public sealed class AccountsAndNodesTests(CloudApp app) : IClassFixture<CloudApp
     }
 
     [Fact]
-    public async Task A_node_registers_with_the_code_once_and_only_its_secret_hash_is_kept()
+    public async Task A_node_registers_with_the_code_once_and_only_its_public_key_is_kept()
     {
         var owner = await app.OwnerAsync();
         var store = (await (await owner.Client.PostAsJsonAsync("/api/stores", new { name = "Tienda" })).Json()).GetProperty("id").GetGuid();
         var code = (await (await owner.Client.PostAsync($"/api/stores/{store}/connection-codes", null)).Json()).GetProperty("code").GetString();
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var publicKey = key.ExportSubjectPublicKeyInfo();
 
-        var first = await app.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "PC principal" });
+        var first = await app.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "PC principal", publicKey = Convert.ToBase64String(publicKey) });
         first.StatusCode.ShouldBe(HttpStatusCode.OK);
         var node = await first.Json();
         node.GetProperty("tenantId").GetGuid().ShouldBe(owner.TenantId);
         node.GetProperty("storeId").GetGuid().ShouldBe(store);
-        var secret = node.GetProperty("nodeSecret").GetString()!;
-        secret.Length.ShouldBeGreaterThanOrEqualTo(40);
 
-        var again = await app.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "Otra PC" });
+        var again = await app.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "Otra PC", publicKey = Convert.ToBase64String(publicKey) });
         again.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await again.ErrorCode()).ShouldBe("Nodes.InvalidCode");
 
         var saved = await app.InDbAsync(db => db.Nodes.SingleAsync(n => n.Id == node.GetProperty("nodeId").GetGuid()));
-        saved.SecretHash.ShouldBe(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(secret)));
+        saved.PublicKey.ShouldBe(publicKey);
     }
 
     [Fact]
@@ -85,7 +85,9 @@ public sealed class AccountsAndNodesTests(CloudApp app) : IClassFixture<CloudApp
         var code = (await (await owner.Client.PostAsync($"/api/stores/{store}/connection-codes", null)).Json()).GetProperty("code").GetString();
         app.Clock.Advance(TimeSpan.FromMinutes(31));
 
-        var expired = await app.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code, nodeName = "PC" });
+        using var key = System.Security.Cryptography.ECDsa.Create(System.Security.Cryptography.ECCurve.NamedCurves.nistP256);
+        var expired = await app.CreateClient().PostAsJsonAsync("/api/nodes/register",
+            new { code, nodeName = "PC", publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) });
         (await expired.ErrorCode()).ShouldBe("Nodes.InvalidCode");
         var unknown = await app.CreateClient().PostAsJsonAsync("/api/nodes/register", new { code = "abc", nodeName = "PC" });
         (await unknown.ErrorCode()).ShouldBe("Nodes.InvalidCode");

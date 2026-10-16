@@ -361,8 +361,8 @@
         foreach (var s in shifts.Where(s => s.ClosedUtc is null && DateOnly.FromDateTime(Format.StoreTime(s.OpenedUtc)) < today))
             _alerts.Add(new("warning", "clock", $"{System.Net.WebUtility.HtmlEncode(s.Register)} sigue abierta desde {When(s.OpenedUtc)}",
                 $"{s.Cashier} no ha cerrado el turno. Ciérrelo en la caja para cuadrar.", "Ver turno", $"admin/shifts?shift={s.ShiftId}"));
-        // Running low (JTBD 3). shortcut: the whole stock list filtered here, since ?belowMinimumOnly=true fails on the server (follow-up in TK-173).
-        var low = ((await Api.GetAsync<List<StockItem>>("/api/inventory/stock")).Value ?? []).Where(s => s.BelowMinimum && s.Quantity > 0).OrderBy(s => s.Quantity).ToList();
+        // Running low (JTBD 3); the ones at zero are not "low", they are out.
+        var low = ((await Api.GetAsync<List<StockItem>>("/api/inventory/stock?belowMinimumOnly=true")).Value ?? []).Where(s => s.Quantity > 0).OrderBy(s => s.Quantity).ToList();
         foreach (var s in low.Take(2))
             _alerts.Add(new("warning", "package", $"Quedan <b>{(s.Unit == UnitOfMeasure.Pound ? $"{N(s.Quantity)} lb" : N(s.Quantity))}</b> de {System.Net.WebUtility.HtmlEncode(s.Name)}",
                 $"{s.Category} · está por debajo del mínimo{(low.Count > 2 && s == low[1] ? $" · y {low.Count - 2} productos más" : "")}", "Ver productos", "admin/products"));

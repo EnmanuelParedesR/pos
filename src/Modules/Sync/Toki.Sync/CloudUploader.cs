@@ -30,7 +30,6 @@ internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, Clou
     {
         var connection = await cloud.ConnectionAsync(ct);
         if (connection is null) return new UploadPass(0, null);
-        connection = await cloud.RekeyIfNeededAsync(connection, ct);
 
         long after = 0;
         var accepted = 0;

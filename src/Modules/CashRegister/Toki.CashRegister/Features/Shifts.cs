@@ -113,7 +113,7 @@ internal static class OpenShift
 
     internal sealed class Validator : AbstractValidator<Command>
     {
-        public Validator() => RuleFor(c => c.OpeningFloat).GreaterThanOrEqualTo(0).PrecisionScale(19, 2, true);
+        public Validator() => RuleFor(c => c.OpeningFloat).GreaterThanOrEqualTo(0).Must(m => m == Math.Truncate(m)).WithMessage("El efectivo de la caja va en pesos enteros.");
     }
 
     internal sealed class Handler(CashRegisterDbContext db, IUserContext user, IOutbox outbox, IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, Response>
@@ -192,7 +192,7 @@ internal static class RecordMovement
             RuleFor(c => c.MovementId).NotEmpty();
             RuleFor(c => c.MovementType).IsInEnum();
             RuleFor(c => c.Reason).IsInEnum();
-            RuleFor(c => c.Amount).GreaterThan(0).PrecisionScale(19, 2, true);
+            RuleFor(c => c.Amount).GreaterThan(0).Must(m => m == Math.Truncate(m)).WithMessage("El efectivo de la caja va en pesos enteros.");
             RuleFor(c => c.Note).MaximumLength(200);
             RuleFor(c => c.Note).NotEmpty().When(c => c.Reason == MovementReason.Other).WithMessage("Explique el motivo.");
         }

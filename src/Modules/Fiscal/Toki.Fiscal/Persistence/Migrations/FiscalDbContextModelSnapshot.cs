@@ -295,10 +295,10 @@ namespace Toki.Fiscal.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ENcf")
-                        .IsUnique();
-
                     b.HasIndex("ReferenceId");
+
+                    b.HasIndex("Environment", "ENcf")
+                        .IsUnique();
 
                     b.HasIndex("Status", "SubmitDeadlineUtc");
 
