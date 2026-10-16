@@ -27,7 +27,7 @@ Suscripción **Visual Studio Enterprise Subscription – MPN** (`fc0b2ba5-daf7-4
 | Recurso | Nombre | Región | SKU |
 |---|---|---|---|
 | API (Web App Linux, .NET 10) | `app-abastalia-prod-5qsy5n` → https://app-abastalia-prod-5qsy5n.azurewebsites.net | eastus2 | Plan `asp-abastalia-prod` B1 |
-| Panel (Static Web App) | `stapp-abastalia-prod` → https://black-coast-0594b990f.5.azurestaticapps.net | eastus2 | Free |
+| Panel (Static Web App) | `stapp-abastalia-prod` → https://gentle-glacier-0579a850f.6.azurestaticapps.net | eastus2 | Free |
 | Azure SQL | servidor `sql-abastalia-prod-eigklc`, base `abastalia` | **centralus** | GP_S_Gen5, 1 vCore, mínimo 0.5, pausa a los 60 min, 32 GB máx., respaldo local |
 | Azure OpenAI | `oai-abastalia-prod-5qsy5n`, despliegue `chat` = `gpt-5-nano` (`2025-08-07`) | eastus2 | S0, GlobalStandard, 10K tokens/min |
 | Key Vault | `kv-abastalia-prod-5qsy5n` (secreto `AzureOpenAI--ApiKey`) | eastus2 | Standard, RBAC |
