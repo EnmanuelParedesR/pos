@@ -176,6 +176,7 @@ public sealed class QuotaTests(QuotaApp app) : IClassFixture<QuotaApp>
         var client = strict.CreateClient();
         var email = $"owner{Guid.NewGuid():N}@example.com";
         (await client.PostAsJsonAsync("/api/auth/register", new { email, password = CloudApp.Password })).EnsureSuccessStatusCode();
+        await CloudApp.ConfirmEmailAsync(strict, email);
         var token = (await (await client.PostAsJsonAsync("/api/auth/login", new { email, password = CloudApp.Password })).Json()).GetProperty("accessToken").GetString();
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         for (var i = 0; i < 2; i++) (await client.GetAsync("/api/panel/sync-status")).StatusCode.ShouldBe(HttpStatusCode.OK);

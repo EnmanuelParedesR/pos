@@ -121,9 +121,8 @@ internal static class SupplierInvoiceEndpoint
                 return EndpointExtensions.Problem(Error.Validation("Ai.InvalidFile", "Envíe un PDF o una foto (JPG, PNG o WEBP) de hasta 4 MB."));
 
             var node = NodeIdentity.From(user);
-            // The license the store reported last (TK-196): a restricted one does not get the paid extras.
-            if (await db.NodeHeartbeats.Where(h => h.TenantId == node.TenantId && h.LicenseStatus != null).OrderByDescending(h => h.SentUtc)
-                    .Select(h => h.LicenseStatus).FirstOrDefaultAsync(ct) == "Restricted")
+            // TK-196, R11 B-Low8: a restricted business does not get the paid extras, checked here (signed license or the cloud's own trial dates).
+            if (!await services.GetRequiredService<LicenseCheck>().AllowsPaidExtrasAsync(db, node.TenantId, ct))
                 return Refused("Ai.LicenseRestricted", "La licencia de Toki está restringida: renuévela para leer facturas con IA.", StatusCodes.Status403Forbidden);
             // TK-248: the month's allowance of the plan (or of the add-on) first; the daily cap only stops a burst within it.
             var month = await quota.TryConsumeAsync(node.TenantId, Meter.SupplierInvoices, 1, ct);

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Toki.Host.Cloud.Persistence;
@@ -103,7 +104,7 @@ public sealed class InboxApplier(IServiceScopeFactory scopes, TimeProvider clock
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
                 var e = await db.Inbox.SingleAsync(i => i.Sequence == sequence, ct);
                 if (e.AppliedUtc is not null) return;
-                await Projectors.ByType[e.Type](db, e, ct);
+                await Projectors.ApplyAsync(scope.ServiceProvider, db, e, ct);
                 e.AppliedUtc = clock.GetUtcNow().UtcDateTime;
                 e.Error = null;
                 await db.SaveChangesAsync(ct);
@@ -113,9 +114,10 @@ public sealed class InboxApplier(IServiceScopeFactory scopes, TimeProvider clock
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // No payload in the log: it can carry customer data.
-            log.LogWarning(ex, "Inbox event {Sequence} could not be applied", sequence);
-            var error = ex.Message.Length > 2000 ? ex.Message[..2000] : ex.Message;
+            // No payload in the log: it can carry customer data. R11 B-Low2: nor the exception's text, which can quote values (a truncated column's
+            // value, a JSON fragment): only its kind, here and in the row the panel shows.
+            var error = ex is JsonException { Path: { } path } ? $"{nameof(JsonException)} at {path}" : ex.GetType().Name + (ex.InnerException is { } inner ? $" ({inner.GetType().Name})" : "");
+            log.LogWarning("Inbox event {Sequence} could not be applied: {Error}", sequence, error);
             await using var scope = scopes.CreateAsyncScope();
             await scope.ServiceProvider.GetRequiredService<CloudDbContext>().Inbox.Where(i => i.Sequence == sequence)
                 .ExecuteUpdateAsync(s => s.SetProperty(i => i.Attempts, i => i.Attempts + 1).SetProperty(i => i.Error, error), ct);

@@ -11,7 +11,8 @@ import { ShiftReportPage } from "./pages/ShiftReportPage";
 import { StoresPage } from "./pages/StoresPage";
 import { AssistantPage } from "./pages/AssistantPage";
 import { BillingPage } from "./pages/BillingPage";
-import { PlatformAccompanimentPage, PlatformMetricsPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
+import { PlatformAccompanimentPage, PlatformDelegationsPage, PlatformMetricsPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
+import { SecurityPage } from "./pages/SecurityPage";
 import { CatalogPage } from "./pages/CatalogPage";
 import { MembersPage } from "./pages/MembersPage";
 import { InvitePage } from "./pages/InvitePage";
@@ -99,6 +100,7 @@ function Panel() {
         <Route path="assistant" element={<AssistantPage />} />
         <Route path="received" element={<ReceivedPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
+        <Route path="security" element={<SecurityPage />} />
         {me.role === "Owner" && <Route path="members" element={<MembersPage me={me} />} />}
         {me.role === "Owner" && <Route path="billing" element={<BillingPage />} />}
         {/* Toki staff only (TK-189); the API checks the role on every call anyway. */}
@@ -109,6 +111,7 @@ function Panel() {
             <Route path="platform/tenants/:tenantId" element={<PlatformTenantPage />} />
             <Route path="platform/stores/:storeId" element={<PlatformStorePage />} />
             <Route path="platform/accompaniment" element={<PlatformAccompanimentPage />} />
+            <Route path="platform/delegations" element={<PlatformDelegationsPage />} />
           </>
         )}
         <Route path="*" element={<SummaryPage />} />
@@ -213,6 +216,10 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
             </div>
           </div>
           <ThemeToggle />
+          <NavLink to="/app/security" className="esc-side__item" title="Seguridad">
+            <Icon name="shield" />
+            <span className="esc-side__label">Seguridad</span>
+          </NavLink>
           <button type="button" className="esc-side__item" title="Salir" onClick={signOut}>
             <Icon name="sign-out" />
             <span className="esc-side__label">Salir</span>
@@ -224,6 +231,9 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
         <Logo size={26} />
         <span className="esc-topbar__store">{me.tenantName}</span>
         <ThemeToggle className="esc-button esc-button--ghost esc-button--small" showLabel={false} size={18} />
+        <NavLink to="/app/security" className="esc-button esc-button--ghost esc-button--small" aria-label="Seguridad">
+          <Icon name="shield" size={18} />
+        </NavLink>
         <button type="button" className="esc-button esc-button--ghost esc-button--small" aria-label="Salir" onClick={signOut}>
           <Icon name="sign-out" size={18} />
         </button>

@@ -108,6 +108,31 @@ public sealed class FeReceivedDocument
     /// <summary>Who decided (e-mail) and when: the audit trail of the panel's decision.</summary>
     public string? PanelDecidedBy { get; set; }
     public DateTime? PanelDecidedUtc { get; set; }
+    /// <summary>R11 B-High2: signed by a person's certificate (cédula) for the issuer's company RNC, "firmante sin verificar": acknowledged and shown
+    /// in the panel, but never sent to the store (no purchase, no 606) and not decidable until the DGII can tell whether that person signs for it.</summary>
+    public bool SignerUnverified { get; set; }
+}
+
+/// <summary>R11 B-High2: what <see cref="FeTrust.Check"/> says of a document's signer.</summary>
+public enum FeSignerCheck { Untrusted, Verified, UnverifiedDelegate }
+
+/// <summary>R11 B-High2: a receiver activation with a person's certificate (cédula) for a company's RNC. It waits for Toki support, who checks the
+/// delegation outside Toki (the DGII's records) and approves it in the console (audited, <c>/api/platform/fe/delegations</c>); the store then
+/// activates again and passes. One per tenant, RNC and certificate.</summary>
+public sealed class FeDelegation
+{
+    public Guid Id { get; set; }
+    public Guid TenantId { get; set; }
+    public Guid NodeId { get; set; }
+    public string Rnc { get; set; } = "";
+    public string Subject { get; set; } = "";
+    public string Thumbprint { get; set; } = "";
+    public string HolderName { get; set; } = "";
+    public DateTime RequestedUtc { get; set; }
+    /// <summary>Set by support: approved (true) or refused (false), by whom and when.</summary>
+    public bool? Approved { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTime? DecidedUtc { get; set; }
 }
 
 /// <summary>TK-152: a commercial approval (ACECF) a buyer sent about an e-CF the tenant issued. Linked to the archive by e-NCF.</summary>
@@ -182,6 +207,16 @@ internal static class FeModel
             e.HasIndex(d => new { d.TenantId, d.Environment, d.IssuerRnc, d.ENcf, d.Sha256 }).IsUnique();
             e.HasIndex(d => new { d.TenantId, d.Id });
             e.HasIndex(d => d.AcknowledgedUtc);
+        });
+        builder.Entity<FeDelegation>(e =>
+        {
+            e.ToTable("FeDelegations");
+            e.Property(d => d.Rnc).HasMaxLength(11);
+            e.Property(d => d.Subject).HasMaxLength(500);
+            e.Property(d => d.Thumbprint).HasMaxLength(64);
+            e.Property(d => d.HolderName).HasMaxLength(150);
+            e.Property(d => d.DecidedBy).HasMaxLength(256);
+            e.HasIndex(d => new { d.TenantId, d.Rnc, d.Thumbprint }).IsUnique();
         });
         builder.Entity<FeReceiverOutage>(e =>
         {

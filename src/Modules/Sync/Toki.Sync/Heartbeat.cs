@@ -60,7 +60,7 @@ internal static class SendHeartbeat
                 await infra.Outbox.CountAsync(m => m.UploadedUtc == null, ct), CloudUploader.ErrorCode(connection.LastError),
                 new NodeFeaturesV1((await customers.ReceivablesAsync(ct)).Any(r => r.Total > 0), Any(devices.WithScale), Any(devices.WithPrinter), config["Fiscal:Provider"] ?? "Simulated"),
                 new NodeSetupV1(!string.IsNullOrWhiteSpace(profile.Name), !string.IsNullOrWhiteSpace(profile.Rnc), (await inventory.ValueAsync(ct)).Count(p => p.IsActive)),
-                days, new NodeLicenseV1(license.Status.ToString(), license.EndsUtc),
+                days, new NodeLicenseV1(license.Status.ToString(), license.EndsUtc, license.LicenseJws),
                 new NodeFiscalV1(fiscalHealth.RejectedWithoutReplacement, fiscalHealth.OldestPendingUtc, fiscalHealth.CertificateExpiresUtc)));
             return Ok.Value;
         }

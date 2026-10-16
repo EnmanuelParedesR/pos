@@ -112,13 +112,17 @@ export async function api<T>(path: string, method = "GET", body?: unknown): Prom
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-export async function signIn(email: string, password: string) {
-  const response = await send("/api/auth/login", "POST", { email, password }, false);
+/** `twoFactorCode`: the authenticator app's code, for an account with 2FA on (R11 B-Med6); without it such an account gets "Auth.RequiresTwoFactor". */
+export async function signIn(email: string, password: string, twoFactorCode?: string) {
+  const response = await send("/api/auth/login", "POST", { email, password, twoFactorCode: twoFactorCode || undefined }, false);
   if (response.status === 401) {
-    // A tenant disabled by Toki staff (TK-189) answers "NotAllowed".
     const problem = await response.json().catch(() => ({}));
-    if (problem.detail === "NotAllowed") throw new ApiError(401, "Auth.NotAllowed", "Esta cuenta está desactivada. Comuníquese con Toki.");
-    throw new ApiError(401, "Auth.Failed", "El correo o la contraseña no coinciden.");
+    // R11 B-High1: an unconfirmed e-mail answers "NotAllowed", as a business disabled by Toki staff (TK-189) does.
+    if (problem.detail === "NotAllowed")
+      throw new ApiError(401, "Auth.NotAllowed", "No puede entrar todavía: confirme su correo con el enlace que le enviamos. Si ya lo confirmó, comuníquese con Toki.");
+    if (problem.detail === "RequiresTwoFactor") throw new ApiError(401, "Auth.RequiresTwoFactor", "Escriba el código de 6 dígitos de su aplicación de autenticación.");
+    if (problem.detail === "LockedOut") throw new ApiError(401, "Auth.LockedOut", "Demasiados intentos. Espere 15 minutos e intente de nuevo.");
+    throw new ApiError(401, "Auth.Failed", twoFactorCode ? "El código no es válido. Revise la hora del teléfono e intente de nuevo." : "El correo o la contraseña no coinciden.");
   }
   if (!response.ok) throw await toError(response);
   saveTokens(await response.json());
@@ -145,14 +149,12 @@ export function identityMessages(error: ApiError): string[] {
   return [...new Set(keys.map((k) => identityErrors[k] ?? "Revise los datos e intente de nuevo."))];
 }
 
+/** R11 B-High1: the account signs in once its e-mail is confirmed (the link of the e-mail sent now). R11 B-Low5: the answer is the same whether
+ * or not the e-mail already had an account. */
 export async function register(email: string, password: string) {
   const response = await send("/api/auth/register", "POST", { email, password }, false);
   if (!response.ok) throw await toError(response);
-  await signIn(email, password);
 }
-
-/** "Ese correo ya tiene una cuenta": the sign-in screen offers to switch to Entrar. */
-export const isDuplicateEmail = (error: ApiError) => "DuplicateEmail" in error.errors || "DuplicateUserName" in error.errors;
 
 /** TK-230: asks for Identity's reset e-mail. Always 200, whether the account exists or not (no account enumeration). */
 export async function forgotPassword(email: string) {
@@ -166,12 +168,27 @@ export async function resetPassword(email: string, resetCode: string, newPasswor
   if (!response.ok) throw await toError(response);
 }
 
-/** TK-230: the link of the confirmation e-mail sent on sign-up (/app/confirmar#…); only a confirmed address gets a reset e-mail.
- * shortcut: Identity's endpoint takes the code in the query string (single use, it only confirms the address); our request log keeps the path only. */
-export async function confirmEmail(userId: string, code: string) {
-  const response = await send(`/api/auth/confirmEmail?${new URLSearchParams({ userId, code })}`, "GET", undefined, false);
-  if (!response.ok) throw new ApiError(response.status, "Auth.ConfirmFailed", "El enlace no es válido o ya se usó. Si ya confirmó su correo, no tiene que hacer nada más.");
+/** TK-230: the link of the confirmation e-mail sent on sign-up (/app/confirmar#…); only a confirmed address signs in and gets a reset e-mail.
+ * R11 B-Low1: the code goes in the body, never in a URL that telemetry keeps. `firstConfirmation`: the account had never confirmed (the page
+ * warns to change the password if the person did not create it). The link works once: the same promise for the same link (React's double effect). */
+const confirmations = new Map<string, Promise<{ firstConfirmation: boolean }>>();
+export function confirmEmail(userId: string, code: string, changedEmail?: string) {
+  const key = `${userId}|${code}|${changedEmail ?? ""}`;
+  let pending = confirmations.get(key);
+  if (!pending) {
+    pending = send("/api/auth/confirm", "POST", { userId, code, changedEmail }, false).then(async (response) => {
+      if (!response.ok) throw new ApiError(response.status, "Auth.ConfirmFailed", "El enlace no es válido o ya se usó. Si ya confirmó su correo, no tiene que hacer nada más.");
+      return (await response.json()) as { firstConfirmation: boolean };
+    });
+    confirmations.set(key, pending);
+  }
+  return pending;
 }
+
+/** R11 B-Med6: the account's two-step verification (Identity's /manage/2fa). `sharedKey` goes in the authenticator app. */
+export interface TwoFactorStatus { sharedKey: string; recoveryCodesLeft: number; recoveryCodes?: string[] | null; isTwoFactorEnabled: boolean; isMachineRemembered: boolean }
+export const twoFactor = (body: { enable?: boolean; twoFactorCode?: string; resetSharedKey?: boolean; resetRecoveryCodes?: boolean } = {}) =>
+  api<TwoFactorStatus>("/api/auth/manage/2fa", "POST", body);
 
 /** TK-231: a new confirmation e-mail. Always 200 whether or not the account exists or needs it (no enumeration); 429 when asked too often. */
 export async function resendConfirmation(email: string) {
@@ -352,6 +369,19 @@ export interface PlatformAccompaniment {
   notes: string | null;
   createdUtc: string;
   changedUtc: string;
+}
+/** R11 B-High2: a receiver activation with a person's certificate (cédula) for a company's RNC, waiting for support. `approved` null = pending. */
+export interface FeDelegation {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  rnc: string;
+  subject: string;
+  holderName: string;
+  requestedUtc: string;
+  approved: boolean | null;
+  decidedBy: string | null;
+  decidedUtc: string | null;
 }
 export interface PlatformTenant {
   id: string;
@@ -559,6 +589,8 @@ export interface ReceivedEcf {
   panelReason?: string | null;
   panelDecidedBy?: string | null;
   panelDecidedUtc?: string | null;
+  /** R11 B-High2: signed by a person (cédula) for the supplier's company, "firmante sin verificar": not sent to the store and not decidable. */
+  signerUnverified?: boolean;
 }
 
 /** TK-241: the cloud receiver (TK-151) as the panel shows it: GET /api/panel/fe. */

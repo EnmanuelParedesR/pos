@@ -57,3 +57,27 @@ TK-253.
 | C15 | ✅ | `decrypt-backup` pide la frase escrita; la variable solo con entrada redirigida, y avisa cómo borrarla. |
 
 C4 y C11 ya estaban corregidos (TK-251). Sin probar en una PC real: ISCC (no instalado), la instancia `TOKI` con el SSEI de Express 2025, el TPM con el servicio real y la firma.
+
+### Parte B (nube)
+
+| # | Estado | Qué se hizo |
+|---|---|---|
+| Alto 1 | ✅ | `SignIn.RequireConfirmedEmail` (desarrollo puede apagarlo con `Auth:RequireConfirmedEmail`). La primera confirmación (GET de Identity o el nuevo `POST /api/auth/confirm`, y la invitación que llegó por correo) quita los otros miembros y las invitaciones del negocio que la cuenta creó, rota el sello (ningún token anterior se renueva) y el panel avisa "si usted no creó esta cuenta, cambie la contraseña" (`CloudUserManager`). |
+| Alto 2 | ✅ | La cédula ya no pasa por el RNC de una empresa (`FeTrust.BelongsTo` exacto). e-CF firmados así: se acusan pero quedan "firmante sin verificar" (`SignerUnverified`), fuera del pull de la tienda (compras y 606) y sin decisión en el panel. ACECF de ese firmante: 400. Activar el receptor con cédula para RNC de empresa crea una solicitud que soporte aprueba o rechaza en la consola (`/api/platform/fe/delegations`, auditado, pestaña "Firmantes"); aprobada, la tienda activa de nuevo y su firma vale por la huella de ese certificado. |
+| Medio 1 | ✅ | Cadena sin descargas (`DisableCertificateDownloads`); primero llega a una raíz configurada sin revocación; luego CRL/OCSP solo si todas las direcciones están en hosts de las propias CA (sus extensiones CDP/AIA) o en `Fe:RevocationHosts`. |
+| Medio 2 | ✅ | `/api/auth/manage/*` por usuario (`Auth:ManagePerMinutePerUser`, 10); correos de Identity a una dirección: 3 por hora (`IdentityEmailCap`, en memoria). |
+| Medio 3 | ✅ | Ingesta: 60 lotes/min por PC, 64 KB por evento, tipos solo `Toki.*`, desconocidos pendientes ≤ 1000 por negocio, ≤ 100.000 eventos/día por negocio (429 y aviso "Ingest cap reached" en la alerta de Azure); archivo 120/min por PC; ACECF repetido no se guarda dos veces. |
+| Medio 4 | ✅ | Proyectores: una fila de otra tienda nunca se reemplaza ni se anula su venta; `CommercialApprovalRecordedV1` solo de la PC que activó el receptor y con ACECF de ese e-NCF firmado por su certificado; activar/retirar el receptor solo desde esa PC (o el dueño en el panel); el pull de recibidos solo a esa PC. |
+| Medio 5 | ✅ | `staticwebapp.config.json` con CSP (scripts solo del sitio y Paddle.js; connect-src la API y Paddle; `frame-ancestors 'none'`), HSTS y `X-Frame-Options: DENY`. Tokens: acceso 30 min, refresco 7 días. Se queda en localStorage (cookie HttpOnly sería de terceros: panel y API en sitios distintos); la CSP es la defensa. |
+| Medio 6 | ✅ | Consola de plataforma: rol leído de la base en cada llamada, cuenta con 2FA y token de un inicio con código (`amr=mfa`); el token renovado no lo trae, así la consola dura 30 min. Pantalla "Seguridad" (activar 2FA) y código en Entrar. |
+| Medio 7 | ✅ | Semilla y validacioncertificado con su propio cupo por RNC (`Fe:SeedRequestsPerMinutePerRnc`, 60). |
+| Bajo 1 | ✅ | Sin código en la URL: confirmación por `POST /api/auth/confirm`, búsqueda de clientes por `POST /api/platform/tenants/search`. (La telemetría es el agente sin código de App Service: no admite procesador; por eso se quitó lo sensible de las URL.) |
+| Bajo 2 | ✅ | El inbox guarda y registra solo el tipo de excepción (o la ruta JSON), nunca su texto. |
+| Bajo 3 | ✅ | Nonces de nodo en la base (`NodeNonces`, clave primaria). |
+| Bajo 4 | ✅ | `/health/ready` solo con token de administrador de plataforma. |
+| Bajo 5 | ✅ | Registro: misma respuesta si el correo ya existe; tope por destinatario (Medio 2). Códigos de conexión: 5 vivos por negocio; 200 códigos malos en 10 min (de cualquier IP) cierran el registro de nodos hasta que pase la ventana. Sin CAPTCHA. |
+| Bajo 6 | ✅ | Contraseña o código 2FA mal: 5 por IP y cuenta en 15 min (`LoginThrottle`); el bloqueo por cuenta de Identity queda en 50 como respaldo. |
+| Bajo 7 | ✅ | Bicep: roles de certificados y llaves del Key Vault solo con `allowCloudCustody`; Crypto User solo sobre la llave de licencias; Secrets User solo con Paddle; OpenAI con `disableLocalAuth` e identidad administrada (la API usa token de Entra sin `ApiKey`); FTP y SCM sin usuario y contraseña. |
+| Bajo 8 | ✅ | El lector de facturas con IA decide en la nube: suscripción pagada (TK-249), licencia firmada que manda el latido (`NodeLicenseV1.Jws`, verificada con la llave de Toki) o prueba de 14 días desde la primera venta en la réplica. Pendiente: la licencia no está atada al negocio (`shortcut`). |
+
+Al desplegar: las cuentas sin correo confirmado ya no entran hasta confirmarlo (el panel ofrece reenviar); el personal de Toki debe activar 2FA en Seguridad antes de usar la consola.

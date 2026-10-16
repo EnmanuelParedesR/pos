@@ -80,13 +80,17 @@ internal sealed class FeSignBroker(IConfiguration config)
 }
 
 /// <summary>TK-246: what the cloud accepts back from the store. The very document it asked for, enveloped XMLDSig over the whole of it (only the
-/// enveloped and C14N transforms), by a certificate of an INDOTEL authority that belongs to the receiver's RNC. Anything else is no signature.</summary>
+/// enveloped and C14N transforms), by a certificate of an INDOTEL authority that belongs to the receiver's RNC, or (R11 B-High2) is the very
+/// certificate the receiver was activated with (a delegated cédula Toki support approved). Anything else is no signature.</summary>
 internal static class FeStoreSignature
 {
-    public static bool Matches(string signed, XDocument requested, string rnc, FeTrust trust)
+    public static bool Matches(string signed, XDocument requested, FeCertificate receiver, FeTrust trust)
     {
         var doc = FeXml.Parse(signed);
-        if (doc is null || !trust.SignedByTrusted(doc, rnc)) return false;
+        if (doc is null) return false;
+        if (!trust.SignedByTrusted(doc, receiver.Rnc)
+            && !(FeXml.Signer(doc, out var carried) is { } signer && signer.Thumbprint == receiver.Thumbprint && trust.IsTrusted(signer, carried)))
+            return false;
         try
         {
             var signature = new SignedXml(doc);
@@ -179,7 +183,7 @@ internal static class FeRemoteSigningEndpoints
             var now = clock.GetUtcNow().UtcDateTime;
             if (signer.NotAfter.ToUniversalTime() <= now) return EndpointExtensions.Problem(FeErrors.CertificateExpired);
             if (!trust.IsTrusted(signer, carried)) return EndpointExtensions.Problem(FeErrors.CertificateUntrusted);
-            if (!FeTrust.BelongsTo(signer, rnc)) return EndpointExtensions.Problem(FeErrors.CertificateRncMismatch);
+            if (await FeDelegations.CheckAsync(db, node, rnc, signer, holder, now, ct) is { } refused) return refused;
             var row = new FeCertificate
             {
                 Id = Guid.CreateVersion7(), TenantId = node.TenantId, Rnc = rnc, Subject = FeXml.Cut(signer.Subject, 500), Thumbprint = signer.Thumbprint,

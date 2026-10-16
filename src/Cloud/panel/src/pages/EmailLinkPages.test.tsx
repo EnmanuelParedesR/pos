@@ -50,8 +50,11 @@ it("TK-230: a link without its code says it is incomplete", () => {
   expect(screen.queryByLabelText("Contraseña nueva")).toBeNull();
 });
 
-it("TK-230: the sign-up e-mail's link confirms the address", async () => {
-  const fetch = renderAt("/app/confirmar#userId=u1&code=c1", (path) => (path.startsWith("/api/auth/confirmEmail?") ? json(200) : undefined));
+it("TK-230, R11: the sign-up e-mail's link confirms the address with the code in the body, and the first time warns about the password", async () => {
+  const fetch = renderAt("/app/confirmar#userId=u1&code=c1", (path) => (path === "/api/auth/confirm" ? json(200, { firstConfirmation: true }) : undefined));
   expect(await screen.findByText("Listo, su correo quedó confirmado.")).toBeTruthy();
-  expect(String(fetch.mock.calls[0][0])).toMatch(/\/api\/auth\/confirmEmail\?userId=u1&code=c1$/);
+  expect(screen.getByText(/Si usted no creó esta cuenta/)).toBeTruthy();
+  const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+  expect(url).toMatch(/\/api\/auth\/confirm$/);
+  expect(JSON.parse(String(init.body))).toEqual({ userId: "u1", code: "c1" });
 });

@@ -208,22 +208,29 @@ internal static class FeXml
 /// (the INDOTEL certification authorities, docs/ecf-propio.md §11 question 34) and, where the document names a taxpayer, belongs to that RNC.
 /// With no root configured nothing is trusted: the receiver fails closed.</summary>
 /// <remarks><c>Fe:TrustedRoots</c>: the authorities' certificates in Base64 (DER), self-signed roots and their intermediates alike.
-/// <c>Fe:CheckRevocation</c> (true; off only outside Production): the CRL or OCSP of the chain is checked online and an unknown status is a refusal.</remarks>
+/// <c>Fe:CheckRevocation</c> (true; off only outside Production): the CRL or OCSP of the chain is checked online and an unknown status is a refusal.
+/// R11 B-Med1: nothing is downloaded to build the chain (a signer's AIA could point anywhere: SSRF, slowness); the chain must first reach a configured
+/// root offline, and only then is revocation fetched, and only when every CRL/OCSP address of the chain is on a host of the authorities: the hosts
+/// their own certificates name, plus <c>Fe:RevocationHosts</c>.</remarks>
 internal sealed class FeTrust
 {
     private readonly X509Certificate2Collection _roots = [];
     private readonly X509Certificate2Collection _intermediates = [];
+    private readonly HashSet<string> _revocationHosts = new(StringComparer.OrdinalIgnoreCase);
     private readonly bool _checkRevocation;
     private readonly TimeProvider _clock;
+    private readonly ILogger<FeTrust> _log;
 
     public FeTrust(IConfiguration config, IHostEnvironment env, TimeProvider clock, ILogger<FeTrust> log)
     {
-        _clock = clock;
+        (_clock, _log) = (clock, log);
         foreach (var value in config.GetSection("Fe:TrustedRoots").Get<string[]>() ?? [])
         {
             var certificate = X509CertificateLoader.LoadCertificate(Convert.FromBase64String(value.Trim()));
             (certificate.SubjectName.RawData.AsSpan().SequenceEqual(certificate.IssuerName.RawData) ? _roots : _intermediates).Add(certificate);
+            foreach (var url in RevocationUrls(certificate)) _revocationHosts.Add(url.Host);
         }
+        foreach (var host in config.GetSection("Fe:RevocationHosts").Get<string[]>() ?? []) _revocationHosts.Add(host.Trim());
         _checkRevocation = config.GetValue("Fe:CheckRevocation", true);
         if (!_checkRevocation && env.IsProduction())
             throw new InvalidOperationException("Fe:CheckRevocation cannot be off in Production.");
@@ -233,31 +240,97 @@ internal sealed class FeTrust
 
     /// <summary>The signer of <paramref name="doc"/>, when its signature is valid, it chains to a trusted authority and (with <paramref name="rnc"/>)
     /// it belongs to that RNC.</summary>
-    public bool SignedByTrusted(XmlDocument doc, string? rnc = null) =>
-        FeXml.Signer(doc, out var carried) is { } signer && (rnc is null || BelongsTo(signer, rnc)) && IsTrusted(signer, carried);
+    public bool SignedByTrusted(XmlDocument doc, string? rnc = null) => Check(doc, rnc) == FeSignerCheck.Verified;
+
+    /// <summary>R11 B-High2: who signed <paramref name="doc"/> for <paramref name="rnc"/>. A trusted cédula on a company's document is
+    /// <see cref="FeSignerCheck.UnverifiedDelegate"/>: maybe the person the company delegated, which only the DGII knows (question 34).</summary>
+    public FeSignerCheck Check(XmlDocument doc, string? rnc)
+    {
+        if (FeXml.Signer(doc, out var carried) is not { } signer) return FeSignerCheck.Untrusted;
+        var owner = rnc is null || BelongsTo(signer, rnc) ? FeSignerCheck.Verified : IsCedulaOnCompany(signer, rnc) ? FeSignerCheck.UnverifiedDelegate : FeSignerCheck.Untrusted;
+        return owner != FeSignerCheck.Untrusted && IsTrusted(signer, carried) ? owner : FeSignerCheck.Untrusted;
+    }
 
     public bool IsTrusted(X509Certificate2 certificate, IEnumerable<X509Certificate2>? carried = null)
     {
         if (_roots.Count == 0) return false;
-        using var chain = new X509Chain();
+        using var chain = NewChain(carried, X509RevocationMode.NoCheck);
+        if (!chain.Build(certificate)) return false;
+        if (!_checkRevocation) return true;
+        var urls = chain.ChainElements.Take(chain.ChainElements.Count - 1).SelectMany(e => RevocationUrls(e.Certificate)).ToList();
+        if (urls.Find(u => !_revocationHosts.Contains(u.Host)) is { } other)
+        {
+            _log.LogWarning("Certificate {Thumbprint} refused: its revocation address {Host} is not one of the authorities'", certificate.Thumbprint, other.Host);
+            return false;
+        }
+        using var online = NewChain(carried, X509RevocationMode.Online);
+        return online.Build(certificate);
+    }
+
+    private X509Chain NewChain(IEnumerable<X509Certificate2>? carried, X509RevocationMode revocation)
+    {
+        var chain = new X509Chain();
         var policy = chain.ChainPolicy;
         policy.TrustMode = X509ChainTrustMode.CustomRootTrust;
         policy.CustomTrustStore.AddRange(_roots);
         policy.ExtraStore.AddRange(_intermediates);
         foreach (var c in carried ?? []) policy.ExtraStore.Add(c);
-        policy.RevocationMode = _checkRevocation ? X509RevocationMode.Online : X509RevocationMode.NoCheck;
+        policy.DisableCertificateDownloads = true;
+        policy.RevocationMode = revocation;
         policy.RevocationFlag = X509RevocationFlag.ExcludeRoot;
         policy.UrlRetrievalTimeout = TimeSpan.FromSeconds(10);
         policy.VerificationTime = _clock.GetUtcNow().UtcDateTime;
         policy.VerificationTimeIgnored = false;
-        return chain.Build(certificate);
+        return chain;
     }
 
-    /// <summary>The RNC or cédula on the certificate (subject SERIALNUMBER or organizationIdentifier, as the store reads it) is <paramref name="rnc"/>,
-    /// or it is a cédula on a company's document: the delegated signer (R8 #4). A certificate without one belongs to no one.</summary>
-    /// <remarks>shortcut: that the cédula is delegated for that company is not checked (only the DGII knows it, question 34).</remarks>
-    public static bool BelongsTo(X509Certificate2 certificate, string rnc) =>
-        TaxIdOf(certificate) is { } taxId && (taxId == rnc || (rnc.Length == 9 && taxId.Length == 11));
+    /// <summary>The CRL distribution points and OCSP responders the certificate names (http/https).</summary>
+    internal static IEnumerable<Uri> RevocationUrls(X509Certificate2 certificate)
+    {
+        var urls = new List<string>();
+        foreach (var extension in certificate.Extensions)
+        {
+            if (extension is X509AuthorityInformationAccessExtension aia) urls.AddRange(aia.EnumerateOcspUris());
+            else if (extension.Oid?.Value == "2.5.29.31") urls.AddRange(CrlUrls(extension.RawData));
+        }
+        return urls.Select(u => Uri.TryCreate(u, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri : null).OfType<Uri>();
+    }
+
+    /// <summary>The URIs of a CRLDistributionPoints extension (RFC 5280 §4.2.1.13): the fullName GeneralNames of each point.</summary>
+    private static List<string> CrlUrls(byte[] der)
+    {
+        var urls = new List<string>();
+        try
+        {
+            var points = new System.Formats.Asn1.AsnReader(der, System.Formats.Asn1.AsnEncodingRules.DER).ReadSequence();
+            while (points.HasData)
+            {
+                var point = points.ReadSequence();
+                if (!point.HasData || point.PeekTag() != new System.Formats.Asn1.Asn1Tag(System.Formats.Asn1.TagClass.ContextSpecific, 0, true)) continue;
+                var name = point.ReadSequence(new System.Formats.Asn1.Asn1Tag(System.Formats.Asn1.TagClass.ContextSpecific, 0, true));
+                if (!name.HasData || name.PeekTag() != new System.Formats.Asn1.Asn1Tag(System.Formats.Asn1.TagClass.ContextSpecific, 0, true)) continue;
+                var fullName = name.ReadSequence(new System.Formats.Asn1.Asn1Tag(System.Formats.Asn1.TagClass.ContextSpecific, 0, true));
+                var uri = new System.Formats.Asn1.Asn1Tag(System.Formats.Asn1.TagClass.ContextSpecific, 6);
+                while (fullName.HasData)
+                    if (fullName.PeekTag() == uri) urls.Add(fullName.ReadCharacterString(System.Formats.Asn1.UniversalTagNumber.IA5String, uri));
+                    else fullName.ReadEncodedValue();
+            }
+        }
+        catch (System.Formats.Asn1.AsnContentException)
+        {
+            urls.Add("invalid:"); // an unreadable extension is never an allowed host
+        }
+        return urls;
+    }
+
+    /// <summary>The RNC or cédula on the certificate (subject SERIALNUMBER or organizationIdentifier, as the store reads it) is <paramref name="rnc"/>.
+    /// A certificate without one belongs to no one.</summary>
+    /// <remarks>R11 B-High2: a cédula no longer passes for a company's RNC (<see cref="IsCedulaOnCompany"/>): received e-CF are flagged, approvals
+    /// refused and receiver activation waits for Toki support (<see cref="FeDelegations"/>).</remarks>
+    public static bool BelongsTo(X509Certificate2 certificate, string rnc) => TaxIdOf(certificate) == rnc;
+
+    /// <summary>A person's certificate (cédula, 11 digits) on a company's document (RNC, 9 digits): maybe its delegated signer (R8 #4), unverified.</summary>
+    public static bool IsCedulaOnCompany(X509Certificate2 certificate, string rnc) => rnc.Length == 9 && TaxIdOf(certificate) is { Length: 11 };
 
     public static string? TaxIdOf(X509Certificate2 certificate) => certificate.SubjectName.EnumerateRelativeDistinguishedNames()
         .Where(n => n.GetSingleElementType().Value is "2.5.4.5" or "2.5.4.97")
@@ -286,7 +359,7 @@ internal sealed class FeSigner(CloudDbContext db, IFeCertificateVault vault, FeS
         if (certificate.SigningMode == FeSigningModes.StoreSigned)
         {
             signed = await broker.SignAsync(certificate.ConsentedByNodeId, xml.ToString(SaveOptions.DisableFormatting), ct);
-            if (signed is not null && !FeStoreSignature.Matches(signed, xml, certificate.Rnc, trust))
+            if (signed is not null && !FeStoreSignature.Matches(signed, xml, certificate, trust))
             {
                 log.LogWarning("The store of tenant {TenantId} answered a signature that is not the document asked for, or not of RNC {Rnc}", certificate.TenantId, certificate.Rnc);
                 signed = null;
