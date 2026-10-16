@@ -99,12 +99,14 @@ internal static class AccompanimentEndpoints
 
         // An open request is answered as it is (a second tap sends nothing again); after Certified or Cancelled a new one can start.
         store.MapPost("", async (AccompanimentAsk r, ClaimsPrincipal user, CloudDbContext db, IEmailSender email, IConfiguration config,
-            TimeProvider clock, ILogger<AccompanimentRequest> log, CancellationToken ct) =>
+            TimeProvider clock, Quotas.IQuota quota, ILogger<AccompanimentRequest> log, CancellationToken ct) =>
         {
             var (name, phone, times) = (r.ContactName?.Trim() ?? "", r.Phone?.Trim() ?? "", r.PreferredTimes?.Trim() ?? "");
             if (name.Length is 0 or > 100 || phone.Length is < 7 or > 30 || times.Length > 200) return EndpointExtensions.Problem(Invalid);
             var node = NodeIdentity.From(user);
             if (await LatestAsync(db, node, ct) is { Open: true } open) return Results.Ok(new AccompanimentState(ForStore(open)));
+            // TK-248: each request is staff time and e-mails; a request cancelled and asked again counts again.
+            if (await quota.TryConsumeAsync(node.TenantId, Quotas.Meter.AccompanimentRequests, 1, ct) is { Allowed: false } refused) return refused.Problem();
 
             var now = clock.GetUtcNow().UtcDateTime;
             var request = new AccompanimentRequest

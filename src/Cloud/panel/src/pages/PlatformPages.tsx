@@ -19,6 +19,7 @@ import {
 } from "../api";
 import { ago, dateTime, dayName, isStale, money } from "../format";
 import { BarChart, BarList, Card, ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton, SkeletonRows, Stat } from "../ui";
+import { PlatformUsageCard } from "./UsageCard";
 
 /** Plataforma (TK-189 / TK-190): Toki staff only. Same Escuadra Admin pieces as the owner's panel. */
 
@@ -424,6 +425,8 @@ export function PlatformTenantPage() {
               <Stat icon="users" label="Miembros del panel" value={count(t.members.length)} note={`${count(t.members.filter((m) => m.role === "Owner").length)} dueños`} />
             </div>
           </section>
+
+          <PlatformUsageCard tenantId={t.id} />
 
           {/* TK-217 */}
           <Card title="Miembros del panel">

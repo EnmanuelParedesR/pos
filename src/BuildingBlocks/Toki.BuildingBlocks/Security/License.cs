@@ -1,7 +1,8 @@
 namespace Toki.BuildingBlocks.Security;
 
-/// <summary>Sellable functions switched on by the license (docs/funcionalidades-v1.md §5). None of them is built in V1 yet.</summary>
-public enum Feature { ButcherModule, WholesaleModule, CloudBackup, AiAssistant }
+/// <summary>Sellable functions switched on by the license (docs/funcionalidades-v1.md §5). <see cref="SupplierInvoiceReading"/> (TK-248) is the paid
+/// add-on of invoice reading with AI: every plan reads a few a month without it; the cloud counts and enforces the month (docs/cuotas.md).</summary>
+public enum Feature { ButcherModule, WholesaleModule, CloudBackup, AiAssistant, SupplierInvoiceReading }
 
 public enum Limit { Registers }
 

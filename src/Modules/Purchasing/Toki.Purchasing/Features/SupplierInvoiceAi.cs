@@ -122,9 +122,31 @@ internal static class ReadSupplierInvoice
 
     internal sealed record Body(string? File, string? FileName);
 
+    /// <summary>TK-248: the month's readings from the cloud, or null when the store is not connected or the cloud does not answer (the button still works).</summary>
+    public static async Task<SupplierInvoiceQuota?> QuotaAsync(ICloudClient cloud, CancellationToken ct)
+    {
+        try
+        {
+            using var response = await cloud.PostAsJsonAsync("/ai/v1/supplier-invoice/quota", new { }, ct);
+            return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<SupplierInvoiceQuota>(ct) : null;
+        }
+        catch (Exception e) when (e is InvalidOperationException or HttpRequestException or JsonException || (e is TaskCanceledException && !ct.IsCancellationRequested))
+        {
+            return null;
+        }
+    }
+
     internal sealed class Endpoint : IEndpoint
     {
-        public void Map(IEndpointRouteBuilder app) =>
+        public void Map(IEndpointRouteBuilder app)
+        {
+            app.MapGet("/api/purchasing/purchases/read-invoice/quota", async (ICloudClient cloud, CancellationToken ct) =>
+                    await QuotaAsync(cloud, ct) is { } quota ? Results.Ok(quota) : Results.NoContent())
+                .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
+            MapRead(app);
+        }
+
+        private static void MapRead(IEndpointRouteBuilder app) =>
             app.MapPost("/api/purchasing/purchases/read-invoice", async (Body b, ICloudClient cloud, PurchasingDbContext db, ITaxpayerRegistry registry,
                     ISupplierEcfs ecfs, TimeProvider clock, CancellationToken ct) =>
                 {

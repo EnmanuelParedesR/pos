@@ -3,6 +3,7 @@ import { api, ApiError, useApi, type ConnectionCode, type Store, type StoreSyncS
 import { usePanel } from "../App";
 import { ago, isStale } from "../format";
 import { ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton } from "../ui";
+import { UsageCard } from "./UsageCard";
 
 export function StoresPage() {
   const { reloadStores, canEdit } = usePanel();
@@ -96,6 +97,7 @@ export function StoresPage() {
         </div>
       )}
       {status.data?.map((s) => <StoreCard key={s.storeId} store={s} canEdit={canEdit} onPoll={status.reload} onConnected={connected} />)}
+      {canEdit && <UsageCard />}
     </>
   );
 }

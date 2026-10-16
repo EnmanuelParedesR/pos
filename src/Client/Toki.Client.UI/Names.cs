@@ -89,6 +89,7 @@ public static class Names
         "WholesaleModule" => "Módulo mayorista",
         "CloudBackup" => "Respaldo en la nube",
         "AiAssistant" => "Asistente IA",
+        "SupplierInvoiceReading" => "Lectura de facturas con IA (adicional)",
         _ => feature,
     };
 }

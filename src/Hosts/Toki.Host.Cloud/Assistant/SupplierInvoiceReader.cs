@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Persistence;
+using Toki.Host.Cloud.Quotas;
 using Toki.Purchasing.Contracts;
 using Toki.SharedKernel;
 
@@ -15,7 +16,8 @@ namespace Toki.Host.Cloud.Assistant;
 /// person as a draft purchase; nothing is saved here and the file is not kept.</summary>
 /// <remarks>gpt-5-nano takes images and PDFs as input. Cost (gpt-5-nano list price, US$0.05 / 1M input and US$0.40 / 1M output tokens): a page is
 /// ~1,500 to 6,000 input tokens and the answer with its reasoning ~1,000 to 5,000 output tokens, so about US$0.001 to US$0.003 per invoice.
-/// R9 #14: <see cref="SupplierInvoiceEndpoint"/> limits it per business and day, per PC and minute, and refuses a restricted license.</remarks>
+/// R9 #14: <see cref="SupplierInvoiceEndpoint"/> limits it per business and day, per PC and minute, and refuses a restricted license.
+/// TK-248: and per business and month (<see cref="Meter.SupplierInvoices"/>: a few free on every plan, more with the paid add-on).</remarks>
 public sealed class SupplierInvoiceReader(IChatModel model)
 {
     public const string ToolName = "supplier_invoice";
@@ -108,7 +110,7 @@ internal static class SupplierInvoiceEndpoint
     /// <summary><c>Ai:SupplierInvoicesPerDay</c> (100 per business) and <c>Ai:SupplierInvoicesPerMinutePerNode</c> (10, see Program).</summary>
     public static void MapSupplierInvoiceReader(this IEndpointRouteBuilder app) =>
         app.MapPost("/ai/v1/supplier-invoice", async (SupplierInvoiceReadRequest request, ClaimsPrincipal user, IServiceProvider services, CloudDbContext db,
-            IConfiguration config, TimeProvider clock, ILogger<SupplierInvoiceReader> log, CancellationToken ct) =>
+            IConfiguration config, TimeProvider clock, IQuota quota, ILogger<SupplierInvoiceReader> log, CancellationToken ct) =>
         {
             if (services.GetService<IChatModel>() is not { } model) return Unavailable("Ai.NotConfigured", "La lectura de facturas con IA todavía no está configurada en la nube.");
             var type = request.ContentType?.Trim().ToLowerInvariant();
@@ -123,9 +125,15 @@ internal static class SupplierInvoiceEndpoint
             if (await db.NodeHeartbeats.Where(h => h.TenantId == node.TenantId && h.LicenseStatus != null).OrderByDescending(h => h.SentUtc)
                     .Select(h => h.LicenseStatus).FirstOrDefaultAsync(ct) == "Restricted")
                 return Refused("Ai.LicenseRestricted", "La licencia de Toki está restringida: renuévela para leer facturas con IA.", StatusCodes.Status403Forbidden);
+            // TK-248: the month's allowance of the plan (or of the add-on) first; the daily cap only stops a burst within it.
+            var month = await quota.TryConsumeAsync(node.TenantId, Meter.SupplierInvoices, 1, ct);
+            if (!month.Allowed) return month.Problem();
             if (!await TakeAsync(db, node.TenantId, BusinessDay.Of(clock.GetUtcNow().UtcDateTime), config.GetValue("Ai:SupplierInvoicesPerDay", 100), ct))
+            {
+                await quota.AddAsync(node.TenantId, Meter.SupplierInvoices, -1, ct);
                 return Refused("Ai.DailyLimit", "Ya se leyeron con IA todas las facturas de hoy. Mañana puede seguir, o escríbala a mano.",
                     StatusCodes.Status429TooManyRequests);
+            }
             try
             {
                 var reading = await new SupplierInvoiceReader(model).ReadAsync(new ChatAttachment(type, data, Path.GetFileName(request.FileName ?? "factura")), ct);

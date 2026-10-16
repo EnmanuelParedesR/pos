@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Toki.BuildingBlocks.Endpoints;
 using Toki.Host.Cloud.Persistence;
+using Toki.Host.Cloud.Quotas;
 using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Platform;
@@ -61,6 +62,11 @@ internal static class PlatformCli
     }
 }
 
+/// <param name="Plans">The plan codes configured (<c>Quotas</c>), Default first; <paramref name="AddOns"/> the add-ons (<c>Quotas:AddOns</c>).</param>
+public sealed record PlatformUsageResponse(UsageResponse Usage, IReadOnlyList<string> Plans, IReadOnlyList<string> AddOns);
+
+public sealed record TenantPlanRequest(string? Plan, IReadOnlyList<string>? AddOns);
+
 internal static class PlatformEndpoints
 {
     public static void MapPlatform(this IEndpointRouteBuilder app)
@@ -76,6 +82,26 @@ internal static class PlatformEndpoints
             SetDisabledAsync(db, tenantId, clock.GetUtcNow().UtcDateTime, ct));
 
         platform.MapPost("/tenants/{tenantId:guid}/enable", (Guid tenantId, CloudDbContext db, CancellationToken ct) => SetDisabledAsync(db, tenantId, null, ct));
+
+        // TK-248: this month's usage against the plan, and the plan and add-ons the business paid for (the quotas follow them at once).
+        platform.MapGet("/tenants/{tenantId:guid}/usage", async (Guid tenantId, CloudDbContext db, IQuota quota, IConfiguration config, CancellationToken ct) =>
+        {
+            if (!await db.Tenants.AnyAsync(t => t.Id == tenantId, ct)) return NotFound("Platform.TenantNotFound", "No encontramos ese cliente.");
+            var (plans, addOns) = Quota.Catalog(config);
+            return Results.Ok(new PlatformUsageResponse(await quota.UsageAsync(tenantId, ct), plans, addOns));
+        });
+
+        platform.MapPut("/tenants/{tenantId:guid}/plan", async (Guid tenantId, TenantPlanRequest r, CloudDbContext db, IConfiguration config, CancellationToken ct) =>
+        {
+            var (plans, addOns) = Quota.Catalog(config);
+            var chosen = (r.AddOns ?? []).Distinct().ToList();
+            if (r.Plan is not { } plan || !plans.Contains(plan) || chosen.Any(a => !addOns.Contains(a)))
+                return EndpointExtensions.Problem(Error.Validation("Platform.InvalidPlan", "Elija un plan y servicios adicionales de la lista."));
+            return await db.Tenants.Where(t => t.Id == tenantId).ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.Plan, plan == Quota.DefaultPlan ? null : plan).SetProperty(t => t.AddOns, string.Join(',', chosen)), ct) == 0
+                ? NotFound("Platform.TenantNotFound", "No encontramos ese cliente.")
+                : Results.NoContent();
+        });
 
         platform.MapGet("/stores/{storeId:guid}", async (Guid storeId, PlatformQueries q, CancellationToken ct) =>
             await q.StoreAsync(storeId, ct) is { } store ? Results.Ok(store) : NotFound("Platform.StoreNotFound", "No encontramos esa tienda."));

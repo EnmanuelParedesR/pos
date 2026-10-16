@@ -45,6 +45,9 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("Fe:RequestsPerMinutePerIp", "10000");
         builder.UseSetting("Fe:RequestsPerMinutePerRnc", "10000");
         builder.UseSetting("Auth:ResendConfirmationPerMinute", "10000");
+        builder.UseSetting("Auth:RequestsPerMinute", "10000"); // TK-248: every test client is the same (empty) IP
+        builder.UseSetting("Panel:RequestsPerMinutePerUser", "10000");
+        builder.UseSetting("Ai:AssistantQuestionsPerMinutePerUser", "10000");
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
         builder.UseSetting("Platform:Admins:0", LegacyAdminEmail); // R8 #1: ignored now
         builder.UseSetting("Certification:StaffEmails:0", SupportEmail); // TK-233

@@ -404,6 +404,10 @@ export interface TenantMetrics {
   firstSaleDay: string | null;
   lastSaleDay: string | null;
 }
+/** TK-248: this store month's use of each metered service against the plan's limit (docs/cuotas.md). */
+export type Meter = "AssistantQuestions" | "AssistantTokens" | "SupplierInvoices" | "Emails" | "ArchiveRetrievals" | "AccompanimentRequests" | "Invites";
+export interface Usage { plan: string; addOns: string[]; resetsOn: string; meters: { meter: Meter; used: number; limit: number }[] }
+export interface PlatformUsage { usage: Usage; plans: string[]; addOns: string[] }
 export interface PlatformTenantDetail {
   id: string;
   name: string;

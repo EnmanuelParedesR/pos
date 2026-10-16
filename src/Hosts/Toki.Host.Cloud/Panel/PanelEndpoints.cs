@@ -13,7 +13,7 @@ internal static class PanelEndpoints
 
     public static void MapPanel(this IEndpointRouteBuilder app)
     {
-        var panel = app.MapGroup("/api/panel").RequireAuthorization(CloudAuth.PanelPolicy);
+        var panel = app.MapGroup("/api/panel").RequireAuthorization(CloudAuth.PanelPolicy).RequireRateLimiting(Quotas.QuotaRateLimits.PanelUser);
 
         panel.MapGet("/summary", async (DateOnly? date, Guid? storeId, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
             Results.Ok(await q.SummaryAsync(user.GetTenantId(), storeId, date ?? q.Today, ct)));

@@ -1871,6 +1871,11 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("AddOns")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
@@ -1881,6 +1886,10 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(256)
                         .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("Plan")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.HasKey("Id");
 
@@ -1968,6 +1977,26 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("TenantMembers", "cloud");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Quotas.TenantUsage", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateOnly>("Month")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Meter")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("int");
+
+                    b.HasKey("TenantId", "Month", "Meter");
+
+                    b.ToTable("TenantUsage", "cloud");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>

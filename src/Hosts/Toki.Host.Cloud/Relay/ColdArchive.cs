@@ -10,6 +10,7 @@ using Toki.BuildingBlocks.Endpoints;
 using Toki.Host.Cloud.Accounts;
 using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Persistence;
+using Toki.Host.Cloud.Quotas;
 using Toki.SharedKernel;
 
 namespace Toki.Host.Cloud.Relay;
@@ -178,6 +179,9 @@ internal static class ColdArchiveSetup
             byte[]? xml = row.SignedXmlGzip, rfce = row.RfceGzip;
             if (row.ColdUtc is not null)
             {
+                // TK-248: a read from cold storage costs (and from the archive tier, a rehydration); each try counts, also while it comes back.
+                if (await services.GetRequiredService<IQuota>().TryConsumeAsync(tenantId, Meter.ArchiveRetrievals, 1, ct) is { Allowed: false } refused)
+                    return refused.Problem();
                 var store = services.GetRequiredService<IColdArchive>();
                 xml = await store.ReadAsync(row.ColdKey + ".xml.gz", ct);
                 rfce = row.ColdHasRfce && xml is not null ? await store.ReadAsync(row.ColdKey + ".rfce.xml.gz", ct) : null;
@@ -185,7 +189,7 @@ internal static class ColdArchiveSetup
             var ready = xml is not null && (rfce is not null || !row.ColdHasRfce);
             return Results.Ok(new ArchivedEcfResponse(row.ENcf, row.Status, row.Environment, row.SignedUtc, row.ReceivedUtc, row.ReplacedByENcf, row.ColdUtc is not null,
                 ready, ready && xml is not null ? Unzip(xml) : null, ready && rfce is not null ? Unzip(rfce) : null));
-        }).RequireAuthorization(CloudAuth.PanelPolicy);
+        }).RequireAuthorization(CloudAuth.PanelPolicy).RequireRateLimiting(QuotaRateLimits.PanelUser);
 
     private static string Unzip(byte[] gzip)
     {

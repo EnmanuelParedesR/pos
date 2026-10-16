@@ -16,6 +16,7 @@ using Toki.Host.Cloud.Nodes;
 using Toki.Host.Cloud.Panel;
 using Toki.Host.Cloud.Persistence;
 using Toki.Host.Cloud.Platform;
+using Toki.Host.Cloud.Quotas;
 using Toki.Host.Cloud.Relay;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -60,6 +61,10 @@ var catalogPerMinute = config.GetValue("Catalog:RequestsPerMinute", 60);
 // TK-231: each resend is an e-mail to any address; a person needs one or two.
 var resendPerMinute = config.GetValue("Auth:ResendConfirmationPerMinute", 3);
 var invoicesPerNodeMinute = config.GetValue("Ai:SupplierInvoicesPerMinutePerNode", 10);
+// TK-248: sign-in, registration and password reset per IP (Identity's lockout also stops 5 wrong passwords per account); the panel per user.
+var authPerMinute = config.GetValue("Auth:RequestsPerMinute", 10);
+var panelPerUserMinute = config.GetValue("Panel:RequestsPerMinutePerUser", 120);
+var assistantPerUserMinute = config.GetValue("Ai:AssistantQuestionsPerMinutePerUser", 10);
 // The e-CF receiver's limits (R9 #2) are the global limiter, set by AddFe.
 builder.Services.AddRateLimiter(o =>
 {
@@ -72,7 +77,14 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = catalogPerMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(IdentityEmails.ResendRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = resendPerMinute, Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy(QuotaRateLimits.Auth, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = authPerMinute, Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy(QuotaRateLimits.PanelUser, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = panelPerUserMinute, Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy(QuotaRateLimits.AssistantUser, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = assistantPerUserMinute, Window = TimeSpan.FromMinutes(1) }));
 });
+builder.Services.AddScoped<IQuota, Quota>();
 
 builder.Services.AddSingleton<InboxSignal>();
 builder.Services.AddSingleton<InboxApplier>();
@@ -127,9 +139,11 @@ app.MapHealthChecks("/health/ready").AllowAnonymous();
 
 app.MapGroup("/api/auth").MapIdentityApi<CloudUser>().Add(e =>
 {
-    if (e is RouteEndpointBuilder { RoutePattern.RawText: { } route } && route.EndsWith("/resendConfirmationEmail", StringComparison.Ordinal))
-        e.Metadata.Add(new EnableRateLimitingAttribute(IdentityEmails.ResendRateLimit));
+    if (e is not RouteEndpointBuilder { RoutePattern.RawText: { } route }) return;
+    if (route.EndsWith("/resendConfirmationEmail", StringComparison.Ordinal)) e.Metadata.Add(new EnableRateLimitingAttribute(IdentityEmails.ResendRateLimit));
+    else if (QuotaRateLimits.AuthRoutes.Any(r => route.EndsWith(r, StringComparison.Ordinal))) e.Metadata.Add(new EnableRateLimitingAttribute(QuotaRateLimits.Auth));
 });
+app.MapQuotas();
 app.MapStores();
 app.MapMembers();
 app.MapNodes();

@@ -58,7 +58,8 @@ internal static class MemberEndpoints
 
     public static void MapMembers(this IEndpointRouteBuilder app)
     {
-        var members = app.MapGroup("/api/members").RequireAuthorization(CloudAuth.PanelPolicy).RequireAuthorization(CloudAuth.OwnerPolicy);
+        var members = app.MapGroup("/api/members").RequireAuthorization(CloudAuth.PanelPolicy).RequireAuthorization(CloudAuth.OwnerPolicy)
+            .RequireRateLimiting(Quotas.QuotaRateLimits.PanelUser);
 
         members.MapGet("", async (ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
         {
@@ -72,7 +73,7 @@ internal static class MemberEndpoints
         });
 
         members.MapPost("/invites", async (CreateInviteRequest request, ClaimsPrincipal user, CloudDbContext db, IEmailSender email, IConfiguration config,
-            TimeProvider clock, CancellationToken ct) =>
+            TimeProvider clock, Quotas.IQuota quota, CancellationToken ct) =>
         {
             var tenantId = user.GetTenantId();
             var to = request.Email?.Trim() ?? "";
@@ -83,6 +84,13 @@ internal static class MemberEndpoints
             var normalized = to.ToUpperInvariant();
             if (await db.TenantMembers.Where(m => m.TenantId == tenantId).Join(db.Users, m => m.UserId, u => u.Id, (m, u) => u.NormalizedEmail).AnyAsync(e => e == normalized, ct))
                 return EndpointExtensions.Problem(Error.Conflict("Members.AlreadyMember", "Esa persona ya es miembro de este negocio."));
+            // TK-248: each invite is an e-mail to an address the tenant chose.
+            if (await quota.TryConsumeAsync(tenantId, Quotas.Meter.Invites, 1, ct) is { Allowed: false } noInvite) return noInvite.Problem();
+            if (await quota.TryConsumeAsync(tenantId, Quotas.Meter.Emails, 1, ct) is { Allowed: false } noEmail)
+            {
+                await quota.AddAsync(tenantId, Quotas.Meter.Invites, -1, ct);
+                return noEmail.Problem();
+            }
 
             var now = clock.GetUtcNow().UtcDateTime;
             var token = Base64Url(RandomNumberGenerator.GetBytes(32));
@@ -147,7 +155,8 @@ internal static class MemberEndpoints
 
         // The invitee has no session (or one in another tenant): these work by the token alone, which is 256 random bits.
         // R8 #12: always in the body (POST), never in the path, so request logs and Application Insights never see it.
-        var invites = app.MapGroup("/api/invites");
+        // TK-248: per IP, as sign-in: /register makes an account.
+        var invites = app.MapGroup("/api/invites").RequireRateLimiting(Quotas.QuotaRateLimits.Auth);
 
         invites.MapPost("/preview", async (InviteTokenRequest request, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
             await FindAsync(db, request.Token, clock, ct) is { } invite
