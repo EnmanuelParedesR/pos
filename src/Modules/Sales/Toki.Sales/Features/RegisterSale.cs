@@ -53,7 +53,8 @@ internal static class RegisterSale
                 l.RuleFor(x => x.Note).MaximumLength(100);
                 l.RuleFor(x => x.ScaleLabel).MaximumLength(20);
             });
-            RuleFor(c => c.Payments).NotEmpty();
+            // TK-239: a RD$ 0 sale (100 % discount) has nothing to pay.
+            RuleFor(c => c.Payments).NotEmpty().When(c => c.ExpectedTotal != 0);
             RuleForEach(c => c.Payments).ChildRules(p => { p.RuleFor(x => x.Method).IsInEnum(); p.RuleFor(x => x.Reference).MaximumLength(60); });
             RuleFor(c => c.DocumentType).Must(t => t is EcfType.Consumer32 or EcfType.FiscalCredit31).WithMessage("Tipo de comprobante no válido para una venta.");
             RuleFor(c => c.CustomerRnc).Must(r => Rnc.IsValid(Rnc.Normalize(r))).When(c => c.DocumentType == EcfType.FiscalCredit31 && c.CustomerId is null)

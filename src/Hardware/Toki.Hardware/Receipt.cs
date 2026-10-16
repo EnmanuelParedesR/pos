@@ -9,3 +9,11 @@ public sealed record Receipt(string BusinessName, string? Rnc, string? Address, 
     DateTime LocalDateTime, string Register, string Cashier, string? Customer, string? CustomerRnc, ReceiptLine[] Lines, decimal Subtotal, decimal Discount,
     ReceiptItbis[] Itbis, decimal Total, ReceiptPayment[] Payments, decimal Change, string SecurityCode, string QrUrl, string? Footer, bool IsVoided,
     DateTime? SignedAt = null, DateOnly? SequenceExpiresOn = null, string? ContingencyLegend = null);
+
+/// <summary>TK-239: one line of a shift report: an amount, or a text such as "12 (1 anulada)".</summary>
+public sealed record ShiftReportLine(string Label, decimal? Amount, string? Text = null, bool Bold = false);
+public sealed record ShiftReportSection(string Title, ShiftReportLine[] Lines);
+/// <summary>TK-239: the shift close (Z) or an open shift (X) on the thermal printer. Texts already Spanish.</summary>
+/// <param name="Title">"Cierre Z #12" or "Reporte X (turno abierto)".</param>
+public sealed record ShiftReport(string BusinessName, string? Rnc, string Title, string Register, string Cashier, DateTime OpenedLocal, DateTime? ClosedLocal,
+    ShiftReportSection[] Sections, DateTime PrintedLocal, string? AuditChainHead = null);

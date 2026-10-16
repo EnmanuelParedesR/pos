@@ -38,7 +38,8 @@ internal sealed class Shift
 }
 
 /// <summary>Rounding: centavos the store keeps because change is given in whole pesos (there are no coins below RD$ 1).</summary>
-internal enum CashMovementType { SalePayment, SalePaymentVoid, Refund, CashIn, Withdrawal, Expense, CustomerPayment, Rounding, CustomerPaymentVoid }
+/// <remarks>DrawerOpened (TK-239): the drawer opened without a sale; amount 0, the reason in the note.</remarks>
+internal enum CashMovementType { SalePayment, SalePaymentVoid, Refund, CashIn, Withdrawal, Expense, CustomerPayment, Rounding, CustomerPaymentVoid, DrawerOpened }
 
 internal enum MovementReason { ExtraChange, CashPickup, BankDeposit, SupplierPayment, PettyExpense, Other }
 

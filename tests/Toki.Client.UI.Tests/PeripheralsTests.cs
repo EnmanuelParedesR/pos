@@ -171,25 +171,91 @@ public sealed class PeripheralsTests
     [Fact]
     public void Opening_the_drawer_without_a_sale_needs_the_permission_or_a_supervisor()
     {
-        var (ctx, _, hw) = Create(new(Printer: new("EPSON TM-T20")), "register.open", "register.close", "register.cash-in", "credit.collect");
+        // TK-239: the server records the opening (with its reason) before the drawer opens; without the permission it asks for a supervisor.
+        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20")), "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
+        var route = $"/api/cash/shifts/{ScreenContext.Shift.ShiftId}/drawer-openings";
+        api.Respond("POST", route, body => body.Contains("\"supervisorApprovalId\":null", StringComparison.Ordinal)
+            ? FakeApi.Problem(HttpStatusCode.Forbidden, "Approval.Required", "Hace falta un supervisor.", new { permission = new[] { "register.open-drawer" } })
+            : FakeApi.Response(HttpStatusCode.OK, new { openingId = Guid.NewGuid() }));
         var menu = ctx.Render<RegisterMenu>();
-        menu.FindAll("button").Single(b => b.TextContent.Contains("Abrir la gaveta", StringComparison.Ordinal)).Click();
+        Entry(menu).Click();
+        Confirm(menu).Click();
+        menu.Markup.ShouldContain("Escriba el motivo.");
+        api.Requests.ShouldNotContain(r => r.Route == route);
 
+        menu.Find("input[maxlength='200']").Input("Cambio para un cliente");
+        Confirm(menu).Click();
         var approver = ctx.Services.GetRequiredService<Approver>();
         menu.WaitForAssertion(() => approver.Current.ShouldNotBeNull().Permission.ShouldBe("register.open-drawer"));
         hw.Printer.DrawerOpenings.ShouldBe(0);
-        approver.Respond(null); // cancelled
-        menu.WaitForAssertion(() => menu.FindAll("button").Single(b => b.TextContent.Contains("Abrir la gaveta", StringComparison.Ordinal)).HasAttribute("disabled").ShouldBeFalse());
+        approver.Respond(null); // cancelled: nothing opens
+        menu.WaitForAssertion(() => Confirm(menu).HasAttribute("disabled").ShouldBeFalse());
         hw.Printer.DrawerOpenings.ShouldBe(0);
 
-        var (ctx2, _, hw2) = Create(new(Printer: new("EPSON TM-T20")), "register.open", "register.close", "register.cash-in", "credit.collect", "register.open-drawer");
+        Confirm(menu).Click();
+        menu.WaitForAssertion(() => approver.Current.ShouldNotBeNull());
+        approver.Respond(Guid.NewGuid());
+        menu.WaitForAssertion(() => hw.Printer.DrawerOpenings.ShouldBe(1));
+        menu.Markup.ShouldContain("Gaveta abierta.");
+        api.Requests.Last(r => r.Route == route).Body.ShouldContain("\"reason\":\"Cambio para un cliente\"");
+
+        // The server refuses (shift closed elsewhere): the drawer stays shut.
+        var (ctx2, api2, hw2) = Create(new(Printer: new("EPSON TM-T20")), "register.open-drawer");
         using var __ = ctx2;
-        var allowed = ctx2.Render<RegisterMenu>();
-        allowed.FindAll("button").Single(b => b.TextContent.Contains("Abrir la gaveta", StringComparison.Ordinal)).Click();
-        allowed.WaitForAssertion(() => hw2.Printer.DrawerOpenings.ShouldBe(1));
-        allowed.Markup.ShouldContain("Gaveta abierta.");
+        api2.Respond("POST", route, _ => FakeApi.Problem(HttpStatusCode.Conflict, "CashRegister.ShiftClosed", "El turno ya está cerrado."));
+        var closed = ctx2.Render<RegisterMenu>();
+        Entry(closed).Click();
+        closed.Find("input[maxlength='200']").Input("Revisar billetes");
+        Confirm(closed).Click();
+        closed.WaitForAssertion(() => closed.Markup.ShouldContain("El turno ya está cerrado."));
+        hw2.Printer.DrawerOpenings.ShouldBe(0);
     }
+
+    [Fact]
+    public void The_Z_prints_on_the_thermal_printer_after_closing_and_from_Turnos()
+    {
+        // TK-239: the closing's result and Admin → Turnos print the Z on this PC's printer, at its width.
+        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20", 58)), "register.close", "register.approve-close", "shifts.view");
+        using var _ = ctx;
+        var shift = ScreenContext.Shift.ShiftId;
+        var supervisor = Guid.NewGuid();
+        var z = new ZReport(shift, 7, "Caja 1", "Yudelka M.", DateTime.UtcNow.AddHours(-8), DateTime.UtcNow, 500m,
+            [new MethodTotal(PaymentMethod.Cash, 2500m, 0, 0, 0, 2500m)], 10, 1, 0, 0, 0, 0, 0, 3000m, 2950m, -50m, supervisor, "#42 abc", DrawerOpenings: 2);
+        api.Json("GET", "/api/cash/denominations", new[] { 1000m, 500m })
+           .Json("POST", $"/api/cash/shifts/{shift}/close", z)
+           .Json("GET", $"/api/cash/shifts/{shift}/z", z)
+           .Json("GET", "/api/reports/shifts", new[] { new ShiftSummary(shift, "Caja 1", "Yudelka M.", z.OpenedUtc, z.ClosedUtc, 7, 500m, 3000m, 2950m, -50m) })
+           .Json("GET", "/api/settings/business", new BusinessProfile("Carnicería La Esquina", "131245678", null, null, null, 10m))
+           .Json("GET", "/api/identity/users/active", new[] { new ActiveUser(supervisor, "Ramón D.", "02") });
+
+        var close = ctx.Render<CloseRegister>();
+        close.WaitForAssertion(() => close.Find("input[aria-label='Cantidad de 1,000']").Input("3"));
+        close.FindAll("button").Single(b => b.TextContent.Contains("Confirmar conteo", StringComparison.Ordinal)).Click();
+        close.FindAll("button").Single(b => b.TextContent.Contains("Sí, cerrar", StringComparison.Ordinal)).Click();
+        close.WaitForAssertion(() => close.FindAll("button").Single(b => b.TextContent.Contains("Imprimir el cierre", StringComparison.Ordinal)).Click());
+        close.WaitForAssertion(() => close.Markup.ShouldContain("Cierre impreso."));
+        var printed = hw.Printer.Reports.ShouldHaveSingleItem();
+        (printed.BusinessName, printed.Title).ShouldBe(("Carnicería La Esquina", "Cierre Z #7"));
+        var text = Toki.Hardware.EscPos.EscPos.Text(printed, 32);
+        text.ShouldContain("Faltaron");
+        text.ShouldContain("Ramón D.");
+        text.ShouldContain("Aperturas de gaveta sin venta  2");
+
+        var shifts = ctx.Render<Toki.Client.UI.Pages.Admin.Shifts>();
+        shifts.WaitForAssertion(() => shifts.Find("tbody tr.selectable").Click());
+        shifts.WaitForAssertion(() => shifts.FindAll("button").Single(b => b.TextContent.Contains("Imprimir en la impresora de la caja", StringComparison.Ordinal)).Click());
+        shifts.WaitForAssertion(() => hw.Printer.Reports.Count.ShouldBe(2));
+        hw.Printer.Offline = true;
+        shifts.FindAll("button").Single(b => b.TextContent.Contains("Imprimir en la impresora de la caja", StringComparison.Ordinal)).Click();
+        shifts.WaitForAssertion(() => shifts.Markup.ShouldContain("No se pudo imprimir."));
+    }
+
+    private static AngleSharp.Dom.IElement Entry(IRenderedComponent<RegisterMenu> menu) =>
+        menu.FindAll("button").Single(b => b.TextContent.Contains("Abrir la gaveta sin venta", StringComparison.Ordinal));
+
+    private static AngleSharp.Dom.IElement Confirm(IRenderedComponent<RegisterMenu> menu) =>
+        menu.FindAll("button").Single(b => b.TextContent.Contains("Abrir la gaveta", StringComparison.Ordinal) && !b.TextContent.Contains("sin venta", StringComparison.Ordinal));
 
     [Fact]
     public async Task The_register_reports_only_the_kind_of_scale_and_printer_once_per_change()

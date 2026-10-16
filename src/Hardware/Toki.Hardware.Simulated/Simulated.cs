@@ -21,6 +21,9 @@ public sealed class FilePrinter(string file, int columns) : IReceiptPrinter
 
     public Task OpenDrawerAsync(CancellationToken ct) => AppendAsync("[gaveta abierta]\n", ct);
 
+    public Task PrintReportAsync(ShiftReport report, CancellationToken ct) =>
+        AppendAsync(EscPos.EscPos.Text(report, columns) + new string('=', columns) + "\n", ct);
+
     private async Task AppendAsync(string text, CancellationToken ct)
     {
         await Lock.WaitAsync(ct);

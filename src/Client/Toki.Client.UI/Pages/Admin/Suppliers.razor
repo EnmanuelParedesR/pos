@@ -55,8 +55,8 @@
                         <Field Label="Nombre *" Wide="true" Error="@Err("name")">
                             <input class="esc-input" maxlength="150" @bind="f.Name" @bind:after='() => _errors.Remove("name")' aria-invalid="@Invalid("name")" autofocus />
                         </Field>
-                        <Field Label="RNC o cédula" Error="@Err("rnc")" Hint="9 u 11 números, sin guiones.">
-                            <input class="esc-input" inputmode="numeric" maxlength="13" @bind="f.Rnc" @bind:after='() => _errors.Remove("rnc")' aria-invalid="@Invalid("rnc")" />
+                        <Field Label="RNC o cédula" Error="@Err("rnc")" Hint="@(_taxHint ?? "9 u 11 números, sin guiones.")">
+                            <input class="esc-input" inputmode="numeric" maxlength="13" @bind="f.Rnc" @bind:after='() => LookupAsync(f)' aria-invalid="@Invalid("rnc")" />
                         </Field>
                         <Field Label="Días de crédito" Error="@Err("days")" Hint="0 si le paga al contado.">
                             <input class="esc-input esc-num" inputmode="numeric" @bind="f.CreditDays" @bind:after='() => _errors.Remove("days")' aria-invalid="@Invalid("days")" />
@@ -92,6 +92,16 @@
     private sealed class SupplierForm
     {
         public Guid? Id; public string Name = ""; public string? Rnc, Phone, Contact, CreditDays = "0"; public bool IsActive = true;
+    }
+
+    private string? _taxHint, _filledName;
+
+    /// <summary>TK-239: the DGII registry fills the name (editable).</summary>
+    private async Task LookupAsync(SupplierForm f)
+    {
+        _errors.Remove("rnc");
+        var (name, hint) = await TaxpayerLookup.FindAsync(Api, f.Rnc);
+        (f.Name, _filledName, _taxHint) = (TaxpayerLookup.Fill(f.Name, _filledName, name) ?? "", name ?? _filledName, hint);
     }
 
     private List<Supplier>? _suppliers;

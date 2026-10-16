@@ -4,6 +4,7 @@
 @inject Approver Approver
 @inject Cart Cart
 @inject NavigationManager Nav
+@inject Peripherals Peripherals
 
 <div class="esc-page" data-keys @onkeydown="KeyAsync">
     <div class="esc-row" style="justify-content:space-between">
@@ -78,6 +79,14 @@
                     <div class="esc-card kpi"><span class="esc-label">Contado</span><span class="kpi__value">@Format.Amount(_z.CountedCash ?? 0)</span></div>
                     <div class="esc-card kpi"><span class="esc-label">Diferencia</span><span class="kpi__value" style="color:@(diff == 0 ? "var(--success)" : "var(--warning)")">@Format.Amount(diff)</span></div>
                 </div>
+                @if (Peripherals.Printer is not null)
+                {
+                    <Button Disabled="_sending" OnClick="PrintAsync"><Icon Name="printer" /> @(_sending ? "Imprimiendo…" : "Imprimir el cierre")</Button>
+                }
+                @if (_printed is not null)
+                {
+                    <div class="esc-muted" role="status">@_printed</div>
+                }
                 <Button Variant="Button.Variants.Primary" Money="true" OnClick="SignOutAsync">Terminar</Button>
             </section>
             <section class="esc-card" style="flex:1 1 420px" aria-label="Por forma de pago">
@@ -101,7 +110,7 @@
     private List<decimal> _denominations = [];
     private readonly Dictionary<decimal, int> _count = [];
     private ZReport? _z;
-    private string? _error;
+    private string? _error, _printed;
     private Notice.Kinds _errorKind;
     private bool _sending, _confirming;
 
@@ -167,6 +176,16 @@
         (_errorKind, _error) = (r.Problem!.Kind, r.Problem.IsUncertain
             ? "No se sabe si el cierre se guardó. Pulse F12 de nuevo cuando vuelva la conexión: no se cierra dos veces."
             : r.Problem.Message);
+    }
+
+    /// <summary>TK-239: the Z on the thermal printer, to sign and keep with the cash.</summary>
+    private async Task PrintAsync()
+    {
+        if (_z is not { } z || _sending) return;
+        _sending = true;
+        var (business, supervisor) = await Printables.ZContextAsync(Api, z);
+        var ok = await Peripherals.TryAsync(p => p.PrintReportAsync(Printables.ZTicket(z, business, supervisor, DateTime.UtcNow), CancellationToken.None));
+        (_sending, _printed) = (false, ok ? "Cierre impreso." : "No se pudo imprimir. Revise la impresora y vuelva a intentarlo.");
     }
 
     private async Task SignOutAsync()

@@ -233,6 +233,46 @@ internal static class RecordMovement
     }
 }
 
+/// <summary>TK-239 (arquitectura §6.3): the register asks here before opening the drawer without a sale, and only opens it on success.
+/// Needs register.open-drawer or a supervisor's approval; the opening stays in the shift (on the Z) and in the audit log.</summary>
+internal static class OpenDrawer
+{
+    public sealed record Command(Guid ShiftId, string Reason, Guid? SupervisorApprovalId) : ICommand<Response>, IRequiresApproval
+    {
+        public string Permission => Permissions.RegisterOpenDrawer;
+        public Guid ResourceId => ShiftId;
+    }
+
+    public sealed record Response(Guid OpeningId);
+
+    internal sealed class Validator : AbstractValidator<Command>
+    {
+        public Validator() => RuleFor(c => c.Reason).NotEmpty().WithMessage("Escriba por qué abre la gaveta.").MaximumLength(200);
+    }
+
+    internal sealed class Handler(CashRegisterOperations ops, IAuditLog audit) : ICommandHandler<Command, Response>
+    {
+        public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
+        {
+            var shift = await ops.GetOpenShiftAsync(c.ShiftId, ct);
+            if (shift.IsFailure) return shift.Error!;
+            var m = ops.Add(c.ShiftId, CashMovementType.DrawerOpened, PaymentMethod.Cash, 0, null, null, note: c.Reason.Trim());
+            await audit.RecordAsync("cash.open-drawer", "Shift", c.ShiftId, new { Opening = m.Id, Reason = m.Note }, ct);
+            return new Response(m.Id);
+        }
+    }
+
+    internal sealed record Body(string Reason, Guid? SupervisorApprovalId);
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapPost("/api/cash/shifts/{id:guid}/drawer-openings", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
+                    (await h.Handle(new Command(id, b.Reason, b.SupervisorApprovalId), ct)).ToHttp())
+                .RequireAuthorization().WithTags("CashRegister"); // register.open-drawer or a supervisor: the approval pipeline checks it
+    }
+}
+
 /// <summary>Blind closing: the cashier counts bills and coins without seeing the expected cash. Needs register.close (one's own shift;
 /// another's needs register.approve-close) or a supervisor's approval. A count with a difference needs register.approve-close or a supervisor's
 /// approval for the shift, when the store's policy asks for it (TK-212). Returns the Z report with the difference.</summary>

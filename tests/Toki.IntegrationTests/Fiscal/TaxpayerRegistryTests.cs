@@ -113,6 +113,7 @@ public sealed class TaxpayerRegistryGuardTests(RegistryGuardApp app) : IClassFix
     public async Task A_file_too_small_to_be_the_registry_leaves_the_previous_one_and_the_DGII_zip_is_read()
     {
         var admin = app.Client(await app.AdminAsync());
+        (await (await admin.GetAsync("/api/fiscal/taxpayers/131245678")).ErrorCode()).ShouldBe("Fiscal.RegistryNotLoaded"); // TK-239: nothing loaded yet
         var text = new StringBuilder("RNC|RAZÓN SOCIAL\r\n");
         for (var i = 0; i < 60; i++) text.Append($"{100_000_000 + i}|CONTRIBUYENTE {i}||||||||ACTIVO|\r\n");
         using var zipped = new MemoryStream();
@@ -128,6 +129,6 @@ public sealed class TaxpayerRegistryGuardTests(RegistryGuardApp app) : IClassFix
         var wrong = await ImportAsync(admin, Encoding.Latin1.GetBytes("131245678|COLMADO EL SOL SRL||||||||ACTIVO|\r\n"));
         wrong.GetProperty("error").GetString().ShouldStartWith("El archivo no parece el padrón de la DGII");
         (await admin.GetAsync("/api/fiscal/taxpayers/100000007")).StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await admin.GetAsync("/api/fiscal/taxpayers/131245678")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await (await admin.GetAsync("/api/fiscal/taxpayers/131245678")).ErrorCode()).ShouldBe("Fiscal.RncNotFound");
     }
 }

@@ -14,6 +14,7 @@ const movementNames: Record<string, string> = {
   CustomerPayment: "Abonos de fiado",
   CustomerPaymentVoid: "Abonos anulados",
   Rounding: "Redondeo",
+  DrawerOpened: "Aperturas de gaveta sin venta",
 };
 
 /** TK-200 in the panel: one closed shift (Z) on one A4 page; "Imprimir" prints it or saves it as PDF from the browser. */

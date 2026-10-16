@@ -73,6 +73,15 @@ public sealed class EcfXmlTests
     }
 
     [Fact]
+    public void A_consumer_32_with_a_100_percent_discount_and_no_payments_is_valid()
+    {
+        // TK-239: the XSD types MontoTotal, MontoItem and PrecioUnitarioItem as "mayor o igual a cero"; TablaFormasPago is left out.
+        var xml = Valid(Document(EcfType.Consumer32, [Line("Refresco", 1, 59m, ItbisRate.General18, discount: 59m)]));
+        Value(xml, "MontoTotal").ShouldBe("0.00");
+        xml.Descendants("TablaFormasPago").ShouldBeEmpty();
+    }
+
+    [Fact]
     public void A_consumer_32_of_250000_or_more_identifies_the_buyer()
     {
         var doc = Document(EcfType.Consumer32, [Line("Res en canal", 1250, 210m, ItbisRate.General18)], rnc: "00112345678", name: "Juan Pérez",
