@@ -21,7 +21,7 @@ function Where() {
 
 function renderAt(path: string, me?: Me) {
   if (me) localStorage.setItem("toki.refreshToken", "saved");
-  const fetch = vi.fn(async (url: string) => (url.endsWith("/api/me") ? json(200, me) : url.endsWith("/api/auth/refresh") ? json(200, { accessToken: "a", refreshToken: "r" }) : json(200, [])));
+  const fetch = vi.fn(async (url: string) => (url.endsWith("/api/me") ? json(200, me) : url.endsWith("/api/auth/refresh") ? json(200, { accessToken: "a", refreshToken: "r" }) : url.endsWith("/api/stores") ? json(200, []) : json(404)));
   vi.stubGlobal("fetch", fetch);
   render(
     <MemoryRouter initialEntries={[path]}>
