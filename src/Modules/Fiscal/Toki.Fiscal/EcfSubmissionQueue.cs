@@ -186,15 +186,17 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
     }
 }
 
-/// <summary>Runs <see cref="EcfSubmissionQueue"/> every <c>Fiscal:SubmitIntervalSeconds</c> (30) when <c>Fiscal:AutoSubmit</c> is true.</summary>
-internal sealed class EcfSubmissionWorker(IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<EcfSubmissionWorker> log) : BackgroundService
+/// <summary>Runs <see cref="EcfSubmissionQueue"/> every <c>Fiscal:SubmitIntervalSeconds</c> (30) while <see cref="FiscalMode.AutoSubmit"/> is true
+/// (TK-238: read on every tick, so a change on screen applies without a restart).</summary>
+internal sealed class EcfSubmissionWorker(IServiceScopeFactory scopes, IConfiguration config, FiscalMode mode, TimeProvider clock, ILogger<EcfSubmissionWorker> log)
+    : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!config.GetValue<bool>("Fiscal:AutoSubmit")) return;
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(config.GetValue("Fiscal:SubmitIntervalSeconds", 30)), clock);
         do
         {
+            if (!mode.AutoSubmit) continue;
             try
             {
                 await using var scope = scopes.CreateAsyncScope();

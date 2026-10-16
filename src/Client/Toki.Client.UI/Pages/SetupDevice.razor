@@ -58,6 +58,16 @@
                 <label class="esc-field"><span>PIN (4 a 8 dígitos)</span><input class="esc-input" type="password" inputmode="numeric" @bind="_pin" maxlength="8" autocomplete="new-password" /></label>
                 <label class="esc-field"><span>Nombre de este equipo</span><input class="esc-input" @bind="_deviceName" maxlength="100" /></label>
             </div>
+            @* TK-238: the business data goes on every receipt; saved at the owner's first sign-in (it needs the session). *@
+            <div style="font-size:var(--t-16);font-weight:700">Su negocio</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+                <label class="esc-field"><span>Nombre del negocio</span><input class="esc-input" @bind="_businessName" maxlength="150" /></label>
+                <label class="esc-field"><span>RNC o cédula (9 u 11 números)</span><input class="esc-input" inputmode="numeric" @bind="_rnc" maxlength="13" aria-invalid="@(RncError is not null ? "true" : "false")" /></label>
+                <label class="esc-field"><span>Teléfono</span><input class="esc-input" @bind="_phone" maxlength="30" autocomplete="tel" /></label>
+                <label class="esc-field"><span>Dirección</span><input class="esc-input" @bind="_address" maxlength="200" /></label>
+                <label class="esc-field"><span>Pie de la factura</span><input class="esc-input" @bind="_footer" maxlength="500" placeholder="¡Gracias por su compra!" /></label>
+            </div>
+            <p class="esc-subtitle" style="margin:0">Puede dejarlos para después: el Resumen se los recordará. Sin RNC no se emiten comprobantes fiscales.</p>
             @* TK-196: a single PC is enough to start; sample products let the owner try the register right away (removable with one click). *@
             <label class="esc-row" style="gap:8px;align-items:center"><input type="checkbox" @bind="_sampleData" /> Cargar productos de ejemplo para probar la caja (se quitan con un clic)</label>
             <p class="esc-subtitle" style="margin:0">Prueba gratis de 14 días con todo incluido. Los días empiezan a contar con su primera venta, no hoy.</p>
@@ -79,7 +89,10 @@
 @code {
     private enum Mode { Join, Install }
     private Mode _mode = Mode.Join;
-    private string? _code, _error, _name, _userCode, _pin, _fingerprint, _shown;
+    private string? _code, _error, _name, _userCode, _pin, _fingerprint, _shown, _businessName, _rnc, _phone, _address, _footer;
+
+    private string? Rnc => string.IsNullOrWhiteSpace(_rnc) ? null : new string(_rnc.Where(char.IsAsciiDigit).ToArray());
+    private string? RncError => _rnc is null || Rnc is null or { Length: 9 or 11 } ? null : "El RNC tiene 9 números y la cédula 11.";
     private string _deviceName = "PC principal";
     private bool _sending, _confirmed, _sampleData;
     private const string ServerChanged = "El servidor cambió desde que se mostró la huella, así que este equipo no se unió. Vuelva a abrir esta pantalla y compare la huella otra vez.";
@@ -128,6 +141,7 @@
             _error = "Complete su nombre, su código y un PIN de 4 a 8 dígitos.";
             return;
         }
+        if (RncError is { } rncError) { _error = rncError; return; }
         if (!string.Equals(Pin.Seen, _shown, StringComparison.OrdinalIgnoreCase)) { _error = ServerChanged; return; }
         _sending = true;
         var r = await Api.PostAsync<SetupResult>("/api/identity/setup",
@@ -137,6 +151,9 @@
         {
             if (!await Session.PairAsync(_shown, s.DeviceToken, s.Certificate, s.StoreCa)) { _error = ServerChanged; return; }
             if (_sampleData) await Session.AskForSampleDataAsync();
+            if (!string.IsNullOrWhiteSpace(_businessName) || Rnc is not null)
+                await Session.AskForBusinessAsync(new BusinessProfile(string.IsNullOrWhiteSpace(_businessName) ? "Mi tienda" : _businessName.Trim(), Rnc,
+                    _address?.Trim(), _phone?.Trim(), _footer?.Trim(), 10));
             Nav.NavigateTo("sign-in");
             return;
         }

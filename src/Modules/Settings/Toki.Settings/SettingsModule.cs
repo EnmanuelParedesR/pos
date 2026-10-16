@@ -58,6 +58,11 @@ internal sealed class Business
     public string? SupervisorApprovals { get; set; }
     /// <summary>TK-196: the first sale, which starts the 14-day trial; null while the store has not sold.</summary>
     public DateTime? TrialStartedUtc { get; set; }
+    /// <summary>TK-238: the backup schedule saved on screen; null follows appsettings (<see cref="BackupSchedule"/>). An empty folder means no copy.</summary>
+    public string? BackupCopyTo { get; set; }
+    public TimeSpan? BackupTime { get; set; }
+    public int? BackupKeep { get; set; }
+    public bool? BackupAutomatic { get; set; }
 
     public BusinessProfile ToProfile() => new(Name, Rnc, Address, Phone, ReceiptFooter, DiscountCapPercent);
 }
@@ -78,6 +83,7 @@ internal sealed class BusinessConfiguration : IEntityTypeConfiguration<Business>
         b.Property(n => n.BackupSalt).HasMaxLength(16);
         b.Property(n => n.BackupKey).HasMaxLength(1000);
         b.Property(n => n.SupervisorApprovals).HasMaxLength(500);
+        b.Property(n => n.BackupCopyTo).HasMaxLength(260);
         // Literal values: changing a property default later must not overwrite the owner's settings through a migration.
         b.HasData(new Business { Id = 1, Name = "Mi tienda", DiscountCapPercent = 10 });
     }

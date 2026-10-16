@@ -32,6 +32,16 @@ namespace Toki.Settings.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<bool?>("BackupAutomatic")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("BackupCopyTo")
+                        .HasMaxLength(260)
+                        .HasColumnType("nvarchar(260)");
+
+                    b.Property<int?>("BackupKeep")
+                        .HasColumnType("int");
+
                     b.Property<string>("BackupKey")
                         .HasMaxLength(1000)
                         .HasColumnType("nvarchar(1000)");
@@ -39,6 +49,9 @@ namespace Toki.Settings.Persistence.Migrations
                     b.Property<byte[]>("BackupSalt")
                         .HasMaxLength(16)
                         .HasColumnType("varbinary(16)");
+
+                    b.Property<TimeSpan?>("BackupTime")
+                        .HasColumnType("time");
 
                     b.Property<decimal>("DiscountCapPercent")
                         .HasPrecision(19, 4)

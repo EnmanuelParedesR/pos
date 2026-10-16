@@ -136,6 +136,19 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin)
         return true;
     }
 
+    private const string BusinessKey = "business";
+
+    /// <summary>TK-238: the business data typed in "Primera instalación". Saving it needs settings.manage, so the owner's first sign-in does it.</summary>
+    public Task AskForBusinessAsync(BusinessProfile business) => store.SaveAsync(BusinessKey, System.Text.Json.JsonSerializer.Serialize(business));
+
+    /// <summary>The business data of the wizard, once.</summary>
+    public async Task<BusinessProfile?> TakeBusinessRequestAsync()
+    {
+        if (await store.ReadAsync(BusinessKey) is not { } json) return null;
+        await store.SaveAsync(BusinessKey, null);
+        return System.Text.Json.JsonSerializer.Deserialize<BusinessProfile>(json);
+    }
+
     public void Open(OpenedSession s, Me me)
     {
         (Token, UserId, Name, _permissions, Expired) = (s.Token, s.UserId, s.Name, [.. me.Permissions], false);
