@@ -48,7 +48,7 @@ public static class PaddleSignature
 /// <summary>POST /billing/paddle/webhook. Answers 2xx once the event is stored (Paddle retries anything else), each <c>event_id</c> once.
 /// subscription.* set the subscription and the business's plan and add-ons; transaction.completed records the payment (paid through).</summary>
 internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, BillingCatalog catalog, PlanLimits limits, TenantPlans plans, CatalogSignal signal,
-    TimeProvider clock, ILogger<PaddleWebhook> log)
+    ReferralRewards referrals, TimeProvider clock, ILogger<PaddleWebhook> log)
 {
     public const string Path = "/billing/paddle/webhook";
     private const int MaxBody = 512 * 1024;
@@ -73,17 +73,24 @@ internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, Bil
         var occurred = Date(root, "occurred_at") ?? now.UtcDateTime;
 
         var tenantId = type.StartsWith("subscription.", StringComparison.Ordinal) || type == "transaction.completed" ? await TenantOfAsync(type, data, ct) : null;
+        Referral? referral = null;
         if (tenantId is { } tenant)
         {
             var subscription = await BillingModel.SubscriptionAsync(db, tenant, ct);
             var row = await db.Tenants.SingleAsync(t => t.Id == tenant, ct);
-            if (type == "transaction.completed") Paid(subscription, row, data, occurred, now.UtcDateTime);
+            if (type == "transaction.completed")
+            {
+                Paid(subscription, row, data, occurred, now.UtcDateTime);
+                referral = await referrals.RecordAsync(tenant, subscription, data, now.UtcDateTime, ct); // TK-255
+            }
             else Subscription(subscription, row, data, occurred, now.UtcDateTime);
         }
         else if (type.StartsWith("subscription.", StringComparison.Ordinal) || type == "transaction.completed")
             log.LogWarning("Paddle event {EventId} ({Type}) names no business of ours", id, type);
         // Someone changed a product or a price in Paddle: the catalog (prices, limits) syncs now rather than at the next hour.
         if (type.StartsWith("product.", StringComparison.Ordinal) || type.StartsWith("price.", StringComparison.Ordinal)) signal.Request();
+        // TK-255: a refund or chargeback of a referred business's first payment takes its referrer's reward back (Paddle retries if that fails).
+        if (type is "adjustment.created" or "adjustment.updated" && !await referrals.OnAdjustmentAsync(data, ct)) return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 
         db.BillingEvents.Add(new BillingEvent { Id = id, Type = type.Length > 100 ? type[..100] : type, OccurredUtc = occurred, ReceivedUtc = now.UtcDateTime, TenantId = tenantId });
         try
@@ -96,7 +103,12 @@ internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, Bil
             db.ChangeTracker.Clear();
             if (!await db.BillingEvents.AsNoTracking().AnyAsync(e => e.Id == id, ct)) throw;
         }
-        if (tenantId is { } changed) plans.Forget(changed); // its per-minute limits follow the new plan at once
+        if (tenantId is { } changed)
+        {
+            plans.Forget(changed); // its per-minute limits follow the new plan at once
+            await referrals.TryApplyAsync(changed, ct); // TK-255: its queued rewards, now that it may be active or billed again
+        }
+        if (referral is { Status: ReferralStatus.Pending }) await referrals.TryApplyAsync(referral.ReferrerTenantId, ct);
         return Results.Ok();
     }
 
@@ -199,6 +211,38 @@ internal sealed class PaddleApi(HttpClient http, PaddleOptions paddle)
             new { items = priceIds.Select(p => new { price_id = p, quantity = 1 }), proration_billing_mode = "prorated_immediately" }, ct);
         return response.IsSuccessStatusCode;
     }
+
+    /// <summary>TK-255: GET /subscriptions/{id}: Paddle's own view (status, items, discount), or null.</summary>
+    public async Task<JsonElement?> SubscriptionAsync(string subscriptionId, CancellationToken ct)
+    {
+        using var response = await SendAsync(HttpMethod.Get, $"/subscriptions/{Uri.EscapeDataString(subscriptionId)}", null, ct);
+        return response.IsSuccessStatusCode && (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).TryGetProperty("data", out var data) ? data.Clone() : null;
+    }
+
+    /// <summary>TK-255: POST /discounts (null values are left out); its <c>dsc_…</c> id, or null.</summary>
+    public async Task<string?> CreateDiscountAsync(Dictionary<string, object?> discount, CancellationToken ct)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "/discounts", discount.Where(p => p.Value is not null).ToDictionary(), ct);
+        return response.IsSuccessStatusCode && (await response.Content.ReadFromJsonAsync<JsonElement>(ct)).TryGetProperty("data", out var data)
+               && data.TryGetProperty("id", out var id) ? id.GetString() : null;
+    }
+
+    /// <summary>TK-255: PATCH /subscriptions/{id}/preview with the discount: Paddle says whether it would take it, changing nothing.</summary>
+    public async Task<bool> PreviewDiscountAsync(string subscriptionId, string discountId, CancellationToken ct)
+    {
+        using var response = await SendAsync(HttpMethod.Patch, $"/subscriptions/{Uri.EscapeDataString(subscriptionId)}/preview", Discount(discountId), ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    /// <summary>TK-255: PATCH /subscriptions/{id}: the discount from the next billing period, or none (<paramref name="discountId"/> null).</summary>
+    public async Task<bool> SetDiscountAsync(string subscriptionId, string? discountId, CancellationToken ct)
+    {
+        using var response = await SendAsync(HttpMethod.Patch, $"/subscriptions/{Uri.EscapeDataString(subscriptionId)}", Discount(discountId), ct);
+        return response.IsSuccessStatusCode;
+    }
+
+    private static Dictionary<string, object?> Discount(string? id) =>
+        new() { ["discount"] = id is null ? null : new { id, effective_from = "next_billing_period" } };
 
     /// <summary>GET /products?include=prices, every page (<c>meta.pagination.next</c>): all products with their prices.</summary>
     public async Task<List<JsonElement>> ProductsAsync(CancellationToken ct)
