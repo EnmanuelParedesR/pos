@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { App } from "../../App";
+import "../../Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
 import type { Me } from "../../api";
 import { json } from "../../testing";
 import { preparation, sitePages } from "./SitePages";
@@ -86,9 +87,9 @@ it("TK-228: an unknown address shows the site's 404", () => {
   expect(screen.getByRole("heading", { name: "No encontramos esa página." })).toBeTruthy();
 });
 
-it("TK-228: /app asks for the account when there is no session", () => {
+it("TK-228: /app asks for the account when there is no session", async () => {
   renderAt("/app");
-  expect(screen.getByRole("heading", { name: "Bienvenido de nuevo" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Bienvenido de nuevo" })).toBeTruthy();
 });
 
 it("TK-228: /app with a session opens the panel", async () => {
