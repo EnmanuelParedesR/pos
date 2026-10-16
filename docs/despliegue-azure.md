@@ -18,6 +18,8 @@ La API no consulta la base cuando no hay tiendas subiendo datos: el chequeo de s
 
 ## Lo que está desplegado hoy (TK-139, 2026-10-15)
 
+**Redespliegue del 16/10/2026** (main `ac83666`): infraestructura con la cuenta de almacenamiento del archivo frío (sttokiprodjhzq7n, retención inmutable sin bloquear), los roles de Key Vault del receptor y la protección contra purga del Key Vault (irreversible); API con todas las migraciones hasta TK-231 y las raíces de INDOTEL; sitio y panel en la Static Web App (/ sitio, /app panel). /health/ready responde Healthy.
+
 Suscripción **Visual Studio Enterprise Subscription – MPN** (`fc0b2ba5-daf7-43fd-a6a2-7dc6f60b8dff`, tenant `8d025706-…`), grupo **`rg-toki-prod`**.
 
 | Recurso | Nombre | Región | SKU |
