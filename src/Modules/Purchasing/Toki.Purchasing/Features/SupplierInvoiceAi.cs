@@ -39,13 +39,10 @@ internal static class ReadSupplierInvoice
         new(e.IssuerRnc, e.IssuerName, e.ENcf, e.IssuedOn, [.. e.Lines.Select(l => new SupplierInvoiceLineReading(l.Description, l.Quantity, l.UnitCost, l.ItbisPercent ?? 0))],
             e.Subtotal, e.Itbis, e.Total, 1m, []);
 
-    private static bool IsXml(string? type, string? fileName) =>
-        type is "application/xml" or "text/xml" || (string.IsNullOrEmpty(type) && fileName?.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) == true);
-
     public static readonly Error NotConnected = Error.Conflict("Purchasing.AiNeedsCloud",
         "La lectura de facturas con IA se hace en la nube de Toki: conecte la tienda a la nube para usarla. Mientras, escriba la compra a mano.");
     public static readonly Error Unreachable = Error.Conflict("Purchasing.AiUnreachable", "No se pudo hablar con la nube de Toki. Revise el internet e intente de nuevo.");
-    public static readonly Error InvalidFile = Error.Validation("Purchasing.AiInvalidFile", "Suba un PDF o una foto (JPG, PNG o WEBP) de hasta 4 MB.");
+    public static readonly Error InvalidFile = Error.Validation("Purchasing.AiInvalidFile", "Suba un PDF, una foto (JPG, PNG o WEBP) o el XML del e-CF, de hasta 4 MB.");
 
     public static async Task<Result<SupplierInvoiceReading>> AskCloudAsync(ICloudClient cloud, SupplierInvoiceReadRequest request, CancellationToken ct)
     {
@@ -123,7 +120,7 @@ internal static class ReadSupplierInvoice
     private static string Key(string text) =>
         new(text.Normalize(NormalizationForm.FormD).Where(char.IsAsciiLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
-    internal sealed record Body(string? File, string? ContentType, string? FileName);
+    internal sealed record Body(string? File, string? FileName);
 
     internal sealed class Endpoint : IEndpoint
     {
@@ -131,20 +128,17 @@ internal static class ReadSupplierInvoice
             app.MapPost("/api/purchasing/purchases/read-invoice", async (Body b, ICloudClient cloud, PurchasingDbContext db, ITaxpayerRegistry registry,
                     ISupplierEcfs ecfs, TimeProvider clock, CancellationToken ct) =>
                 {
-                    var type = b.ContentType?.Trim().ToLowerInvariant();
-                    var size = b.File is null ? 0 : b.File.Length / 4 * 3;
-                    if (size is 0 or > SupplierInvoiceReading.MaxFileBytes) return EndpointExtensions.Problem(InvalidFile);
+                    byte[]? content = null;
+                    try { content = b.File is null ? null : Convert.FromBase64String(b.File); }
+                    catch (FormatException) { }
+                    // R10 #11: the type comes from the bytes (as for the attachment), so a file that is none of them never reaches the cloud.
+                    if (content is not { Length: > 0 and <= SupplierInvoiceReading.MaxFileBytes } || PurchaseFile.Sniff(content) is not { } type)
+                        return EndpointExtensions.Problem(InvalidFile);
                     // TK-240: the supplier's e-CF XML needs no AI (nor the cloud): it is read here, exactly.
-                    if (IsXml(type, b.FileName))
-                    {
-                        string xml;
-                        try { xml = Encoding.UTF8.GetString(Convert.FromBase64String(b.File!)); }
-                        catch (FormatException) { return EndpointExtensions.Problem(InvalidFile); }
-                        return ecfs.Read(xml) is { } e
+                    if (type == PurchaseFile.Xml)
+                        return ecfs.Read(Encoding.UTF8.GetString(content)) is { } e
                             ? Results.Ok(await ReviewEcfAsync(db, registry, e, clock, ct, "Tomada del XML del e-CF del suplidor: los montos son los del comprobante."))
                             : EndpointExtensions.Problem(NotAnEcf);
-                    }
-                    if (type is null || !SupplierInvoiceReading.ContentTypes.Contains(type)) return EndpointExtensions.Problem(InvalidFile);
                     var reading = await AskCloudAsync(cloud, new SupplierInvoiceReadRequest(b.File, type, b.FileName), ct);
                     if (reading.IsFailure) return EndpointExtensions.Problem(reading.Error!);
                     // TK-240: when the supplier also sent that e-CF (TK-154), its signed data wins over what the AI read on the paper.

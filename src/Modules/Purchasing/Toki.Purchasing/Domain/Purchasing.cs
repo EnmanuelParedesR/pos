@@ -78,18 +78,17 @@ internal sealed class Purchase
 internal sealed class PurchaseFile
 {
     public const int MaxBytes = 4_000_000;
-    public static readonly IReadOnlyList<string> ContentTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/xml", "text/xml"];
+    public const string Xml = "application/xml";
 
-    /// <summary>R10 #11: the declared type must match the file's first bytes, so a download never serves something else under that type.</summary>
-    public static bool Matches(string contentType, ReadOnlySpan<byte> c) => contentType switch
-    {
-        "application/pdf" => c.StartsWith("%PDF-"u8),
-        "image/png" => c.StartsWith((ReadOnlySpan<byte>)[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
-        "image/jpeg" => c.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xD8, 0xFF]),
-        "image/webp" => c.Length >= 12 && c.StartsWith("RIFF"u8) && c[8..12].SequenceEqual("WEBP"u8),
-        "application/xml" or "text/xml" => (c.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]) ? c[3..] : c).TrimStart(" \t\r\n"u8).StartsWith("<"u8),
-        _ => false,
-    };
+    /// <summary>R10 #11: the type comes from the file's first bytes, never from its name or the browser, so a download never serves something else
+    /// under that type. Null when it is not a PDF, a photo (PNG, JPEG, WebP) or an XML.</summary>
+    public static string? Sniff(ReadOnlySpan<byte> c) =>
+        c.StartsWith("%PDF-"u8) ? "application/pdf"
+        : c.StartsWith((ReadOnlySpan<byte>)[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) ? "image/png"
+        : c.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xD8, 0xFF]) ? "image/jpeg"
+        : c.Length >= 12 && c.StartsWith("RIFF"u8) && c[8..12].SequenceEqual("WEBP"u8) ? "image/webp"
+        : (c.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]) ? c[3..] : c).TrimStart(" \t\r\n"u8).StartsWith("<"u8) ? Xml
+        : null;
 
     public Guid PurchaseId { get; set; }
     public string FileName { get; set; } = "";

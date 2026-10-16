@@ -99,13 +99,18 @@ begin
   Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL', 'SQLEXPRESS', Instance);
 end;
 
-{ R10 #8: a downloaded installer runs as administrator only with a valid Authenticode signature from Microsoft. }
+{ R10 #8: a downloaded installer runs as administrator only with a valid Authenticode signature (Status Valid: trusted chain, file untouched)
+  whose certificate names exactly O=Microsoft Corporation, as a whole part of the subject. }
 function SignedByMicrosoft(const FileName: String): Boolean;
 var
   Code: Integer;
+  Literal: String;
 begin
-  Result := Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "$s = Get-AuthenticodeSignature -LiteralPath ''' + FileName + '''; ' +
-    'if ($s.Status -eq ''Valid'' -and $s.SignerCertificate.Subject -match ''O=Microsoft Corporation'') { exit 0 } else { exit 1 }"',
+  { The path goes inside a single-quoted PowerShell string: a quote in it is doubled. }
+  Literal := FileName;
+  StringChangeEx(Literal, '''', '''''', True);
+  Result := Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -Command "$s = Get-AuthenticodeSignature -LiteralPath ''' + Literal + '''; ' +
+    'if ($s.Status -eq ''Valid'' -and $s.SignerCertificate.Subject -match ''(^|, )O=Microsoft Corporation(,|$)'') { exit 0 } else { exit 1 }"',
     '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
   if not Result then
     MsgBox('El archivo descargado ' + ExtractFileName(FileName) + ' no tiene una firma válida de Microsoft y no se ejecutó.' + #13#10 +
@@ -154,7 +159,13 @@ begin
   if FileExists(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe')) then
   begin
     if not SignedByMicrosoft(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe')) then begin Result := False; exit; end;
-    Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, Code);
+    if not Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    begin
+      MsgBox('El componente WebView2 de Microsoft, que usa la app de caja, no se instaló (código ' + IntToStr(Code) + ').' + #13#10 +
+        'Intente de nuevo; si se repite, llame al técnico.', mbCriticalError, MB_OK);
+      Result := False;
+      exit;
+    end;
   end;
 
   if FileExists(ExpandConstant('{tmp}\SQLServerExpressSetup.exe')) then
@@ -181,11 +192,28 @@ begin
   if IsServerRole then Exec('sc.exe', 'stop Toki', '', SW_HIDE, ewWaitUntilTerminated, Code);
 end;
 
+{ remove-data.ps1's exit code; -1 when PowerShell could not even start. }
+function RemoveData(const Params: String): Integer;
+var
+  Code: Integer;
+begin
+  if Exec('powershell.exe', Params, '', SW_HIDE, ewWaitUntilTerminated, Code) then Result := Code else Result := -1;
+end;
+
+procedure DataNotRemoved(Code: Integer);
+begin
+  if Code = 3 then
+    MsgBox('No se pudieron borrar todos los datos de Toki (la base de datos o la carpeta C:\ProgramData\Toki).' + #13#10 +
+      'Llame al técnico para terminar de borrarlos.', mbError, MB_OK)
+  else
+    MsgBox('No se pudieron borrar los datos de Toki (código ' + IntToStr(Code) + '). Llame al técnico.', mbError, MB_OK);
+end;
+
 { "Borrar datos": off by default. Without it the database and C:\ProgramData\Toki (sales, backups, license, keys) stay. }
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Code: Integer;
-  Script: String;
+  Script, Desktop, Saved: String;
 begin
   if (CurUninstallStep = usUninstall) and not UninstallSilent and
      FileExists(ExpandConstant('{app}\scripts\remove-data.ps1')) and
@@ -193,13 +221,25 @@ begin
              'Se borran la base de datos Toki, los respaldos, la licencia y las llaves de C:\ProgramData\Toki. No se puede deshacer.' + #13#10 +
              'Si va a reinstalar o mudarse a otra PC, responda No.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES) then
   begin
-    { R10 #9: the script first copies the last backup to the Desktop; exit 2 = no copy, nothing deleted. }
-    Script := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\scripts\remove-data.ps1') + '" -BackupTo "' + ExpandConstant('{userdesktop}') + '"';
-    Exec('powershell.exe', Script, '', SW_HIDE, ewWaitUntilTerminated, Code);
+    { R10 #9: the script first copies the last backup (from Backup:Folder in {app}\server's settings) to the Public Desktop, which stays
+      whoever signs in next; exit 2 = no copy, nothing deleted; exit 3 = something could not be deleted. }
+    Desktop := ExpandConstant('{commondesktop}');
+    Saved := AddBackslash(Desktop) + 'Toki - ultimo respaldo';
+    Script := '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\scripts\remove-data.ps1') + '" -BackupTo "' + Desktop + '"' +
+      ' -ServerDir "' + ExpandConstant('{app}\server') + '"';
+    Code := RemoveData(Script);
     if Code = 0 then
-      MsgBox('Datos borrados. El último respaldo quedó en el Escritorio, carpeta "Toki - ultimo respaldo". Se abre con la frase de los respaldos.', mbInformation, MB_OK)
-    else if (Code = 2) and (MsgBox('No hay un respaldo de Toki para guardar en el Escritorio, así que no se borró nada.' + #13#10 +
-             '¿Borrar los datos de todos modos, sin respaldo?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES) then
-      Exec('powershell.exe', Script + ' -NoFinalBackup', '', SW_HIDE, ewWaitUntilTerminated, Code);
+      MsgBox('Datos borrados. El último respaldo quedó en ' + Saved + '. Se abre con la frase de los respaldos.', mbInformation, MB_OK)
+    else if Code = 2 then
+    begin
+      if MsgBox('No hay un respaldo de Toki, o no se pudo copiar a ' + Saved + ', así que no se borró nada.' + #13#10 +
+                '¿Borrar los datos de todos modos, sin respaldo?', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      begin
+        Code := RemoveData(Script + ' -NoFinalBackup');
+        if Code = 0 then MsgBox('Datos borrados, sin respaldo.', mbInformation, MB_OK) else DataNotRemoved(Code);
+      end;
+    end
+    else
+      DataNotRemoved(Code);
   end;
 end;

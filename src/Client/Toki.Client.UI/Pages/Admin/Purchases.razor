@@ -367,10 +367,10 @@
             return;
         }
         f.Saved = true;
-        // TK-240: the original invoice goes with the purchase, once. The person picked it, so it replaces an earlier one (R10 #11).
+        // TK-240: the original invoice goes with the purchase, once. The person picked it, so it replaces an earlier one; the server takes its type from the bytes.
         if (f.Original is { } o)
         {
-            var attached = await Api.PutAsync<Empty>($"/api/purchasing/purchases/{f.Id}/attachment?replace=true",
+            var attached = await Api.PutAsync<Empty>($"/api/purchasing/purchases/{f.Id}/attachment",
                 new { File = Convert.ToBase64String(o.Content), o.ContentType, FileName = o.Name });
             if (attached.Problem is { } notAttached)
             {
