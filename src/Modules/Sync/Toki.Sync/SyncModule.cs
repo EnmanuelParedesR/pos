@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -47,7 +48,8 @@ internal sealed class CloudConnection
     public Guid TenantId { get; set; }
     public Guid StoreId { get; set; }
     public Guid NodeId { get; set; }
-    /// <summary>Protected for this machine with ASP.NET Core Data Protection (the key ring Settings sets up). The cloud keeps only its hash.</summary>
+    /// <summary>The node's credential, protected for this machine with ASP.NET Core Data Protection (the key ring Settings sets up): its private key
+    /// (<c>ecdsa:</c> + PKCS#8 in Base64, TK-241; the cloud keeps the public key) or, for a connection from before, the shared secret.</summary>
     public string NodeSecret { get; set; } = "";
     public string CloudUrl { get; set; } = "";
     public DateTime ConnectedUtc { get; set; }
@@ -82,9 +84,13 @@ internal static class SyncErrors
 }
 
 /// <summary>Calls the cloud as this node. Implements <see cref="ICloudClient"/> for other modules (the e-CF relay).</summary>
-internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDataProtectionProvider protection) : ICloudClient
+internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDataProtectionProvider protection, TimeProvider clock) : ICloudClient
 {
     public const string HttpClientName = "Toki.Cloud";
+    public const string KeyPrefix = "ecdsa:";
+
+    /// <summary>The cloud's clock minus this PC's, from the last answer's Date header: a shop PC whose clock is off still signs inside the window.</summary>
+    private static TimeSpan _skew;
 
     private IDataProtector Protector => protection.CreateProtector("Toki.Sync.NodeSecret");
 
@@ -104,9 +110,27 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
             throw new InvalidOperationException("La clave de la nube no se puede leer en esta PC: desconecte la tienda y conéctela con un código nuevo.", e);
         }
         using var request = new HttpRequestMessage(HttpMethod.Post, connection.CloudUrl + path) { Content = content };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Node", $"{connection.NodeId}.{secret}");
-        return await http.CreateClient(HttpClientName).SendAsync(request, ct);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Node", secret.StartsWith(KeyPrefix, StringComparison.Ordinal)
+            ? Sign(connection.NodeId, Convert.FromBase64String(secret[KeyPrefix.Length..]), "POST", path)
+            : $"{connection.NodeId}.{secret}");
+        var response = await http.CreateClient(HttpClientName).SendAsync(request, ct);
+        if (response.Headers.Date is { } cloudNow) _skew = cloudNow - clock.GetUtcNow();
+        return response;
     }
+
+    /// <summary>TK-241 (ADR-0008): <c>nodeId.unixSeconds.nonce.signature</c>, the signature over <c>nodeId.unixSeconds.nonce.METHOD /path</c>
+    /// (ECDSA P-256, SHA-256). Same text as the cloud's NodeSignature.</summary>
+    internal string Sign(Guid nodeId, byte[] pkcs8, string method, string path)
+    {
+        using var key = ECDsa.Create();
+        key.ImportPkcs8PrivateKey(pkcs8, out _);
+        var seconds = (clock.GetUtcNow() + _skew).ToUnixTimeSeconds();
+        var nonce = Base64Url(RandomNumberGenerator.GetBytes(16));
+        var signature = key.SignData(Encoding.UTF8.GetBytes($"{nodeId}.{seconds}.{nonce}.{method} {path}"), HashAlgorithmName.SHA256);
+        return $"{nodeId}.{seconds}.{nonce}.{Base64Url(signature)}";
+    }
+
+    private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 }
 
 public sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
@@ -134,9 +158,11 @@ internal static class ConnectToCloud
 {
     public sealed record Request(string? Code);
 
-    internal sealed record Registration(Guid TenantId, Guid StoreId, Guid NodeId, string NodeSecret);
+    /// <param name="NodeSecret">Only from a cloud from before TK-241 (or one still in its migration window that ignored the key).</param>
+    internal sealed record Registration(Guid TenantId, Guid StoreId, Guid NodeId, string? NodeSecret);
 
-    internal sealed record Command(string CloudUrl, Registration Registration) : ICommand<Ok>;
+    /// <param name="Credential">What <see cref="CloudConnection.NodeSecret"/> keeps (protected by the handler).</param>
+    internal sealed record Command(string CloudUrl, Registration Registration, string Credential) : ICommand<Ok>;
 
     public static async Task<Result<SyncStatus>> RunAsync(string? code, string? cloudUrl, SyncDbContext db, InfraDbContext infra, IHttpClientFactory http,
         ICommandHandler<Command, Ok> save, CancellationToken ct)
@@ -147,11 +173,12 @@ internal static class ConnectToCloud
         if (await db.Connections.AnyAsync(ct)) return SyncErrors.AlreadyConnected;
 
         cloudUrl = cloudUrl.Trim().TrimEnd('/');
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256); // the node key (TK-241): the private half never leaves this PC
         Registration? registration;
         try
         {
             using var response = await http.CreateClient(CloudClient.HttpClientName)
-                .PostAsJsonAsync($"{cloudUrl}/api/nodes/register", new { code, nodeName = Environment.MachineName }, ct);
+                .PostAsJsonAsync($"{cloudUrl}/api/nodes/register", new { code, nodeName = Environment.MachineName, publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }, ct);
             // 400/404 per ADR-0008; 409/410 too, in case the cloud tells a used or expired code apart.
             if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.Conflict or HttpStatusCode.Gone) return SyncErrors.InvalidCode;
             if (!response.IsSuccessStatusCode) return SyncErrors.CloudUnreachable;
@@ -161,9 +188,11 @@ internal static class ConnectToCloud
         {
             return SyncErrors.CloudUnreachable;
         }
-        if (registration is null || registration.NodeId == Guid.Empty || string.IsNullOrEmpty(registration.NodeSecret)) return SyncErrors.CloudUnreachable;
+        if (registration is null || registration.NodeId == Guid.Empty) return SyncErrors.CloudUnreachable;
+        // TK-241: the cloud keeps our public key and issues no secret; an older cloud still answers a secret, and then that is the credential.
+        var credential = string.IsNullOrEmpty(registration.NodeSecret) ? CloudClient.KeyPrefix + Convert.ToBase64String(key.ExportPkcs8PrivateKey()) : registration.NodeSecret;
 
-        var saved = await save.Handle(new Command(cloudUrl, registration), ct);
+        var saved = await save.Handle(new Command(cloudUrl, registration, credential), ct);
         if (saved.IsFailure) return saved.Error!;
         return await GetSyncStatus.RunAsync(db, infra, ct);
     }
@@ -178,7 +207,7 @@ internal static class ConnectToCloud
             var r = c.Registration;
             db.Connections.Add(new CloudConnection
             {
-                TenantId = r.TenantId, StoreId = r.StoreId, NodeId = r.NodeId, NodeSecret = cloud.Protect(r.NodeSecret), CloudUrl = c.CloudUrl,
+                TenantId = r.TenantId, StoreId = r.StoreId, NodeId = r.NodeId, NodeSecret = cloud.Protect(c.Credential), CloudUrl = c.CloudUrl,
                 ConnectedUtc = clock.GetUtcNow().UtcDateTime,
             });
             foreach (var snapshot in snapshots) await snapshot.EnqueueAsync(ct);
@@ -197,10 +226,23 @@ internal static class ConnectToCloud
 }
 
 /// <summary>Stops uploading. Pending events stay in the outbox and go up when the store connects again.</summary>
-/// <remarks>shortcut: the cloud is not told; the node stays registered there until the panel removes it. Add a call when the panel can list nodes.</remarks>
+/// <remarks>TK-241: the cloud is told first (the node is revoked there), outside the transaction. Without internet the store disconnects anyway;
+/// the node then stays listed in the panel's "Tiendas", where an Owner removes it.</remarks>
 internal static class DisconnectFromCloud
 {
     internal sealed record Command : ICommand<Ok>;
+
+    public static async Task TellCloudAsync(CloudClient cloud, CancellationToken ct)
+    {
+        if (await cloud.ConnectionAsync(ct) is not { } connection) return;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(TimeSpan.FromSeconds(10));
+            using var _ = await cloud.SendAsync(connection, "/api/nodes/revoke", new StringContent(""), timeout.Token);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or InvalidOperationException && !ct.IsCancellationRequested) { }
+    }
 
     internal sealed class Handler(SyncDbContext db, IAuditLog audit) : ICommandHandler<Command, Ok>
     {
@@ -217,8 +259,11 @@ internal static class DisconnectFromCloud
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/sync/disconnect", async (ICommandHandler<Command, Ok> h, CancellationToken ct) =>
-                    (await h.Handle(new Command(), ct)).ToHttp(_ => Results.NoContent()))
+            app.MapPost("/api/sync/disconnect", async (CloudClient cloud, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
+                {
+                    await TellCloudAsync(cloud, ct);
+                    return (await h.Handle(new Command(), ct)).ToHttp(_ => Results.NoContent());
+                })
                 .RequirePermission(Permissions.SettingsManage).WithTags("Sync");
     }
 }

@@ -20,9 +20,9 @@ public interface IEmailSender
     Task SendAsync(string to, string subject, string body, CancellationToken ct);
 }
 
-/// <summary>shortcut: no e-mail provider yet, so nothing is sent; the owner copies the invite link from the panel and hands it over (the dev and
-/// launch fallback of R8 #1: an account made from such a link is not marked e-mail-confirmed). TK-222: <see cref="AcsEmailSender"/> sends for real
-/// once <c>Email:Provider</c> is set. The body (it has the link) is logged only at Debug.</summary>
+/// <summary>When <c>Email:Provider</c> is not set (development, tests): nothing is sent; the owner copies the invite link from the panel and hands it
+/// over (R8 #1: an account made from such a link is not marked e-mail-confirmed). Production sends through <see cref="AcsEmailSender"/> (TK-241).
+/// The body (it has the link) is logged only at Debug.</summary>
 internal sealed class LoggingEmailSender(ILogger<LoggingEmailSender> log) : IEmailSender
 {
     public bool Delivers => false;

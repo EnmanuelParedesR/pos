@@ -31,9 +31,6 @@ internal static class PanelEndpoints
         panel.MapGet("/sales/by-cashier", (DateOnly? from, DateOnly? to, Guid? storeId, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
             Run(user, q, from, to, storeId, f => q.SalesByCashierAsync(f, ct)));
 
-        panel.MapGet("/sales/payment-mix", (DateOnly? from, DateOnly? to, Guid? storeId, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
-            Run(user, q, from, to, storeId, f => q.PaymentMixAsync(f, ct)));
-
         panel.MapGet("/shifts", (DateOnly? from, DateOnly? to, Guid? storeId, bool? onlyDifferences, ClaimsPrincipal user, PanelQueries q, CancellationToken ct) =>
             Run(user, q, from, to, storeId, f => q.ShiftsAsync(f, onlyDifferences ?? false, ct)));
 

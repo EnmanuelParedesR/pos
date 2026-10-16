@@ -85,17 +85,39 @@ public sealed class SyncConnectTests(TokiApp app) : IClassFixture<TokiApp>
 
         var row = await app.InScopeAsync(sp => sp.GetRequiredService<SyncDbContext>().Connections.AsNoTracking().SingleAsync());
         row.NodeId.ShouldBe(app.Cloud.NodeId);
-        row.NodeSecret.Contains(FakeCloud.NodeSecret, StringComparison.Ordinal).ShouldBeFalse();
-        (await app.InScopeAsync(sp => Task.FromResult(sp.GetRequiredService<IDataProtectionProvider>()
-            .CreateProtector("Toki.Sync.NodeSecret").Unprotect(row.NodeSecret)))).ShouldBe(FakeCloud.NodeSecret);
+        // TK-241: the cloud got only the public key; the private one is kept protected for this PC.
+        var credential = await UnprotectAsync(row.NodeSecret);
+        credential.ShouldStartWith("ecdsa:");
+        row.NodeSecret.Contains(credential["ecdsa:".Length..], StringComparison.Ordinal).ShouldBeFalse();
+        using (var key = System.Security.Cryptography.ECDsa.Create())
+        {
+            key.ImportPkcs8PrivateKey(Convert.FromBase64String(credential["ecdsa:".Length..]), out _);
+            key.ExportSubjectPublicKeyInfo().ShouldBe(app.Cloud.NodePublicKey);
+        }
 
         (await (await admin.PostAsJsonAsync("/api/sync/connect", new { Code = FakeCloud.ValidCode })).ErrorCode()).ShouldBe("Sync.AlreadyConnected");
 
+        // TK-241: disconnecting tells the cloud first (the node is revoked there), signed with the node key.
         (await admin.PostAsync("/api/sync/disconnect", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        app.Cloud.SignedByNode(app.Cloud.To("/api/nodes/revoke").Single()).ShouldBeTrue();
         (await app.StatusAsync()).GetProperty("connected").GetBoolean().ShouldBeFalse();
         (await app.InScopeAsync(sp => sp.GetRequiredService<SyncDbContext>().Connections.CountAsync())).ShouldBe(0);
+
+        // A cloud from before TK-241 answers a secret: that is the credential then. Without internet the store still disconnects.
+        app.Cloud.IssueSecret = true;
+        (await admin.PostAsJsonAsync("/api/sync/connect", new { Code = FakeCloud.ValidCode })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        row = await app.InScopeAsync(sp => sp.GetRequiredService<SyncDbContext>().Connections.AsNoTracking().SingleAsync());
+        (await UnprotectAsync(row.NodeSecret)).ShouldBe(FakeCloud.NodeSecret);
+        app.Cloud.Respond = _ => throw new HttpRequestException("sin internet");
+        (await admin.PostAsync("/api/sync/disconnect", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        app.Cloud.To("/api/nodes/revoke").Last().Authorization.ShouldBe($"Node {app.Cloud.NodeId}.{FakeCloud.NodeSecret}");
+        (await app.InScopeAsync(sp => sp.GetRequiredService<SyncDbContext>().Connections.CountAsync())).ShouldBe(0);
+        (app.Cloud.Respond, app.Cloud.IssueSecret) = (null, false);
         (await app.VerifyAuditAsync()).ShouldBeNull();
     }
+
+    private Task<string> UnprotectAsync(string protectedValue) => app.InScopeAsync(sp =>
+        Task.FromResult(sp.GetRequiredService<IDataProtectionProvider>().CreateProtector("Toki.Sync.NodeSecret").Unprotect(protectedValue)));
 
     [Fact]
     public async Task Only_who_manages_settings_sees_or_changes_the_cloud_connection()
@@ -164,7 +186,7 @@ public sealed class CloudUploadTests(TokiApp app) : IClassFixture<TokiApp>
         app.Cloud.Uploaded().ShouldBe(pending); // everything, once, in Sequence order
         var batches = app.Cloud.To(CloudUploader.IngestPath).ToList();
         batches.Select(b => b.Body.GetProperty("events").GetArrayLength()).ShouldAllBe(n => n <= CloudUploader.BatchSize);
-        batches.ShouldAllBe(b => b.Gzip && b.Authorization == $"Node {app.Cloud.NodeId}.{FakeCloud.NodeSecret}");
+        batches.ShouldAllBe(b => b.Gzip && app.Cloud.SignedByNode(b)); // TK-241: signed with the node key, no shared secret
         var first = batches[0].Body.GetProperty("events")[0];
         first.GetProperty("type").GetString().ShouldNotBeNullOrEmpty();
         first.GetProperty("aggregateId").GetGuid().ShouldNotBe(Guid.Empty);

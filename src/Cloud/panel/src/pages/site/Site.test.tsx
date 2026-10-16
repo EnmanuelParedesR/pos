@@ -74,5 +74,5 @@ it("TK-235: /certificacion lists everything the owner prepares before the first 
   const list = document.getElementById("preparacion")!;
   for (const item of preparation) expect(list.textContent).toContain(item);
   expect(list.textContent).toContain(".p12 o .pfx");
-  expect(list.textContent).toContain("Toki nunca te pide esa clave");
+  expect(list.textContent).toContain("Toki nunca le pide esa clave");
 });

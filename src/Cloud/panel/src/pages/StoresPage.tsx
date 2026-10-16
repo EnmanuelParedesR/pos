@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, useApi, type ConnectionCode, type Store, type StoreSyncStatus } from "../api";
 import { usePanel } from "../App";
 import { ago, isStale } from "../format";
-import { EmptyState, Icon, LoadError, Notice, PageHead, Skeleton } from "../ui";
+import { ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton } from "../ui";
 
 export function StoresPage() {
   const { reloadStores, canEdit } = usePanel();
@@ -124,6 +124,10 @@ function StoreCard({ store: s, canEdit, onPoll, onConnected }: { store: StoreSyn
               </span>
               <span style={{ flex: "1 1 auto", fontWeight: 600 }}>{n.name}</span>
               <SyncPill utc={n.lastSyncUtc} />
+              {/* TK-241: a replaced or lost PC stops sending; to use it again, connect it with a new code. */}
+              {canEdit && (
+                <ConfirmButton label="Quitar" danger confirm="Esa caja deja de enviar datos." onConfirm={() => api(`/api/panel/nodes/${n.nodeId}/revoke`, "POST").then(onConnected)} />
+              )}
             </li>
           ))}
         </ul>

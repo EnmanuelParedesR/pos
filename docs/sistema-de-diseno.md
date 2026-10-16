@@ -119,7 +119,7 @@ La caja se opera; la administración se **revisa**. Por eso la administración d
 
 **Reglas:** el número más importante es el más grande y siempre trae comparación; lo que hay que revisar va primero, con persona, monto, hora y una acción; las cifras se escriben como se dicen ("Faltaron RD$ 150.00 en Caja 2 · Yudelka Martínez · hoy, 12:48 p. m."); el rojo es solo para faltantes y errores; el modo oscuro (TK-183) redefine los mismos tokens bajo `:root[data-theme="dark"] .esc-admin`; `escuadra.js` (en el panel, `theme.ts`) pone `data-theme` en `<html>` según la elección del equipo (automático, claro u oscuro, guardada en `localStorage` con la clave `toki.theme`) o según `prefers-color-scheme`. Solo la administración se oscurece: la caja sigue clara. Los colores fijos (tooltip, fila al pasar, barra superior, borde de peligro) son tokens (`--tip-bg`, `--row-hover`, `--topbar-bg`, `--danger-line`).
 
-**Pendientes de backend (no se cambiaron contratos):** reporte de medios de pago por periodo en la tienda (hoy se suma desde cada Z, hasta 31 turnos); unidad (lb/unidad) en los más vendidos de la nube; ventas por hora en la tienda (para comparar "a esta hora" también en la PC); nombres de clientes en el fiado de la nube.
+**Pendientes de backend:** ninguno. Ya existen el reporte de medios de pago por periodo y el de ventas por hora en la tienda (`/api/reports/sales/by-payment-method`, `/by-hour`), la unidad en los más vendidos de la nube y los nombres de clientes en el fiado de la nube.
 
 ## Pendientes
 

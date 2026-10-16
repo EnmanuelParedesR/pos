@@ -1,6 +1,8 @@
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace Toki.IntegrationTests.Infra;
@@ -18,6 +20,12 @@ public sealed class FakeCloud : HttpMessageHandler
     public Guid NodeId { get; } = Guid.NewGuid();
 
     public List<Received> Requests { get; } = [];
+
+    /// <summary>TK-241: answer the register with a secret, as a cloud from before (the store then keeps the secret). Default: no secret, the key.</summary>
+    public bool IssueSecret { get; set; }
+
+    /// <summary>The public key the last register sent.</summary>
+    public byte[]? NodePublicKey { get; private set; }
 
     /// <summary>Takes over the answer for a path when it returns a response (or throws, like a network failure).</summary>
     public Func<string, HttpResponseMessage?>? Respond { get; set; }
@@ -48,8 +56,9 @@ public sealed class FakeCloud : HttpMessageHandler
         if (Respond?.Invoke(path) is { } custom) return custom;
         return path switch
         {
-            "/api/nodes/register" when body.GetProperty("code").GetString() == ValidCode =>
-                Json(new { tenantId = TenantId, storeId = StoreId, nodeId = NodeId, nodeSecret = NodeSecret }),
+            "/api/nodes/register" when body.GetProperty("code").GetString() == ValidCode && Register(body) =>
+                Json(new { tenantId = TenantId, storeId = StoreId, nodeId = NodeId, nodeSecret = IssueSecret ? NodeSecret : null }),
+            "/api/nodes/revoke" => new HttpResponseMessage(HttpStatusCode.NoContent),
             "/ingest/v1/events" =>
                 Json(new { accepted = body.GetProperty("events").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).Where(Accept).ToList() }),
             "/fiscal/v1/archive" => new HttpResponseMessage(HttpStatusCode.OK),
@@ -58,6 +67,23 @@ public sealed class FakeCloud : HttpMessageHandler
     }
 
     private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
+
+    private bool Register(JsonElement body)
+    {
+        NodePublicKey = body.TryGetProperty("publicKey", out var k) && k.GetString() is { } key ? Convert.FromBase64String(key) : null;
+        return true;
+    }
+
+    /// <summary>TK-241: the request carries <c>Node nodeId.seconds.nonce.signature</c>, signed with the key the register sent (the cloud's own check).</summary>
+    public bool SignedByNode(Received r)
+    {
+        if (r.Authorization?.Split(' ', '.') is not ["Node", var node, var seconds, var nonce, var signature] || node != NodeId.ToString() || NodePublicKey is null) return false;
+        using var key = ECDsa.Create();
+        key.ImportSubjectPublicKeyInfo(NodePublicKey, out _);
+        signature = signature.Replace('-', '+').Replace('_', '/');
+        var bytes = Convert.FromBase64String(signature.PadRight(signature.Length + (4 - signature.Length % 4) % 4, '='));
+        return key.VerifyData(Encoding.UTF8.GetBytes($"{node}.{seconds}.{nonce}.POST {r.Path}"), bytes, HashAlgorithmName.SHA256);
+    }
 
     public sealed record Received(string Origin, string Path, string? Authorization, bool Gzip, JsonElement Body);
 }

@@ -47,6 +47,12 @@ param emailEndpoint string = ''
 @description('TK-222: the verified sender of the ACS e-mail domain (DoNotReply@<domain>). Needed with emailEndpoint.')
 param emailSender string = ''
 
+@description('TK-241: name of that Communication Services resource in this resource group (created with az, see docs/despliegue-azure.md). The API gets "Communication and Email Service Owner" on it. Empty = no role.')
+param emailResourceName string = ''
+
+@description('TK-241: where the Azure Monitor alerts go (5xx, inbox failures, health check). Empty = the alerts exist but notify nobody.')
+param alertEmail string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var name = 'toki-${env}'
 var tags = { app: 'toki', env: env }
@@ -331,6 +337,111 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Email__Endpoint: emailEndpoint
     Email__Sender: emailSender
   })
+}
+
+// TK-241: the API e-mails through ACS with its managed identity.
+resource emailService 'Microsoft.Communication/communicationServices@2023-04-01' existing = if (!empty(emailResourceName)) {
+  name: empty(emailResourceName) ? 'none' : emailResourceName
+}
+
+resource apiSendsEmail 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(emailResourceName)) {
+  name: guid(resourceGroup().id, emailResourceName, api.id, '09976791-48a7-449e-bb21-39d1a415f350')
+  scope: emailService
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '09976791-48a7-449e-bb21-39d1a415f350')
+    principalId: api.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// TK-241: alerts. Only requests reach Application Insights (Serilog writes to the console), so the inbox alert reads the App Service console
+// logs, sent to the Log Analytics workspace here.
+resource apiConsoleLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: 'console-to-log-analytics'
+  scope: api
+  properties: {
+    workspaceId: logs.id
+    logs: [{ category: 'AppServiceConsoleLogs', enabled: true }]
+  }
+}
+
+resource alertGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(alertEmail)) {
+  name: 'ag-${name}'
+  location: 'global'
+  tags: tags
+  properties: {
+    groupShortName: 'toki-alerts'
+    enabled: true
+    emailReceivers: [{ name: 'owner', emailAddress: alertEmail, useCommonAlertSchema: true }]
+  }
+}
+
+var alertActions = empty(alertEmail) ? [] : [{ actionGroupId: alertGroup.id }]
+
+resource alert5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-${name}-5xx'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'The API answered more than 5 server errors (5xx) in 15 minutes.'
+    severity: 1
+    enabled: true
+    scopes: [api.id]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT15M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [{ name: 'http5xx', criterionType: 'StaticThresholdCriterion', metricName: 'Http5xx', operator: 'GreaterThan', threshold: 5, timeAggregation: 'Total' }]
+    }
+    actions: alertActions
+  }
+}
+
+resource alertHealth 'Microsoft.Insights/metricAlerts@2018-03-01' = {
+  name: 'alert-${name}-health'
+  location: 'global'
+  tags: tags
+  properties: {
+    description: 'The App Service health check (/health) is failing.'
+    severity: 1
+    enabled: true
+    scopes: [api.id]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT5M'
+    criteria: {
+      'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
+      allOf: [{ name: 'health', criterionType: 'StaticThresholdCriterion', metricName: 'HealthCheckStatus', operator: 'LessThan', threshold: 100, timeAggregation: 'Average' }]
+    }
+    actions: alertActions
+  }
+}
+
+// An event the inbox could not apply (it retries up to InboxApplier.MaxAttempts, then stays dead until a fix) or a failed applier run.
+resource alertInbox 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-${name}-inbox'
+  location: location
+  tags: tags
+  properties: {
+    description: 'Store events the cloud inbox could not apply (or a failed applier run). The panel shows them in Tiendas.'
+    severity: 2
+    enabled: true
+    scopes: [logs.id]
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: 'AppServiceConsoleLogs | where ResultDescription has "could not be applied" or ResultDescription has "Inbox applier run failed"'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: { numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1 }
+        }
+      ]
+    }
+    actions: { actionGroups: empty(alertEmail) ? [] : [alertGroup.id] }
+  }
+  dependsOn: [apiConsoleLogs]
 }
 
 output apiUrl string = 'https://${api.properties.defaultHostName}'

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -20,20 +21,29 @@ public static class CloudAuth
     /// <summary>TK-217: every panel write. A ReadOnly member gets 403.</summary>
     public const string OwnerPolicy = "PanelOwner";
     public const string RegisterNodeRateLimit = "register-node";
+    /// <summary>TK-241: the migration window. While true, nodes registered before TK-241 still sign in with their shared secret
+    /// (and a store PC that sends no key still gets one). Set <c>Nodes:AcceptSharedSecret</c> to false once every store has reconnected.</summary>
+    public const string AcceptSharedSecretSetting = "Nodes:AcceptSharedSecret";
 }
 
-public sealed record RegisterNodeRequest(string? Code, string? NodeName);
-public sealed record RegisterNodeResponse(Guid TenantId, Guid StoreId, Guid NodeId, string NodeSecret);
+/// <param name="PublicKey">TK-241: the node's ECDSA P-256 public key (SubjectPublicKeyInfo, Base64). With it, no secret is issued.</param>
+public sealed record RegisterNodeRequest(string? Code, string? NodeName, string? PublicKey = null);
+/// <param name="NodeSecret">Only for a node that sent no public key (before TK-241, and only while the migration window is open).</param>
+public sealed record RegisterNodeResponse(Guid TenantId, Guid StoreId, Guid NodeId, string? NodeSecret);
 
 internal static class NodeEndpoints
 {
-    public static void MapNodes(this IEndpointRouteBuilder app) =>
-        app.MapPost("/api/nodes/register", async (RegisterNodeRequest request, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
+    public static void MapNodes(this IEndpointRouteBuilder app)
+    {
+        app.MapPost("/api/nodes/register", async (RegisterNodeRequest request, CloudDbContext db, TimeProvider clock, IConfiguration config, CancellationToken ct) =>
         {
-            var invalid = Error.Validation("Nodes.InvalidCode", "El código no es válido o ya venció. Pide uno nuevo en el panel.");
+            var invalid = Error.Validation("Nodes.InvalidCode", "El código no es válido o ya venció. Pida uno nuevo en el panel.");
             var code = request.Code?.Trim() ?? "";
             var name = request.NodeName?.Trim() ?? "";
             if (code.Length != 8 || name.Length is 0 or > 100) return EndpointExtensions.Problem(invalid);
+            var publicKey = NodeSignature.PublicKey(request.PublicKey);
+            if (publicKey is null && (!string.IsNullOrEmpty(request.PublicKey) || !config.GetValue(CloudAuth.AcceptSharedSecretSetting, true)))
+                return EndpointExtensions.Problem(Error.Validation("Nodes.UpdateRequired", "Actualice Toki en la PC principal de la tienda y vuelva a conectarla."));
 
             var now = clock.GetUtcNow().UtcDateTime;
             var found = await db.ConnectionCodes.AsNoTracking()
@@ -43,23 +53,104 @@ internal static class NodeEndpoints
                     .ExecuteUpdateAsync(s => s.SetProperty(c => c.UsedUtc, now), ct) != 1)
                 return EndpointExtensions.Problem(invalid);
 
-            var secret = Base64Url(RandomNumberGenerator.GetBytes(32));
+            var secret = publicKey is null ? NodeSignature.Base64Url(RandomNumberGenerator.GetBytes(32)) : null;
             var node = new Node
             {
-                Id = Guid.CreateVersion7(), TenantId = found.TenantId, StoreId = found.StoreId, Name = name,
-                SecretHash = SHA256.HashData(Encoding.UTF8.GetBytes(secret)), CreatedUtc = now,
+                Id = Guid.CreateVersion7(), TenantId = found.TenantId, StoreId = found.StoreId, Name = name, PublicKey = publicKey,
+                SecretHash = secret is null ? [] : SHA256.HashData(Encoding.UTF8.GetBytes(secret)), CreatedUtc = now,
             };
             db.Nodes.Add(node);
             await db.SaveChangesAsync(ct);
             return Results.Ok(new RegisterNodeResponse(node.TenantId, node.StoreId, node.Id, secret));
         }).AllowAnonymous().RequireRateLimiting(CloudAuth.RegisterNodeRateLimit);
 
-    private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        // TK-241: the store disconnected; its credentials stop working here too.
+        app.MapPost("/api/nodes/revoke", async (ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
+        {
+            var nodeId = NodeIdentity.From(user).NodeId;
+            var now = clock.GetUtcNow().UtcDateTime;
+            await db.Nodes.Where(n => n.Id == nodeId && n.RevokedUtc == null).ExecuteUpdateAsync(s => s.SetProperty(n => n.RevokedUtc, now), ct);
+            return Results.NoContent();
+        }).RequireAuthorization(CloudAuth.NodePolicy);
+
+        // TK-241: an Owner removes a register from "Tiendas" (a PC that was replaced or lost).
+        app.MapPost("/api/panel/nodes/{nodeId:guid}/revoke", async (Guid nodeId, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
+        {
+            var tenant = user.GetTenantId();
+            var now = clock.GetUtcNow().UtcDateTime;
+            if (!await db.Nodes.AnyAsync(n => n.Id == nodeId && n.TenantId == tenant, ct))
+                return EndpointExtensions.Problem(Error.NotFound("Nodes.NotFound", "No encontramos esa caja."));
+            await db.Nodes.Where(n => n.Id == nodeId && n.TenantId == tenant && n.RevokedUtc == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(n => n.RevokedUtc, now), ct);
+            return Results.NoContent();
+        }).RequireAuthorization(CloudAuth.OwnerPolicy);
+    }
 }
 
-/// <summary><c>Authorization: Node &lt;nodeId&gt;.&lt;nodeSecret&gt;</c>. The tenant and store come from the node row, never from the body.</summary>
-/// <remarks>shortcut: a shared secret per node instead of a client certificate or private_key_jwt (ADR-0008); change it before a second paying customer.</remarks>
-internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, CloudDbContext db)
+/// <summary>TK-241: <c>Authorization: Node &lt;nodeId&gt;.&lt;unixSeconds&gt;.&lt;nonce&gt;.&lt;signature&gt;</c>, the signature (ECDSA P-256, SHA-256,
+/// IEEE P1363, Base64Url) over <c>nodeId.unixSeconds.nonce.METHOD /path?query</c> with the node's private key. Valid for
+/// <see cref="Window"/> either side of the cloud's clock and once only (the nonce). The store signs the same text (Toki.Sync CloudClient).</summary>
+public static class NodeSignature
+{
+    /// <summary>Wide on purpose: shop PCs' clocks drift; the store also corrects by the cloud's Date header.</summary>
+    public static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
+
+    public static string Payload(Guid nodeId, long unixSeconds, string nonce, string method, string pathAndQuery) =>
+        $"{nodeId}.{unixSeconds}.{nonce}.{method.ToUpperInvariant()} {pathAndQuery}";
+
+    /// <summary>The SubjectPublicKeyInfo of a P-256 key, or null.</summary>
+    public static byte[]? PublicKey(string? base64)
+    {
+        if (string.IsNullOrEmpty(base64) || base64.Length > 200) return null;
+        try
+        {
+            var bytes = Convert.FromBase64String(base64);
+            using var key = ECDsa.Create();
+            key.ImportSubjectPublicKeyInfo(bytes, out _);
+            return key.KeySize == 256 ? bytes : null;
+        }
+        catch (Exception e) when (e is FormatException or CryptographicException) { return null; }
+    }
+
+    public static bool Verify(byte[] publicKey, string payload, string signature)
+    {
+        try
+        {
+            using var key = ECDsa.Create();
+            key.ImportSubjectPublicKeyInfo(publicKey, out _);
+            return key.VerifyData(Encoding.UTF8.GetBytes(payload), FromBase64Url(signature), HashAlgorithmName.SHA256);
+        }
+        catch (Exception e) when (e is FormatException or CryptographicException) { return false; }
+    }
+
+    public static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+    private static byte[] FromBase64Url(string s)
+    {
+        s = s.Replace('-', '+').Replace('_', '/');
+        return Convert.FromBase64String(s.PadRight(s.Length + (4 - s.Length % 4) % 4, '='));
+    }
+}
+
+/// <summary>Nonces already used inside the signature window (replay protection).</summary>
+/// <remarks>shortcut: in memory, one App Service instance; move to the database or a cache service before scaling out to two instances.</remarks>
+public sealed class NodeNonces
+{
+    private readonly ConcurrentDictionary<string, DateTime> _seen = new();
+
+    public bool TryUse(string key, DateTime nowUtc)
+    {
+        if (_seen.Count > 10_000)
+            foreach (var (k, until) in _seen)
+                if (until < nowUtc) _seen.TryRemove(k, out _);
+        return _seen.TryAdd(key, nowUtc + 2 * NodeSignature.Window);
+    }
+}
+
+/// <summary>Node calls: signed with the node's key (<see cref="NodeSignature"/>), or <c>Node &lt;nodeId&gt;.&lt;nodeSecret&gt;</c> for a node from before
+/// TK-241 while <see cref="CloudAuth.AcceptSharedSecretSetting"/> is on (ADR-0008). The tenant and store come from the node row, never from the body.</summary>
+internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, CloudDbContext db,
+    TimeProvider clock, NodeNonces nonces, IConfiguration config)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -67,14 +158,12 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
         var header = Request.Headers.Authorization.ToString();
         if (!header.StartsWith(CloudAuth.NodeScheme + " ", StringComparison.Ordinal)) return AuthenticateResult.NoResult();
 
-        var value = header[(CloudAuth.NodeScheme.Length + 1)..].Trim();
-        var dot = value.IndexOf('.', StringComparison.Ordinal);
-        if (dot <= 0 || !Guid.TryParse(value[..dot], out var nodeId)) return AuthenticateResult.Fail("Malformed node credentials.");
+        var parts = header[(CloudAuth.NodeScheme.Length + 1)..].Trim().Split('.');
+        if (parts.Length is not (2 or 4) || !Guid.TryParse(parts[0], out var nodeId)) return AuthenticateResult.Fail("Malformed node credentials.");
 
         var node = await db.Nodes.AsNoTracking().SingleOrDefaultAsync(n => n.Id == nodeId, Context.RequestAborted);
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value[(dot + 1)..]));
-        if (node is null || !CryptographicOperations.FixedTimeEquals(hash, node.SecretHash)) return AuthenticateResult.Fail("Invalid node credentials.");
-        // TK-189: Toki staff revoked the node or disabled the tenant. The node keeps its events and retries; nothing is lost.
+        if (node is null || !(parts.Length == 2 ? SecretMatches(node, parts[1]) : SignatureMatches(node, parts))) return AuthenticateResult.Fail("Invalid node credentials.");
+        // TK-189: revoked or disabled. The node keeps its events and retries; nothing is lost.
         if (node.RevokedUtc is not null) return AuthenticateResult.Fail("Revoked node.");
         if (await db.Tenants.AnyAsync(t => t.Id == node.TenantId && t.DisabledUtc != null, Context.RequestAborted)) return AuthenticateResult.Fail("Disabled tenant.");
 
@@ -85,6 +174,20 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
             new Claim(TenantClaims.NodeId, node.Id.ToString()),
         ], CloudAuth.NodeScheme);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), CloudAuth.NodeScheme));
+    }
+
+    private bool SecretMatches(Node node, string secret) =>
+        config.GetValue(CloudAuth.AcceptSharedSecretSetting, true) && node.SecretHash.Length > 0
+        && CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(secret)), node.SecretHash);
+
+    private bool SignatureMatches(Node node, string[] parts)
+    {
+        var (nonce, signature) = (parts[2], parts[3]);
+        if (node.PublicKey is null || !long.TryParse(parts[1], out var seconds) || nonce.Length is < 16 or > 64) return false;
+        var now = clock.GetUtcNow();
+        if ((now - DateTimeOffset.FromUnixTimeSeconds(Math.Clamp(seconds, 0, 253_402_300_799))).Duration() > NodeSignature.Window) return false;
+        var payload = NodeSignature.Payload(node.Id, seconds, nonce, Request.Method, $"{Request.Path}{Request.QueryString}");
+        return NodeSignature.Verify(node.PublicKey, payload, signature) && nonces.TryUse($"{node.Id}.{nonce}", now.UtcDateTime);
     }
 }
 

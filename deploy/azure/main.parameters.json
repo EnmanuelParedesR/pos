@@ -12,6 +12,10 @@
     "openAiModelVersion": { "value": "2025-08-07" },
     "openAiApiVersion": { "value": "2025-04-01-preview" },
     "openAiDeploymentSku": { "value": "GlobalStandard" },
-    "openAiCapacity": { "value": 10 }
+    "openAiCapacity": { "value": 10 },
+    "emailEndpoint": { "value": "https://acs-toki-prod.unitedstates.communication.azure.com" },
+    "emailSender": { "value": "DoNotReply@b5097b41-7b79-41ea-92e5-b99f21c07125.azurecomm.net" },
+    "emailResourceName": { "value": "acs-toki-prod" },
+    "alertEmail": { "value": "" }
   }
 }

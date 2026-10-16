@@ -96,7 +96,7 @@ export function SiteLayout() {
           <nav aria-label="Pie de página">
             <Menu withPanel />
           </nav>
-          <p className="muted">La información sobre la DGII es orientativa y no sustituye la asesoría de tu contador ni lo que publique la DGII.</p>
+          <p className="muted">La información sobre la DGII es orientativa y no sustituye la asesoría de su contador ni lo que publique la DGII.</p>
           <div>
             <ThemeToggle className="btn btn--ghost btn--small" size={18} />
           </div>

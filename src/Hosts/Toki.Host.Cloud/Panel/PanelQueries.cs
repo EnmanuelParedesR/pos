@@ -200,7 +200,7 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
     public async Task<IReadOnlyList<StoreSyncStatus>> SyncStatusAsync(Guid tenantId, CancellationToken ct)
     {
         var stores = await db.Stores.AsNoTracking().Where(s => s.TenantId == tenantId).OrderBy(s => s.Name).ToListAsync(ct);
-        var nodes = await db.Nodes.AsNoTracking().Where(n => n.TenantId == tenantId).ToListAsync(ct);
+        var nodes = await db.Nodes.AsNoTracking().Where(n => n.TenantId == tenantId && n.RevokedUtc == null).ToListAsync(ct); // a removed register leaves the list
         var types = Projectors.ByType.Keys.ToList();
         var waiting = await db.Inbox.AsNoTracking().Where(i => i.TenantId == tenantId && i.AppliedUtc == null && types.Contains(i.Type))
             .GroupBy(i => new { i.StoreId, Failed = i.Attempts >= InboxApplier.MaxAttempts }).Select(g => new { g.Key.StoreId, g.Key.Failed, Count = g.Count() })
