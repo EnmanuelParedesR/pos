@@ -109,6 +109,18 @@ internal static class Projectors
                 Total = d.Total, Itbis = d.Itbis, IssuedUtc = e.OccurredUtc,
             });
         },
+        // TK-225: the newest progress by event time wins.
+        [Name<CertificationProgressedV1>()] = async (db, e, ct) =>
+        {
+            var c = Read<CertificationProgressedV1>(e);
+            var row = await db.Certifications.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.StoreId == e.StoreId, ct);
+            if (row is null) db.Certifications.Add(row = new ReplicaCertification { TenantId = e.TenantId, StoreId = e.StoreId });
+            else if (row.ChangedUtc > e.OccurredUtc) return;
+            var done = c.DoneSteps.Where(s => s >= 0 && s < c.TotalSteps).ToHashSet();
+            (row.TotalSteps, row.StepsDone, row.CurrentStep, row.Certified) =
+                (c.TotalSteps, done.Count, Enumerable.Range(0, c.TotalSteps).FirstOrDefault(s => !done.Contains(s), c.TotalSteps), done.Contains(c.TotalSteps - 1));
+            (row.StepSinceUtc, row.ChangedUtc) = (c.LastDoneUtc ?? e.OccurredUtc, e.OccurredUtc);
+        },
         [Name<UserProfileChangedV1>()] = async (db, e, ct) =>
         {
             var u = Read<UserProfileChangedV1>(e);
@@ -200,6 +212,8 @@ internal static class Projectors
                 (node.ActiveRegisters, node.OpenShifts, node.OutboxBacklog, node.LastErrorCode) = (h.ActiveRegisters, h.OpenShifts, h.OutboxBacklog, h.LastErrorCode is null ? null : Cut(h.LastErrorCode, 30));
                 (node.OnAccount, node.ScaleConfigured, node.PrinterConfigured, node.FiscalProvider) = (h.Features.OnAccount, h.Features.ScaleConfigured, h.Features.PrinterConfigured, Cut(h.Features.FiscalProvider, 30));
                 (node.BusinessNameSet, node.RncSet, node.ActiveProducts) = (h.Setup.BusinessNameSet, h.Setup.RncSet, h.Setup.ActiveProducts);
+                (node.RejectedWithoutReplacement, node.OldestPendingUtc, node.CertificateExpiresUtc) =
+                    (h.Fiscal?.RejectedWithoutReplacement, h.Fiscal?.OldestPendingUtc, h.Fiscal?.CertificateExpiresUtc);
             }
             foreach (var d in h.Days)
             {

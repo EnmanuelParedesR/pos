@@ -30,7 +30,7 @@ public sealed record StoreFeatures(bool OnAccount, bool? ScaleConfigured, bool? 
 /// <param name="ReportedSales">What the store's heartbeat counted for that day (null without heartbeat).</param>
 public sealed record PlatformStoreDay(DateOnly Day, int Sales, decimal Amount, int? ReportedSales, int? ActiveCashiers, int? Voids);
 public sealed record PlatformStoreDetail(Guid Id, Guid TenantId, string TenantName, string Name, DateTime CreatedUtc, SetupChecklist Checklist, StoreFeatures? Features,
-    IReadOnlyList<PlatformNode> Nodes, IReadOnlyList<PlatformStoreDay> Days);
+    IReadOnlyList<PlatformNode> Nodes, IReadOnlyList<PlatformStoreDay> Days, CertificationProgress? Certification);
 
 /// <summary>Cross-tenant reads for Toki staff (TK-189). Read-only; every call is audited by the endpoint filter.</summary>
 public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeProvider clock)
@@ -107,7 +107,9 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
                 firstSale is null ? null : BusinessDay.Of(firstSale.Value), heartbeat?.FiscalProvider),
             heartbeat is null ? null : new StoreFeatures(heartbeat.OnAccount, heartbeat.ScaleConfigured, heartbeat.PrinterConfigured, heartbeat.FiscalProvider,
                 heartbeat.ActiveRegisters, heartbeat.OpenShifts),
-            nodes, days);
+            nodes, days, await db.Certifications.AsNoTracking().SingleOrDefaultAsync(c => c.TenantId == store.TenantId && c.StoreId == storeId, ct) is { } cert
+                ? CertificationProgress.Of(cert, tenant.Name, store.Name, clock.GetUtcNow().UtcDateTime)
+                : null);
     }
 
     /// <summary>One snapshot of everything the product metrics read.</summary>
@@ -124,7 +126,8 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
         return new ProductMetrics(
             await db.Tenants.AsNoTracking().ToListAsync(ct), await db.Stores.AsNoTracking().ToListAsync(ct), await db.Nodes.AsNoTracking().ToListAsync(ct),
             [.. sales.Select(s => new SaleFact(s.TenantId, s.StoreId, DateOnly.FromDateTime(s.Day), s.Total, s.Count))],
-            await db.NodeHeartbeats.AsNoTracking().ToListAsync(ct), await db.DailyUsage.AsNoTracking().ToListAsync(ct), failed, clock.GetUtcNow().UtcDateTime);
+            await db.NodeHeartbeats.AsNoTracking().ToListAsync(ct), await db.DailyUsage.AsNoTracking().ToListAsync(ct), failed, clock.GetUtcNow().UtcDateTime,
+            await db.Certifications.AsNoTracking().ToListAsync(ct));
     }
 
     /// <summary>What the owner's panel would flag, plus cash shortages of the last 7 days.</summary>

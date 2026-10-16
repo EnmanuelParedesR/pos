@@ -338,23 +338,33 @@ internal static class CertificationStatus
     }
 }
 
-/// <summary>TK-155: the owner ticks a step of the certification portal as done (or not).</summary>
+/// <summary>TK-155: the owner ticks a step of the certification portal as done (or not). TK-225: the progress goes up to the cloud (Toki staff
+/// sees who is stuck; the owner gets an e-mail).</summary>
 internal static class MarkCertificationStep
 {
     public sealed record Body(bool Done);
 
+    public sealed record Command(int Step, bool Done) : ICommand<Ok>;
+
+    internal sealed class Handler(FiscalDbContext db, IOutbox outbox, TimeProvider clock) : ICommandHandler<Command, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
+        {
+            var steps = await db.Set<CertificationStep>().ToListAsync(ct);
+            var s = steps.Find(x => x.Step == c.Step);
+            if (s is null) db.Set<CertificationStep>().Add(s = new CertificationStep { Step = c.Step });
+            (s.Done, s.DoneUtc) = (c.Done, c.Done ? clock.GetUtcNow().UtcDateTime : null);
+            var done = steps.Append(s).Distinct().Where(x => x.Done).ToList();
+            outbox.Add(new CertificationProgressedV1([.. done.Select(x => x.Step).Order()], CertificationSteps.Count, done.Max(x => x.DoneUtc)));
+            return Ok.Value;
+        }
+    }
+
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPut("/api/fiscal/certification/steps/{step:int}", async (int step, Body body, FiscalDbContext db, TimeProvider clock, CancellationToken ct) =>
-                {
-                    if (step is < 0 or > 30) return Results.NotFound();
-                    var s = await db.Set<CertificationStep>().FindAsync([step], ct);
-                    if (s is null) db.Set<CertificationStep>().Add(s = new CertificationStep { Step = step });
-                    (s.Done, s.DoneUtc) = (body.Done, body.Done ? clock.GetUtcNow().UtcDateTime : null);
-                    await db.SaveChangesAsync(ct);
-                    return Results.NoContent();
-                })
+            app.MapPut("/api/fiscal/certification/steps/{step:int}", async (int step, Body body, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
+                    step is < 0 or > 30 ? Results.NotFound() : (await h.Handle(new Command(step, body.Done), ct)).ToHttp(_ => Results.NoContent()))
                 .RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");
     }
 }

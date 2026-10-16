@@ -145,6 +145,8 @@ internal static class UpdateProduct
             var priceChanges = p.Price != c.Price || p.WholesalePrice != c.WholesalePrice;
             if ((priceChanges || p.Plu != plu || p.ItbisRate != c.ItbisRate) && !user.Has(Permissions.PricesChange)) return InventoryErrors.NoPricePermission;
             if (priceChanges) outbox.Add(new PriceChangedV1(p.Id, p.Price, c.Price, p.WholesalePrice, c.WholesalePrice));
+            if (p.Name != c.Name.Trim() || p.CategoryId != c.CategoryId || p.Unit != c.Unit || p.IsActive != c.IsActive)
+                outbox.Add(new ProductChangedV1(p.Id, c.Name.Trim(), c.IsActive));
 
             var before = new { p.Name, p.Price, p.WholesalePrice, p.ItbisRate, p.Plu, p.IsActive };
             p.Name = c.Name.Trim();

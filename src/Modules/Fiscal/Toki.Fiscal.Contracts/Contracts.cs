@@ -60,6 +60,25 @@ public sealed record Report608Row(string Ncf, DateOnly DocumentDate, string Void
 public interface IFiscalReports
 {
     Task<IReadOnlyList<Report608Row>> Report608Async(DateOnly from, DateOnly to, CancellationToken ct);
+
+    /// <summary>TK-222: what the cloud e-mails the owner about (the heartbeat carries it).</summary>
+    Task<FiscalHealth> HealthAsync(CancellationToken ct);
+}
+
+/// <param name="RejectedWithoutReplacement">e-CF the DGII rejected in the last 30 days that have no replacement yet.</param>
+/// <param name="OldestPendingUtc">Signing time of the oldest e-CF not yet delivered to the DGII (the deadline is 72 h); null when none waits.</param>
+/// <param name="CertificateExpiresUtc">Expiry of the installed e-CF certificate; null without one.</param>
+public sealed record FiscalHealth(int RejectedWithoutReplacement, DateTime? OldestPendingUtc, DateTime? CertificateExpiresUtc);
+
+/// <summary>TK-225: the owner ticked (or unticked) a step of the DGII certification assistant (TK-155). The whole progress travels, so the newest
+/// event alone says where the store is. <paramref name="DoneSteps"/> are step indexes (0 = the first); the last step is the authorization.</summary>
+/// <param name="LastDoneUtc">When the newest step still ticked was ticked: since then the store is on the next one.</param>
+public sealed record CertificationProgressedV1(IReadOnlyList<int> DoneSteps, int TotalSteps, DateTime? LastDoneUtc) : IntegrationEvent(Guid.Empty);
+
+/// <summary>The steps of the DGII certification portal the store's assistant lists (EcfCertificationPanel.razor).</summary>
+public static class CertificationSteps
+{
+    public const int Count = 14;
 }
 
 /// <summary>The legend the receipt of an e-CF issued in contingency carries (Decreto 587-24; DGII "Representación Impresa").</summary>

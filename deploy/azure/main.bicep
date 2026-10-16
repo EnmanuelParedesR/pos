@@ -41,6 +41,12 @@ param openAiDeploymentSku string = 'GlobalStandard'
 @description('Thousands of tokens per minute for the deployment.')
 param openAiCapacity int = 10
 
+@description('TK-222, optional: the Azure Communication Services endpoint (https://<name>.communication.azure.com) the API e-mails through with its managed identity. Empty = no e-mail (the default).')
+param emailEndpoint string = ''
+
+@description('TK-222: the verified sender of the ACS e-mail domain (DoNotReply@<domain>). Needed with emailEndpoint.')
+param emailSender string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var name = 'toki-${env}'
 var tags = { app: 'toki', env: env }
@@ -303,7 +309,7 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: api
   name: 'appsettings'
   dependsOn: [apiReadsSecrets, apiWritesArchive, apiManagesCertificates, apiSignsWithKeys]
-  properties: {
+  properties: union({
     ASPNETCORE_ENVIRONMENT: 'Production'
     ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
     APPLICATIONINSIGHTS_CONNECTION_STRING: insights.properties.ConnectionString
@@ -319,7 +325,12 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Archive__Blob__Container: archiveContainer.name
     Fe__Vault: 'KeyVault'
     Fe__KeyVaultUri: vault.properties.vaultUri
-  }
+  }, empty(emailEndpoint) ? {} : {
+    // TK-222: alerts and invites by e-mail. Off (logged only) until both params are set; see docs/despliegue-azure.md.
+    Email__Provider: 'AzureCommunicationServices'
+    Email__Endpoint: emailEndpoint
+    Email__Sender: emailSender
+  })
 }
 
 output apiUrl string = 'https://${api.properties.defaultHostName}'

@@ -36,12 +36,30 @@ public sealed class InboxApplier(IServiceScopeFactory scopes, TimeProvider clock
                     .Where(i => i.Sequence > after && i.AppliedUtc == null && i.Attempts < MaxAttempts && types.Contains(i.Type))
                     .OrderBy(i => i.Sequence).Select(i => i.Sequence).Take(100).ToListAsync(ct);
             }
-            if (batch.Count == 0) return applied;
+            if (batch.Count == 0)
+            {
+                if (applied > 0) await AlertAsync(ct);
+                return applied;
+            }
             foreach (var sequence in batch)
             {
                 if (await ApplyAsync(sequence, ct)) applied++;
                 after = sequence;
             }
+        }
+    }
+
+    /// <summary>TK-222: the alerts look at what just arrived, while the database is awake anyway. A failure never stops the applier.</summary>
+    private async Task AlertAsync(CancellationToken ct)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<Alerts.AlertNotifier>().RunAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            log.LogWarning(ex, "The alerts run failed");
         }
     }
 

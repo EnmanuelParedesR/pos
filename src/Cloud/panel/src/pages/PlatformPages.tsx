@@ -4,6 +4,7 @@ import {
   api,
   roleNames,
   useApi,
+  type CertificationProgress,
   type DailyActivity,
   type FunnelStage,
   type MetricsOverview,
@@ -24,6 +25,7 @@ export const stageNames: Record<FunnelStage, string> = {
   connected: "Caja conectada",
   firstSale: "Primera venta",
   sevenDays: "7 días con ventas",
+  certified: "Certificado DGII",
 };
 
 const featureNames: Record<string, string> = {
@@ -185,12 +187,60 @@ export function PlatformMetricsPage() {
                 </ul>
               )}
             </Card>
+
+            <Card title="Certificación DGII" aside={`${o.certification.filter((c) => c.stuck).length} detenidas`} className="esc-span-12">
+              <Certification rows={o.certification} />
+            </Card>
           </div>
         </>
       )}
     </>
   );
 }
+
+/** TK-225: each store in the DGII certification (from the store's assistant), stuck ones first. */
+function Certification({ rows }: { rows: CertificationProgress[] }) {
+  if (rows.length === 0)
+    return (
+      <EmptyState icon="shield" title="Ninguna tienda en certificación">
+        Aparecen cuando una tienda marca su primer paso en el asistente de certificación.
+      </EmptyState>
+    );
+  return (
+    <div className="esc-table-wrap">
+      <table className="esc-table">
+        <thead>
+          <tr>
+            <th>Tienda</th>
+            <th>Paso</th>
+            <th className="esc-num">Días en el paso</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((c) => (
+            <tr key={c.storeId}>
+              <td>
+                <Link to={`/platform/stores/${c.storeId}`}>{c.storeName}</Link>
+                <span className="esc-table__sub">{c.tenantName}</span>
+              </td>
+              <td>{stepLabel(c)}</td>
+              <td className="esc-num">{c.certified ? "—" : count(c.daysInStep)}</td>
+              <td>
+                <span className={`esc-pill esc-pill--${c.certified ? "success" : c.stuck ? "warning" : "neutral"}`}>
+                  {c.certified ? "Certificada" : c.stuck ? "Detenida" : "Avanzando"}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+const stepLabel = (c: CertificationProgress) =>
+  c.certified ? "Completa" : `${Math.min(c.currentStep + 1, c.totalSteps)} de ${c.totalSteps} (${c.stepsDone} ${c.stepsDone === 1 ? "listo" : "listos"})`;
 
 function Kv({ label, value, warn = false }: { label: string; value: ReactNode; warn?: boolean }) {
   return (
@@ -308,7 +358,7 @@ export function PlatformTenantsPage() {
 }
 
 function StagePill({ stage }: { stage: FunnelStage }) {
-  const kind = stage === "sevenDays" ? "success" : stage === "firstSale" ? "brand" : "neutral";
+  const kind = stage === "sevenDays" || stage === "certified" ? "success" : stage === "firstSale" ? "brand" : "neutral";
   return <span className={`esc-pill esc-pill--${kind}`}>{stageNames[stage]}</span>;
 }
 
@@ -532,6 +582,17 @@ export function PlatformStorePage() {
               <p className="esc-muted">Cuando la caja envíe su latido (cada hora) aparecen aquí sus funciones.</p>
             )}
           </Card>
+
+          {s.certification && (
+            <Card title="Certificación DGII" className="esc-span-12">
+              <ul className="platform-kv">
+                <Kv label="Paso" value={stepLabel(s.certification)} />
+                {!s.certification.certified && (
+                  <Kv label="En este paso desde" value={`${dayName(s.certification.stepSinceUtc.slice(0, 10))} (${count(s.certification.daysInStep)} días)`} warn={s.certification.stuck} />
+                )}
+              </ul>
+            </Card>
+          )}
 
           <Card title="Cajas (PC principal)" className="esc-span-12">
             <Nodes nodes={s.nodes} onChange={reload} />

@@ -290,7 +290,21 @@ export interface StoreSyncStatus {
 
 // Plataforma (Toki staff, TK-189 / TK-190): /api/platform/*.
 
-export type FunnelStage = "account" | "store" | "connected" | "firstSale" | "sevenDays";
+export type FunnelStage = "account" | "store" | "connected" | "firstSale" | "sevenDays" | "certified";
+/** TK-225: a store in the DGII certification. `currentStep` is 0-based (`totalSteps` when every step is ticked); `stuck`: 14 days or more on one step. */
+export interface CertificationProgress {
+  tenantId: string;
+  tenantName: string;
+  storeId: string;
+  storeName: string;
+  currentStep: number;
+  totalSteps: number;
+  stepsDone: number;
+  certified: boolean;
+  stepSinceUtc: string;
+  daysInStep: number;
+  stuck: boolean;
+}
 export interface PlatformTenant {
   id: string;
   name: string;
@@ -369,6 +383,7 @@ export interface PlatformStoreDetail {
   features: { onAccount: boolean; scaleConfigured: boolean | null; printerConfigured: boolean | null; fiscalProvider: string; activeRegisters: number; openShifts: number } | null;
   nodes: PlatformNode[];
   days: { day: string; sales: number; amount: number; reportedSales: number | null; activeCashiers: number | null; voids: number | null }[];
+  certification: CertificationProgress | null;
 }
 export interface MetricsOverview {
   today: string;
@@ -385,6 +400,39 @@ export interface MetricsOverview {
   features: { feature: string; stores: number; reporting: number }[];
   health: { nodes: number; staleNodes: number; nodesWithErrors: number; nodesWithBacklog: number; failedEvents: number; versions: { version: string; nodes: number }[] };
   churn: { tenantId: string; tenantName: string; storeId: string; storeName: string; kind: "NoSales" | "Disconnected"; lastSaleDay: string | null; lastSyncUtc: string | null }[];
+  certification: CertificationProgress[];
 }
 export interface DailyActivity { day: string; activeStores: number; sales: number; amount: number }
 export interface RetentionCohort { week: string; tenants: number; activeByWeek: number[] }
+
+/** TK-222: the member's own e-mail alerts. `emailDelivers` false: the cloud has no e-mail provider yet, nothing goes out. */
+export interface AlertPreferences {
+  email: string | null;
+  dgiiRejected: boolean;
+  certificateExpiring: boolean;
+  queueStale: boolean;
+  certificationProgress: boolean;
+  unsubscribed: boolean;
+  emailDelivers: boolean;
+}
+export type AlertChoice = Pick<AlertPreferences, "dgiiRejected" | "certificateExpiring" | "queueStale" | "certificationProgress">;
+
+/** TK-154: an e-CF a supplier sent to the business. `approval`: the commercial approval, null while none. */
+export interface ReceivedEcf {
+  id: number;
+  environment: string;
+  issuerRnc: string;
+  issuerName: string;
+  eNcf: string;
+  type: number;
+  issuedOn: string;
+  total: number;
+  itbis: number;
+  receivedUtc: string;
+  approval: "Approved" | "Rejected" | null;
+  approvalReason: string | null;
+  approvalUtc: string | null;
+  approvalDeliveredUtc: string | null;
+  approvalDgiiUtc: string | null;
+  approvalMessage: string | null;
+}

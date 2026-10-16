@@ -183,7 +183,8 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
     [Fact]
     public void Every_panel_write_endpoint_requires_an_owner()
     {
-        string[] readOnlyAllowed = ["POST /api/assistant/ask", "POST /api/me/tenant"];
+        // TK-222: every member chooses their own e-mail alerts.
+        string[] readOnlyAllowed = ["POST /api/assistant/ask", "POST /api/me/tenant", "PUT /api/notifications/"];
         var endpoints = app.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
             .Select(e => (
                 Name: $"{string.Join(",", e.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods ?? [])} /{e.RoutePattern.RawText?.TrimStart('/')}",
@@ -308,11 +309,11 @@ public sealed class RecordingEmailSender : IEmailSender
 {
     public bool Delivers => true;
 
-    public List<(string To, string Body)> Sent { get; } = [];
+    public List<(string To, string Subject, string Body)> Sent { get; } = [];
 
     public Task SendAsync(string to, string subject, string body, CancellationToken ct)
     {
-        lock (Sent) Sent.Add((to, body));
+        lock (Sent) Sent.Add((to, subject, body));
         return Task.CompletedTask;
     }
 }

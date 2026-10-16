@@ -28,10 +28,15 @@ const overview: MetricsOverview = {
     { stage: "connected", tenants: 9 },
     { stage: "firstSale", tenants: 8 },
     { stage: "sevenDays", tenants: 6 },
+    { stage: "certified", tenants: 1 },
   ],
   features: [{ feature: "onAccount", stores: 5, reporting: 8 }],
   health: { nodes: 9, staleNodes: 2, nodesWithErrors: 1, nodesWithBacklog: 0, failedEvents: 0, versions: [{ version: "1.4.0", nodes: 7 }] },
   churn: [{ tenantId: "t1", tenantName: "colmado@example.com", storeId: "s1", storeName: "Colmado La Fe", kind: "NoSales", lastSaleDay: "2026-10-01", lastSyncUtc: null }],
+  certification: [
+    { tenantId: "t2", tenantName: "parado@example.com", storeId: "s2", storeName: "Colmado Parado", currentStep: 3, totalSteps: 14, stepsDone: 3, certified: false, stepSinceUtc: "2026-09-20T12:00:00Z", daysInStep: 25, stuck: true },
+    { tenantId: "t3", tenantName: "listo@example.com", storeId: "s3", storeName: "Súper Listo", currentStep: 14, totalSteps: 14, stepsDone: 14, certified: true, stepSinceUtc: "2026-10-10T12:00:00Z", daysInStep: 5, stuck: false },
+  ],
 };
 
 /** The whole app signed in as `me`, at `path`. */
@@ -82,5 +87,11 @@ it("TK-189 / TK-190: Toki staff get the Plataforma area with the metrics dashboa
   expect(within(funnel).getByText("50 %")).toBeTruthy(); // 6 of 12 accounts
   expect(screen.getByText("Colmado La Fe: dejó de vender")).toBeTruthy();
   expect(screen.getByText("5 de 8")).toBeTruthy(); // fiado
+  // TK-225: the certification, stuck stores first.
+  const certification = screen.getByText("Colmado Parado").closest("tr")!;
+  expect(within(certification).getByText("4 de 14 (3 listos)")).toBeTruthy();
+  expect(within(certification).getByText("Detenida")).toBeTruthy();
+  expect(within(screen.getByText("Súper Listo").closest("tr")!).getByText("Certificada")).toBeTruthy();
+  expect(within(funnel).getByText("Certificado DGII")).toBeTruthy();
   expect(screen.queryByPlaceholderText(/Pregúntale a Toki/)).toBeNull(); // the owner's assistant is not for staff pages
 });

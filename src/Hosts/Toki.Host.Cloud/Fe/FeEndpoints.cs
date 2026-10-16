@@ -32,6 +32,11 @@ public sealed record FeReceivedItem(long Id, string Environment, string IssuerRn
     decimal Itbis, DateTime ReceivedUtc, string XmlGzip, string? Approval, string? ApprovalReason, DateTime? ApprovalUtc, DateTime? ApprovalDeliveredUtc,
     DateTime? ApprovalDgiiUtc, string? ApprovalMessage);
 
+/// <summary>A received e-CF as the panel lists it (no XML).</summary>
+public sealed record FePanelReceived(long Id, string Environment, string IssuerRnc, string IssuerName, string ENcf, int Type, DateOnly IssuedOn, decimal Total,
+    decimal Itbis, DateTime ReceivedUtc, string? Approval, string? ApprovalReason, DateTime? ApprovalUtc, DateTime? ApprovalDeliveredUtc, DateTime? ApprovalDgiiUtc,
+    string? ApprovalMessage);
+
 public sealed record FePullRequest(long? After);
 
 public sealed record FeApprovalRequest(bool? Approve, string? Reason);
@@ -148,15 +153,15 @@ internal static class FeServices
             return Results.Ok(new { items = items.Select(Item) });
         });
 
-        store.MapPost("/received/{id:long}/approval", ApproveAsync);
+        store.MapPost("/received/{id:long}/approval", (long id, FeApprovalRequest r, ClaimsPrincipal user, CloudDbContext db, FeSigner signer, FeOutbound outbound,
+            TimeProvider clock, ILoggerFactory logs, CancellationToken ct) => ApproveAsync(NodeIdentity.From(user).TenantId, id, r, db, signer, outbound, clock, logs, ct));
     }
 
-    /// <summary>TK-154: the owner's commercial approval (or rejection) of a received e-CF. Signed once in the cloud (ACECF, XSD-checked), then sent to the
-    /// supplier and to the DGII; calling again retries only what has not gone yet. The decision cannot change once signed.</summary>
-    private static async Task<IResult> ApproveAsync(long id, FeApprovalRequest r, ClaimsPrincipal user, CloudDbContext db, FeSigner signer, FeOutbound outbound,
+    /// <summary>TK-154: the owner's commercial approval (or rejection) of a received e-CF, from the store or the panel. Signed once in the cloud (ACECF,
+    /// XSD-checked), then sent to the supplier and to the DGII; calling again retries only what has not gone yet. The decision cannot change once signed.</summary>
+    private static async Task<IResult> ApproveAsync(Guid tenant, long id, FeApprovalRequest r, CloudDbContext db, FeSigner signer, FeOutbound outbound,
         TimeProvider clock, ILoggerFactory logs, CancellationToken ct)
     {
-        var tenant = NodeIdentity.From(user).TenantId;
         var doc = await db.FeReceived.SingleOrDefaultAsync(d => d.Id == id && d.TenantId == tenant, ct);
         if (doc is null) return EndpointExtensions.Problem(FeErrors.NotFound);
         var certificate = await db.FeCertificates.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == tenant && c.RevokedUtc == null, ct);
@@ -242,6 +247,27 @@ internal static class FeServices
                 clock.GetUtcNow().UtcDateTime, ct);
             return Results.NoContent();
         }).RequireAuthorization(CloudAuth.OwnerPolicy).WithTags("Fe");
+
+        // TK-154: the e-CF suppliers sent, newest first; every member sees them, only an Owner approves or rejects.
+        app.MapGet("/api/panel/fe/received", async (ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
+        {
+            var tenant = user.GetTenantId();
+            return Results.Ok(await db.FeReceived.AsNoTracking().Where(d => d.TenantId == tenant).OrderByDescending(d => d.Id).Take(200)
+                .Select(d => new FePanelReceived(d.Id, d.Environment, d.IssuerRnc, d.IssuerName, d.ENcf, d.Type, d.IssuedOn, d.Total, d.Itbis, d.ReceivedUtc,
+                    d.Approval, d.ApprovalReason, d.ApprovalUtc, d.ApprovalDeliveredUtc, d.ApprovalDgiiUtc, d.ApprovalMessage)).ToListAsync(ct));
+        }).RequireAuthorization(CloudAuth.PanelPolicy).WithTags("Fe");
+
+        app.MapGet("/api/panel/fe/received/{id:long}/xml", async (long id, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
+        {
+            var tenant = user.GetTenantId();
+            var xml = await db.FeReceived.AsNoTracking().Where(d => d.Id == id && d.TenantId == tenant).Select(d => d.XmlGzip).SingleOrDefaultAsync(ct);
+            return xml is null ? EndpointExtensions.Problem(FeErrors.NotFound) : Results.Ok(new { xml = FeXml.Unzip(xml) });
+        }).RequireAuthorization(CloudAuth.PanelPolicy).WithTags("Fe");
+
+        // shortcut: the store learns of a decision taken here only when it tries one itself (the same one is accepted again, another is refused).
+        app.MapPost("/api/panel/fe/received/{id:long}/approval", (long id, FeApprovalRequest r, ClaimsPrincipal user, CloudDbContext db, FeSigner signer,
+            FeOutbound outbound, TimeProvider clock, ILoggerFactory logs, CancellationToken ct) => ApproveAsync(user.GetTenantId(), id, r, db, signer, outbound, clock, logs, ct))
+            .RequireAuthorization(CloudAuth.PanelPolicy).RequireAuthorization(CloudAuth.OwnerPolicy).WithTags("Fe");
     }
 
     /// <summary>Withdraws the tenant's consent: marked first (the signer and the receiver stop at once), then the key is deleted from the vault.</summary>

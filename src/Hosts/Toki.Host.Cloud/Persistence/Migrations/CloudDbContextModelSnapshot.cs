@@ -156,6 +156,69 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("AspNetUserTokens", "cloud");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Alerts.AlertPreference", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("CertificateExpiring")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("CertificationProgress")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("DgiiRejected")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("QueueStale")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("UnsubscribeToken")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<bool>("Unsubscribed")
+                        .HasColumnType("bit");
+
+                    b.HasKey("TenantId", "UserId");
+
+                    b.HasIndex("UnsubscribeToken")
+                        .IsUnique();
+
+                    b.ToTable("AlertPreferences", "cloud");
+                });
+
+            modelBuilder.Entity("Toki.Host.Cloud.Alerts.SentAlert", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<int>("Recipients")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SentUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("TenantId", "StoreId", "Kind", "Day");
+
+                    b.ToTable("SentAlerts", "cloud");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Catalog.ReplicaCatalogItem", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -848,6 +911,37 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.ToTable("CashMovements", "replica");
                 });
 
+            modelBuilder.Entity("Toki.Host.Cloud.Persistence.ReplicaCertification", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("StoreId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Certified")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("ChangedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("CurrentStep")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("StepSinceUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("StepsDone")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TotalSteps")
+                        .HasColumnType("int");
+
+                    b.HasKey("TenantId", "StoreId");
+
+                    b.ToTable("Certifications", "replica");
+                });
+
             modelBuilder.Entity("Toki.Host.Cloud.Persistence.ReplicaClosedShift", b =>
                 {
                     b.Property<Guid>("TenantId")
@@ -1078,6 +1172,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.Property<bool>("BusinessNameSet")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("CertificateExpiresUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("FiscalProvider")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -1086,6 +1183,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
                     b.Property<string>("LastErrorCode")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTime?>("OldestPendingUtc")
+                        .HasColumnType("datetime2");
 
                     b.Property<bool>("OnAccount")
                         .HasColumnType("bit");
@@ -1103,6 +1203,9 @@ namespace Toki.Host.Cloud.Persistence.Migrations
 
                     b.Property<bool?>("PrinterConfigured")
                         .HasColumnType("bit");
+
+                    b.Property<int?>("RejectedWithoutReplacement")
+                        .HasColumnType("int");
 
                     b.Property<bool>("RncSet")
                         .HasColumnType("bit");
