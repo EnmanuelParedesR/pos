@@ -215,6 +215,33 @@ internal static class PurchasingErrors
         $"El ITBIS o el total de la factura difiere en más de RD$ {Purchase.InvoiceTolerance:N0} de lo calculado. Revise cantidades y costos.");
     public static readonly Error PaymentNotFound = Error.NotFound("Purchasing.PaymentNotFound", "El pago no existe.");
     public static readonly Error ExpenseNotFound = Error.NotFound("Purchasing.ExpenseNotFound", "El gasto no existe.");
+
+    public const string NcfNotValidAtDgiiCode = "Purchasing.NcfNotValidAtDgii";
+
+    public static Error NcfNotValidAtDgii(Fiscal.Contracts.NcfCheck check) => Error.Validation(NcfNotValidAtDgiiCode,
+        "NCF no válido según la DGII: " + (check.Validity == Fiscal.Contracts.NcfValidity.Expired
+            ? $"esa secuencia venció el {check.ValidUntil:dd/MM/yyyy}, antes de la fecha de la factura."
+            : "no corresponde a este suplidor o no existe.")
+        + " Revíselo con el suplidor o, si está seguro, escriba el motivo para guardarlo de todas formas.");
+}
+
+/// <summary>TK-252: a supplier NCF is asked to the DGII before it is saved. Refused only on a clear DGII answer; the person may still save it with a
+/// reason, which goes to the audit log. A DGII that does not answer never stops a purchase.</summary>
+internal static class DgiiNcfCheck
+{
+    public const int MaxReason = 200;
+
+    /// <summary>Null when it may be saved.</summary>
+    public static async Task<Error?> RefuseAsync(Fiscal.Contracts.IDgiiPublicLookup dgii, BuildingBlocks.Persistence.IAuditLog audit, string rnc, string ncf,
+        DateOnly invoiceDate, string? overrideReason, string resourceType, Guid resourceId, CancellationToken ct)
+    {
+        var check = await dgii.NcfAsync(rnc, ncf, ct);
+        if (!check.RefusedOn(invoiceDate)) return null;
+        if (string.IsNullOrWhiteSpace(overrideReason)) return PurchasingErrors.NcfNotValidAtDgii(check);
+        await audit.RecordAsync("purchasing.ncf-not-valid-at-dgii", resourceType, resourceId,
+            new { Rnc = rnc, Ncf = ncf, Validity = check.Validity.ToString(), check.ValidUntil, Reason = overrideReason.Trim() }, ct);
+        return null;
+    }
 }
 
 /// <summary>Invoice and payment dates: required, and never later than tomorrow (a typo in the year would break statements and aging).</summary>

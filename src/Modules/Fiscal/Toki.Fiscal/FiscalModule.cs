@@ -52,6 +52,14 @@ public static class FiscalModule
         services.AddScoped<EcfSubmissionQueue>();
         services.AddScoped<IRestoreGuard, FiscalRestoreGuard>();
         services.AddSingleton<Features.TaxpayerImport>();
+        // TK-252: the DGII public pages, with an honest User-Agent and short timeouts; the cookies of each lookup travel by hand.
+        services.AddHttpClient(Features.DgiiPublicSite.HttpClientName, c =>
+            {
+                c.Timeout = TimeSpan.FromSeconds(config.GetValue("Fiscal:DgiiPublic:TimeoutSeconds", 6));
+                c.DefaultRequestHeaders.UserAgent.ParseAdd($"TokiPOS/{typeof(FiscalModule).Assembly.GetName().Version?.ToString(3) ?? "1.0.0"} (+https://github.com/EnmanuelParedesR/pos)");
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { UseCookies = false, AllowAutoRedirect = false });
+        services.AddSingleton<IDgiiPublicLookup, Features.DgiiPublicSite>();
         services.AddHostedService<EcfSubmissionWorker>();
         EcfExchange.Register(services); // TK-153/154: 31 deliveries to buyers and received e-CF
         services.AddHealthChecks().AddCheck<EcfQueueHealthCheck>("ecf-queue");

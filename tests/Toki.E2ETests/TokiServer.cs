@@ -62,6 +62,7 @@ public sealed class TokiServer : IAsyncDisposable
             ["Database__ConnectionString"] = connectionString,
             ["Database__CreateOnStartup"] = "true",
             ["Serilog__MinimumLevel__Default"] = "Warning",
+            ["Fiscal__DgiiPublic__Enabled"] = "false", // TK-252: never the real DGII pages from a test
             ["License__File"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_license_{Guid.NewGuid():N}.jws"),
             ["Backup__Folder"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_backups_{Guid.NewGuid():N}"),
             ["Toki__KeysFolder"] = Path.Combine(Path.GetTempPath(), $"toki_e2e_keys_{Guid.NewGuid():N}"),

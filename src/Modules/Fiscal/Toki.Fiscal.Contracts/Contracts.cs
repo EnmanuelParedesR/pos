@@ -107,6 +107,41 @@ public interface ITaxpayerRegistry
     Task<string?> NameAsync(string rnc, CancellationToken ct);
 }
 
+/// <summary>TK-252: a taxpayer as the DGII public consultation shows it today.</summary>
+/// <param name="Status">As the DGII writes it: ACTIVO, SUSPENDIDO, DADO DE BAJA…</param>
+public sealed record DgiiTaxpayer(string Rnc, string Name, string? TradeName, string Status, string? Category, string? PaymentRegime, bool ElectronicIssuer)
+{
+    public bool IsActive => Status.Equals("ACTIVO", StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>Unavailable: no answer from the DGII (offline, blocked, the store's lookup limit reached, a page Toki cannot read).</summary>
+public enum DgiiAnswerKind { Found, NotRegistered, Unavailable }
+
+public sealed record RncLookup(DgiiAnswerKind Kind, DgiiTaxpayer? Taxpayer = null);
+
+/// <summary>Unknown: the DGII did not answer, or the receipt is an e-NCF (its public consultation needs the security code).</summary>
+public enum NcfValidity { Valid, Expired, NotMatching, Unknown }
+
+/// <param name="ValidUntil">Last day the DGII authorized that sequence ("Válido hasta").</param>
+public sealed record NcfCheck(NcfValidity Validity, DateOnly? ValidUntil = null, string? IssuerName = null, string? ReceiptType = null)
+{
+    public static readonly NcfCheck Unknown = new(NcfValidity.Unknown);
+
+    /// <summary>The DGII says the receipt does not belong to that RNC, or its sequence had expired by <paramref name="invoiceDate"/>.
+    /// An unknown answer never refuses: the DGII being down must not stop a purchase.</summary>
+    public bool RefusedOn(DateOnly invoiceDate) =>
+        Validity == NcfValidity.NotMatching || (Validity == NcfValidity.Expired && ValidUntil is { } until && until < invoiceDate);
+}
+
+/// <summary>TK-252: the DGII public consultation pages (RNC and NCF), asked from the store PC (ADR-0011) with a cache and a store-wide limit.</summary>
+public interface IDgiiPublicLookup
+{
+    Task<RncLookup> RncAsync(string rnc, CancellationToken ct);
+
+    /// <summary>Is <paramref name="ncf"/> a receipt the DGII authorized to <paramref name="issuerRnc"/>?</summary>
+    Task<NcfCheck> NcfAsync(string issuerRnc, string ncf, CancellationToken ct);
+}
+
 /// <summary>The legend the receipt of an e-CF issued in contingency carries (Decreto 587-24; DGII "Representación Impresa").</summary>
 public static class EcfReceiptTexts
 {

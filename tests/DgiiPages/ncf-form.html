@@ -1,0 +1,191 @@
+﻿
+
+<!DOCTYPE html>
+<html>
+<head><title>
+	
+    Consulta NCF
+
+</title><link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700,800" rel="stylesheet" /><link href="https://fonts.googleapis.com/css?family=Abhaya+Libre:400,500,600,700" rel="stylesheet" />
+
+    
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/main.bundle.css" rel="stylesheet" />
+    
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/jquery-ui-1.10.0.custom.css" rel="stylesheet" />
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/jquery.ui.1.10.0.ie.css" rel="stylesheet" />
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/styles.consultasWeb.css" rel="stylesheet" />
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/DataTable.css" rel="stylesheet" />
+    <link href="/app/WebApps/ConsultasWeb2/ConsultasWeb/css/font-awesome.css" rel="stylesheet" />
+
+    <style type="text/css">
+        button.ui-dialog-titlebar-close:after {
+            content: string("x");
+        }
+
+        @media print {
+            a[href]:after {
+                content: none !important;
+            }
+        }
+    </style>
+
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jquery.min.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/bootstrap.min.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jquery-ui.min.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jUtility.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jValidator.min.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/globalfunctions.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/scripts.consultasWeb.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jquery.blockUI.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/jquery.dataTables.js"></script>
+    <script type="text/javascript" src="/app/WebApps/ConsultasWeb2/ConsultasWeb/js/dataTables.rowGroup.min.js"></script>
+
+    
+
+    <script type="text/javascript">
+     
+        $(document).ready(function () {
+
+           // $('#txtCodigoSeg').tooltip('enable')
+
+            HideForm();
+         
+        });
+
+        function ValidaSerie() {
+           
+            if ($('#cphMain_txtNCF').val().substring(0, 1) == 'E' || $('#cphMain_txtNCF').val().substring(0, 1) == 'e') {
+                
+                  $('#cphMain_FormFE').show();
+
+           }
+            else
+                HideForm();
+
+        }
+
+        function HideForm()
+        {
+           
+            $('#cphMain_FormFE').hide();
+           
+        }
+
+      
+    </script>
+
+</head>
+<body role="document">
+    <form method="post" action="./ncf.aspx" id="frmMain" class="form-signin" role="form">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="pN34jUToiz//tdtPU315iwKK4ZPzUtuNSG6D6OyoAHkNHXBngxGXx9EfPm1RWNQBAyMNjmLZySPAq9QjFgD13Tl6dJYsx8pyRzstZzPLjdje9aHSji2t1IB0QCytjS3rK0cnCA==" />
+
+
+<script src="/app/WebApps/ConsultasWeb2/ConsultasWeb/ScriptResource.axd?d=BIiOdmSL4x2HGdhDTs0anLFE7t3hf56oQu0KRhNcpSvjlmXCmzgVX2nFYkkr4WzrZLz_3OedmVYzqeyGCvGSTy0cKcK8QGvsDr-FWa4uY_plIe_WbOCvZL0dLv6pd0CiNI7SATk9DZupQivsXLwrkEJFhPQ1&amp;t=2a9d95e3" type="text/javascript"></script>
+<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="43758EFE" />
+<input type="hidden" name="__EVENTVALIDATION" id="__EVENTVALIDATION" value="VlOIRH7ZAO4X3k3B22oPe/DAQ6OvYnGl0X/CFytXywO7aN7I56l1CRKZSek9hMBihIKfBzozw64bZcUDdVGHDKIxNTjNTlRSlzhMBvjioDrpT9dMEzvF/aIq+ADYEM51iZF/0vu2ceYg1cKuyk1K1oIqkQeGWhD35ZoLJUPcCp+TBsNsH7txGktaqaH2sEfwnutDLhOdNKrlQV0iofzV7HcNH4S9GjAWhx7I+FGDHjYOwWNI" />
+        
+        <div class="site_content">
+            <div id="upMainMaster">
+	
+                    <div class="container-overflowed" role="main">
+                        
+    <div class="row">
+        <div class="col-12">
+            <div class="form-group">
+                <label for="txtRNC">
+                    Registro Nacional del Contribuyente (RNC)
+                </label>
+                <input name="ctl00$cphMain$txtRNC" type="text" maxlength="11" id="cphMain_txtRNC" class="form-control required only-numbers consult-search__field" title="RNC" />
+                
+               
+            </div>
+          
+            <div class="form-group">
+                <label for="txtNCF">
+                    N&uacute;mero de Comprobante Fiscal (NCF)
+                </label>
+                <input name="ctl00$cphMain$txtNCF" type="text" maxlength="19" id="cphMain_txtNCF" class="form-control required  consult-search__field" title="NCF" onkeyup="ValidaSerie()" />
+                
+               
+            </div>
+
+         <div id="cphMain_FormFE">
+            <div class="form-group">
+                <label for="txtRncEmisor">
+                   RNC Comprador (Comprobantes Tipo E)
+                </label>
+                <input name="ctl00$cphMain$txtRncComprador" type="text" maxlength="11" id="cphMain_txtRncComprador" class="form-control  only-numbers consult-search__field" title="RNC Comprador" />
+
+            </div>
+
+             <div class="form-group">
+                <label for="txtCodigoSeg">
+                    C&oacute;digo de Seguridad (Comprobantes Tipo E)
+                </label>
+               
+                   <input name="ctl00$cphMain$txtCodigoSeg" type="text" maxlength="6" id="cphMain_txtCodigoSeg" class="form-control  consult-search__field" title="Los primeros seis (6) dígitos del hash del SignatureValue de la firma, encontrado debajo del código QR en la representación impresa" />
+                
+                
+            </div>
+
+       </div>
+
+            <div class="consult-search__buttons">
+                <div class="row ">
+                    <div class="col-12 text-xs-left text-sm-right">
+                        
+                        <input type="submit" name="ctl00$cphMain$btnConsultar" value="Buscar" onclick="return jValidator.Validate() &amp;&amp; Page_IsValid;WebForm_DoPostBackWithOptions(new WebForm_PostBackOptions(&quot;ctl00$cphMain$btnConsultar&quot;, &quot;&quot;, true, &quot;&quot;, &quot;&quot;, false, false))" id="cphMain_btnConsultar" class="consult-search__button-search btn btn-primary ml-2" />
+                    </div>
+                </div>
+            </div>
+        </div>
+
+     
+
+        <div class="col-12" style="margin: 1% 0 0 0;">
+            
+        </div>
+
+        <div class="col-12" style="margin: 1% 0 0 0;">
+            
+     
+                <h4 class="feedback" >
+                    
+                </h4>
+      
+        </div>
+    </div>
+
+                    </div>
+                
+</div>
+            <div id="upCargandoMaster" style="display:none;">
+	
+                    <div id="dCargando">
+                        <img src="/ConsultasWeb/images/cargando.gif" alt="Imagen animada para indicar cargando." />
+                    </div>
+                
+</div>
+        </div>
+                  
+        <div id="contenido_derecha">
+          <div id="content_content_derecha">
+            
+            
+          </div>
+        </div>
+    </form>
+
+    <script type="text/javascript">
+        var _pageRequest = Sys.WebForms.PageRequestManager.getInstance();
+        _pageRequest.add_endRequest(jUtility.BindControls);
+        _pageRequest.add_endRequest(jUtility.Init);
+        _pageRequest.add_endRequest(jUtility.HandlerException);
+
+    </script>
+
+    
+
+
+</body>
+</html>

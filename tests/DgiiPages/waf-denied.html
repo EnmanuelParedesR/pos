@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Acceso Denegado - Error 403</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8f9fa;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #2d3748;
+      line-height: 1.6;
+    }
+
+    .container {
+      background: white;
+      border-radius: 8px;
+      padding: 30px;
+      text-align: center;
+      max-width: 450px;
+      width: 100%;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      border: 1px solid #e2e8f0;
+    }
+
+    .error-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 8px;
+    }
+
+    .error-code {
+      font-size: 1.2rem;
+      font-weight: 500;
+      color: #4a5568;
+      margin-bottom: 10px;
+    }
+
+    .method-badge {
+      display: inline-block;
+      background: #ebf8ff;
+      color: #2b6cb0;
+      border: 1px solid #bee3f8;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-bottom: 15px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .url {
+      font-size: 1rem;
+      font-weight: 500;
+      color: #4a5568;
+      margin-bottom: 12px;
+      font-family: 'Courier New', monospace;
+      word-break: break-all;
+    }
+
+    .timestamp {
+      font-size: 0.8rem;
+      color: #718096;
+      margin-bottom: 20px;
+      font-family: 'Courier New', monospace;
+    }
+
+    .explanation {
+      font-size: 0.95rem;
+      color: #2d3748;
+      margin-bottom: 15px;
+      font-weight: 500;
+    }
+
+    .ip-info {
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 12px;
+      margin-top: 15px;
+    }
+
+    .ip-label {
+      font-size: 0.8rem;
+      color: #4a5568;
+      margin-bottom: 4px;
+    }
+
+    .ip-address {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #2d3748;
+      font-family: 'Courier New', monospace;
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        padding: 25px 20px;
+      }
+      
+      .error-title {
+        font-size: 1.3rem;
+      }
+      
+      .error-code {
+        font-size: 1.1rem;
+      }
+      
+      .url {
+        font-size: 0.9rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="error-title">Acceso denegado</div>
+    <div class="error-code">Error 403</div>
+    <div class="method-badge" id="methodBadge">Método: GET</div>
+    <div class="url" id="url">ofv.dgii.gov.do</div>
+    <div class="timestamp" id="timestamp">2025-08-17 18:34:45 UTC</div>
+    
+    <div class="explanation">
+      ¿Qué pasó?<br>
+      Esta solicitud fue bloqueada por nuestros servicios de seguridad.
+    </div>
+
+    <div class="ip-info">
+      <div class="ip-label">Tu IP:</div>
+      <div class="ip-address" id="ipAddress">186.120.134.228</div>
+    </div>
+  </div>
+
+  <script>
+    // Obtiene IP pública del cliente
+    async function getClientIP() {
+      try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const data = await response.json();
+        return data.ip;
+      } catch (error) {
+        console.log('No se pudo obtener la IP externa:', error);
+        return '186.120.134.228';
+      }
+    }
+
+    // Obtiene URL actual o referrer
+    function getCurrentURL() {
+      try {
+        const currentURL = window.location.href;
+        if (currentURL.includes('403.html') || currentURL.includes('error')) {
+          const referrer = document.referrer;
+          if (referrer && referrer !== '') return referrer;
+        }
+        return currentURL;
+      } catch (error) {
+        console.log('Error obteniendo URL:', error);
+        return 'ofv.dgii.gov.do';
+      }
+    }
+
+    // Obtiene timestamp actual en UTC
+    function getCurrentTimestamp() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const hours = String(now.getHours()).padStart(2, '0');
+      const minutes = String(now.getMinutes()).padStart(2, '0');
+      const seconds = String(now.getSeconds()).padStart(2, '0');
+      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} UTC`;
+    }
+
+    // Determina el método HTTP del request original (vía query string) o GET por defecto
+    function getRequestMethod() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const methodParam = params.get('method') || params.get('http_method') || '';
+        const method = (methodParam || 'GET').toUpperCase();
+        // Sanitiza: solo valores HTTP comunes
+        const allowed = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+        return allowed.includes(method) ? method : 'GET';
+      } catch (e) {
+        return 'GET';
+      }
+    }
+
+    // Actualiza la UI
+    async function updateInfo() {
+      const ipElement = document.getElementById('ipAddress');
+      const urlElement = document.getElementById('url');
+      const timestampElement = document.getElementById('timestamp');
+      const methodBadge = document.getElementById('methodBadge');
+
+      const clientIP = await getClientIP();
+      const currentURL = getCurrentURL();
+      const currentTimestamp = getCurrentTimestamp();
+      const method = getRequestMethod();
+
+      ipElement.textContent = clientIP;
+      urlElement.textContent = currentURL;
+      timestampElement.textContent = currentTimestamp;
+      methodBadge.textContent = `Método: ${method}`;
+    }
+
+    document.addEventListener('DOMContentLoaded', updateInfo);
+  </script>
+</body>
+</html>
+</html>

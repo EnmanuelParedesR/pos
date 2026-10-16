@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Testcontainers.MsSql;
 using Toki.BuildingBlocks.Persistence;
+using Toki.Tests;
 
 [assembly: AssemblyFixture(typeof(Toki.IntegrationTests.Infra.TestSqlServer))]
 
@@ -127,6 +128,7 @@ public class TokiApp : WebApplicationFactory<Program>
         builder.UseSetting("License:PublicKey", LicenseKey.ExportSubjectPublicKeyInfoPem());
         builder.UseSetting("License:File", Path.Combine(Path.GetTempPath(), $"toki_license_{Guid.NewGuid():N}.jws"));
         builder.UseSetting("Backup:Folder", TestSqlServer.BackupFolder());
+        builder.UseSetting("Fiscal:DgiiPublic:Enabled", "false"); // TK-252: on only where a test answers for the DGII (DgiiPublic)
         foreach (var (key, value) in Settings) builder.UseSetting(key, value);
         Dgii.Now = Clock.GetUtcNow;
         builder.ConfigureTestServices(s =>
@@ -135,8 +137,12 @@ public class TokiApp : WebApplicationFactory<Program>
             TestCommands.Register(s);
             s.AddHttpClient(Toki.Sync.CloudClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Cloud);
             s.AddHttpClient(Toki.Fiscal.DgiiClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => Dgii);
+            s.AddHttpClient(Toki.Fiscal.Features.DgiiPublicSite.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => DgiiPublic);
         });
     }
+
+    /// <summary>TK-252: the DGII public consultation pages, from recorded HTML (<c>Fiscal:DgiiPublic:Enabled</c> = true turns them on).</summary>
+    public FakeDgiiPublic DgiiPublic { get; } = new();
 
     /// <summary>The cloud this app talks to (ADR-0008), in memory.</summary>
     public FakeCloud Cloud { get; } = new();

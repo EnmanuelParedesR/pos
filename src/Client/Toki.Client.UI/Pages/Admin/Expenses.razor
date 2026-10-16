@@ -53,7 +53,7 @@
         {
             <Dialog Title="Nuevo gasto" Subtitle="Copie los datos de la factura. Los campos con * son obligatorios." Wide="true" OnClose="() => _editing = null">
                 <ChildContent>
-                    <SupplierFields Suppliers="_suppliers" @bind-SupplierId="f.SupplierId" @bind-Ncf="f.Ncf" @bind-Date="f.Date" Errors="_errors" />
+                    <SupplierFields Suppliers="_suppliers" @bind-SupplierId="f.SupplierId" @bind-Ncf="f.Ncf" @bind-Date="f.Date" @bind-NcfOverrideReason="f.NcfOverrideReason" Errors="_errors" />
                     <div class="esc-form-grid">
                         <Field Label="Descripción *" Wide="true" Error="@Err("description")">
                             <input class="esc-input" maxlength="150" placeholder="Por ejemplo: luz de septiembre" @bind="f.Description" @bind:after='() => _errors.Remove("description")' aria-invalid="@Invalid("description")" />
@@ -128,7 +128,7 @@
 @code {
     private sealed class ExpenseForm
     {
-        public Guid Id = Guid.CreateVersion7(); public Guid? SupplierId; public string? Ncf, Description, Subtotal, Itbis = "0", CreditDays;
+        public Guid Id = Guid.CreateVersion7(); public Guid? SupplierId; public string? Ncf, Description, Subtotal, Itbis = "0", CreditDays, NcfOverrideReason;
         public DateOnly Date = Format.Today; public ExpenseType Type = ExpenseType.WorkSuppliesAndServices;
         public PaymentTerms Terms = PaymentTerms.Cash; public SupplierPaymentMethod? Method = SupplierPaymentMethod.Cash;
     }
@@ -200,7 +200,7 @@
         if (_errors.Count > 0) return;
         _sending = true;
         var r = await Api.PostAsync<ExpenseRecorded>("/api/purchasing/expenses", new RecordExpense(f.SupplierId!.Value, f.Ncf!.Trim().ToUpperInvariant(), f.Date,
-            f.Description!.Trim(), f.Type, Math.Round(subtotal!.Value, 2), Math.Round(itbis!.Value, 2), f.Terms, days, f.Id, f.Terms == PaymentTerms.Cash ? f.Method : null));
+            f.Description!.Trim(), f.Type, Math.Round(subtotal!.Value, 2), Math.Round(itbis!.Value, 2), f.Terms, days, f.Id, f.Terms == PaymentTerms.Cash ? f.Method : null, f.NcfOverrideReason));
         _sending = false;
         if (r.Problem is { } p)
         {
