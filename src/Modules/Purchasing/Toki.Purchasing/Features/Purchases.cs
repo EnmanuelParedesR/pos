@@ -143,6 +143,8 @@ internal static class PostPurchase
             // Claim the draft: two posts of the same purchase cannot both put stock in. A draft without its NCF yet cannot be received.
             var now = clock.GetUtcNow().UtcDateTime;
             if (await db.Purchases.AnyAsync(x => x.Id == c.Id && x.Status == PurchaseStatus.Draft && x.Ncf == "", ct)) return PurchasingErrors.NcfRequired;
+            // A draft from the DGII Excel (TK-223) comes with the totals only: the products go in before receiving it.
+            if (await db.Purchases.AnyAsync(x => x.Id == c.Id && x.Status == PurchaseStatus.Draft && !x.Lines.Any(), ct)) return PurchasingErrors.LinesRequired;
             if (await db.Purchases.Where(x => x.Id == c.Id && x.Status == PurchaseStatus.Draft)
                     .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, PurchaseStatus.Posted).SetProperty(x => x.PostedUtc, now), ct) == 0)
                 return await db.Purchases.AnyAsync(x => x.Id == c.Id, ct) ? PurchasingErrors.NotDraft : PurchasingErrors.PurchaseNotFound;

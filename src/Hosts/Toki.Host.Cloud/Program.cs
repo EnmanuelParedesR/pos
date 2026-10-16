@@ -120,6 +120,7 @@ app.MapNodes();
 app.MapIngest();
 app.MapPanel();
 app.MapAssistant();
+app.MapSupplierInvoiceReader();
 app.MapEcfArchive();
 app.MapColdArchive();
 app.MapPlatform();

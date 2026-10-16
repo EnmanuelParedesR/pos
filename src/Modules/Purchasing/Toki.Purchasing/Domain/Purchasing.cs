@@ -176,7 +176,8 @@ internal static class PurchasingErrors
     public static readonly Error SupplierNotFound = Error.NotFound("Purchasing.SupplierNotFound", "El suplidor no existe o está desactivado.");
     public static readonly Error PurchaseNotFound = Error.NotFound("Purchasing.PurchaseNotFound", "La compra no existe.");
     public static readonly Error NcfRequired = Error.Validation("Purchasing.NcfRequired", "Escriba el NCF de la factura del suplidor antes de recibir la mercancía.");
-    public static readonly Error NotDraft =Error.Conflict("Purchasing.NotDraft", "Solo se puede cambiar o aplicar una compra en borrador.");
+    public static readonly Error LinesRequired = Error.Validation("Purchasing.LinesRequired", "Agregue los productos de la factura antes de recibir la mercancía.");
+    public static readonly Error NotDraft = Error.Conflict("Purchasing.NotDraft", "Solo se puede cambiar o aplicar una compra en borrador.");
     public static readonly Error DuplicateNcf = Error.Conflict("Purchasing.DuplicateNcf", "Ya se registró ese NCF de ese suplidor.");
     public static readonly Error HasPayments = Error.Conflict("Purchasing.HasPayments", "La compra tiene pagos aplicados; no se puede anular.");
     public static readonly Error PaymentExceedsDebt = Error.Validation("Purchasing.PaymentExceedsDebt", "El pago es mayor que lo que se le debe al suplidor.");

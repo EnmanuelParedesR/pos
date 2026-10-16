@@ -4,6 +4,11 @@
     <ProjectReference Include="..\Toki.Purchasing.Contracts\Toki.Purchasing.Contracts.csproj" />
     <ProjectReference Include="..\..\Inventory\Toki.Inventory.Contracts\Toki.Inventory.Contracts.csproj" />
     <ProjectReference Include="..\..\CashRegister\Toki.CashRegister.Contracts\Toki.CashRegister.Contracts.csproj" />
+    <ProjectReference Include="..\..\Fiscal\Toki.Fiscal.Contracts\Toki.Fiscal.Contracts.csproj" />
+    <ProjectReference Include="..\..\Sync\Toki.Sync.Contracts\Toki.Sync.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Toki.UnitTests" />

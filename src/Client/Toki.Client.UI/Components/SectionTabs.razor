@@ -30,7 +30,7 @@
     [
         .. s.Can("purchasing.manage") ? [("admin/purchasing", "Compras"), ("admin/purchasing/suggested", "Pedido sugerido")] : Array.Empty<(string, string)>(),
         .. s.Can("payables.pay") ? [("admin/purchasing/expenses", "Gastos")] : Array.Empty<(string, string)>(),
-        .. s.Can("purchasing.manage") ? [("admin/purchasing/received", "Recibidos (e-CF)"), ("admin/purchasing/suppliers", "Suplidores")] : Array.Empty<(string, string)>(),
+        .. s.Can("purchasing.manage") ? [("admin/purchasing/received", "Recibidos (e-CF)"), ("admin/purchasing/dgii", "Cruce con la DGII"), ("admin/purchasing/suppliers", "Suplidores")] : Array.Empty<(string, string)>(),
         .. s.Can("reports.view") && (s.Can("purchasing.manage") || s.Can("payables.pay")) ? [("admin/purchasing/payables", "Por pagar")] : Array.Empty<(string, string)>(),
     ];
 }

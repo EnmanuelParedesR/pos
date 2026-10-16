@@ -145,7 +145,21 @@
     private string? Err(string field) => _errors.GetValueOrDefault(field);
     private string Invalid(string field) => _errors.ContainsKey(field) ? "true" : "false";
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    // TK-223: "Es un gasto" in the cross with the DGII opens this page with the row filled in.
+    [SupplyParameterFromQuery(Name = "supplier")] public Guid? FromSupplier { get; set; }
+    [SupplyParameterFromQuery(Name = "ncf")] public string? FromNcf { get; set; }
+    [SupplyParameterFromQuery(Name = "date")] public string? FromDate { get; set; }
+    [SupplyParameterFromQuery(Name = "subtotal")] public string? FromSubtotal { get; set; }
+    [SupplyParameterFromQuery(Name = "itbis")] public string? FromItbis { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        if (FromSupplier is null) return;
+        await New();
+        (_editing!.SupplierId, _editing.Ncf, _editing.Subtotal, _editing.Itbis) = (FromSupplier, FromNcf, FromSubtotal, FromItbis ?? "0");
+        if (DateOnly.TryParse(FromDate, System.Globalization.CultureInfo.InvariantCulture, out var d)) _editing.Date = d;
+    }
 
     private async Task ChangePeriodAsync(string period)
     {
