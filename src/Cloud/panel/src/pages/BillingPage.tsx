@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { api, ApiError, priceLabel, useApi, type Billing, type BillingInterval, type Checkout, type PlatformBilling, type SubscriptionStatus } from "../api";
 import { dateTime, dayName } from "../format";
 import { Card, LoadError, Notice, PageHead, Segmented, Skeleton } from "../ui";
-import { addOnNames, planNames } from "./UsageCard";
+import { AddOnQuantities, addOnList, planNames } from "./UsageCard";
 
 /** Paddle.js v2, from Paddle's CDN only (Paddle asks to load it from cdn.paddle.com; the /v2/ path is the version it pins). Only this page loads it. */
 export const paddleScript = "https://cdn.paddle.com/paddle/v2/paddle.js";
@@ -49,7 +49,6 @@ export const statusNames: Record<SubscriptionStatus, string> = {
   Canceled: "Cancelada",
 };
 
-const invoiceReading = "SupplierInvoiceReading";
 const day = (utc: string | null) => (utc ? dayName(utc.slice(0, 10)) : "—");
 
 /** "Plan y facturación" (TK-249, Owners): the plan, its status and the buttons to pay with Paddle (overlay checkout) or manage the payment (Paddle's portal). */
@@ -59,19 +58,20 @@ export function BillingPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<ApiError | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<string[]>([]); // TK-258: add-ons, one entry per unit
 
   useEffect(() => {
     if (data?.enabled) void loadPaddle().catch(() => undefined); // ready before the click; a failure shows on the click
   }, [data?.enabled]);
+  useEffect(() => setChosen([...(data?.addOns ?? [])].sort()), [data]);
 
   if (error) return <LoadError error={error} />;
   if (!data) return <Skeleton height={160} />;
 
   const subscribed = data.status !== "None" && data.status !== "Canceled" && data.canManage;
   const annual = data.plans.some((p) => p.annual);
-  const readingOption = data.addOnOptions.find((a) => a.code === invoiceReading);
-  const offersReading = !!readingOption && !data.addOns.includes(invoiceReading);
-  const readingPrice = readingOption && ((subscribed && data.interval === "Annual") || (!subscribed && interval === "Annual") ? readingOption.annual : readingOption.monthly);
+  const yearly = (subscribed && data.interval === "Annual") || (!subscribed && interval === "Annual");
+  const addOnsChanged = chosen.join() !== [...data.addOns].sort().join();
 
   async function buy(plan: string | null, addOns: string[]) {
     setBusy(true);
@@ -141,7 +141,7 @@ export function BillingPage() {
             <span>Plan</span>
             <b>
               {planNames[data.plan] ?? data.plan}
-              {data.addOns.length > 0 && ` + ${data.addOns.map((a) => addOnNames[a] ?? a).join(", ")}`}
+              {data.addOns.length > 0 && ` + ${addOnList(data.addOns)}`}
             </b>
           </li>
           <li>
@@ -200,6 +200,7 @@ export function BillingPage() {
           <ul className="platform-kv" aria-label="Planes">
             {data.plans
               .filter((p) => (interval === "Annual" && !subscribed ? p.annual : p.monthly || subscribed))
+              .sort((a, b) => Number((a.monthly ?? a.annual)?.amount ?? 0) - Number((b.monthly ?? b.annual)?.amount ?? 0)) // cheapest first
               .map((p) => {
                 const current = subscribed && p.code === data.plan;
                 const price = (interval === "Annual" && !subscribed ? p.annual : p.monthly) ?? p.monthly ?? p.annual;
@@ -210,23 +211,31 @@ export function BillingPage() {
                       {price && <span className="esc-muted"> · {priceLabel(price)}</span>}
                     </span>
                     <button type="button" className={current ? "esc-button" : "esc-button esc-button--primary"} disabled={busy || current}
-                      onClick={() => buy(p.code, subscribed ? data.addOns : [])}>
+                      onClick={() => buy(p.code, chosen)}>
                       {current ? "Su plan" : "Elegir plan"}
                     </button>
                   </li>
                 );
               })}
           </ul>
-          {offersReading && (
-            <div className="esc-row" style={{ marginTop: 12 }}>
-              <button type="button" className="esc-button" disabled={busy} onClick={() => buy(subscribed ? null : data.plan, [...data.addOns, invoiceReading])}>
-                Agregar lectura de facturas
-              </button>
-              <span className="esc-muted">
-                Lea con IA muchas más facturas de suplidores al mes
-                {readingPrice && ` · ${priceLabel(readingPrice)}`}.
-              </span>
-            </div>
+          {data.addOnOptions.length > 0 && (
+            <>
+              <h3 style={{ marginTop: 16 }}>Adapte su plan</h3>
+              <div className="esc-row" style={{ gap: 12, flexWrap: "wrap" }}>
+                <AddOnQuantities codes={data.addOnOptions.map((a) => a.code)} value={chosen} onChange={setChosen}
+                  note={(code) => {
+                    const option = data.addOnOptions.find((a) => a.code === code);
+                    const price = option && (yearly ? option.annual : option.monthly);
+                    return price ? `${priceLabel(price)} c/u` : null;
+                  }} />
+                {subscribed && (
+                  <button type="button" className="esc-button esc-button--primary" disabled={busy || !addOnsChanged} onClick={() => buy(null, chosen)}>
+                    Actualizar adicionales
+                  </button>
+                )}
+              </div>
+              {!subscribed && <p className="esc-muted">Elija las cantidades y luego su plan.</p>}
+            </>
           )}
         </Card>
       )}

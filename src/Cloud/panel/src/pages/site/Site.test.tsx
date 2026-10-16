@@ -47,8 +47,8 @@ it("TK-249: /precios shows the prices Paddle has, and keeps the placeholder for 
   const prices = {
     enabled: true,
     plans: [
-      { code: "Default", name: "Una caja", monthly: { priceId: "pri_1", interval: "Monthly", amount: "1500", currency: "USD" }, annual: null },
-      { code: "MultiRegister", name: "Varias cajas", monthly: { priceId: "pri_2", interval: "Monthly", amount: "2900", currency: "USD" }, annual: null },
+      { code: "Default", name: "Estándar", monthly: { priceId: "pri_1", interval: "Monthly", amount: "1500", currency: "USD" }, annual: null },
+      { code: "MultiRegister", name: "Pro", monthly: { priceId: "pri_2", interval: "Monthly", amount: "2900", currency: "USD" }, annual: null },
     ],
     addOns: [],
   };
@@ -61,7 +61,7 @@ it("TK-249: /precios shows the prices Paddle has, and keeps the placeholder for 
 
   expect((await screen.findAllByText("US$15.00 al mes")).length).toBeGreaterThan(0);
   expect(screen.getByText("US$29.00 al mes")).toBeTruthy();
-  expect(screen.getAllByText("Precio por confirmar").length).toBe(1); // Varias sucursales has no price in Paddle yet
+  expect(screen.getAllByText("Precio por confirmar").length).toBe(1); // Esencial has no price in Paddle yet
 });
 
 it("TK-228: the prices stay as placeholders until the owner confirms them", () => {

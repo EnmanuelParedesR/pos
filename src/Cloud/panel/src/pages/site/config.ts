@@ -8,9 +8,8 @@ export const site = {
   installerUrl: "",
   /** Plan and one-off prices (TK-203, TK-219). null = "Precio por confirmar"; never invent one. */
   prices: {
-    oneRegister: null as string | null,
-    severalRegisters: null as string | null,
-    severalStores: null as string | null,
+    /** By plan or add-on code (Essential, Default, MultiRegister, ExtraRegister…), shown until Paddle answers. Paddle is the source of truth. */
+    byCode: {} as Record<string, string>,
     installation: null as string | null,
     certificationSupport: null as string | null,
   },

@@ -139,12 +139,16 @@ public sealed class UnlicensedRegisterShiftTests(TokiApp app) : IClassFixture<To
         var register = (await (await admin.PostAsJsonAsync("/api/cash/registers", new { Name = "Caja 3" })).Json()).GetProperty("id").GetGuid();
         var shift = (await (await cashier.PostAsJsonAsync("/api/cash/shifts", new { RegisterId = register, OpeningFloat = 500m })).Json()).GetProperty("shiftId").GetGuid();
 
-        var license = new LicenseData("Carnicería de prueba", "Negocio", [], new Dictionary<string, int> { ["Registers"] = 1 },
+        // TK-258: plan Esencial, no register besides the main PC.
+        var license = new LicenseData("Carnicería de prueba", "Esencial", [], new Dictionary<string, int> { ["Registers"] = 0 },
             app.Clock.GetUtcNow().UtcDateTime, app.Clock.GetUtcNow().UtcDateTime.AddYears(1));
         (await admin.PutAsJsonAsync("/api/settings/license", new { License = Jws.Sign(license, app.LicenseKey) })).EnsureSuccessStatusCode();
         var refused = await app.Anonymous(last).PostAsJsonAsync("/api/identity/sessions", new { Code = "c7", Pin = "4321" });
         (await refused.ErrorCode()).ShouldBe("Identity.RegisterNotLicensed");
         (await refused.Content.ReadAsStringAsync()).ShouldContain("Turnos y cuadres");
+        admin = app.Client(await app.SignInAsync("admin", TokiApp.AdminPin, (await app.AdminAsync()).Device)); // the main PC still signs in and sells
+        var code = (await (await admin.PostAsJsonAsync("/api/identity/devices/pairing-codes", new { DeviceName = "Caja" })).Json()).GetProperty("code").GetString();
+        (await (await app.Anonymous().PostAsJsonAsync("/api/identity/devices/pair", new { Code = code })).ErrorCode()).ShouldBe("Identity.RegisterLimitReached");
 
         var closed = await admin.PostAsJsonAsync($"/api/cash/shifts/{shift}/close", new { CashCount = new[] { new { Denomination = 500m, Quantity = 1 } } });
         closed.StatusCode.ShouldBe(HttpStatusCode.OK);

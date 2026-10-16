@@ -162,7 +162,8 @@ internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, Bil
         if (BillingModel.KeepsPlan(s.Status))
         {
             var prices = data.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array
-                ? items.EnumerateArray().Select(i => i.TryGetProperty("price", out var p) ? Text(p, "id") : Text(i, "price_id")).OfType<string>().ToList()
+                ? items.EnumerateArray().Select(i => (i.TryGetProperty("price", out var p) ? Text(p, "id") : Text(i, "price_id")) is { } id
+                    ? new CheckoutItem(id, i.TryGetProperty("quantity", out var q) && q.TryGetInt32(out var n) ? n : 1) : null).OfType<CheckoutItem>().ToList()
                 : [];
             if (prices.Count > 0) (tenant.Plan, tenant.AddOns) = BillingModel.PlanOf(catalog, limits, prices);
         }
@@ -193,10 +194,10 @@ internal sealed class PaddleApi(HttpClient http, PaddleOptions paddle)
     }
 
     /// <summary>PATCH /subscriptions/{id}: the new plan and add-ons, prorated now. Paddle then sends subscription.updated, which sets the plan here.</summary>
-    public async Task<bool> ChangeItemsAsync(string subscriptionId, IEnumerable<string> priceIds, CancellationToken ct)
+    public async Task<bool> ChangeItemsAsync(string subscriptionId, IEnumerable<CheckoutItem> items, CancellationToken ct)
     {
         using var response = await SendAsync(HttpMethod.Patch, $"/subscriptions/{Uri.EscapeDataString(subscriptionId)}",
-            new { items = priceIds.Select(p => new { price_id = p, quantity = 1 }), proration_billing_mode = "prorated_immediately" }, ct);
+            new { items = items.Select(i => new { price_id = i.PriceId, quantity = i.Quantity }), proration_billing_mode = "prorated_immediately" }, ct);
         return response.IsSuccessStatusCode;
     }
 

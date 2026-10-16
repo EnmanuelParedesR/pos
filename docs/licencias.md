@@ -9,7 +9,7 @@ Una licencia es un **JWS compacto** (`encabezado.cuerpo.firma`, base64url) firma
 | Campo | Qué es |
 |---|---|
 | `store` | Nombre de la tienda (como sale en el contrato) |
-| `plan` | Nombre del plan (`Una caja`, `Varias cajas`, `Varias sucursales`) |
+| `plan` | Nombre del plan (`Esencial`, `Estándar`, `Pro`; antes `Varias sucursales`). `limits.Registers` 0 = solo la PC principal (Esencial) |
 | `features` | Funciones pagas: `ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant`, `SupplierInvoiceReading` (servicio adicional de lectura de facturas con IA, ver `docs/cuotas.md`) |
 | `limits` | Límites por nombre: hoy solo `Registers` (cajas además de la PC principal) |
 | `issuedUtc`, `expiresUtc` | Emisión y vencimiento, en UTC |
@@ -17,7 +17,7 @@ Una licencia es un **JWS compacto** (`encabezado.cuerpo.firma`, base64url) firma
 Ejemplo de cuerpo:
 
 ```json
-{"store":"Carnicería La Esquina","plan":"Varias cajas","features":["ButcherModule","CloudBackup"],"limits":{"Registers":3},"issuedUtc":"2026-10-16T00:00:00Z","expiresUtc":"2027-10-16T00:00:00Z"}
+{"store":"Carnicería La Esquina","plan":"Pro","features":["ButcherModule","CloudBackup"],"limits":{"Registers":3},"issuedUtc":"2026-10-16T00:00:00Z","expiresUtc":"2027-10-16T00:00:00Z"}
 ```
 
 La tienda solo tiene **llaves públicas** (dentro de `LicenseService`): la del dueño (licencias fuera de línea) y, desde TK-249, la de la nube (`TokiCloudPublicKey`, licencias de una suscripción pagada con Paddle; vacía hasta crear la llave en Key Vault, ver `docs/cobro-paddle.md`). Acepta una licencia firmada por cualquiera de las dos y en producción no acepta otra. Las llaves privadas **nunca** entran al repositorio ni al producto.

@@ -23,7 +23,7 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Por qué importa:** el sitio no se puede anunciar sin precios; el plan propuesto cuesta varias veces el Básico de Poszy.
 - **Hoy:** `config.ts` → `prices` en `null`; el sitio dice "Precio por confirmar".
 - **Fuente:** TK-203, TK-197; `docs/competencia-poszy.md` §3 y "Lectura"; `src/Cloud/panel/src/pages/site/config.ts`.
-- **Respuesta:** (16/10/2026) Hacer un análisis con un consejo de analistas del mercado dominicano para identificar qué planes benefician al proyecto y a los clientes (en curso).
+- **Respuesta:** (16/10/2026) Hacer un análisis con un consejo de analistas del mercado dominicano para identificar qué planes benefician al proyecto y a los clientes (en curso). (16/10/2026, TK-258) Aprobados como **provisionales**: Esencial US$12, Estándar US$19 y Pro US$35 al mes (anual = 10 meses), todas las funciones en todos, y adicionales con cantidad; detalle en `docs/cobro-paddle.md`. Pendiente: precio por cajero.
 
 ### D2 · Precio de la instalación
 - **Pregunta:** ¿Cuánto cuesta la instalación (pago único)?

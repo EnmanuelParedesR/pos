@@ -94,11 +94,11 @@ internal static class PlatformEndpoints
         platform.MapPut("/tenants/{tenantId:guid}/plan", async (Guid tenantId, TenantPlanRequest r, CloudDbContext db, PlanLimits limits, TenantPlans cache, CancellationToken ct) =>
         {
             var (plans, addOns) = limits.Catalog();
-            var chosen = (r.AddOns ?? []).Distinct().ToList();
-            if (r.Plan is not { } plan || !plans.Contains(plan) || chosen.Any(a => !addOns.Contains(a)))
+            var chosen = (r.AddOns ?? []).ToList(); // a code n times = n units (TK-258)
+            if (r.Plan is not { } plan || !plans.Contains(plan) || chosen.Any(a => !addOns.Contains(a)) || chosen.CountBy(a => a).Any(c => c.Value > Quota.MaxAddOnQuantity))
                 return EndpointExtensions.Problem(Error.Validation("Platform.InvalidPlan", "Elija un plan y servicios adicionales de la lista."));
             var updated = await db.Tenants.Where(t => t.Id == tenantId).ExecuteUpdateAsync(s => s
-                .SetProperty(t => t.Plan, plan == Quota.DefaultPlan ? null : plan).SetProperty(t => t.AddOns, string.Join(',', chosen)), ct);
+                .SetProperty(t => t.Plan, plan == Quota.DefaultPlan ? null : plan).SetProperty(t => t.AddOns, Quota.JoinAddOns(chosen)), ct);
             cache.Forget(tenantId); // the per-minute limits follow at once
             return updated == 0 ? NotFound("Platform.TenantNotFound", "No encontramos ese cliente.") : Results.NoContent();
         });

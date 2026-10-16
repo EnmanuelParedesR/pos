@@ -23,6 +23,7 @@ public sealed record BillingResponse(bool Enabled, string? Environment, string P
 /// <summary>The public /precios page: the prices as Paddle has them; empty lists with billing off (the page says "Precio por confirmar").</summary>
 public sealed record PublicPricesResponse(bool Enabled, IReadOnlyList<BillingOption> Plans, IReadOnlyList<BillingOption> AddOns);
 
+/// <param name="AddOns">Each code once per unit: ["ExtraRegister", "ExtraRegister"] buys two extra registers (TK-258).</param>
 public sealed record CheckoutRequest(string? Plan, IReadOnlyList<string>? AddOns, BillingInterval Interval = BillingInterval.Monthly);
 
 public sealed record CheckoutItem(string PriceId, int Quantity);
@@ -114,18 +115,20 @@ internal static class BillingEndpoints
             var live = s is { PaddleSubscriptionId: not null } && s.Status is not (SubscriptionStatus.None or SubscriptionStatus.Canceled);
             var interval = live && s!.Interval is { } current ? current : r.Interval;
             var plan = r.Plan ?? (string.IsNullOrEmpty(tenant.Plan) ? Quota.DefaultPlan : tenant.Plan);
-            var addOns = (r.AddOns ?? Quota.SplitAddOns(tenant.AddOns)).Distinct().ToList();
+            // TK-258: an add-on listed n times is bought n times (extra registers, stores…): one item with that quantity.
+            var addOns = (r.AddOns ?? Quota.SplitAddOns(tenant.AddOns)).GroupBy(a => a).ToList();
             var (plans, offered) = limits.Catalog();
-            List<string?> prices = [plans.Contains(plan) ? catalog.PriceOf(plan, interval)?.PriceId : null,
-                .. addOns.Select(a => offered.Contains(a) ? catalog.PriceOf(a, interval)?.PriceId : null)];
-            if (prices.Any(p => p is null))
+            List<(string? PriceId, int Quantity)> prices = [(plans.Contains(plan) ? catalog.PriceOf(plan, interval)?.PriceId : null, 1),
+                .. addOns.Select(a => (offered.Contains(a.Key) ? catalog.PriceOf(a.Key, interval)?.PriceId : null, a.Count()))];
+            if (prices.Any(p => p.PriceId is null || p.Quantity > Quota.MaxAddOnQuantity))
                 return EndpointExtensions.Problem(Error.Validation("Billing.InvalidPlan", "Ese plan o servicio adicional no se vende así. Elija uno de la lista."));
+            List<CheckoutItem> items = [.. prices.Select(p => new CheckoutItem(p.PriceId!, p.Quantity))];
 
             if (live)
-                return await api.ChangeItemsAsync(s!.PaddleSubscriptionId!, prices!, ct)
+                return await api.ChangeItemsAsync(s!.PaddleSubscriptionId!, items, ct)
                     ? Results.Ok(new BillingChangeResponse(true))
                     : EndpointExtensions.Problem(Error.Conflict("Billing.PaddleFailed", "Paddle no aceptó el cambio. Intente de nuevo en un momento."));
-            return Results.Ok(new CheckoutResponse(paddle.Environment, paddle.ClientToken, [.. prices.Select(p => new CheckoutItem(p!, 1))],
+            return Results.Ok(new CheckoutResponse(paddle.Environment, paddle.ClientToken, items,
                 user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, new Dictionary<string, string> { ["tenantId"] = tenantId.ToString() }));
         });
 

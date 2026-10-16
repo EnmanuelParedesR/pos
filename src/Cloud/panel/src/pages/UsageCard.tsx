@@ -15,8 +15,39 @@ const meterNames: Record<Meter, string> = {
   Invites: "Invitaciones",
 };
 
-export const planNames: Record<string, string> = { Default: "Una caja", MultiRegister: "Varias cajas", MultiStore: "Varias sucursales" };
-export const addOnNames: Record<string, string> = { SupplierInvoiceReading: "Lectura de facturas con IA (adicional)" };
+export const planNames: Record<string, string> = { Essential: "Esencial", Default: "Estándar", MultiRegister: "Pro", MultiStore: "Varias sucursales" };
+export const addOnNames: Record<string, string> = {
+  ExtraRegister: "Caja adicional",
+  ExtraStore: "Sucursal adicional",
+  SupplierInvoiceReading: "Lectura de facturas con IA",
+  AssistantPack: "Asistente +1,000 preguntas",
+  ExtraUsers: "Usuarios del panel +5",
+};
+
+/** TK-258: add-ons come one entry per unit (["ExtraRegister", "ExtraRegister"] = two extra registers). */
+export const countOf = (addOns: string[], code: string) => addOns.filter((a) => a === code).length;
+export const withCount = (addOns: string[], code: string, n: number) =>
+  [...addOns.filter((a) => a !== code), ...Array<string>(Math.max(0, Math.min(n || 0, 50))).fill(code)].sort();
+/** "Caja adicional ×2, Lectura de facturas con IA". */
+export const addOnList = (addOns: string[]) =>
+  [...new Set(addOns)].map((a) => `${addOnNames[a] ?? a}${countOf(addOns, a) > 1 ? ` ×${countOf(addOns, a)}` : ""}`).join(", ");
+
+/** A number per add-on (0 = not bought): the owner in "Plan y facturación" and Toki staff in the console. */
+export function AddOnQuantities({ codes, value, onChange, note }: { codes: string[]; value: string[]; onChange: (addOns: string[]) => void; note?: (code: string) => string | null }) {
+  return (
+    <>
+      {codes.map((code) => (
+        <label key={code} className="esc-field" style={{ minWidth: 160 }}>
+          <span>
+            {addOnNames[code] ?? code}
+            {note?.(code) && <span className="esc-muted"> · {note(code)}</span>}
+          </span>
+          <input className="esc-input" type="number" min={0} max={50} value={countOf(value, code)} onChange={(e) => onChange(withCount(value, code, Number(e.target.value)))} />
+        </label>
+      ))}
+    </>
+  );
+}
 
 /** The meters with use against limit; a meter at 90 % or more is marked. */
 function UsageList({ usage }: { usage: Usage }) {
@@ -43,7 +74,7 @@ function UsageList({ usage }: { usage: Usage }) {
 }
 
 const subtitle = (usage: Usage) =>
-  `Plan ${planNames[usage.plan] ?? usage.plan}${usage.addOns.length ? ` + ${usage.addOns.map((a) => addOnNames[a] ?? a).join(", ")}` : ""} · se renueva el ${dayName(usage.resetsOn)}`;
+  `Plan ${planNames[usage.plan] ?? usage.plan}${usage.addOns.length ? ` + ${addOnList(usage.addOns)}` : ""} · se renueva el ${dayName(usage.resetsOn)}`;
 
 /** "Consumo" (TK-248, Owners): what the business used this month of the services with a monthly limit. */
 export function UsageCard() {
@@ -54,7 +85,7 @@ export function UsageCard() {
     <Card title="Consumo del mes" aside={subtitle(data)}>
       <UsageList usage={data} />
       {!data.addOns.includes("SupplierInvoiceReading") && (
-        <p className="esc-muted">¿Lee muchas facturas de suplidores? Pida a Toki el servicio adicional de lectura de facturas con IA.</p>
+        <p className="esc-muted">¿Lee muchas facturas de suplidores? Agregue la lectura de facturas con IA en Plan y facturación.</p>
       )}
     </Card>
   );
@@ -69,12 +100,12 @@ export function PlatformUsageCard({ tenantId }: { tenantId: string }) {
   useEffect(() => {
     if (!data?.usage) return;
     setPlan(data.usage.plan);
-    setAddOns(data.usage.addOns);
+    setAddOns([...data.usage.addOns].sort());
   }, [data]);
 
   if (error) return <LoadError error={error} />;
   if (!data?.usage) return null;
-  const changed = plan !== data.usage.plan || addOns.join() !== data.usage.addOns.join();
+  const changed = plan !== data.usage.plan || addOns.join() !== [...data.usage.addOns].sort().join();
 
   async function save() {
     try {
@@ -99,12 +130,7 @@ export function PlatformUsageCard({ tenantId }: { tenantId: string }) {
             ))}
           </select>
         </label>
-        {data.addOns.map((a) => (
-          <label key={a} className="esc-row" style={{ gap: 6 }}>
-            <input type="checkbox" checked={addOns.includes(a)} onChange={(e) => setAddOns(e.target.checked ? [...addOns, a] : addOns.filter((x) => x !== a))} />
-            {addOnNames[a] ?? a}
-          </label>
-        ))}
+        <AddOnQuantities codes={data.addOns} value={addOns} onChange={setAddOns} />
         <button type="button" className="esc-button esc-button--primary" disabled={!changed} onClick={save}>
           Guardar plan
         </button>

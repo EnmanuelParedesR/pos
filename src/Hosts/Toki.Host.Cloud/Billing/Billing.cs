@@ -98,13 +98,13 @@ internal static class BillingModel
         });
     }
 
-    /// <summary>The business's plan and add-ons from the subscription's prices, the same fields staff set in the console (TK-248).</summary>
-    public static (string? Plan, string AddOns) PlanOf(BillingCatalog catalog, PlanLimits limits, IEnumerable<string> priceIds)
+    /// <summary>The business's plan and add-ons from the subscription's prices and quantities, the same fields staff set in the console (TK-248).</summary>
+    public static (string? Plan, string AddOns) PlanOf(BillingCatalog catalog, PlanLimits limits, IEnumerable<CheckoutItem> items)
     {
         var (plans, addOns) = limits.Catalog();
-        var codes = priceIds.Select(catalog.Find).OfType<(string Code, BillingInterval)>().Select(f => f.Code).ToList();
+        var codes = items.SelectMany(i => catalog.Find(i.PriceId) is { } f ? Enumerable.Repeat(f.Code, Math.Clamp(i.Quantity, 1, Quota.MaxAddOnQuantity)) : []).ToList();
         var plan = codes.FirstOrDefault(plans.Contains);
-        return (plan is null or Quota.DefaultPlan ? null : plan, string.Join(',', codes.Where(addOns.Contains).Distinct().Order(StringComparer.Ordinal)));
+        return (plan is null or Quota.DefaultPlan ? null : plan, Quota.JoinAddOns(codes.Where(addOns.Contains)));
     }
 
     /// <summary>Statuses that keep the paid plan's quotas in the cloud; past due keeps them while Paddle retries the card (its dunning).</summary>

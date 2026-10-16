@@ -24,8 +24,10 @@ public sealed record CatalogPrice(string PriceId, BillingInterval? Interval, str
 /// appsettings (<c>Quotas:&lt;Plan&gt;</c>, <c>Billing:Plans:&lt;Plan&gt;</c>), then to Default.</summary>
 /// <param name="Quotas">Monthly limits by <see cref="Quotas.Meter"/> name.</param>
 /// <param name="RateLimits">Per-minute limits: <c>panelPerMinute</c>, <c>assistantPerMinute</c>, <c>supplierInvoicesPerMinute</c>.</param>
+/// <param name="Registers">Registers besides the main PC on the license; on an add-on, added per unit (TK-258).</param>
+/// <param name="Stores">Stores of the business that get a cloud license (TK-258); on an add-on, added per unit.</param>
 public sealed record TokiProduct(string? Plan, string? AddOn, IReadOnlyDictionary<string, int>? Quotas, IReadOnlyDictionary<string, int>? RateLimits,
-    int? Registers, IReadOnlyList<string>? Features)
+    int? Registers, IReadOnlyList<string>? Features, int? Stores = null)
 {
     public string? Code => Plan ?? AddOn;
 }

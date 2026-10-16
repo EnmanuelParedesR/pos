@@ -16,7 +16,8 @@ namespace Toki.Cloud.Tests;
 /// <summary>Paddle's side of the API, in memory: the catalog (two pages), portal sessions and subscription changes.</summary>
 public sealed class FakePaddle : HttpMessageHandler
 {
-    public const string Basic = "pri_basic_month", BasicYear = "pri_basic_year", Registers = "pri_registers_month", Invoices = "pri_invoices_month";
+    public const string Basic = "pri_basic_month", BasicYear = "pri_basic_year", Registers = "pri_registers_month", Invoices = "pri_invoices_month",
+        ExtraRegister = "pri_register_month", ExtraStore = "pri_store_month";
 
     public List<(HttpMethod Method, string Path, string? Authorization, JsonElement Body)> Requests { get; } = [];
 
@@ -53,6 +54,18 @@ public sealed class FakePaddle : HttpMessageHandler
             custom_data = new { toki = new { addOn = "SupplierInvoiceReading", quotas = new { SupplierInvoices = 300 } } },
             prices = new[] { Price(Invoices, "month", "500") },
         },
+        new
+        {
+            id = "pro_register", name = "Caja adicional", status = "active",
+            custom_data = new { toki = new { addOn = "ExtraRegister", registers = 1 } },
+            prices = new[] { Price(ExtraRegister, "month", "600") },
+        },
+        new
+        {
+            id = "pro_store", name = "Sucursal adicional", status = "active",
+            custom_data = new { toki = new { addOn = "ExtraStore", stores = 1 } },
+            prices = new[] { Price(ExtraStore, "month", "2500") },
+        },
         new { id = "pro_other", name = "Otra cosa", status = "active", custom_data = (object?)null, prices = new[] { Price("pri_other", "month", "1") } },
     ];
 
@@ -84,7 +97,8 @@ public sealed class FakePaddle : HttpMessageHandler
 public sealed class BillingApp : CloudApp
 {
     public const string Secret = "pdl_ntfset_01test_secret";
-    public const string Basic = FakePaddle.Basic, BasicYear = FakePaddle.BasicYear, Registers = FakePaddle.Registers, Invoices = FakePaddle.Invoices;
+    public const string Basic = FakePaddle.Basic, BasicYear = FakePaddle.BasicYear, Registers = FakePaddle.Registers, Invoices = FakePaddle.Invoices,
+        ExtraRegister = FakePaddle.ExtraRegister, ExtraStore = FakePaddle.ExtraStore;
 
     public ECDsa LicenseKey { get; } = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     public FakePaddle Paddle { get; } = new();
@@ -133,7 +147,7 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
         data = new
         {
             id = "sub_" + tenant.ToString("N"), status, customer_id = "ctm_" + tenant.ToString("N"),
-            items = prices.Select(p => new { quantity = 1, price = new { id = p } }),
+            items = prices.GroupBy(p => p).Select(g => new { quantity = g.Count(), price = new { id = g.Key } }), // a price twice = quantity 2
             current_billing_period = new { starts_at = periodEnd.AddMonths(-1).ToString("O"), ends_at = periodEnd.ToString("O") },
             next_billed_at = status == "active" ? periodEnd.ToString("O") : null,
             billing_cycle = new { interval = "month", frequency = 1 },
@@ -222,7 +236,7 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
         using var other = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         Jws.Verify(jws!, other).IsFailure.ShouldBeTrue();
         var license = Jws.Verify(jws!, other, own.LicenseKey).Value; // the store trusts either key
-        (license.Store, license.Plan, license.Limits["Registers"], license.ExpiresUtc).ShouldBe(("Carnicería La Esquina", "Varias cajas", 4, PeriodEnd.AddDays(3))); // 4 registers: Paddle's custom_data wins over appsettings (3)
+        (license.Store, license.Plan, license.Limits["Registers"], license.ExpiresUtc).ShouldBe(("Carnicería La Esquina", "Pro", 4, PeriodEnd.AddDays(3))); // 4 registers: Paddle's custom_data wins over appsettings (3)
         license.Features.ShouldContain("SupplierInvoiceReading");
         license.Features.ShouldContain("ButcherModule");
         // Same subscription, same issue date: the store does not reinstall it every pull.
@@ -290,6 +304,39 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
     }
 
     [Fact]
+    public async Task Extra_registers_and_stores_are_bought_by_quantity_and_reach_the_license()
+    {
+        var owner = await app.OwnerAsync();
+        var first = await app.StoreWithNodeAsync(owner, "Colmado Centro");
+        app.Clock.Advance(TimeSpan.FromSeconds(1)); // stores are licensed oldest first
+        var second = await app.StoreWithNodeAsync(owner, "Colmado Norte");
+        static async Task<LicenseData?> LicenseAsync(HttpClient node, ECDsa key) =>
+            (await (await node.PostAsync("/api/nodes/license", null)).Json()).GetProperty("license").GetString() is { } jws ? Jws.Verify(jws, key).Value : null;
+
+        // Two extra registers: one item with quantity 2 at checkout.
+        var checkout = await (await owner.Client.PostAsJsonAsync("/api/billing/checkout",
+            new { plan = "MultiRegister", addOns = new[] { "ExtraRegister", "ExtraRegister" }, interval = "Monthly" })).Json();
+        checkout.GetProperty("items").EnumerateArray().Select(i => (i.GetProperty("priceId").GetString(), i.GetProperty("quantity").GetInt32()))
+            .ShouldBe([(BillingApp.Registers, 1), (BillingApp.ExtraRegister, 2)]);
+
+        (await app.SendAsync(Subscription(Id(), "subscription.created", owner.TenantId, "active", Now, PeriodEnd, BillingApp.Registers, BillingApp.ExtraRegister, BillingApp.ExtraRegister)))
+            .EnsureSuccessStatusCode();
+        (await BillingAsync(owner)).GetProperty("addOns").EnumerateArray().Select(a => a.GetString()).ShouldBe(["ExtraRegister", "ExtraRegister"]);
+        (await LicenseAsync(first.Client, app.LicenseKey))!.Limits["Registers"].ShouldBe(6); // Paddle's 4 + 2
+        (await LicenseAsync(second.Client, app.LicenseKey)).ShouldBeNull();                  // the plan licenses one store
+
+        // A "Sucursal adicional" licenses the second store, with the plan's registers.
+        (await app.SendAsync(Subscription(Id(), "subscription.updated", owner.TenantId, "active", Now.AddMinutes(1), PeriodEnd,
+            BillingApp.Registers, BillingApp.ExtraRegister, BillingApp.ExtraRegister, BillingApp.ExtraStore))).EnsureSuccessStatusCode();
+        (await LicenseAsync(second.Client, app.LicenseKey))!.Store.ShouldBe("Colmado Norte");
+
+        // Subscribed: changing the quantity sends it to Paddle.
+        (await owner.Client.PostAsJsonAsync("/api/billing/checkout", new { addOns = new[] { "ExtraRegister", "ExtraRegister", "ExtraRegister" } })).EnsureSuccessStatusCode();
+        app.Paddle.Requests.Last(r => r.Method == HttpMethod.Patch).Body.GetProperty("items").EnumerateArray()
+            .Select(i => (i.GetProperty("price_id").GetString(), i.GetProperty("quantity").GetInt32())).ShouldBe([(BillingApp.Registers, 1), (BillingApp.ExtraRegister, 3)]);
+    }
+
+    [Fact]
     public async Task Only_the_owner_sees_and_pays_and_staff_override_is_audited()
     {
         var owner = await app.OwnerAsync();
@@ -327,9 +374,9 @@ public sealed class BillingCatalogTests(BillingApp app) : IClassFixture<BillingA
     [Fact]
     public async Task The_catalog_syncs_every_page_from_Paddle_and_the_public_prices_show_it()
     {
-        (await app.SyncCatalogAsync()).ShouldBe(4); // Toki's four products; "Otra cosa" has no custom_data.toki
+        (await app.SyncCatalogAsync()).ShouldBe(6); // Toki's six products; "Otra cosa" has no custom_data.toki
         app.Paddle.Requests.Where(r => r.Path == "/products").Select(r => r.Authorization).ShouldAllBe(a => a == "Bearer pdl_sdbx_apikey_test");
-        (await app.InDbAsync(db => db.PaddleProducts.CountAsync())).ShouldBe(5); // both pages stored
+        (await app.InDbAsync(db => db.PaddleProducts.CountAsync())).ShouldBe(7); // both pages stored
 
         var prices = await app.CreateClient().GetFromJsonAsync<JsonElement>("/api/public/prices"); // no account
         prices.GetProperty("enabled").GetBoolean().ShouldBeTrue();
@@ -339,7 +386,7 @@ public sealed class BillingCatalogTests(BillingApp app) : IClassFixture<BillingA
             plans[0].GetProperty("monthly").GetProperty("currency").GetString(), plans[0].GetProperty("annual").GetProperty("amount").GetString())
             .ShouldBe(("Una caja", "1000", "USD", "10000")); // the archived price is not shown
         plans[1].GetProperty("annual").ValueKind.ShouldBe(JsonValueKind.Null);
-        prices.GetProperty("addOns")[0].GetProperty("monthly").GetProperty("priceId").GetString().ShouldBe(BillingApp.Invoices);
+        prices.GetProperty("addOns").EnumerateArray().Single(a => a.GetProperty("code").GetString() == "SupplierInvoiceReading").GetProperty("monthly").GetProperty("priceId").GetString().ShouldBe(BillingApp.Invoices);
 
         // A price changed in Paddle: the next sync shows it, nothing in code.
         app.Paddle.Products[1] = new
@@ -370,15 +417,15 @@ public sealed class BillingCatalogTests(BillingApp app) : IClassFixture<BillingA
             usage.GetProperty("meters").EnumerateArray().Single(m => m.GetProperty("meter").GetString() == meter).GetProperty("limit").GetInt32();
         var usage = await owner.Client.GetFromJsonAsync<JsonElement>("/api/usage");
         Limit(usage, "SupplierInvoices").ShouldBe(25); // Paddle's Default product over appsettings' 20
-        Limit(usage, "Invites").ShouldBe(20);          // not in Paddle: appsettings
+        Limit(usage, "Invites").ShouldBe(3);           // not in Paddle: appsettings
 
         var staff = await app.StaffAsync();
         (await staff.Client.PutAsJsonAsync($"/api/platform/tenants/{owner.TenantId}/plan", new { plan = "MultiRegister", addOns = new[] { "SupplierInvoiceReading" } }))
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         usage = await owner.Client.GetFromJsonAsync<JsonElement>("/api/usage");
-        Limit(usage, "Invites").ShouldBe(77);              // Paddle's MultiRegister over appsettings' 30
+        Limit(usage, "Invites").ShouldBe(77);              // Paddle's MultiRegister over appsettings' 5
         Limit(usage, "AssistantQuestions").ShouldBe(600);  // appsettings' MultiRegister
-        Limit(usage, "SupplierInvoices").ShouldBe(300);    // the add-on raises Default's (Paddle) 25
+        Limit(usage, "SupplierInvoices").ShouldBe(325);    // the add-on adds its 300 to Default's (Paddle) 25
     }
 
     [Fact]
