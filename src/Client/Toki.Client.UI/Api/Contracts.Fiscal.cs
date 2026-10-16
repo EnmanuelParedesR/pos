@@ -15,6 +15,10 @@ public sealed record EcfDocument(Guid Id, string ENcf, string Type, Guid Referen
 public sealed record EcfSequence(Guid Id, string Type, string Environment, bool Current, string From, string To, string Next, long Available,
     decimal PercentUsed, DateOnly? ExpiresOn);
 
+/// <summary>TK-240: a row of <c>GET /api/fiscal/deliveries</c>: a 31 handed to an electronic buyer. Status: Pending, Delivered, NotReceived, NotElectronic, Failed.</summary>
+public sealed record EcfDelivery(Guid DocumentId, string ENcf, string BuyerRnc, string Status, int Attempts, DateTime CreatedUtc, DateTime? NextAttemptUtc,
+    DateTime? DeliveredUtc, string? Message);
+
 /// <summary>A row of <c>GET /api/fiscal/voids</c> (ANECF).</summary>
 public sealed record EcfVoidRow(Guid Id, string Type, string Environment, string From, string To, long Count, DateTime CreatedUtc, string Status, string? Message);
 

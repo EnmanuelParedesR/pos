@@ -138,7 +138,8 @@ internal static class QueueStatus
 }
 
 /// <summary>Issued e-CF, newest first. <c>pendingOnly</c>: still to be sent or waiting for the result; <c>rejectedOnly</c>: the
-/// "Rechazados por la DGII" list (rejected and not replaced yet).</summary>
+/// "Rechazados por la DGII" list (rejected and not replaced yet); <c>conditionalOnly</c> (TK-240): accepted with conditions, to show the DGII's
+/// message; <c>environment</c>: the documents of one DGII environment (the CerteCF simulation for the certification).</summary>
 internal static class ListDocuments
 {
     public sealed record Item(Guid Id, string ENcf, EcfType Type, Guid ReferenceId, decimal Total, decimal Itbis, DateTime SignedUtc, SubmissionStatus Status,
@@ -148,11 +149,14 @@ internal static class ListDocuments
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/fiscal/documents", async (bool? pendingOnly, bool? rejectedOnly, int? last, FiscalDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/fiscal/documents", async (bool? pendingOnly, bool? rejectedOnly, bool? conditionalOnly, FiscalEnvironment? environment, int? last,
+                    FiscalDbContext db, CancellationToken ct) =>
                 {
                     var q = db.Documents.AsNoTracking();
                     if (pendingOnly == true) q = q.Where(d => d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.Sent);
                     if (rejectedOnly == true) q = q.Where(d => d.Status == SubmissionStatus.Rejected && d.ReplacedByENcf == null);
+                    if (conditionalOnly == true) q = q.Where(d => d.Status == SubmissionStatus.AcceptedConditional);
+                    if (environment is { } env) q = q.Where(d => d.Environment == env);
                     return Results.Ok(await q.OrderByDescending(d => d.SignedUtc).Take(Math.Clamp(last ?? 100, 1, 1000))
                         .Select(d => new Item(d.Id, d.ENcf, d.Type, d.ReferenceId, d.Total, d.Itbis, d.SignedUtc, d.Status, d.SubmitDeadlineUtc, d.LastError,
                             d.Environment, d.Channel, d.TrackId, d.DgiiCode, d.DgiiMessages, d.SequenceUsed, d.Contingency, d.ReplacesENcf, d.ReplacedByENcf))

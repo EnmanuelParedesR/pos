@@ -101,7 +101,7 @@
                                         @if (d.ApprovalMessage is { } m) { <span class="esc-table__sub esc-muted">@m</span> }</td>
                                     <td class="esc-num">
                                         @* R9 #5: a test environment's e-CF is not a purchase; one in conflict waits until the supplier says which is real. *@
-                                        @if (d.Environment == "ecf" && !InConflict(d)) { <a class="esc-button esc-button--small" href="admin/purchasing">Registrar compra</a> }
+                                        @if (d.Environment == "ecf" && !InConflict(d)) { <a class="esc-button esc-button--small" href="@($"admin/purchasing?fromEcf={d.Id}")">Registrar compra</a> }
                                         @if (Session.Can("fiscal.manage") && (d.Approval is null || d.ApprovalMessage is not null))
                                         {
                                             @if (_rejecting == d.Id)

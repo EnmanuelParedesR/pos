@@ -31,7 +31,10 @@ internal static class EcfOperationsModule
 internal sealed class EcfOperations(FiscalDbContext db, FiscalDocuments documents, EcfCertificate certificate, TimeProvider clock)
 {
     /// <param name="Level"><c>error</c> (red: fiscal deadline or nothing can be issued) or <c>warning</c> (amber).</param>
-    /// <param name="Code">queue, dgii, certificate, sequences, contingency, regularize.</param>
+    /// <summary>How long an e-CF accepted with conditions stays in the list (TK-240).</summary>
+    public const int ConditionalDays = 7;
+
+    /// <param name="Code">queue, dgii, certificate, sequences, contingency, regularize, conditional.</param>
     public sealed record Item(string Level, string Code, string Title, string Detail);
 
     public sealed record Response(FiscalEnvironment Environment, DateTime? OldestPendingUtc, DateTime? LastDgiiContactUtc, DateTime? CertificateExpiresUtc,
@@ -62,6 +65,15 @@ internal sealed class EcfOperations(FiscalDbContext db, FiscalDocuments document
                     (lastContact is { } l ? $"Último contacto: {Local(l)}. " : "")
                     + "Los comprobantes quedan guardados y se envían solos cuando la DGII responda. Use \"Consultar a la DGII\" para ver si el servicio está arriba."));
         }
+
+        // TK-240: accepted with conditions in the last week. Valid, nothing to replace; the owner reads what the DGII observed to fix it next time.
+        var conditional = await db.Documents.Where(d => d.Status == SubmissionStatus.AcceptedConditional && d.ResultUtc >= now.AddDays(-ConditionalDays))
+            .OrderByDescending(d => d.ResultUtc).Select(d => new { d.ENcf, d.DgiiMessages }).ToListAsync(ct);
+        if (conditional is [var first, ..])
+            items.Add(new("warning", "conditional", conditional.Count == 1
+                    ? $"La DGII aceptó {first.ENcf} con observaciones"
+                    : $"La DGII aceptó {conditional.Count} comprobantes con observaciones",
+                $"Son válidos y no hay que reemplazarlos. La DGII dice: {first.DgiiMessages ?? "sin mensaje"}. Corríjalo para las próximas facturas."));
 
         var why = documents.CannotSign();
         var cert = certificate.Describe();
@@ -113,10 +125,11 @@ internal sealed class EcfOperationsHealthCheck(EcfOperations operations) : IHeal
 {
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
-        var review = await operations.ReviewAsync(cancellationToken);
-        return review.Items.Count == 0
+        // A conditional acceptance (TK-240) is a valid e-CF: worth reading, not an operations problem.
+        var items = (await operations.ReviewAsync(cancellationToken)).Items.Where(i => i.Code != "conditional").ToList();
+        return items.Count == 0
             ? HealthCheckResult.Healthy()
-            : HealthCheckResult.Degraded(string.Join(" ", review.Items.Select(i => $"[{i.Code}] {i.Title}.")));
+            : HealthCheckResult.Degraded(string.Join(" ", items.Select(i => $"[{i.Code}] {i.Title}.")));
     }
 }
 

@@ -120,3 +120,25 @@ public sealed record FiscalDocumentIssuedV1(Guid DocumentId, string ENcf, EcfTyp
 /// with the rejected number now points to the new one, so its receipt and the 607 use the valid e-CF.</summary>
 public sealed record FiscalDocumentReplacedV1(Guid DocumentId, string RejectedENcf, string ENcf, EcfType Type, Guid ReferenceId, string SecurityCode,
     string QrUrl, DateTime SignedUtc, DateOnly? SequenceExpiresOn) : IntegrationEvent(DocumentId);
+
+/// <summary>TK-240: one line of a supplier's e-CF as it reads for a purchase: the unit price without ITBIS (the e-CF may carry it included).</summary>
+/// <param name="ItbisPercent">18, 16 or 0; null when the line is exempt.</param>
+public sealed record SupplierEcfLine(string Description, decimal Quantity, decimal UnitCost, decimal? ItbisPercent, string? Code);
+
+/// <summary>TK-240: an e-CF a supplier issued to this business (received through the cloud, TK-154, or a file the person uploaded), read from its XML.</summary>
+/// <param name="Environment">The DGII environment it was received in (<c>ecf</c> is production); null for an uploaded file.</param>
+public sealed record SupplierEcf(string IssuerRnc, string IssuerName, string ENcf, int Type, DateOnly IssuedOn, decimal Subtotal, decimal Itbis, decimal Total,
+    IReadOnlyList<SupplierEcfLine> Lines, string? Environment);
+
+/// <summary>TK-240: e-CF of suppliers for Compras: the received ones (TK-154) and the reading of an e-CF XML file.</summary>
+public interface ISupplierEcfs
+{
+    /// <summary>A received e-CF by its id at the store; null when it does not exist.</summary>
+    Task<SupplierEcf?> ReceivedAsync(Guid id, CancellationToken ct);
+
+    /// <summary>The newest e-CF received in production from that supplier with that e-NCF; null when none arrived.</summary>
+    Task<SupplierEcf?> ReceivedAsync(string issuerRnc, string encf, CancellationToken ct);
+
+    /// <summary>An e-CF XML (31 to 34, 41, 43–47); null when it is not one.</summary>
+    SupplierEcf? Read(string xml);
+}

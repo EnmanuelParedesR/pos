@@ -24,8 +24,23 @@ internal static class ReadSupplierInvoice
 
     /// <param name="SupplierId">This store's active supplier with the RNC read; null when it is not registered yet.</param>
     /// <param name="Warnings">What the person must check, in Spanish.</param>
+    /// <param name="Source"><c>ai</c> (read by the cloud's AI) or <c>ecf</c> (TK-240: taken from the supplier's signed e-CF, exact).</param>
     public sealed record Response(Guid? SupplierId, string? SupplierRnc, string? SupplierName, string? Ncf, DateOnly? Date, IReadOnlyList<Line> Lines,
-        decimal? Subtotal, decimal? Itbis, decimal? Total, decimal Confidence, IReadOnlyList<string> Warnings);
+        decimal? Subtotal, decimal? Itbis, decimal? Total, decimal Confidence, IReadOnlyList<string> Warnings, string Source = Ai);
+
+    public const string Ai = "ai";
+    public const string Ecf = "ecf";
+
+    public static readonly Error NotAnEcf = Error.Validation("Purchasing.NotAnEcf",
+        "Ese XML no es un comprobante fiscal electrónico (e-CF). Suba el XML que le envió el suplidor, o el PDF o una foto de la factura.");
+
+    /// <summary>TK-240: the supplier's e-CF as if it had been read: every amount is exact, so nothing is doubtful. An exempt line goes as 0 %.</summary>
+    internal static SupplierInvoiceReading Reading(SupplierEcf e) =>
+        new(e.IssuerRnc, e.IssuerName, e.ENcf, e.IssuedOn, [.. e.Lines.Select(l => new SupplierInvoiceLineReading(l.Description, l.Quantity, l.UnitCost, l.ItbisPercent ?? 0))],
+            e.Subtotal, e.Itbis, e.Total, 1m, []);
+
+    private static bool IsXml(string? type, string? fileName) =>
+        type is "application/xml" or "text/xml" || (string.IsNullOrEmpty(type) && fileName?.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) == true);
 
     public static readonly Error NotConnected = Error.Conflict("Purchasing.AiNeedsCloud",
         "La lectura de facturas con IA se hace en la nube de Toki: conecte la tienda a la nube para usarla. Mientras, escriba la compra a mano.");
@@ -90,6 +105,13 @@ internal static class ReadSupplierInvoice
         return new Response(supplier?.Id, rnc, name, ncf.Length > 0 ? ncf : null, date, lines, r.Subtotal, r.Itbis, r.Total, r.Confidence, warnings);
     }
 
+    /// <summary>TK-240: an e-CF of the supplier, received through the cloud or uploaded as XML, reviewed like a reading. Its lines still need a product each.</summary>
+    internal static async Task<Response> ReviewEcfAsync(PurchasingDbContext db, ITaxpayerRegistry registry, SupplierEcf e, TimeProvider clock, CancellationToken ct, string? note = null)
+    {
+        var review = await ReviewAsync(db, registry, Reading(e), clock, ct);
+        return review with { Source = Ecf, Warnings = [.. note is null ? [] : new[] { note }, .. review.Warnings] };
+    }
+
     private static ItbisRate? Rate(decimal? percent) => percent switch
     {
         18 => ItbisRate.General18,
@@ -106,15 +128,32 @@ internal static class ReadSupplierInvoice
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/purchasing/purchases/read-invoice", async (Body b, ICloudClient cloud, PurchasingDbContext db, ITaxpayerRegistry registry, TimeProvider clock,
-                    CancellationToken ct) =>
+            app.MapPost("/api/purchasing/purchases/read-invoice", async (Body b, ICloudClient cloud, PurchasingDbContext db, ITaxpayerRegistry registry,
+                    ISupplierEcfs ecfs, TimeProvider clock, CancellationToken ct) =>
                 {
                     var type = b.ContentType?.Trim().ToLowerInvariant();
                     var size = b.File is null ? 0 : b.File.Length / 4 * 3;
-                    if (type is null || !SupplierInvoiceReading.ContentTypes.Contains(type) || size is 0 or > SupplierInvoiceReading.MaxFileBytes)
-                        return EndpointExtensions.Problem(InvalidFile);
+                    if (size is 0 or > SupplierInvoiceReading.MaxFileBytes) return EndpointExtensions.Problem(InvalidFile);
+                    // TK-240: the supplier's e-CF XML needs no AI (nor the cloud): it is read here, exactly.
+                    if (IsXml(type, b.FileName))
+                    {
+                        string xml;
+                        try { xml = Encoding.UTF8.GetString(Convert.FromBase64String(b.File!)); }
+                        catch (FormatException) { return EndpointExtensions.Problem(InvalidFile); }
+                        return ecfs.Read(xml) is { } e
+                            ? Results.Ok(await ReviewEcfAsync(db, registry, e, clock, ct, "Tomada del XML del e-CF del suplidor: los montos son los del comprobante."))
+                            : EndpointExtensions.Problem(NotAnEcf);
+                    }
+                    if (type is null || !SupplierInvoiceReading.ContentTypes.Contains(type)) return EndpointExtensions.Problem(InvalidFile);
                     var reading = await AskCloudAsync(cloud, new SupplierInvoiceReadRequest(b.File, type, b.FileName), ct);
-                    return reading.IsFailure ? EndpointExtensions.Problem(reading.Error!) : Results.Ok(await ReviewAsync(db, registry, reading.Value!, clock, ct));
+                    if (reading.IsFailure) return EndpointExtensions.Problem(reading.Error!);
+                    // TK-240: when the supplier also sent that e-CF (TK-154), its signed data wins over what the AI read on the paper.
+                    var read = reading.Value!;
+                    var ncf = new string((read.Ncf ?? "").Where(char.IsAsciiLetterOrDigit).ToArray()).ToUpperInvariant();
+                    if (Rnc.Normalize(read.SupplierRnc) is { } rnc && Rnc.IsValid(rnc) && ncf.StartsWith('E') && await ecfs.ReceivedAsync(rnc, ncf, ct) is { } received)
+                        return Results.Ok(await ReviewEcfAsync(db, registry, received, clock, ct,
+                            $"El suplidor ya envió el e-CF {ncf}: se usaron sus datos, no los que leyó la IA."));
+                    return Results.Ok(await ReviewAsync(db, registry, read, clock, ct));
                 })
                 .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
     }

@@ -31,6 +31,8 @@
     <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
     <!-- Excel export (MIT) -->
     <PackageVersion Include="ClosedXML" Version="0.105.0" />
+    <!-- TK-240: the DGII .xls (BIFF) and .csv of received documents; ClosedXML reads only .xlsx (MIT) -->
+    <PackageVersion Include="ExcelDataReader" Version="3.7.0" />
     <!-- Public catalog QR as SVG (MIT) -->
     <PackageVersion Include="QRCoder" Version="1.6.0" />
     <!-- Client (Blazor) -->

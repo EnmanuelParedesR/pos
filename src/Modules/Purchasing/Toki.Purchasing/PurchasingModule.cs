@@ -60,8 +60,15 @@ internal sealed class PurchasingDbContext(DbContextOptions<PurchasingDbContext> 
 
 internal sealed class PurchasingConfiguration :
     IEntityTypeConfiguration<Supplier>, IEntityTypeConfiguration<Purchase>, IEntityTypeConfiguration<PurchaseLine>, IEntityTypeConfiguration<Expense>,
-    IEntityTypeConfiguration<Payable>, IEntityTypeConfiguration<SupplierPayment>, IEntityTypeConfiguration<PaymentAllocation>
+    IEntityTypeConfiguration<Payable>, IEntityTypeConfiguration<SupplierPayment>, IEntityTypeConfiguration<PaymentAllocation>, IEntityTypeConfiguration<PurchaseFile>
 {
+    public void Configure(EntityTypeBuilder<PurchaseFile> b)
+    {
+        b.ToTable("PurchaseFiles");
+        b.HasKey(f => f.PurchaseId);
+        b.Property(f => f.ContentType).HasMaxLength(40);
+    }
+
     public void Configure(EntityTypeBuilder<Supplier> b)
     {
         b.ToTable("Suppliers");
@@ -82,6 +89,7 @@ internal sealed class PurchasingConfiguration :
         b.Property(p => p.Ncf).HasMaxLength(13);
         b.Property(p => p.SupplierRnc).HasMaxLength(11);
         b.Property(p => p.Notes).HasMaxLength(500);
+        b.Property(p => p.AttachmentName).HasMaxLength(200);
         b.Property(p => p.Status).HasConversion<string>().HasMaxLength(12);
         b.Property(p => p.Terms).HasConversion<string>().HasMaxLength(10);
         b.Property(p => p.Method).HasConversion<string>().HasMaxLength(15);

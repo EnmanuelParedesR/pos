@@ -46,6 +46,8 @@ internal sealed class Purchase
     public Guid UserId { get; set; }
     /// <summary>Bumped by an atomic update before an edit or a void reads the purchase: it locks the row, so they run one at a time.</summary>
     public int Version { get; set; }
+    /// <summary>TK-240: name of the supplier's original invoice (PDF, photo or e-CF XML) kept with it in <see cref="PurchaseFile"/>; null without one.</summary>
+    public string? AttachmentName { get; set; }
     public List<PurchaseLine> Lines { get; set; } = [];
 
     /// <summary>The invoice's own totals may differ from Toki's line math by centavos (suppliers round ITBIS on the subtotal).</summary>
@@ -70,6 +72,19 @@ internal sealed class Purchase
         Subtotal = Total - Itbis;
         return true;
     }
+}
+
+/// <summary>TK-240: the supplier's original invoice of a purchase, as uploaded (at most 4 MB). In the database, so the backups keep it.</summary>
+internal sealed class PurchaseFile
+{
+    public const int MaxBytes = 4_000_000;
+    public static readonly IReadOnlyList<string> ContentTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/xml", "text/xml"];
+
+    public Guid PurchaseId { get; set; }
+    public string FileName { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public byte[] Content { get; set; } = [];
+    public DateTime CreatedUtc { get; set; }
 }
 
 /// <param name="UnitCost">Cost of one purchased unit (a box when <see cref="Factor"/> is 24), before ITBIS.</param>
