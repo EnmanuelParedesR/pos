@@ -1,5 +1,9 @@
 // The register's keyboard rules. One listener on window in the capture phase: it sees every key before Blazor does.
 (() => {
+  // A cash, quantity or price field ([data-select-on-focus]) selects its value on focus, so typing replaces it. A listener, not an
+  // inline onfocus: the Lite app's CSP forbids inline handlers (TK-324).
+  document.addEventListener('focusin', e => { if ((e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) && e.target.matches('[data-select-on-focus]')) e.target.select(); });
+
   const topOverlay = () => {
     const all = document.querySelectorAll('.esc-overlay');
     return all.length ? all[all.length - 1] : null;

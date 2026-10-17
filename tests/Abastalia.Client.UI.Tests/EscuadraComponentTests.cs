@@ -52,7 +52,7 @@ public sealed class EscuadraComponentTests : IDisposable
         k.Find("[role=group]").GetAttribute("aria-label").ShouldBe("Teclado numérico");
         var buttons = k.FindAll("button");
         buttons.Count.ShouldBe(12);
-        buttons.ShouldAllBe(b => b.GetAttribute("onmousedown") == "event.preventDefault()" && b.GetAttribute("type") == "button");
+        buttons.ShouldAllBe(b => b.GetAttribute("onmousedown") == null && b.GetAttribute("type") == "button"); // TK-324: no inline script (the Lite CSP)
         k.Find("[aria-label=Borrar]").Click();
         k.Find("[aria-label=Limpiar]").Click();
         k.FindAll("button")[0].Click();

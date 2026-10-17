@@ -5,6 +5,7 @@
 @inject IServiceProvider Services
 @inject AbastaliaApi Api
 @inject IJSRuntime JS
+@implements IDisposable
 <Dialog Title="@($"Factura {_receipt.ENcf}")" Subtitle="@(_receipt.IsVoided ? "ANULADA" : null)" OnClose="OnClose">
     <ChildContent>
         <div class="receipt" aria-label="Factura">
@@ -102,9 +103,28 @@
     {
         _receipt = Receipt;
         _logo = Peripherals.Settings.PrintLogo ? await Logo.RasterAsync(Receipt.LogoVersion, Width) : null;
-        if (SaleId is { } id && Services.GetService(typeof(BrowserHost)) is not null && (await Api.GetAsync<Receipt>($"/api/sales/{id}/receipt")).Value is { } fresh)
-            _receipt = fresh;
+        if (SaleId is { } id && Services.GetService(typeof(BrowserHost)) is not null) _ = FollowSignatureAsync(id);
     }
+
+    /// <summary>The code and QR reach the sale a few seconds after the device signs (the host's outbox): the open receipt keeps asking for
+    /// up to 30 s, so the cashier who opens it right after the sale sees them appear.</summary>
+    private async Task FollowSignatureAsync(Guid id)
+    {
+        for (var attempt = 0; attempt < 30 && !_closed; attempt++)
+        {
+            if ((await Api.GetAsync<Receipt>($"/api/sales/{id}/receipt")).Value is { } fresh)
+            {
+                _receipt = fresh;
+                await InvokeAsync(StateHasChanged);
+                if (fresh.SecurityCode.Length > 0) return;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(1));
+        }
+    }
+
+    private bool _closed;
+
+    public void Dispose() => _closed = true;
 
     private string? _message;
 

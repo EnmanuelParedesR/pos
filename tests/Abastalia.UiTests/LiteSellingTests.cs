@@ -43,7 +43,7 @@ public sealed class LiteSellingTests : IAsyncLifetime
             ["Lite__AppOrigins__0"] = _origin,
             ["Lite__Plans__Lite__SellingDevices"] = "2", // the test's own device sets the shop up; the browser is the other
             ["Sync__Enabled"] = "false",
-            ["Outbox__Process"] = "false",
+            ["Outbox__Process"] = "true", // the signed e-CF reaches the sale (security code, QR) through the outbox, as in production
             ["Abastalia__KeysFolder"] = Path.Combine(_folder, "keys"),
             ["License__File"] = Path.Combine(_folder, "license.jws"),
             ["Serilog__MinimumLevel__Default"] = "Warning",

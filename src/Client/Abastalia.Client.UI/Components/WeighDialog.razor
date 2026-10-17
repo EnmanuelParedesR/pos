@@ -19,7 +19,7 @@
             <div class="esc-row" role="group" aria-label="Motivo">
                 @foreach (var r in Reasons)
                 {
-                    <button type="button" class="esc-chip" aria-pressed="@(r == _reason ? "true" : "false")" onmousedown="event.preventDefault()" @onclick="() => _reason = r">@r</button>
+                    <button type="button" class="esc-chip" aria-pressed="@(r == _reason ? "true" : "false")" @onmousedown:preventDefault @onclick="() => _reason = r">@r</button>
                 }
             </div>
             <input @ref="_input" data-no-scan class="esc-input esc-input--large esc-num" inputmode="decimal" aria-label="Peso en libras" @bind="_text" @bind:event="oninput" />
