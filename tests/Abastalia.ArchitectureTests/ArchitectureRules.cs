@@ -63,7 +63,8 @@ public sealed partial class ArchitectureRules
             .WithoutRequiringPositiveResults()
             .Check(Architecture);
 
-    /// <summary>planes.md §6: selling, issuing e-CF and their queue never depend on the license or on payment.</summary>
+    /// <summary>planes.md §6: selling, issuing e-CF and their queue never read the license. TK-279: the only license rule they carry is the Blocked gate
+    /// on their endpoints (RequireUsableLicense, in BuildingBlocks), so the e-CF queue, closing a shift and the reports never stop.</summary>
     [Fact]
     public void Selling_and_invoicing_never_depend_on_the_license() =>
         Types().That().ResideInAssemblyMatching(@"^Abastalia\.(Sales|Fiscal|CashRegister),")

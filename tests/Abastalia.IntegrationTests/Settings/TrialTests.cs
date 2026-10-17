@@ -12,11 +12,11 @@ using static Abastalia.IntegrationTests.Infra.Store;
 
 namespace Abastalia.IntegrationTests.Settings;
 
-/// <summary>TK-196 / TK-220: the 14-day trial, its warnings, Restricted and buying the license. Own app: it moves the clock weeks ahead.</summary>
+/// <summary>TK-196 / TK-220 / TK-279: the 14-day trial, its warnings, Restricted, Blocked and buying the license. Own app: it moves the clock weeks ahead.</summary>
 public sealed class TrialTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
 {
     [Fact]
-    public async Task The_trial_starts_with_the_first_sale_warns_on_days_10_and_13_and_then_restricts_without_stopping_the_sale()
+    public async Task The_trial_starts_with_the_first_sale_warns_on_days_10_and_13_restricts_and_30_days_later_blocks_the_sale()
     {
         await app.LoadSequencesAsync();
         var device = (await app.AdminAsync()).Device;
@@ -77,6 +77,15 @@ public sealed class TrialTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
         (await sold.Json()).GetProperty("eNcf").GetString().ShouldNotBeNullOrEmpty();
         var today = DateOnly.FromDateTime(app.Clock.GetUtcNow().UtcDateTime.AddHours(-4));
         (await admin.GetAsync($"/api/reports/dgii/607?from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}")).StatusCode.ShouldBe(HttpStatusCode.OK); // exports go on
+
+        // TK-279: 30 days after the trial ended, Blocked: no new sale; the reports go on.
+        var trialEnds = features.GetProperty("trialEndsUtc").GetDateTime();
+        features.GetProperty("blocksUtc").GetDateTime().ShouldBe(trialEnds.AddDays(LicenseService.DefaultBlockAfterDays));
+        app.Clock.Advance(trialEnds.AddDays(LicenseService.DefaultBlockAfterDays) - app.Clock.GetUtcNow().UtcDateTime + TimeSpan.FromMinutes(1));
+        admin = app.Client(await app.SignInAsync("admin", AbastaliaApp.AdminPin, device));
+        (await Features()).GetProperty("status").GetString().ShouldBe("Blocked");
+        (await (await admin.PostAsJsonAsync("/api/sales", Sale(shift, 59m, 59m, Line(soda, 1)))).ErrorCode()).ShouldBe("License.Blocked");
+        (await admin.GetAsync($"/api/reports/dgii/607?from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}")).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         // Buying: the license Abastalia staff send, installed here; no reinstall, every sale kept, the waiting register back.
         var license = new LicenseData("Carnicería de prueba", "Negocio", [], new Dictionary<string, int> { ["Registers"] = 3 },

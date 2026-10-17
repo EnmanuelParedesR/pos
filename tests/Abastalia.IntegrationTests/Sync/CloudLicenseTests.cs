@@ -61,7 +61,7 @@ public sealed class CloudLicenseTests(AbastaliaApp app) : IClassFixture<Abastali
             .StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await FeaturesAsync()).GetProperty("plan").GetString().ShouldBe("Varias sucursales");
 
-        // Past due: the cloud stops renewing. The license runs out, 15 days of grace keep everything, then Restricted (selling never stops).
+        // Past due: the cloud stops renewing. The license runs out, 15 days of grace keep everything, then Restricted (Blocked 30 days after expiry, TK-279).
         app.Clock.Advance(TimeSpan.FromDays(31));
         (await FeaturesAsync()).GetProperty("status").GetString().ShouldBe("Grace");
         app.Clock.Advance(LicenseService.GracePeriod);
@@ -71,6 +71,14 @@ public sealed class CloudLicenseTests(AbastaliaApp app) : IClassFixture<Abastali
         // Paid again: the next pull brings the new period and lifts it at once.
         now = app.Clock.GetUtcNow().UtcDateTime;
         CloudAnswers(Jws.Sign(License("Varias cajas", now, now.AddDays(30)), app.CloudLicenseKey));
+        (await PullAsync()).ShouldBeTrue();
+        (await FeaturesAsync()).GetProperty("status").GetString().ShouldBe("Active");
+
+        // TK-279: Abastalia blocks the business from the console: the next pull blocks the store at once; unblocking lifts it the same way.
+        CloudAnswers(Jws.Sign(License("Varias cajas", now.AddMinutes(1), now.AddMinutes(1)) with { Blocked = true }, app.CloudLicenseKey));
+        (await PullAsync()).ShouldBeTrue();
+        (await FeaturesAsync()).GetProperty("status").GetString().ShouldBe("Blocked");
+        CloudAnswers(Jws.Sign(License("Varias cajas", now.AddMinutes(2), now.AddDays(30)), app.CloudLicenseKey));
         (await PullAsync()).ShouldBeTrue();
         (await FeaturesAsync()).GetProperty("status").GetString().ShouldBe("Active");
         app.Cloud.To(PullLicense.Path).ShouldAllBe(r => app.Cloud.SignedByNode(r)); // asked as this node, signed with its key

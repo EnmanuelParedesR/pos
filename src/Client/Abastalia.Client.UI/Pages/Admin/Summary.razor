@@ -394,7 +394,7 @@
         {
             var blocks = license.BlocksUtc is { } blocksUtc ? $"el {Format.StoreTime(blocksUtc).ToString("d 'de' MMMM", Es)}" : "pronto";
             if (license.Warning is { } warning)
-                _alerts.Add(warning switch
+                _alerts.Insert(warning == "Blocked" ? 0 : _alerts.Count, warning switch // Blocked goes first: nothing else matters while the sale is stopped
                 {
                     "Blocked" => new("error", "lock", "Su licencia está vencida: la venta está <b>detenida</b>",
                         "No se pueden hacer ventas nuevas, abrir turnos ni emitir e-CF. Siguen cerrar el turno abierto, el envío a la DGII de lo ya emitido, los reportes, exportar y los respaldos. Pague su plan o escríbale a Abastalia y active la licencia: todo vuelve al momento.",

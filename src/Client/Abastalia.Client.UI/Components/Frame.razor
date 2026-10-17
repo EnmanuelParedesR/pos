@@ -231,10 +231,16 @@
         if (a.RestartRequested && a.PendingVersion is not null && Cart.IsEmpty) _updater.CloseToUpdate();
     }
 
-    private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(() =>
+    private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(async () =>
     {
         _boundary?.Recover();
         Guard();
+        // TK-279: coming from the back office, the register learns at once whether the license is blocked (not at the next 15-second check).
+        if (_license is null && Session.IsOpen && !IsBackOffice)
+        {
+            _license = (await Api.PollAsync<LicenseFeatures>("/api/settings/features")).Value;
+            StateHasChanged();
+        }
     });
 
     private void Guard()

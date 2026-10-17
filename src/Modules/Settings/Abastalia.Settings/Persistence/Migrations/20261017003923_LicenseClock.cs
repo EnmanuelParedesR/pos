@@ -25,14 +25,6 @@ namespace Abastalia.Settings.Persistence.Migrations
                 table: "Business",
                 type: "datetime2",
                 nullable: true);
-
-            migrationBuilder.UpdateData(
-                schema: "settings",
-                table: "Business",
-                keyColumn: "Id",
-                keyValue: 1,
-                columns: new[] { "ClockSeenSeal", "ClockSeenUtc" },
-                values: new object[] { null, null });
         }
 
         /// <inheritdoc />

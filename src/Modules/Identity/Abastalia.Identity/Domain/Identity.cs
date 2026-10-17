@@ -79,7 +79,7 @@ internal static class CashierSeats
         var limit = license.LimitOf(Abastalia.BuildingBlocks.Security.Limit.Cashiers);
         if (adding <= 0 || limit == int.MaxValue) return null;
         return await CountAsync(db, ct) + adding > limit
-            ? IdentityErrors.CashierLimitReached(limit, license.Status == Abastalia.BuildingBlocks.Security.LicenseStatus.Restricted)
+            ? IdentityErrors.CashierLimitReached(limit, license.Status is Abastalia.BuildingBlocks.Security.LicenseStatus.Restricted or Abastalia.BuildingBlocks.Security.LicenseStatus.Blocked)
             : null;
     }
 }

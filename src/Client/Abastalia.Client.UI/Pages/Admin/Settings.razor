@@ -434,13 +434,13 @@
                 <div class="esc-setting__body">
                     <dl class="esc-dl">
                         <dt>Estado</dt><dd><span class="esc-pill @(f.Status switch { "Active" => "esc-pill--success", "Blocked" => "esc-pill--error", _ => "esc-pill--warning" })">@Names.LicenseStatus(f.Status)</span></dd>
-                        <dt>Plan</dt><dd>@(f.Plan ?? "Prueba")@(f.ExpiresUtc is { } v ? $" · vence el {Format.ShortDate(v)}" : "")</dd>
+                        <dt>Plan</dt><dd>@(f.Plan ?? "Prueba")@(f.ExpiresUtc is { } v ? $" · {(v < DateTime.UtcNow ? "venció" : "vence")} el {Format.ShortDate(v)}" : "")</dd>
                         <dt>Cajas permitidas</dt><dd>@f.Registers</dd>
                         <dt>Funciones</dt><dd>@(f.Enabled.Length == 0 ? "Las básicas" : string.Join(", ", f.Enabled.Select(Names.Feature)))</dd>
                     </dl>
                     @if (Names.LicenseNote(f) is { } note)
                     {
-                        <Notice Kind="@(f.Status == "Blocked" ? Notice.Kinds.Error : f.Warning is null ? Notice.Kinds.Info : Notice.Kinds.Warning)" Title="@note">
+                        <Notice Kind="@(f.Status == "Blocked" ? Notice.Kinds.Error : f.Warning is null ? Notice.Kinds.Info : Notice.Kinds.Warning)" Title="@(note.Split(" · ")[0])">
                             @(f.Status switch
                             {
                                 "Blocked" => "No se pueden hacer ventas nuevas, abrir turnos ni emitir e-CF. Siguen cerrar el turno abierto, el envío a la DGII de lo ya emitido, los reportes, exportar y los respaldos. Ningún dato se pierde: active la licencia y todo vuelve al momento.",
