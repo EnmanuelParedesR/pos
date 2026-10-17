@@ -1,0 +1,18 @@
+{
+  "name": "abastalia-lite-signer",
+  "private": true,
+  "version": "0.1.0",
+  "description": "TK-322: the Lite browser signer (.p12 to a non-extractable CryptoKey, allowlist, signing log, DGII client)",
+  "type": "module",
+  "exports": "./index.js",
+  "scripts": {
+    "test": "node --test",
+    "bench": "node bench.mjs"
+  },
+  "dependencies": {
+    "node-forge": "1.4.0"
+  },
+  "devDependencies": {
+    "@xmldom/xmldom": "0.9.12"
+  }
+}

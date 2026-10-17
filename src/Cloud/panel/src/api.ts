@@ -502,6 +502,19 @@ export interface TenantMetrics {
 export type Meter = "AssistantQuestions" | "AssistantTokens" | "SupplierInvoices" | "Emails" | "ArchiveRetrievals" | "AccompanimentRequests" | "Invites" | "CloudBackups" | "ReceiverSignatures";
 export interface Usage { plan: string; addOns: string[]; resetsOn: string; meters: { meter: Meter; used: number; limit: number }[] }
 export interface PlatformUsage { usage: Usage; plans: string[]; addOns: string[] }
+/** TK-311: Salud de la plataforma (GET /api/platform/watch?days=1|7). IPs come as their /24 and a salted hash, never the address. */
+export interface WatchThresholds { perIpRejections15Min: number; storesBehindIp: number; silentStoreHours: number; queueStaleHours: number; quotaNearPercent: number }
+export interface WatchStore { tenantId: string; tenantName: string; storeId: string; storeName: string; lastHeartbeatUtc: string; queueHours: number | null }
+export interface PlatformWatch {
+  days: number;
+  sinceUtc: string;
+  thresholds: WatchThresholds;
+  reasons: { reason: string; detail: string; count: number; retryAfter: number }[];
+  ips: { network: string; ipKey: string; count: number; peak15Min: number; stores: number; reasons: string[] }[];
+  quotas: { tenantId: string; tenantName: string; meter: Meter; used: number; limit: number }[];
+  silentStores: WatchStore[];
+  ecfQueues: WatchStore[];
+}
 /** TK-249: Paddle Billing. `enabled` false = not set up yet (the page shows the plan and how to ask Abastalia). */
 export type SubscriptionStatus = "None" | "Trialing" | "Active" | "PastDue" | "Paused" | "Canceled";
 export type BillingInterval = "Monthly" | "Annual";

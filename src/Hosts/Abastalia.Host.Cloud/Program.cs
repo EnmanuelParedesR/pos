@@ -102,6 +102,10 @@ builder.Services.AddRateLimiter(o =>
     {
         if (rejected.Lease.TryGetMetadata(MetadataName.RetryAfter, out var after))
             rejected.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(after.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        // TK-311: which limit refused, for Salud de la plataforma ("global" is the e-CF receiver's).
+        rejected.HttpContext.RequestServices.GetRequiredService<LimitWatch>().Record(rejected.HttpContext, LimitReasons.RateLimit,
+            rejected.HttpContext.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName ?? "global",
+            rejected.HttpContext.Response.Headers.RetryAfter.Count > 0);
         return ValueTask.CompletedTask;
     };
     // TK-249: the node's, the panel's and the assistant's per-minute limits follow the business's plan (Paddle custom_data > Quotas:<Plan>:RateLimits > the setting).
@@ -136,6 +140,9 @@ builder.Services.AddSingleton<InboxApplier>();
 builder.Services.AddHostedService<InboxApplierWorker>();
 builder.Services.AddScoped<PanelQueries>();
 builder.Services.AddScoped<PlatformQueries>();
+builder.Services.AddSingleton<LimitWatch>(); // TK-311
+builder.Services.AddHostedService<LimitWatchWorker>();
+builder.Services.AddScoped<PlatformHealth>();
 AcsEmailSender.AddEmail(builder.Services, config);
 builder.Services.AddScoped<Abastalia.Host.Cloud.Alerts.AlertNotifier>();
 builder.Services.AddColdArchive(config);
@@ -187,6 +194,7 @@ if (app.Services.GetRequiredService<TimeProvider>() is Abastalia.BuildingBlocks.
     });
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+LimitWatch.UseServerErrorWatch(app); // TK-311: 5xx by route
 app.UseSerilogRequestLogging();
 app.UseCors();
 app.UseNodeGate(); // R12 #1: per IP and the body's length, before decompression and the node check read the body

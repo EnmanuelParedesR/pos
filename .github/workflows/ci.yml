@@ -22,6 +22,8 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet build Abastalia.slnx -c Release
+      # TK-317/TK-322: the Lite browser signer (Node is on the runner); LiteBrowserSigningTests compares it with the store's signer.
+      - run: npm ci --prefix src/Client/lite-signer && npm test --prefix src/Client/lite-signer
       - name: Pruebas
         run: dotnet test --solution Abastalia.slnx -c Release --no-build
         env:

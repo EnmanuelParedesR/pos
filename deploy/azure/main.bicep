@@ -69,6 +69,22 @@ param emailResourceName string = ''
 @description('TK-241: where the Azure Monitor alerts go (5xx, inbox failures, health check). Empty = the alerts exist but notify nobody.')
 param alertEmail string = ''
 
+@description('TK-311: per-IP 429s of the node gate (Nodes:ConcurrentPerIp / RequestsPerMinutePerIp) from one IP in 15 minutes that alert. The console highlights the same number.')
+param alertPerIpRejections int = 20
+
+@description('TK-311: stores behind one IP getting the per-IP 429 that alert (a shared connection or carrier NAT: the per-IP limits may be too low).')
+param alertStoresBehindIp int = 3
+
+@description('TK-241 / TK-311: 5xx answers in 15 minutes that alert.')
+param alert5xxPer15Min int = 5
+
+@description('TK-311: hours without a heartbeat after which a connected store counts as silent.')
+param alertSilentStoreHours int = 6
+
+@description('TK-311: the stores\' business hours (store time, UTC-4), start and end hour. A silent store alerts only from start + alertSilentStoreHours to end, so it was silent through that much of the open day, not overnight.')
+param alertBusinessHourStart int = 8
+param alertBusinessHourEnd int = 20
+
 @description('TK-249: Paddle Billing, sandbox or live. Empty = billing off (the default). Set it only after the secrets Billing--Paddle--ApiKey and Billing--Paddle--WebhookSecret exist in the vault (docs/cobro-paddle.md).')
 @allowed(['', 'sandbox', 'live'])
 param paddleEnvironment string = ''
@@ -448,6 +464,10 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Fe__KeyVaultUri: vault.properties.vaultUri
     Fe__DefaultSigningMode: 'StoreSigned' // TK-246 (ADR-0011)
     Fe__AllowCloudCustody: string(allowCloudCustody)
+    // TK-311: the console highlights what the alerts below watch, with the same numbers.
+    Watch__PerIpRejectionsPer15Minutes: string(alertPerIpRejections)
+    Watch__StoresBehindIp: string(alertStoresBehindIp)
+    Watch__SilentStoreHours: string(alertSilentStoreHours)
   }, empty(panelDomain) ? {} : {
     // TK-267: CORS for the own domain and its www; e-mail links (invites, password reset) point to it.
     Panel__Origins__1: 'https://${panelDomain}'
@@ -515,7 +535,7 @@ resource alert5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   location: 'global'
   tags: tags
   properties: {
-    description: 'The API answered more than 5 server errors (5xx) in 15 minutes.'
+    description: 'The API answered more than ${alert5xxPer15Min} server errors (5xx) in 15 minutes. Salud de la plataforma shows them by route.'
     severity: 1
     enabled: true
     scopes: [api.id]
@@ -523,7 +543,7 @@ resource alert5xx 'Microsoft.Insights/metricAlerts@2018-03-01' = {
     windowSize: 'PT15M'
     criteria: {
       'odata.type': 'Microsoft.Azure.Monitor.SingleResourceMultipleMetricCriteria'
-      allOf: [{ name: 'http5xx', criterionType: 'StaticThresholdCriterion', metricName: 'Http5xx', operator: 'GreaterThan', threshold: 5, timeAggregation: 'Total' }]
+      allOf: [{ name: 'http5xx', criterionType: 'StaticThresholdCriterion', metricName: 'Http5xx', operator: 'GreaterThan', threshold: alert5xxPer15Min, timeAggregation: 'Total' }]
     }
     actions: alertActions
   }
@@ -593,6 +613,92 @@ resource alertFairUse 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview
       allOf: [
         {
           query: 'AppServiceConsoleLogs | where ResultDescription has "passed its fair use of receiver signatures"'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: { numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1 }
+        }
+      ]
+    }
+    actions: { actionGroups: empty(alertEmail) ? [] : [alertGroup.id] }
+  }
+  dependsOn: [apiConsoleLogs]
+}
+
+// TK-311 (D22): the per-IP limits of the node gate, watched in the pilot. LimitWatch (src/Hosts/Abastalia.Host.Cloud/Platform/LimitWatch.cs)
+// logs one line a minute per reason and IP: "Limit watch <reason> <detail> net <a.b.c.0/24> ip <hash>: <n> rejections, <n> with Retry-After, <n> stores".
+var limitWatchRows = 'AppServiceConsoleLogs | where ResultDescription has "Limit watch" | parse ResultDescription with * "Limit watch " Reason " " Detail " net " Network " ip " IpKey ": " Count:long " rejections, " RetryAfter:long " with Retry-After, " Stores:long " stores" * | where Reason in ("Gate.PerIpRate", "Gate.PerIpConcurrency")'
+
+resource alertPerIp 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-${name}-per-ip-429'
+  location: location
+  tags: tags
+  properties: {
+    description: 'One IP got more than ${alertPerIpRejections} per-IP 429s from the node gate in 15 minutes. Open Salud de la plataforma; see docs/despliegue-azure.md.'
+    severity: 2
+    enabled: true
+    scopes: [logs.id]
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: '${limitWatchRows} | summarize Rejections = sum(Count) by Network, IpKey | where Rejections > ${alertPerIpRejections}'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: { numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1 }
+        }
+      ]
+    }
+    actions: { actionGroups: empty(alertEmail) ? [] : [alertGroup.id] }
+  }
+  dependsOn: [apiConsoleLogs]
+}
+
+resource alertSharedIp 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-${name}-shared-ip-429'
+  location: location
+  tags: tags
+  properties: {
+    description: '${alertStoresBehindIp} or more stores behind one IP got the per-IP 429 in 15 minutes: the per-IP limits may be too low for a shared connection.'
+    severity: 2
+    enabled: true
+    scopes: [logs.id]
+    evaluationFrequency: 'PT15M'
+    windowSize: 'PT15M'
+    criteria: {
+      allOf: [
+        {
+          query: '${limitWatchRows} | summarize Stores = max(Stores) by Network, IpKey | where Stores >= ${alertStoresBehindIp}'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: { numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1 }
+        }
+      ]
+    }
+    actions: { actionGroups: empty(alertEmail) ? [] : [alertGroup.id] }
+  }
+  dependsOn: [apiConsoleLogs]
+}
+
+// The API logs "Store silent: …" after the inbox applier's run (while the database is awake anyway) for stores past Watch:SilentStoreHours.
+resource alertSilentStores 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-${name}-silent-stores'
+  location: location
+  tags: tags
+  properties: {
+    description: 'A connected store sent no heartbeat in ${alertSilentStoreHours} hours during business hours. The store id is in the log line; Salud de la plataforma lists them.'
+    severity: 3
+    enabled: true
+    scopes: [logs.id]
+    evaluationFrequency: 'PT30M'
+    windowSize: 'PT30M'
+    criteria: {
+      allOf: [
+        {
+          query: 'AppServiceConsoleLogs | where ResultDescription has "Store silent" | where hourofday(TimeGenerated - 4h) >= ${alertBusinessHourStart + alertSilentStoreHours} and hourofday(TimeGenerated - 4h) < ${alertBusinessHourEnd}'
           timeAggregation: 'Count'
           operator: 'GreaterThan'
           threshold: 0
