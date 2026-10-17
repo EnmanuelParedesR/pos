@@ -4,6 +4,7 @@
 @using Microsoft.JSInterop
 @inject IJSRuntime JS
 @inject Peripherals Peripherals
+@inject BusinessLogo Logo
 
 <Admin Title="Turnos y cuadres" Subtitle="Cada turno con lo que se esperaba en efectivo y lo que se contó. Toque uno para ver su cierre.">
     <Actions>
@@ -153,7 +154,7 @@
     {
         _downloading = true;
         var (business, supervisor) = await Printables.ZContextAsync(Api, z);
-        var (name, content) = Printables.Z(z, business, supervisor, DateTime.UtcNow);
+        var (name, content) = Printables.Z(z, business, supervisor, DateTime.UtcNow, await Logo.DataUrlAsync(business.LogoVersion));
         await JS.InvokeVoidAsync("escuadra.download", name, "text/html", content);
         (_downloading, _downloaded) = (false, $"Listo: {name}. Ábralo y elija “Imprimir o guardar como PDF”.");
     }

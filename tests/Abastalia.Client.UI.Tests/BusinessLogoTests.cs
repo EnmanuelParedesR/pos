@@ -112,6 +112,48 @@ public sealed class BusinessLogoTests
     }
 
     [Fact]
+    public void TK288_the_Z_downloaded_from_Turnos_carries_the_business_logo()
+    {
+        var (ctx, api) = ScreenContext.Create("reports.view");
+        using var _ = ctx;
+        var shift = Guid.NewGuid();
+        api.Json("GET", "/api/reports/shifts", new[] { new { shiftId = shift, register = "Caja 1", cashier = "Ana", openedUtc = DateTime.UtcNow.AddHours(-8), closedUtc = (DateTime?)DateTime.UtcNow, zNumber = (long?)7, openingFloat = 0m, expectedCash = (decimal?)0m, countedCash = (decimal?)0m, difference = (decimal?)0m } })
+           .Json("GET", $"/api/cash/shifts/{shift}/z", new
+            {
+                shiftId = shift, zNumber = 7, register = "Caja 1", cashier = "Ana", openedUtc = DateTime.UtcNow.AddHours(-8), closedUtc = DateTime.UtcNow, openingFloat = 0m,
+                byMethod = Array.Empty<object>(), saleCount = 0, voidedCount = 0, customerPayments = 0m, rounding = 0m, cashIn = 0m, withdrawals = 0m, expenses = 0m,
+                expectedCash = 0m, countedCash = 0m, difference = 0m,
+            })
+           .Json("GET", "/api/settings/business", Business("3"))
+           .Json("GET", "/api/settings/business/logo", new { png = Png, version = "3" });
+        var page = ctx.Render<Shifts>();
+
+        page.WaitForAssertion(() => page.Find("tbody tr.selectable").Click());
+        page.WaitForAssertion(() => page.FindAll("button").Single(b => b.TextContent.Contains("Descargar para PDF", StringComparison.Ordinal)).Click());
+
+        page.WaitForAssertion(() => page.Markup.ShouldContain("Listo: cierre-z-7.html"));
+        var html = System.Text.Encoding.UTF8.GetString((byte[])ctx.JSInterop.Invocations.Single(i => i.Identifier == "escuadra.download").Arguments[2]!);
+        html.ShouldContain($"<img class=\"logo\" src=\"data:image/png;base64,{Convert.ToBase64String(Png)}\"");
+        html.ShouldNotContain("aria-label=\"Abastalia\"");
+    }
+
+    [Fact]
+    public void TK288_the_statement_shows_the_business_logo_or_the_Abastalia_tag_without_one()
+    {
+        var statement = new Abastalia.Client.UI.Api.CustomerStatement(Guid.NewGuid(), "Juan Pérez", 500m, 0m, 1000m, []);
+        var business = new Abastalia.Client.UI.Api.BusinessProfile("Colmado El Sol", null, null, null, null, 10m, LogoVersion: "3");
+        var url = "data:image/png;base64," + Convert.ToBase64String(Png);
+
+        var with = System.Text.Encoding.UTF8.GetString(Printables.Statement(statement, null, business, DateTime.UtcNow, url).Content);
+        with.ShouldContain($"<div class=\"business\"><img class=\"logo\" src=\"{url}\" alt=\"\"><h1>Colmado El Sol</h1>");
+        with.ShouldNotContain("aria-label=\"Abastalia\"");
+
+        var without = System.Text.Encoding.UTF8.GetString(Printables.Statement(statement, null, business with { LogoVersion = null }, DateTime.UtcNow).Content);
+        without.ShouldContain("aria-label=\"Abastalia\"");
+        without.ShouldNotContain("<img");
+    }
+
+    [Fact]
     public void The_bmp_preview_is_the_raster_bottom_up_with_white_paper_and_black_ink()
     {
         var url = BusinessLogo.BmpDataUrl(new ReceiptLogo(16, 2, [0xFF, 0x00, 0x0F, 0xF0]));
