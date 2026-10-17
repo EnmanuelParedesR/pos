@@ -13,9 +13,10 @@ const choices: [keyof AlertChoice, string, string][] = [
 /** "Avisos" (TK-222): each member chooses which alerts reach their e-mail. At most one of each kind per store and day. */
 export function NotificationsPage() {
   const { data, error, loading } = useApi<AlertPreferences>("/api/notifications");
-  const [prefs, setPrefs] = useState<AlertPreferences | null>(null);
+  // TK-305: what the member changed, else what loaded (no copy-in effect: the checkboxes are right on the first render with the data).
+  const [changed, setPrefs] = useState<AlertPreferences | null>(null);
+  const prefs = changed ?? data ?? null;
   const [saveError, setSaveError] = useState<ApiError | null>(null);
-  useEffect(() => setPrefs(data ?? null), [data]);
 
   const save = (change: Partial<AlertChoice>) => {
     if (!prefs) return;
