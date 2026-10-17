@@ -1,4 +1,5 @@
-// TK-317 (F0 of the Lite plan): sign a DGII e-CF in the browser with the owner's .p12, which never leaves the device.
+// The XMLDSig of the Lite signer (TK-317's PoC, kept by TK-322): sign a DGII e-CF in the browser with the owner's .p12, which never leaves the device.
+// Low level: signs whatever it is given. The app calls index.js, which checks the allowlist and logs every signature.
 // Same signature as the store's CertificateEcfSigner (docs/ecf-propio.md §4.1): enveloped XMLDSig, C14N 1.0, RSA-SHA256, SHA-256,
 // one Reference URI="" and the certificate in KeyInfo/X509Data. The output is byte for byte what the store produces for the same input.
 // Runs unchanged in a browser (globalThis.crypto, DOMParser) and in Node (pass @xmldom/xmldom's DOMParser).
@@ -18,7 +19,7 @@ const RSA = { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' };
 /** Opens the .p12 (PKCS#12: WebCrypto cannot) and imports its RSA key as a NON-extractable CryptoKey that can only sign.
  *  The decrypted PKCS#8 bytes live in JS memory only during this call; keep the returned CryptoKey (IndexedDB can store it) and drop the file and password.
  *  @returns {{ key: CryptoKey, certificate: string }} certificate = the signer's X.509 DER in Base64, as KeyInfo carries it. */
-export async function importP12(p12Bytes, password, subtle = globalThis.crypto.subtle) {
+export async function openP12(p12Bytes, password, subtle = globalThis.crypto.subtle) {
   const p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(forge.util.binary.raw.encode(p12Bytes)), true, password);
   const keys = [forge.pki.oids.pkcs8ShroudedKeyBag, forge.pki.oids.keyBag].flatMap(t => p12.getBags({ bagType: t })[t] ?? []);
   const certs = p12.getBags({ bagType: forge.pki.oids.certBag })[forge.pki.oids.certBag] ?? [];
@@ -33,16 +34,20 @@ export async function importP12(p12Bytes, password, subtle = globalThis.crypto.s
   return { key, certificate: forge.util.encode64(forge.asn1.toDer(forge.pki.certificateToAsn1(cert)).getBytes()) };
 }
 
-/** Signs an unsigned e-CF, RFCE, ANECF, ACECF, ARECF or SemillaModel (XML text) as the store does.
- *  shortcut: no check of the document type or RNC yet; F1 must refuse anything but the business's own documents (ADR-0011; docs/lite-f0-firma-navegador.md).
- *  @returns {{ signedXml: string, securityCode: string }} */
-export async function signXml(xml, { key, certificate }, { DOMParser = globalThis.DOMParser, subtle = globalThis.crypto.subtle } = {}) {
+/** Parses XML text; throws on malformed XML. */
+export function parseXml(xml, DOMParser = globalThis.DOMParser) {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  if (!doc.documentElement || doc.getElementsByTagName('parsererror').length) throw new Error('XML mal formado.');
+  return doc;
+}
+
+/** Signs an unsigned e-CF, RFCE, ANECF, ACECF, ARECF or SemillaModel (a parsed document, changed in place) as the store does.
+ *  @returns {{ signedXml: string, securityCode: string, digest: string }} digest = the DigestValue (SHA-256 of the canonical unsigned document, Base64). */
+export async function signXml(doc, { key, certificate }, subtle = globalThis.crypto.subtle) {
   const root = doc.documentElement;
-  if (!root || root.getElementsByTagName('parsererror').length) throw new Error('XML mal formado.');
   dropWhitespace(root); // the store signs with PreserveWhitespace = false
 
-  const digest = new Uint8Array(await subtle.digest('SHA-256', utf8(canonical(root)))); // enveloped transform: the signature is not there yet
+  const digest = base64(new Uint8Array(await subtle.digest('SHA-256', utf8(canonical(root))))); // enveloped transform: the signature is not there yet
   const el = (parent, name, text, attrs = {}) => {
     const e = doc.createElementNS(DSIG, name);
     for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
@@ -58,14 +63,14 @@ export async function signXml(xml, { key, certificate }, { DOMParser = globalThi
   const ref = el(info, 'Reference', undefined, { URI: '' });
   el(el(ref, 'Transforms'), 'Transform', undefined, { Algorithm: ENVELOPED });
   el(ref, 'DigestMethod', undefined, { Algorithm: SHA256 });
-  el(ref, 'DigestValue', base64(digest));
+  el(ref, 'DigestValue', digest);
   root.appendChild(signature); // before canonicalizing SignedInfo: it inherits the root's namespaces (a SemillaModel may declare xsi/xsd)
 
   const value = base64(new Uint8Array(await subtle.sign(RSA, key, utf8(canonical(info)))));
   el(signature, 'SignatureValue', value);
   el(el(el(signature, 'KeyInfo'), 'X509Data'), 'X509Certificate', certificate);
 
-  return { signedXml: '<?xml version="1.0" encoding="utf-8"?>' + outerXml(root), securityCode: value.slice(0, 6) };
+  return { signedXml: '<?xml version="1.0" encoding="utf-8"?>' + outerXml(root), securityCode: value.slice(0, 6), digest };
 }
 
 /** Canonical XML 1.0 without comments (inclusive) of an element and its descendants, with the namespaces in scope from its ancestors.
@@ -122,11 +127,4 @@ function base64(bytes) {
   let s = '';
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s);
-}
-
-/** Step 5 of F0, on hold: TesteCF needs the access of TK-141. The browser would: GET {amb}/autenticacion/api/autenticacion/semilla,
- *  signXml(seed), POST validarsemilla (multipart field "xml") → Bearer token (1 h), then POST the e-CF to recepcion or the RFCE to
- *  fc.dgii.gov.do/{amb}/recepcionfc. The DGII answers Access-Control-Allow-Origin: * (checked 16/10/2026). */
-export async function sendToDgii() {
-  throw new Error('TK-317: el envío a TesteCF espera el acceso de TK-141.');
 }
