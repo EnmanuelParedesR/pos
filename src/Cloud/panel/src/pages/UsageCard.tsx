@@ -19,6 +19,7 @@ const meterNames: Record<Meter, string> = {
 export const planNames: Record<string, string> = { Essential: "Esencial", Default: "Estándar", MultiRegister: "Pro", MultiStore: "Varias sucursales" };
 export const addOnNames: Record<string, string> = {
   ExtraRegister: "Caja adicional",
+  ExtraCashier: "Cajero adicional",
   ExtraStore: "Sucursal adicional",
   SupplierInvoiceReading: "Lectura de facturas con IA",
   AssistantPack: "Asistente +1,000 preguntas",
@@ -35,9 +36,11 @@ export const addOnList = (addOns: string[]) =>
 
 /** A number per add-on (0 = not bought): the owner in "Plan y facturación" and Abastalia staff in the console. */
 export function AddOnQuantities({ codes, value, onChange, note }: { codes: string[]; value: string[]; onChange: (addOns: string[]) => void; note?: (code: string) => string | null }) {
+  // The order of addOnNames (registers, cashiers, stores first), as on /precios; unknown codes last.
+  const order = (code: string) => (code in addOnNames ? Object.keys(addOnNames).indexOf(code) : 99);
   return (
     <>
-      {codes.map((code) => (
+      {[...codes].sort((a, b) => order(a) - order(b)).map((code) => (
         <label key={code} className="esc-field" style={{ minWidth: 160 }}>
           <span>
             {addOnNames[code] ?? code}

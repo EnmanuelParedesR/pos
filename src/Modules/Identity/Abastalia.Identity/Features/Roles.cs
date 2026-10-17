@@ -52,7 +52,7 @@ internal static class SaveRole
         }
     }
 
-    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, IUserContext me) : ICommandHandler<Command, Response>
+    internal sealed class Handler(IdentityDbContext db, IAuditLog audit, IUserContext me, IFeatureService license) : ICommandHandler<Command, Response>
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
@@ -63,6 +63,10 @@ internal static class SaveRole
             // R11 A15: nor takes away one they do not have (that would change what others can do beyond the actor's own reach).
             var changed = c.Permissions.Except(before?.Permissions ?? []).Concat((before?.Permissions ?? []).Except(c.Permissions));
             if (Escalation.NotHeld(me, changed) is { Count: > 0 } missing) return IdentityErrors.PermissionsNotHeld(missing);
+            // TK-277: a role that starts selling turns its active users into cashiers: they need free seats.
+            if (role is not null && !CashierSeats.Counts(role) && CashierSeats.Counts(new Role { Id = role.Id, Permissions = [.. c.Permissions] })
+                && await CashierSeats.RoomForAsync(db, license, await db.Users.CountAsync(u => u.RoleId == role.Id && u.IsActive, ct), ct) is { } full)
+                return full;
             if (role is null)
             {
                 role = new Role { Id = Guid.CreateVersion7() };

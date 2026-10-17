@@ -1,7 +1,8 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { App } from "../../App";
+import "../../Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
 import type { Me } from "../../api";
 import { json } from "../../testing";
 import { preparation, sitePages } from "./SitePages";
@@ -50,7 +51,7 @@ it("TK-249: /precios shows the prices Paddle has, and keeps the placeholder for 
       { code: "Default", name: "Estándar", monthly: { priceId: "pri_1", interval: "Monthly", amount: "1500", currency: "USD" }, annual: null },
       { code: "MultiRegister", name: "Pro", monthly: { priceId: "pri_2", interval: "Monthly", amount: "2900", currency: "USD" }, annual: null },
     ],
-    addOns: [],
+    addOns: [{ code: "ExtraCashier", name: "Cajero adicional", monthly: { priceId: "pri_3", interval: "Monthly", amount: "200", currency: "USD" }, annual: null }],
   };
   vi.stubGlobal("fetch", vi.fn(async (url: string) => (url.endsWith("/api/public/prices") ? json(200, prices) : json(404))));
   render(
@@ -61,6 +62,9 @@ it("TK-249: /precios shows the prices Paddle has, and keeps the placeholder for 
 
   expect((await screen.findAllByText("US$15.00 al mes")).length).toBeGreaterThan(0);
   expect(screen.getByText("US$29.00 al mes")).toBeTruthy();
+  // TK-277: cashiers included per plan, and the extra cashier's price in "Adapte su plan".
+  expect(["2 cajeros incluidos", "4 cajeros incluidos", "8 cajeros incluidos"].every((t) => screen.getByText(t))).toBe(true);
+  expect(within(screen.getByText("Cajero adicional").closest("tr")!).getByText("US$2.00 al mes")).toBeTruthy();
   expect(screen.getAllByText("Precio por confirmar").length).toBe(1); // Esencial has no price in Paddle yet
 });
 
@@ -86,9 +90,9 @@ it("TK-228: an unknown address shows the site's 404", () => {
   expect(screen.getByRole("heading", { name: "No encontramos esa página." })).toBeTruthy();
 });
 
-it("TK-228: /app asks for the account when there is no session", () => {
+it("TK-228: /app asks for the account when there is no session", async () => {
   renderAt("/app");
-  expect(screen.getByRole("heading", { name: "Bienvenido de nuevo" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Bienvenido de nuevo" })).toBeTruthy();
 });
 
 it("TK-228: /app with a session opens the panel", async () => {

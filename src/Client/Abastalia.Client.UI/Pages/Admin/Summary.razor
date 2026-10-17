@@ -398,6 +398,12 @@
                 : new("warning", "clock", $"La prueba gratis termina en <b>{license.TrialDaysLeft} {(license.TrialDaysLeft == 1 ? "día" : "días")}</b>",
                     "Después Abastalia sigue vendiendo en modo Restringido. Compre la licencia y siga igual, sin reinstalar ni perder datos.",
                     "Comprar licencia", "admin/settings?section=license"));
+        // TK-277: one PIN used at two registers at once (a warning only: nothing is blocked).
+        if (Session.Can("users.manage"))
+            foreach (var p in (await Api.GetAsync<List<SharedPin>>("/api/identity/shared-pins")).Value ?? [])
+                _alerts.Add(new("warning", "users", $"<b>{System.Net.WebUtility.HtmlEncode(p.Name)}</b> trabajó en dos cajas a la vez",
+                    $"{(p.Times == 1 ? "Una vez" : $"{p.Times} veces")} en 7 días (la última, {When(p.LastUtc)}). Puede que compartan el PIN: dé a cada persona su propio usuario y cambie este PIN.",
+                    "Ver usuarios", "admin/settings?section=users"));
         // TK-196: sample products still there (they never reach the 606/607/608, but they are not the store's).
         if (Session.Can("products.manage") && (await Api.GetAsync<SampleDataStatus>("/api/inventory/sample-data")).Value is { Products: > 0 } sample)
             _alerts.Add(new("info", "package", $"Hay <b>{sample.Products}</b> productos de ejemplo",

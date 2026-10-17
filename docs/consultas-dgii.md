@@ -47,8 +47,8 @@ Un NCF `VENCIDO` puede ser un comprobante bueno: lo que importa es que la secuen
 
 ### Buen ciudadano
 
-- Caché: un RNC 7 días (no inscrito: 1 día); un NCF válido o vencido, para siempre; "no corresponde", 1 hora (puede ser una secuencia que la DGII aún está cargando).
-- Límite para toda la tienda: `Fiscal:DgiiPublic:PerMinute` (30) y `Fiscal:DgiiPublic:PerDay` (500) consultas; cada consulta son 2 peticiones (GET + POST).
+- Caché en la tabla `fiscal.DgiiPublicAnswers` de la base de la tienda (sobrevive a un reinicio): un RNC 7 días (no inscrito: 1 día); un NCF válido o vencido, para siempre; "no corresponde", 1 hora (puede ser una secuencia que la DGII aún está cargando). La memoria responde primero y la tabla después de un reinicio. Se escribe detrás, en orden y con su propia conexión, para que la consulta dentro de una compra no espere ni deshaga la caché; cada escritura borra de paso las filas vencidas.
+- Límite para toda la tienda: `Fiscal:DgiiPublic:PerMinute` (30) y `Fiscal:DgiiPublic:PerDay` (500) consultas; cada consulta son 2 peticiones (GET + POST). La cuenta del día se guarda en la misma tabla (clave `day:aaaa-mm-dd`), así que reiniciar no regala otras 500. La ventana del minuto y la pausa tras un fallo viven en memoria: un reinicio regala como mucho un minuto más.
 - Tiempo de espera corto: `Fiscal:DgiiPublic:TimeoutSeconds` (6 s por petición).
 - Tras un fallo (sin red, 403, 5xx, una página que no se entiende) no vuelve a preguntar en 2 minutos.
 - `Fiscal:DgiiPublic:Enabled` = `false` la apaga (las pruebas lo hacen; nunca llaman a la DGII real).
@@ -59,7 +59,7 @@ Sin respuesta de la DGII (sin internet, bloqueada, límite alcanzado), el RNC se
 
 ### Pendiente / atajos
 
-- La caché vive en memoria: al reiniciar el servidor de la tienda se vuelve a preguntar. Una tabla la haría permanente.
+- Si guardar en la tabla falla (base caída), solo queda en el registro: la respuesta sigue en memoria y se volverá a preguntar tras un reinicio. Una escritura pendiente al apagar se pierde igual.
 - La consulta de una compra se hace con el borrador bloqueado (unos segundos como máximo).
 - Cruce con la DGII (TK-223): no consulta NCF uno por uno (el Excel ya viene de la DGII).
 - La prueba `ncf-valid.html` es la respuesta real de `ncf-expired.html` con el estado cambiado a `VIGENTE` (no teníamos un NCF vigente público para grabar). Las demás son respuestas reales grabadas el 16/10/2026 (`tests/DgiiPages`), consultando el RNC de la propia DGII (401-50625-4).

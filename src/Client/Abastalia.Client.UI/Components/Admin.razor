@@ -128,7 +128,7 @@
             yield return new("admin/invoices", "Facturas", "Facturas", "receipt");
             if (Pages.Admin.Reports.Allowed(Session)) yield return new("admin/reports", "Reportes", "Reportes", "chart");
             if (Session.Can("audit.view")) yield return new("admin/audit", "Auditoría", "Auditoría", "shield"); // TK-213
-            if (Session.Can("fiscal.manage")) yield return new("admin/ecf", "Comprobantes electrónicos", "e-CF", "send"); // TK-204
+            if (Session.Can("fiscal.manage")) yield return new("admin/ecf", "Comprobantes e-CF", "e-CF", "send"); // TK-204
             if (Pages.Admin.Settings.Allowed(Session)) yield return new("admin/settings", "Configuración", "Ajustes", "settings");
         }
     }

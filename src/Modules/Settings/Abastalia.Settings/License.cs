@@ -21,7 +21,7 @@ namespace Abastalia.Settings;
 
 /// <summary>The installed license, read from <c>License:File</c> (C:\ProgramData\Abastalia\license.jws). The status follows the clock:
 /// Active until it expires, then 15 days of Grace, then Restricted. Without a license the store runs as Trial for 14 days from its first
-/// sale (TK-196), then Restricted (TK-220). Installing a license lifts either at once, without reinstalling and keeping every sale.</summary>
+/// sale (TK-196; 30 when the cloud says the business came recommended, TK-276), then Restricted (TK-220). Installing a license lifts either at once, without reinstalling and keeping every sale.</summary>
 internal sealed class LicenseService : IFeatureService
 {
     public static readonly TimeSpan GracePeriod = TimeSpan.FromDays(15);
@@ -51,6 +51,7 @@ internal sealed class LicenseService : IFeatureService
     private readonly Lock _gate = new();
     private bool _trialLoaded;
     private DateTime? _trialStartedUtc;
+    private int? _trialDays;
 
     public LicenseService(IConfiguration config, IHostEnvironment environment, TimeProvider clock, IServiceScopeFactory scopes)
     {
@@ -87,31 +88,49 @@ internal sealed class LicenseService : IFeatureService
     {
         get
         {
-            lock (_gate)
-            {
-                if (_trialLoaded) return _trialStartedUtc;
-                // Once per process, on its own connection. The scope only disposes asynchronously (UnitOfWork).
-                var scope = _scopes.CreateAsyncScope();
-                try
-                {
-                    _trialStartedUtc = scope.ServiceProvider.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => b.TrialStartedUtc).SingleOrDefault();
-                }
-                finally
-                {
-                    scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                }
-                _trialLoaded = true;
-                return _trialStartedUtc;
-            }
+            lock (_gate) return LoadTrial()._trialStartedUtc;
         }
+    }
+
+    /// <summary>TK-276: how long the trial lasts: 14 days, or what the cloud said for a business that came recommended (30).</summary>
+    public TimeSpan TrialLength
+    {
+        get
+        {
+            lock (_gate) return LoadTrial()._trialDays is { } days ? TimeSpan.FromDays(days) : TrialPeriod;
+        }
+    }
+
+    /// <summary>Reads the trial's start and length once per process, on its own connection. The scope only disposes asynchronously (UnitOfWork).</summary>
+    private LicenseService LoadTrial()
+    {
+        if (_trialLoaded) return this;
+        var scope = _scopes.CreateAsyncScope();
+        try
+        {
+            var trial = scope.ServiceProvider.GetRequiredService<SettingsDbContext>().Business.AsNoTracking()
+                .Select(b => new { b.TrialStartedUtc, b.TrialDays }).SingleOrDefault();
+            (_trialStartedUtc, _trialDays) = (trial?.TrialStartedUtc, trial?.TrialDays);
+        }
+        finally
+        {
+            scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+        _trialLoaded = true;
+        return this;
     }
 
     public void TrialStarted(DateTime utc)
     {
-        lock (_gate) (_trialStartedUtc, _trialLoaded) = (utc, true);
+        lock (_gate) LoadTrial()._trialStartedUtc = utc;
     }
 
-    public DateTime? TrialEndsUtc => TrialStartedUtc + TrialPeriod;
+    public void TrialLengthChanged(int days)
+    {
+        lock (_gate) LoadTrial()._trialDays = days;
+    }
+
+    public DateTime? TrialEndsUtc => TrialStartedUtc + TrialLength;
 
     public DateTime? EndsUtc => Data?.ExpiresUtc ?? TrialEndsUtc;
 
@@ -138,11 +157,14 @@ internal sealed class LicenseService : IFeatureService
         _ => false,
     };
 
+    /// <summary>TK-277: cashiers in Restricted mode: the smallest plan's (Esencial). The trial, and a license that does not say, have no limit.</summary>
+    public const int RestrictedCashiers = 2;
+
     public int LimitOf(Limit limit) => Status switch
     {
         LicenseStatus.Active or LicenseStatus.Grace when Data!.Limits.TryGetValue(limit.ToString(), out var n) => n,
-        LicenseStatus.Restricted => limit switch { Limit.Registers => RestrictedRegisters, _ => 0 },
-        _ => limit switch { Limit.Registers => TrialRegisters, _ => 0 },
+        LicenseStatus.Restricted => limit switch { Limit.Registers => RestrictedRegisters, _ => RestrictedCashiers },
+        _ => limit switch { Limit.Registers => TrialRegisters, _ => int.MaxValue },
     };
 
     public Result<LicenseData> Verify(string jws) => Jws.Verify(jws, _keys);
@@ -160,8 +182,17 @@ internal sealed class LicenseService : IFeatureService
 
 /// <summary>TK-249: installs the license the cloud issued for a paid subscription (Sync brings it down). Only a valid one, and only when it was
 /// issued after the installed one: an older copy never replaces a newer license, whoever signed it.</summary>
-internal sealed class StoreLicense(LicenseService license, ICommandHandler<InstallLicense.Command, Ok> install) : IStoreLicense
+internal sealed class StoreLicense(LicenseService license, ICommandHandler<InstallLicense.Command, Ok> install, SettingsDbContext db) : IStoreLicense
 {
+    /// <summary>TK-276: a longer trial (a business that came recommended); never a shorter one, and 90 days at most. Saved with the business.</summary>
+    public async Task<bool> ExtendTrialAsync(int days, CancellationToken ct)
+    {
+        if (days <= license.TrialLength.TotalDays || days > 90) return false;
+        await db.Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialDays, days), ct);
+        license.TrialLengthChanged(days);
+        return true;
+    }
+
     public async Task<bool> InstallFromCloudAsync(string jws, CancellationToken ct)
     {
         if (jws.Trim() == license.Current || license.Verify(jws) is not { IsSuccess: true } verified) return false;

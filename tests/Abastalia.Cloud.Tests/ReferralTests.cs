@@ -24,7 +24,7 @@ public sealed class ReferralTests(BillingApp app) : IClassFixture<BillingApp>, I
 
     private static string Sub(Guid tenant) => "sub_" + tenant.ToString("N");
 
-    private Task<HttpResponseMessage> SubscriptionAsync(Guid tenant, string status, DateTime occurred, DateTime? nextBilled = null) => app.SendAsync(new
+    private Task<HttpResponseMessage> SubscriptionAsync(Guid tenant, string status, DateTime occurred, DateTime? nextBilled = null, string interval = "month") => app.SendAsync(new
     {
         event_id = Id(), event_type = "subscription.updated", occurred_at = occurred.ToString("O"),
         data = new
@@ -33,7 +33,7 @@ public sealed class ReferralTests(BillingApp app) : IClassFixture<BillingApp>, I
             items = new[] { new { quantity = 1, price = new { id = BillingApp.Registers } } },
             current_billing_period = new { starts_at = (nextBilled ?? PeriodEnd).AddMonths(-1).ToString("O"), ends_at = (nextBilled ?? PeriodEnd).ToString("O") },
             next_billed_at = status == "active" ? (nextBilled ?? PeriodEnd).ToString("O") : null,
-            billing_cycle = new { interval = "month", frequency = 1 },
+            billing_cycle = new { interval, frequency = 1 },
             custom_data = new { tenantId = tenant.ToString() },
         },
     });
@@ -256,6 +256,75 @@ public sealed class ReferralTests(BillingApp app) : IClassFixture<BillingApp>, I
         (await staff.Client.PostAsJsonAsync($"{path}/{id}", new { action = "Reinstate", note = "Error nuestro" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await RowsAsync(referrer.TenantId)).Single().Status.ShouldBe(ReferralStatus.Applied); // pending again, and applied at once (its discount was taken off)
         (await app.InDbAsync(db => db.PlatformAudit.CountAsync(a => a.TenantId == referrer.TenantId && a.Method == "POST" && a.Path.Contains("/referrals/")))).ShouldBe(4);
+    }
+
+    [Fact]
+    public async Task An_annual_referrer_gets_its_rewards_together_on_the_renewal()
+    {
+        var referrer = await app.OwnerAsync();
+        (await SubscriptionAsync(referrer.TenantId, "active", Now, interval: "year")).EnsureSuccessStatusCode();
+        var code = await CodeAsync(referrer);
+        var txns = new List<string>();
+        for (var i = 0; i < 3; i++) txns.Add(await PayAsync((await ReferredAsync(code)).Owner.TenantId));
+
+        // Each new reward replaced the renewal's discount with one for all of them: 10 %, 20 %, 30 %.
+        var rows = await RowsAsync(referrer.TenantId);
+        rows.ShouldAllBe(r => r.Status == ReferralStatus.Applied && r.DiscountFromUtc == PeriodEnd);
+        rows.Select(r => r.PaddleDiscountId).Distinct().Count().ShouldBe(1);
+        var discounts = (await CallsAsync(referrer.TenantId)).Where(c => c.Path == "/discounts").Select(c => c.Body).ToList();
+        discounts.Select(d => d.GetProperty("amount").GetString()).ShouldBe(["10", "20", "30"]);
+        discounts[2].GetProperty("description").GetString().ShouldBe("Abastalia: 3 recomendaciones");
+        lock (app.Paddle.Discounts) app.Paddle.Discounts[Sub(referrer.TenantId)].ShouldBe(rows[0].PaddleDiscountId);
+
+        // A refund of one: the combined discount comes off and the other two go back on together.
+        (await app.SendAsync(new
+        {
+            event_id = Id(), event_type = "adjustment.created", occurred_at = Now.ToString("O"),
+            data = new { id = "adj_annual", action = "refund", status = "approved", transaction_id = txns[1] },
+        })).EnsureSuccessStatusCode();
+        rows = await RowsAsync(referrer.TenantId);
+        rows.Select(r => r.Status).ShouldBe([ReferralStatus.Applied, ReferralStatus.Reverted, ReferralStatus.Applied]);
+        (await CallsAsync(referrer.TenantId)).Last(c => c.Path == "/discounts").Body.GetProperty("amount").GetString().ShouldBe("20");
+        lock (app.Paddle.Discounts) app.Paddle.Discounts[Sub(referrer.TenantId)].ShouldBe(rows[0].PaddleDiscountId);
+    }
+
+    [Fact]
+    public void Annual_rewards_are_capped_at_half_the_plan()
+    {
+        static Referral Flat(int i) => new() { Id = Guid.NewGuid(), DiscountType = "flat", DiscountAmount = "1200", Currency = "USD", CreatedUtc = DateTime.UnixEpoch.AddDays(i) };
+        var six = Enumerable.Range(0, 6).Select(Flat).ToList();
+
+        var (batch, amount) = ReferralRewards.Combine([], six, planTotal: 12000, capPercent: 50); // Esencial anual, US$120: at most US$60
+        (batch.Count, amount).ShouldBe((5, "6000"));
+        (batch, amount) = ReferralRewards.Combine(six[..5], [six[5]], 12000, 50); // the renewal is full: the sixth waits
+        batch.Count.ShouldBe(5);
+        (batch, amount) = ReferralRewards.Combine([], six, planTotal: 2000, capPercent: 50); // one reward above the cap goes alone, cut to it
+        (batch.Count, amount).ShouldBe((1, "1000"));
+        (batch, amount) = ReferralRewards.Combine([], six, planTotal: null, capPercent: 50); // plan price unknown: one at a time
+        (batch.Count, amount).ShouldBe((1, "1200"));
+    }
+
+    [Fact]
+    public async Task A_business_that_came_with_a_code_gets_a_30_day_store_trial()
+    {
+        var referrer = await app.OwnerAsync();
+        var code = await CodeAsync(referrer);
+        var referred = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(referred, "Colmado Recomendado");
+        async Task<JsonElement> TrialDaysAsync() => (await (await node.Client.PostAsync("/api/nodes/license", null)).Json()).GetProperty("trialDays");
+
+        (await TrialDaysAsync()).ValueKind.ShouldBe(JsonValueKind.Null); // the store's own 14
+        (await referred.Client.PostAsJsonAsync("/api/billing/referrals/claim", new { code = code.ToLowerInvariant() })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await TrialDaysAsync()).GetInt32().ShouldBe(30);
+
+        // Its own code, or a business older than two weeks, keeps nothing.
+        var own = await app.OwnerAsync();
+        (await own.Client.PostAsJsonAsync("/api/billing/referrals/claim", new { code = await CodeAsync(own) })).EnsureSuccessStatusCode();
+        var old = await app.OwnerAsync();
+        await app.InDbAsync(db => db.Tenants.Where(t => t.Id == old.TenantId).ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedUtc, Now.AddDays(-15))));
+        (await old.Client.PostAsJsonAsync("/api/billing/referrals/claim", new { code })).EnsureSuccessStatusCode();
+        (await app.InDbAsync(db => db.TenantSubscriptions.Where(s => s.TenantId == own.TenantId || s.TenantId == old.TenantId).Select(s => s.ReferredByCode).ToListAsync()))
+            .ShouldAllBe(c => c == null);
     }
 
     [Fact]

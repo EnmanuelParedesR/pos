@@ -2,8 +2,11 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Abastalia.BuildingBlocks;
 using Abastalia.Fiscal.Contracts;
@@ -85,12 +88,24 @@ internal static partial class DgiiPages
     [GeneratedRegex("\\s+", RegexOptions.None, 1000)] private static partial Regex Spaces();
 }
 
-/// <summary>TK-252: <see cref="IDgiiPublicLookup"/> over the DGII public pages, from the store PC. A good citizen: answers are cached (an RNC 7 days, a
-/// valid or expired NCF for good), the whole store asks at most <c>Fiscal:DgiiPublic:PerMinute</c> (30) and <c>PerDay</c> (500) lookups, and after a
-/// failure it waits 2 minutes before asking again. Anything short of a clear answer is <see cref="DgiiAnswerKind.Unavailable"/>, never an error.
-/// <c>Fiscal:DgiiPublic:Enabled</c> = false turns it off (tests).</summary>
-/// <remarks>shortcut: the cache lives in memory, so a restart of the store server asks again; a table would keep it.</remarks>
-internal sealed class DgiiPublicSite(IHttpClientFactory http, IConfiguration config, TimeProvider clock, ILogger<DgiiPublicSite> log) : IDgiiPublicLookup
+/// <summary>TK-252: a cached DGII answer (the JSON of an <see cref="RncLookup"/> or <see cref="NcfCheck"/>), or the store's lookup count of a
+/// business day (key <c>day:yyyy-MM-dd</c>), so a restart neither asks again nor resets the day's allowance.</summary>
+internal sealed class DgiiPublicAnswer
+{
+    public string Key { get; set; } = "";
+    public string Answer { get; set; } = "";
+    public DateTime ExpiresUtc { get; set; }
+}
+
+/// <summary>TK-252: <see cref="IDgiiPublicLookup"/> over the DGII public pages, from the store PC. A good citizen: answers are cached in
+/// <c>fiscal.DgiiPublicAnswers</c> (an RNC 7 days, a valid or expired NCF for good), the whole store asks at most <c>Fiscal:DgiiPublic:PerMinute</c> (30)
+/// and <c>PerDay</c> (500) lookups, and after a failure it waits 2 minutes before asking again. Anything short of a clear answer is
+/// <see cref="DgiiAnswerKind.Unavailable"/>, never an error. <c>Fiscal:DgiiPublic:Enabled</c> = false turns it off (tests).</summary>
+/// <remarks>The table is written behind, in order, on its own connection: a lookup runs inside a command's transaction (a purchase), which must
+/// neither wait for nor roll back the cache. Memory answers first; the table answers after a restart. The minute window and the pause after a
+/// failure stay in memory (a restart costs at most one more minute's worth).</remarks>
+internal sealed class DgiiPublicSite(IHttpClientFactory http, IServiceScopeFactory scopes, IConfiguration config, TimeProvider clock, ILogger<DgiiPublicSite> log)
+    : IDgiiPublicLookup, IDisposable
 {
     public const string HttpClientName = "dgii-public";
     private static readonly TimeSpan PauseAfterFailure = TimeSpan.FromMinutes(2);
@@ -100,18 +115,26 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IConfiguration con
     private readonly int _perMinute = config.GetValue("Fiscal:DgiiPublic:PerMinute", 30);
     private readonly int _perDay = config.GetValue("Fiscal:DgiiPublic:PerDay", 500);
     private readonly ConcurrentDictionary<string, (object Answer, DateTime ExpiresUtc)> _cache = new(StringComparer.Ordinal);
-    private readonly Lock _gate = new();
+    private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Queue<DateTime> _lastMinute = new();
+    private readonly Lock _writing = new();
     private DateOnly _day;
     private int _today;
-    private DateTime _pausedUntilUtc;
+    private long _pausedUntilTicks;
+
+    /// <summary>The table writes queued so far (tests wait on it before starting a "new app").</summary>
+    internal Task Written { get; private set; } = Task.CompletedTask;
+
+    private DateTime Now => clock.GetUtcNow().UtcDateTime;
+
+    public void Dispose() => _gate.Dispose();
 
     public async Task<RncLookup> RncAsync(string rnc, CancellationToken ct)
     {
         var digits = Rnc.Normalize(rnc);
         if (!Rnc.IsValid(digits)) return Unavailable;
         var key = "rnc:" + digits;
-        if (Cached<RncLookup>(key) is { } hit) return hit;
+        if (await CachedAsync<RncLookup>(key, ct) is { } hit) return hit;
         var html = await AskAsync("rnc.aspx", new()
         {
             ["__EVENTTARGET"] = "", ["__EVENTARGUMENT"] = "", ["ctl00$cphMain$txtRNCCedula"] = digits!, ["ctl00$cphMain$btnBuscarPorRNC"] = "BUSCAR",
@@ -130,7 +153,7 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IConfiguration con
         // An e-NCF is checked on that page only with the security code printed under its QR: Abastalia does not have it here.
         if (!Rnc.IsValid(rnc) || ncf is not { Length: 11 } || ncf[0] != 'B') return NcfCheck.Unknown;
         var key = $"ncf:{rnc}:{ncf}";
-        if (Cached<NcfCheck>(key) is { } hit) return hit;
+        if (await CachedAsync<NcfCheck>(key, ct) is { } hit) return hit;
         var html = await AskAsync("ncf.aspx", new()
         {
             ["ctl00$cphMain$txtRNC"] = rnc!, ["ctl00$cphMain$txtNCF"] = ncf, ["ctl00$cphMain$txtRncComprador"] = "", ["ctl00$cphMain$txtCodigoSeg"] = "",
@@ -147,7 +170,7 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IConfiguration con
     /// <summary>GET the form (its ViewState and cookies), POST it back with <paramref name="fields"/>. Null when the store may not ask now or the DGII failed.</summary>
     private async Task<string?> AskAsync(string page, Dictionary<string, string> fields, CancellationToken ct)
     {
-        if (!_enabled || !TryTake()) return null;
+        if (!_enabled || !await TryTakeAsync(ct)) return null;
         try
         {
             var client = http.CreateClient(HttpClientName);
@@ -169,33 +192,85 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IConfiguration con
         }
     }
 
-    /// <summary>Takes one lookup from the store's minute and day allowance; false while paused after a failure or over the limit.</summary>
-    private bool TryTake()
+    /// <summary>Takes one lookup from the store's minute and day allowance; false while paused after a failure or over the limit.
+    /// The day's count is read from the table on the first lookup of a day (so after a restart too) and saved after each one.</summary>
+    private async Task<bool> TryTakeAsync(CancellationToken ct)
     {
-        var now = clock.GetUtcNow().UtcDateTime;
-        lock (_gate)
+        var now = Now;
+        if (now.Ticks < Interlocked.Read(ref _pausedUntilTicks)) return false;
+        await _gate.WaitAsync(ct);
+        try
         {
-            if (now < _pausedUntilUtc) return false;
             var day = BusinessDay.Of(now);
-            if (day != _day) (_day, _today) = (day, 0);
+            if (day != _day)
+                (_day, _today) = (day, int.TryParse((await StoredAsync(DayKey(day), ct))?.Answer, NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0);
             while (_lastMinute.TryPeek(out var t) && t <= now.AddMinutes(-1)) _lastMinute.Dequeue();
             if (_lastMinute.Count >= _perMinute || _today >= _perDay) return false;
             _lastMinute.Enqueue(now);
             _today++;
+            Save(DayKey(day), _today.ToString(CultureInfo.InvariantCulture), now.AddDays(2));
             return true;
         }
+        finally
+        {
+            _gate.Release();
+        }
     }
+
+    private static string DayKey(DateOnly day) => "day:" + day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private T Failed<T>(string page, string why, T result)
     {
         log.LogWarning("DGII public consultation {Page} failed ({Why}); asking again in {Minutes} minutes", page, why, PauseAfterFailure.TotalMinutes);
-        lock (_gate) _pausedUntilUtc = clock.GetUtcNow().UtcDateTime + PauseAfterFailure;
+        Interlocked.Exchange(ref _pausedUntilTicks, (Now + PauseAfterFailure).Ticks);
         return result;
     }
 
-    private T? Cached<T>(string key) where T : class =>
-        _cache.TryGetValue(key, out var e) && e.ExpiresUtc > clock.GetUtcNow().UtcDateTime ? (T)e.Answer : null;
+    private async Task<T?> CachedAsync<T>(string key, CancellationToken ct) where T : class
+    {
+        var now = Now;
+        if (_cache.TryGetValue(key, out var e)) return e.ExpiresUtc > now ? (T)e.Answer : null;
+        if (await StoredAsync(key, ct) is not { } row || row.ExpiresUtc <= now) return null;
+        var answer = JsonSerializer.Deserialize<T>(row.Answer)!;
+        _cache[key] = (answer, row.ExpiresUtc);
+        return answer;
+    }
 
-    private void Remember(string key, object answer, TimeSpan lifetime) =>
-        _cache[key] = (answer, lifetime == TimeSpan.MaxValue ? DateTime.MaxValue : clock.GetUtcNow().UtcDateTime + lifetime);
+    private void Remember<T>(string key, T answer, TimeSpan lifetime) where T : class
+    {
+        var expires = lifetime == TimeSpan.MaxValue ? DateTime.MaxValue : Now + lifetime;
+        _cache[key] = (answer, expires);
+        Save(key, JsonSerializer.Serialize(answer), expires);
+    }
+
+    private async Task<DgiiPublicAnswer?> StoredAsync(string key, CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<FiscalDbContext>().DgiiPublicAnswers.AsNoTracking().FirstOrDefaultAsync(a => a.Key == key, ct);
+    }
+
+    /// <summary>Queues an upsert after the previous ones; it also purges what expired. A failure only costs a lookup later.</summary>
+    private void Save(string key, string answer, DateTime expiresUtc)
+    {
+        lock (_writing) Written = Written.ContinueWith(_ => WriteAsync(key, answer, expiresUtc), TaskScheduler.Default).Unwrap();
+    }
+
+    private async Task WriteAsync(string key, string answer, DateTime expiresUtc)
+    {
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<FiscalDbContext>();
+            var now = Now;
+            await db.DgiiPublicAnswers.Where(a => a.ExpiresUtc <= now).ExecuteDeleteAsync();
+            var row = await db.DgiiPublicAnswers.FirstOrDefaultAsync(a => a.Key == key);
+            if (row is null) db.DgiiPublicAnswers.Add(row = new DgiiPublicAnswer { Key = key });
+            (row.Answer, row.ExpiresUtc) = (answer, expiresUtc);
+            await db.SaveChangesAsync();
+        }
+        catch (Exception e)
+        {
+            log.LogWarning(e, "Could not keep the DGII public answer {Key}", key);
+        }
+    }
 }

@@ -221,6 +221,11 @@ public sealed record FiscalDocumentIssuedV1(Guid DocumentId, string ENcf, EcfTyp
 public sealed record FiscalDocumentReplacedV1(Guid DocumentId, string RejectedENcf, string ENcf, EcfType Type, Guid ReferenceId, string SecurityCode,
     string QrUrl, DateTime SignedUtc, DateOnly? SequenceExpiresOn) : IntegrationEvent(DocumentId);
 
+/// <summary>TK-156: an e-CF issued while the store's clock was off (unsigned, receipt without security code nor QR) was signed once the clock was
+/// fixed. The sale with that e-NCF takes the code, the QR and the signing time, so a reprint shows them.</summary>
+public sealed record FiscalDocumentSignedV1(Guid DocumentId, string ENcf, Guid ReferenceId, string SecurityCode, string QrUrl, DateTime SignedUtc)
+    : IntegrationEvent(DocumentId);
+
 /// <summary>TK-246: the store signed (and tried to send) its commercial approval or rejection of a received e-CF. The cloud only shows it.</summary>
 /// <param name="CloudId">The received document's id in the cloud.</param>
 /// <param name="Approval">Approved or Rejected.</param>

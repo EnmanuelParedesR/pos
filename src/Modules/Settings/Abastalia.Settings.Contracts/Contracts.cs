@@ -17,6 +17,9 @@ public interface IStoreLicense
     /// <summary>Installs <paramref name="jws"/> when it is valid (signed by Abastalia, offline or cloud key) and issued after the installed one.
     /// False when it was refused or brings nothing new.</summary>
     Task<bool> InstallFromCloudAsync(string jws, CancellationToken ct);
+
+    /// <summary>TK-276: the cloud says the trial lasts <paramref name="days"/> (the business came recommended). False when it changes nothing.</summary>
+    Task<bool> ExtendTrialAsync(int days, CancellationToken ct);
 }
 
 /// <summary>TK-254: how this store takes updates, as the owner set it in Configuración → Actualizaciones and the cloud allows it.</summary>

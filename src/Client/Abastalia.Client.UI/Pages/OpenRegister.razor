@@ -42,7 +42,18 @@
                 }
                 else if (_registers.Count == 0)
                 {
-                    <Notice Kind="Notice.Kinds.Warning" Title="No hay cajas libres." >El dueño las crea en Configuración → Cajas.</Notice>
+                    @* TK-281 (design critique): on the first day this was a dead end; whoever can create registers gets the way there. *@
+                    <Notice Kind="Notice.Kinds.Warning" Title="No hay cajas libres.">
+                        @if (Session.Can("registers.manage"))
+                        {
+                            <span>Cree la primera caja para empezar a vender.</span>
+                            <a class="esc-button esc-button--small" href="admin/settings?section=registers" style="margin-top:8px">Crear una caja</a>
+                        }
+                        else
+                        {
+                            <span>Pídale al dueño que cree una en Configuración → Cajas.</span>
+                        }
+                    </Notice>
                 }
                 else
                 {

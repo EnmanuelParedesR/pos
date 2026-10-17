@@ -42,7 +42,28 @@ public sealed class FakeDgii : HttpMessageHandler
         lock (Requests) return Requests.Where(r => r.Path.EndsWith(pathEnd, StringComparison.OrdinalIgnoreCase)).ToList();
     }
 
+    /// <summary>TK-156: only the e-CF services fail (as a network failure); the DGII's status host still answers (its 401 without an API key).</summary>
+    public bool EcfDown { get; set; }
+
+    /// <summary>TK-156: how far the app's clock is ahead of the DGII's (negative: behind). Null: answers carry no <c>Date</c> header.</summary>
+    public TimeSpan? AppAheadBy { get; set; }
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (Down) throw new HttpRequestException("No such host is known. (ecf.dgii.gov.do:443)");
+        HttpResponseMessage response;
+        if (request.RequestUri!.Host == "statusecf.dgii.gov.do")
+        {
+            lock (Requests) Requests.Add(new Received(request.RequestUri.Host, request.RequestUri.AbsolutePath, request.RequestUri.Query, null, "", null, null));
+            response = new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        }
+        else if (EcfDown) throw new HttpRequestException("Connection timed out. (ecf.dgii.gov.do:443)");
+        else response = await RespondAsync(request, cancellationToken);
+        if (AppAheadBy is { } ahead) response.Headers.Date = Now() - ahead;
+        return response;
+    }
+
+    private async Task<HttpResponseMessage> RespondAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         if (Down) throw new HttpRequestException("No such host is known. (ecf.dgii.gov.do:443)");
         var uri = request.RequestUri!;
