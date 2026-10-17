@@ -78,6 +78,23 @@ public static class FiscalModule
         services.AddEcfOperations();
         return services;
     }
+
+    /// <summary>TK-365: the DGII web services at <paramref name="server"/> (the UI tests' fake DGII) instead of the real hosts:
+    /// https://ecf.dgii.gov.do/testecf/x goes to {server}/ecf.dgii.gov.do/testecf/x. The local host calls it only in the E2E environment.</summary>
+    public static IServiceCollection UseTestDgii(this IServiceCollection services, Uri server)
+    {
+        services.AddHttpClient(DgiiClient.HttpClientName).ConfigurePrimaryHttpMessageHandler(() => new TestDgiiHandler(server));
+        return services;
+    }
+
+    private sealed class TestDgiiHandler(Uri server) : DelegatingHandler(new SocketsHttpHandler())
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            request.RequestUri = new Uri(server, request.RequestUri!.Host + request.RequestUri.PathAndQuery);
+            return base.SendAsync(request, cancellationToken);
+        }
+    }
 }
 
 internal sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options) : ModuleDbContext(options)

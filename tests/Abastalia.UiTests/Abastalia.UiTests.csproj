@@ -16,6 +16,11 @@
   <ItemGroup>
     <Compile Include="..\Abastalia.E2ETests\AbastaliaServer.cs" Link="AbastaliaServer.cs" />
     <Compile Include="..\SqlServerImage.cs" Link="SqlServerImage.cs" />
+    <!-- TK-365: the integration tests' fake DGII, served over HTTP to the API process (DgiiServer). -->
+    <Compile Include="..\Abastalia.IntegrationTests\Infra\FakeDgii.cs" Link="FakeDgii.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
     <!-- Only to build them first: the tests start their real processes, they never load them. -->
