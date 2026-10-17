@@ -136,16 +136,16 @@ Si la DGII no responde, el documento ya firmado queda en el navegador y en el se
 
 | # | Ticket | Tamaño | Depende de |
 |---|---|---|---|
-| F1-1 | `TenantId` en todos los módulos: `IMultiTenant`, interceptor, filtro `Tenant`, índices únicos con el tenant, RLS en la base del Ligero, prueba de aislamiento en CI con los filtros apagados; en la tienda, valor fijo sin filtro | L | — |
-| F1-2 | `Abastalia.Host.Lite`: los mismos módulos, `ITenantContext` sacado del dispositivo, workers (outbox, contingencia, licencia, latido) que recorren los negocios, un nodo de servidor por negocio hacia `Host.Cloud`, Web App y `sqldb-abastalia-lite` (Basic) en Bicep, alta del negocio al elegir el plan `Lite` | L | F1-1 |
-| F1-3 | Dispositivo de venta: código de conexión del panel → llave ECDSA P-256 no exportable en el navegador con la firma de pedidos de ADR-0008; uno solo vende; dueño + 1 cajero con PIN; revocar en el panel | M | F1-2 |
-| F1-4 | Firmador del navegador (lo que sale de TK-317): importar el `.p12`, `CryptoKey` en IndexedDB, lista blanca, registro de firmas; semilla, token, recepción, RFCE y estado directo a la DGII | M | TK-317 |
-| F1-5 | Fiscal en modo `DeviceSigned`: e-NCF y XML en la transacción, `AwaitingDeviceSignature`, endpoints de pendientes, firmado y resultado, verificación de firma, digest y RNC en el servidor, plazo de 72 h con aviso y archivo frío | M | F1-2, F1-4 |
-| F1-6 | `Abastalia.Client.Lite`: PWA Blazor WebAssembly con `Client.UI` en su propio origen (SWA Free), CSP y SRI, catálogo en caché, recibo por impresión, PDF o WhatsApp, caja táctil para el celular y crítica de diseño | L | F1-3, F1-5 |
-| F1-7 | Plan `Lite`: producto de Paddle de US$9/US$90, `Quotas:Lite`, licencia `Ligero`, límite de 1,000 productos, alerta de uso justo de 1,500, `/precios` | S | F1-2 |
-| F1-8 | Receptor del Ligero (ADR-0011 modo A): `Host.Lite` le pasa `sign-requests` al navegador abierto; 503 y acuse tardío como hoy | M | F1-2, F1-4 |
-| F1-9 | Subir a Esencial: exportar el negocio en un paquete firmado, importarlo en el instalador de la PC principal, el Ligero queda en solo lectura | M | F1-1, F1-2 |
-| F1-10 | Cierre de seguridad y costo: límites por minuto por dispositivo e IP, alerta de firmas fuera de lo normal, presupuesto de Azure con aviso a US$100, revisión de seguridad (cruce de negocios) antes del primer piloto | S | F1-2 a F1-8 |
+| TK-319 (F1-1) | `TenantId` en todos los módulos: `IMultiTenant`, interceptor, filtro `Tenant`, índices únicos con el tenant, RLS en la base del Ligero, prueba de aislamiento en CI con los filtros apagados; en la tienda, valor fijo sin filtro | L | — |
+| TK-320 (F1-2) | `Abastalia.Host.Lite`: los mismos módulos, `ITenantContext` sacado del dispositivo, workers (outbox, contingencia, licencia, latido) que recorren los negocios, un nodo de servidor por negocio hacia `Host.Cloud`, Web App y `sqldb-abastalia-lite` (Basic) en Bicep, alta del negocio al elegir el plan `Lite` | L | F1-1 |
+| TK-321 (F1-3) | Dispositivo de venta: código de conexión del panel → llave ECDSA P-256 no exportable en el navegador con la firma de pedidos de ADR-0008; uno solo vende; dueño + 1 cajero con PIN; revocar en el panel | M | F1-2 |
+| TK-322 (F1-4) | Firmador del navegador (lo que sale de TK-317): importar el `.p12`, `CryptoKey` en IndexedDB, lista blanca, registro de firmas; semilla, token, recepción, RFCE y estado directo a la DGII | M | TK-317 |
+| TK-323 (F1-5) | Fiscal en modo `DeviceSigned`: e-NCF y XML en la transacción, `AwaitingDeviceSignature`, endpoints de pendientes, firmado y resultado, verificación de firma, digest y RNC en el servidor, plazo de 72 h con aviso y archivo frío | M | F1-2, F1-4 |
+| TK-324 (F1-6) | `Abastalia.Client.Lite`: PWA Blazor WebAssembly con `Client.UI` en su propio origen (SWA Free), CSP y SRI, catálogo en caché, recibo por impresión, PDF o WhatsApp, caja táctil para el celular y crítica de diseño | L | F1-3, F1-5 |
+| TK-325 (F1-7) | Plan `Lite`: producto de Paddle de US$9/US$90, `Quotas:Lite`, licencia `Ligero`, límite de 1,000 productos, alerta de uso justo de 1,500, `/precios` | S | F1-2 |
+| TK-326 (F1-8) | Receptor del Ligero (ADR-0011 modo A): `Host.Lite` le pasa `sign-requests` al navegador abierto; 503 y acuse tardío como hoy | M | F1-2, F1-4 |
+| TK-327 (F1-9) | Subir a Esencial: exportar el negocio en un paquete firmado, importarlo en el instalador de la PC principal, el Ligero queda en solo lectura | M | F1-1, F1-2 |
+| TK-328 (F1-10) | Cierre de seguridad y costo: límites por minuto por dispositivo e IP, alerta de firmas fuera de lo normal, presupuesto de Azure con aviso a US$100, revisión de seguridad (cruce de negocios) antes del primer piloto | S | F1-2 a F1-8 |
 
 **Orden:**
 
