@@ -24,6 +24,7 @@ public static class Printables
         header { display: flex; gap: 14px; align-items: center; border-bottom: 2px solid #0B5CAD; padding-bottom: 14px; }
         header .business { flex: 1; }
         header h1 { margin: 0; font-size: 18px; }
+        .logo { display: block; max-width: 60mm; max-height: 20mm; margin-bottom: 8px; }
         header p, footer p { margin: 2px 0 0; color: #5B6470; }
         h2 { font-size: 16px; margin: 20px 0 4px; }
         .meta { color: #5B6470; margin: 0 0 14px; }
@@ -44,7 +45,7 @@ public static class Printables
         """;
 
     /// <summary>What the printed Z shows: payment methods, customer payments, cash in and out, expected, counted and the difference, and who approved it.</summary>
-    public static (string FileName, byte[] Content) Z(ZReport z, BusinessProfile business, string? supervisor, DateTime nowUtc)
+    public static (string FileName, byte[] Content) Z(ZReport z, BusinessProfile business, string? supervisor, DateTime nowUtc, string? logo = null)
     {
         var title = z.ZNumber is { } n ? $"Cierre de turno Z #{n}" : "Turno abierto (reporte X)";
         var b = new StringBuilder();
@@ -74,7 +75,7 @@ public static class Printables
         if (z.AuditChainHead is { } head) Row(b, "Auditoría", head);
         b.Append("</tbody></table>");
         var name = z.ZNumber is { } number ? $"cierre-z-{number}" : $"turno-x-{Format.StoreTime(z.OpenedUtc):yyyyMMdd-HHmm}";
-        return ($"{name}.html", Page(title, business, b.ToString(), nowUtc));
+        return ($"{name}.html", Page(title, business, b.ToString(), nowUtc, logo));
     }
 
     /// <summary>What a printed Z needs besides the Z: the business header and the name of who approved the closing.</summary>
@@ -114,7 +115,7 @@ public static class Printables
     }
 
     /// <summary>The customer's credit account, oldest movement first, ending in the balance the screen shows.</summary>
-    public static (string FileName, byte[] Content) Statement(CustomerStatement s, string? taxId, BusinessProfile business, DateTime nowUtc)
+    public static (string FileName, byte[] Content) Statement(CustomerStatement s, string? taxId, BusinessProfile business, DateTime nowUtc, string? logo = null)
     {
         var b = new StringBuilder();
         b.Append($"<h2>Estado de cuenta · {E(s.Name)}</h2><p class=\"meta\">{(taxId is null ? "" : $"RNC o cédula {E(taxId)} · ")}Al {E(Format.Date(nowUtc))}</p>");
@@ -131,10 +132,11 @@ public static class Printables
         b.Append("</tbody></table>");
         var slug = new string([.. s.Name.ToLowerInvariant().Normalize(NormalizationForm.FormD).Where(ch => CharUnicodeInfo.GetUnicodeCategory(ch) != UnicodeCategory.NonSpacingMark)
             .Select(ch => char.IsAsciiLetterOrDigit(ch) ? ch : '-')]).Trim('-');
-        return ($"estado-de-cuenta-{slug}-{Format.StoreTime(nowUtc):yyyyMMdd}.html", Page($"Estado de cuenta · {s.Name}", business, b.ToString(), nowUtc));
+        return ($"estado-de-cuenta-{slug}-{Format.StoreTime(nowUtc):yyyyMMdd}.html", Page($"Estado de cuenta · {s.Name}", business, b.ToString(), nowUtc, logo));
     }
 
-    private static byte[] Page(string title, BusinessProfile business, string body, DateTime nowUtc)
+    /// <param name="logo">TK-288: the business logo as a data URL (BusinessLogo.DataUrlAsync), above the name and sized as on the A4 e-CF page; null keeps the Abastalia tag.</param>
+    private static byte[] Page(string title, BusinessProfile business, string body, DateTime nowUtc, string? logo)
     {
         var contact = string.Join(" · ", new[] { business.Rnc is null ? null : $"RNC {business.Rnc}", business.Address, business.Phone }.Where(x => !string.IsNullOrWhiteSpace(x)));
         var html = $"""
@@ -142,7 +144,7 @@ public static class Printables
             <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{E(title)} · {E(business.Name)}</title>
             <style>{Style}</style></head>
             <body><button class="print" onclick="window.print()">Imprimir o guardar como PDF</button><main>
-            <header>{Logo}<div class="business"><h1>{E(business.Name)}</h1><p>{E(contact)}</p></div></header>
+            <header>{(logo is null ? Logo : "")}<div class="business">{(logo is null ? "" : $"<img class=\"logo\" src=\"{E(logo)}\" alt=\"\">")}<h1>{E(business.Name)}</h1><p>{E(contact)}</p></div></header>
             {body}
             <footer><p>Generado con Abastalia el {E(Format.Date(nowUtc))}.</p></footer>
             </main></body></html>
