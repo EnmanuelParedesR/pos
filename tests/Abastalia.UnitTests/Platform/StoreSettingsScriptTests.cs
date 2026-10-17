@@ -94,7 +94,7 @@ public sealed class StoreSettingsScriptTests : IDisposable
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Abastalia.slnx"))) dir = dir.Parent;
-        return Path.Combine(dir?.FullName ?? throw new InvalidOperationException("Abastalia.slnx not found"), relative);
+        return Path.Combine(dir?.FullName ?? throw new InvalidOperationException("Abastalia.slnx not found"), relative.Replace('\\', Path.DirectorySeparatorChar)); // the CI runs these on Linux too
     }
 
     public void Dispose()
