@@ -1,0 +1,131 @@
+@* TK-343: Talia's confirmation card in the store app, the panel's (src/Cloud/panel/src/pages/ProposalCard.tsx) with the store's executor behind it.
+   The summary is the store server's, written from its own data. Only Confirmar here runs it (never a "sí" typed in the chat), once: it calls the
+   action's own endpoint with this session, and a supervisor approval goes through the usual dialog. *@
+@implements IDisposable
+@inject AbastaliaApi Api
+@inject Approver Approver
+@inject TimeProvider Clock
+
+<section class="talia-card talia-card--@State.Kind.ToString().ToLowerInvariant()" aria-labelledby="@_title">
+    <h3 id="@_title" class="talia-card__title"><Icon Name="sparkles" Size="18" /> @(Open ? "Talia propone" : "Propuesta de Talia")</h3>
+    <p class="talia-card__summary">@Proposal.Summary</p>
+    @* The outcome is announced once; the countdown below is not (it ticks). *@
+    <p @ref="_status" tabindex="-1" role="status" class="talia-card__status">
+        @if (Shown == ProposalState.Kinds.Done)
+        {
+            <span class="talia-card__good"><Icon Name="check" Size="16" />Hecho.</span>
+        }
+        else
+        {
+            var (css, text) = Outcome;
+            <span class="@css">@text</span>
+        }
+    </p>
+    @if (Open)
+    {
+        var running = Shown == ProposalState.Kinds.Running;
+        <div class="talia-card__actions">
+            <button @ref="_confirm" type="button" class="esc-button esc-button--primary" disabled="@running" @onclick="ConfirmAsync">Confirmar</button>
+            <button type="button" class="esc-button esc-button--ghost" disabled="@running" @onclick="CancelAsync">Cancelar</button>
+            @if (!running)
+            {
+                <span class="talia-card__time" aria-live="off"><Icon Name="clock" Size="16" /> @(MinutesLeft <= 1 ? "Vence en menos de 1 min" : $"Vence en {MinutesLeft} min")</span>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public TaliaProposal Proposal { get; set; } = default!;
+
+    /// <summary>Kept with the chat (BackOffice): closing and opening the window does not bring a decided card back.</summary>
+    [Parameter, EditorRequired] public ProposalState State { get; set; } = default!;
+
+    private readonly string _title = "talia-card-" + Guid.NewGuid().ToString("N");
+    private readonly CancellationTokenSource _closed = new();
+    private ElementReference _status, _confirm;
+    private bool _focusOutcome;
+
+    // shortcut: counts down with this PC's clock; a clock far off ends it early or late, but the server still decides on confirm.
+    private int MinutesLeft => (int)Math.Ceiling((Proposal.ExpiresAt - Clock.GetUtcNow().UtcDateTime).TotalMinutes);
+    private ProposalState.Kinds Shown => State.Kind == ProposalState.Kinds.Pending && MinutesLeft <= 0 ? ProposalState.Kinds.Expired : State.Kind;
+    private bool Open => Shown is ProposalState.Kinds.Pending or ProposalState.Kinds.Running;
+
+    private (string? Css, string Text) Outcome => Shown switch
+    {
+        ProposalState.Kinds.Pending => State.Message is { } notice ? ("talia-card__bad", notice) : (null, "Nada cambia hasta que usted confirme."),
+        ProposalState.Kinds.Running => (null, "Haciéndolo…"),
+        ProposalState.Kinds.Failed => ("talia-card__bad", $"No se hizo: {State.Message}"),
+        ProposalState.Kinds.Closed => ("talia-card__bad", State.Message ?? ""),
+        ProposalState.Kinds.Cancelled => (null, "Cancelada. No se cambió nada."),
+        ProposalState.Kinds.Expired => ("talia-card__warn", "Esta propuesta venció; pídala de nuevo."),
+        _ => ("talia-card__bad", "Usted no tiene permiso para hacer esto. Pídaselo al administrador."),
+    };
+
+    protected override void OnInitialized() => _ = TickAsync();
+
+    private async Task TickAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15), Clock);
+        try
+        {
+            while (Open && await timer.WaitForNextTickAsync(_closed.Token)) await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (State.Kind != ProposalState.Kinds.Pending) return; // a double click sends once (the server runs it once anyway)
+        (State.Kind, State.Message) = (ProposalState.Kinds.Running, null);
+        // A supervisor approval (Approval.Required) travels in the body as on every screen; it is not part of what was proposed.
+        var r = await Approver.WithSupervisorAsync(id => Api.ProposalAsync(Proposal, Body(id)), Proposal.ResourceId, Proposal.Summary);
+        Decide(r.Problem, ProposalState.Kinds.Done);
+    }
+
+    private async Task CancelAsync()
+    {
+        if (State.Kind != ProposalState.Kinds.Pending) return;
+        (State.Kind, State.Message) = (ProposalState.Kinds.Running, null);
+        var r = await Api.PostAsync<Empty>($"/api/assistant/proposals/{Proposal.Id}/cancel");
+        Decide(r.Problem, ProposalState.Kinds.Cancelled);
+    }
+
+    private System.Text.Json.Nodes.JsonObject Body(Guid? approval)
+    {
+        var body = (System.Text.Json.Nodes.JsonObject)Proposal.Body.DeepClone();
+        if (approval is { } id) body["supervisorApprovalId"] = id.ToString();
+        return body;
+    }
+
+    /// <summary>The card's state for the answer (the codes are TaliaProposals' and the endpoint's own, docs/talia-acciones.md §3).</summary>
+    private void Decide(Problem? p, ProposalState.Kinds ok)
+    {
+        (State.Kind, State.Message) = p switch
+        {
+            null => (ok, null),
+            { Code: "Talia.ProposalExpired" } => (ProposalState.Kinds.Expired, null),
+            { Code: "Talia.ProposalCancelled" } => (ProposalState.Kinds.Cancelled, null),
+            { Code: "Talia.ProposalFailed" } => (ProposalState.Kinds.Failed, p.Message),
+            { Code: "Talia.ProposalRunning" or "Talia.ProposalClosed" or "Talia.ProposalNotFound" or "Talia.ProposalMismatch" or "Talia.EndpointNotAllowed" }
+                => (ProposalState.Kinds.Closed, p.Message),
+            // The endpoint's own permission refused this session (its role changed since the proposal).
+            { Status: 403, Code: "" } => (ProposalState.Kinds.NotAllowed, null),
+            // Nothing ran: no connection, the supervisor not given. Confirmar again.
+            { Code: "Cancelled" } or { IsUncertain: true } => (ProposalState.Kinds.Pending, p.Message),
+            _ => (ProposalState.Kinds.Failed, p.Message), // the endpoint refused it (validation, duplicate): the store marked it failed
+        };
+        _focusOutcome = true;
+    }
+
+    // Running disables the buttons, which drops the focus: put it back on Confirmar (to retry) or, once decided, on the outcome.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusOutcome) return;
+        _focusOutcome = false;
+        try { await (Open ? _confirm : _status).FocusAsync(); }
+        catch (InvalidOperationException) { } // bUnit renders without a browser
+    }
+
+    public void Dispose() => _closed.Cancel();
+}

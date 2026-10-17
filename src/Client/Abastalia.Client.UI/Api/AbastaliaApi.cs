@@ -53,6 +53,8 @@ public sealed class AbastaliaApi(HttpClient http, Session session, ServerAddress
     public Task<ApiResult<T>> PostAsync<T>(string url, object? body = null, TimeSpan? timeout = null) => SendAsync<T>(HttpMethod.Post, url, body, timeout ?? DefaultTimeout);
     public Task<ApiResult<T>> PutAsync<T>(string url, object? body) => SendAsync<T>(HttpMethod.Put, url, body, DefaultTimeout);
     public Task<ApiResult<T>> DeleteAsync<T>(string url) => SendAsync<T>(HttpMethod.Delete, url, null, DefaultTimeout);
+    /// <summary>TK-343: Confirmar on Talia's card: the proposal's own request with this session, marked with its id (the server runs it once).</summary>
+    public Task<ApiResult<Empty>> ProposalAsync(TaliaProposal p, object body) => SendAsync<Empty>(new HttpMethod(p.Method), p.Path, body, DefaultTimeout, proposal: p.Id);
 
     /// <summary>After an uncertain checkout: the sale when the server saved it, no value and no problem when it did not,
     /// or a problem when it still cannot tell.</summary>
@@ -66,9 +68,10 @@ public sealed class AbastaliaApi(HttpClient http, Session session, ServerAddress
         return receipt.Value is { } r ? new(new SaleRegistered(d.Id, d.Number, d.ENcf, d.Total, r.Change, r), null) : new(default, receipt.Problem);
     }
 
-    private async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string url, object? body, TimeSpan timeout, bool background = false)
+    private async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string url, object? body, TimeSpan timeout, bool background = false, Guid? proposal = null)
     {
         using var request = new HttpRequestMessage(method, new Uri(server.Current, url));
+        if (proposal is { } id) request.Headers.Add("X-Talia-Proposal", id.ToString());
         if (session.DeviceToken is { } device) request.Headers.Add("X-Device", device);
         if (session.Token is { } token) request.Headers.Authorization = new("Bearer", token);
         if (background) request.Headers.Add("X-Abastalia-Background", "1");

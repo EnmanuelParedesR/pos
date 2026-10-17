@@ -19,6 +19,7 @@ public static class InventoryModule
         services.AddScoped<IInventoryReports, InventoryReports>();
         services.AddScoped<StockMovements>();
         services.AddScoped<IStockMovements>(sp => sp.GetRequiredService<StockMovements>());
+        services.AddScoped<Abastalia.BuildingBlocks.Endpoints.IAssistantAction, Features.CreateCategoryProposal>(); // TK-343
         return services;
     }
 }

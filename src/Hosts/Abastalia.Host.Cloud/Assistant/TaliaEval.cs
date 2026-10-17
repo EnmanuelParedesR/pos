@@ -115,7 +115,9 @@ public static class TaliaEval
     /// <remarks>TK-342: a <c>store</c> case gets the store app's Talia, with the case's permissions (every one when it lists none).</remarks>
     public static ITalia For(IChatModel model, EvalCase c)
     {
-        if (IsStore(c)) return new StoreAssistant(model, StorePermissions(c));
+        // TK-343: a store that declares every store action; the case's permissions still filter them.
+        if (IsStore(c)) return new StoreAssistant(model, StorePermissions(c),
+            actions: Sync.Contracts.StoreActions.For(Sync.Contracts.StoreActions.All.Select(a => a.Type), StorePermissions(c)));
         var owner = c.Context?.Role is not "readonly";
         return new OwnerAssistant(model, null!, isOwner: owner,
             actions: [.. AssistantActionTypes.Builtin.Where(a => owner || !a.Policies.Contains(Nodes.CloudAuth.OwnerPolicy))],
@@ -129,7 +131,8 @@ public static class TaliaEval
     private static async Task<string> ToolResultAsync(ITalia assistant, EvalCase c, ChatToolCall call, CancellationToken ct)
     {
         if (IsStore(c))
-            return call.Name == "open_screen" ? await assistant.RunToolAsync(Guid.Empty, call, ct) // checks its screen list
+            return call.Name == "open_screen" || call.Name.StartsWith("propose_", StringComparison.Ordinal)
+                ? await assistant.RunToolAsync(Guid.Empty, call, ct) // checks its screen list; the closed schema and one per answer
                 : c.ToolData?.TryGetValue(call.Name, out var found) == true ? found?.ToJsonString(CaseJson) ?? "null"
                 : assistant.Offered.Any(t => t.Name == call.Name) ? "[]" : OwnerAssistant.Failure($"No existe la herramienta {call.Name}.");
         if (assistant.Offered.Any(t => t.Name == call.Name && t.Name.StartsWith("propose_", StringComparison.Ordinal)))

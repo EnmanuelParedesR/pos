@@ -12,10 +12,10 @@ public sealed class BackOffice
     public bool TaliaOpen { get; set; }
 
     private Guid _taliaUser;
-    private readonly List<(TaliaTurn Turn, string? Screen)> _talia = [];
+    private readonly List<TaliaEntry> _talia = [];
 
     /// <summary>TK-342: the chat with Talia, kept while the same user is signed in: another user at this PC starts with an empty one.</summary>
-    public List<(TaliaTurn Turn, string? Screen)> Talia(Guid userId)
+    public List<TaliaEntry> Talia(Guid userId)
     {
         if (_taliaUser != userId)
         {
@@ -25,4 +25,23 @@ public sealed class BackOffice
         }
         return _talia;
     }
+}
+
+/// <summary>One turn of the chat with Talia; an answer may carry its "Abrir …" screen and (TK-343) a proposal card, whose state outlives the window.</summary>
+public sealed class TaliaEntry(TaliaTurn turn, TaliaAnswer? reply = null)
+{
+    public TaliaTurn Turn { get; } = turn;
+    public TaliaAnswer? Reply { get; } = reply;
+    public ProposalState Card { get; } = new();
+}
+
+/// <summary>TK-343: where a proposal card is (docs/talia-acciones.md §3): open until the person decides, then the outcome.</summary>
+public sealed class ProposalState
+{
+    public enum Kinds { Pending, Running, Done, Failed, Closed, Cancelled, Expired, NotAllowed }
+
+    public Kinds Kind { get; set; }
+
+    /// <summary>The server's text for a failure, or (pending) a retryable problem: no connection, the supervisor not given.</summary>
+    public string? Message { get; set; }
 }

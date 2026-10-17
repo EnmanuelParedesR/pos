@@ -37,7 +37,7 @@ internal sealed class Outbox(InfraDbContext db, IUserContext user, TimeProvider 
     }
 }
 
-internal sealed class AuditLog(InfraDbContext db, UnitOfWork uow, IUserContext user, AuditKey key, TimeProvider clock) : IAuditLog
+internal sealed class AuditLog(InfraDbContext db, UnitOfWork uow, IUserContext user, AuditKey key, TimeProvider clock, Endpoints.AssistantRun talia) : IAuditLog
 {
     public async Task RecordAsync(string action, string resourceType, Guid resourceId, object data, CancellationToken ct)
     {
@@ -60,7 +60,7 @@ internal sealed class AuditLog(InfraDbContext db, UnitOfWork uow, IUserContext u
             Action = action,
             ResourceType = resourceType,
             ResourceId = resourceId,
-            Data = JsonSerializer.Serialize(data, Json.Options),
+            Data = JsonSerializer.Serialize(talia.ProposalId is { } proposal ? ViaTalia(data, proposal) : data, Json.Options),
             PreviousHash = head.Hash,
         };
         record.Hash = AuditChain.Hash(record, key.For(record.Sequence));
@@ -68,6 +68,16 @@ internal sealed class AuditLog(InfraDbContext db, UnitOfWork uow, IUserContext u
 
         await db.AuditHead.Where(h => h.Id == 1)
             .ExecuteUpdateAsync(s => s.SetProperty(h => h.Hash, record.Hash), ct);
+    }
+
+    /// <summary>TK-343 (docs/talia-acciones.md §3.4): "done by Talia at X's request", with the proposal id, next to what the command records.</summary>
+    private static System.Text.Json.Nodes.JsonObject ViaTalia(object data, Guid proposal)
+    {
+        var node = JsonSerializer.SerializeToNode(data, Json.Options);
+        var o = node as System.Text.Json.Nodes.JsonObject ?? new() { ["data"] = node };
+        o["via"] = "talia";
+        o["proposal"] = proposal;
+        return o;
     }
 }
 

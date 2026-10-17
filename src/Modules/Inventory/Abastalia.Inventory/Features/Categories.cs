@@ -58,11 +58,32 @@ internal static class SaveCategory
         {
             app.MapPost("/api/inventory/categories", async (Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(new Command(null, b.Name, b.Color, b.Notes, b.IsActive), ct)).ToHttp(r => Results.Created($"/api/inventory/categories/{r.Id}", r)))
-                .RequirePermission(Permissions.ProductsManage).WithTags("Inventory");
+                .RequirePermission(Permissions.ProductsManage).AllowAssistant(CreateCategoryProposal.Type).WithTags("Inventory");
             app.MapPut("/api/inventory/categories/{id:guid}", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.Name, b.Color, b.Notes, b.IsActive), ct)).ToHttp(_ => Results.NoContent()))
                 .RequirePermission(Permissions.ProductsManage).WithTags("Inventory");
         }
+    }
+}
+
+/// <summary>TK-343: Talia's first store action, the lowest-risk real one (no money, no stock, nothing deleted): «Crear la categoría «Bebidas»».
+/// Confirmar sends <c>POST /api/inventory/categories</c> with the back office's default color, like «Nueva categoría» in Productos.</summary>
+internal sealed class CreateCategoryProposal(InventoryDbContext db) : IAssistantAction
+{
+    public const string Type = "create_category";
+    public const string Color = "#6B1F5E"; // Products.razor's default for a new category
+
+    string IAssistantAction.Type => Type;
+
+    public async Task<Result<AssistantPreview>> PreviewAsync(System.Text.Json.Nodes.JsonObject args, CancellationToken ct)
+    {
+        var name = string.Join(' ', (args["name"]?.GetValue<string>() ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (name.Length is 0 or > 80) return Error.Validation("Talia.InvalidName", "Diga el nombre de la categoría (hasta 80 letras).");
+        var existing = await db.Categories.AsNoTracking().Select(c => new { c.Name, c.IsActive }).ToListAsync(ct);
+        if (existing.FirstOrDefault(c => string.Equals(c.Name.Trim(), name, StringComparison.OrdinalIgnoreCase)) is { } same)
+            return Error.Conflict("Talia.CategoryExists", $"Ya existe la categoría «{same.Name}»{(same.IsActive ? "" : " (desactivada)")}.");
+        return new AssistantPreview($"Crear la categoría «{name}»", "POST", "/api/inventory/categories",
+            new() { ["name"] = name, ["color"] = Color, ["notes"] = new System.Text.Json.Nodes.JsonArray(), ["isActive"] = true });
     }
 }
 

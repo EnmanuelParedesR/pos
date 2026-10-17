@@ -7,7 +7,8 @@ using Abastalia.Host.Cloud.Assistant;
 
 namespace Abastalia.Cloud.Tests;
 
-/// <summary>Calls open_screen with the question's last word (whatever it is), then answers "Listo."; 10 tokens a reply.</summary>
+/// <summary>Calls open_screen with the question's last word (whatever it is), then answers "Listo."; 10 tokens a reply.
+/// TK-343: a question starting "Crea la categoría" calls propose_create_category with the last word instead (offered or not).</summary>
 public sealed class StoreScreenModel : IChatModel
 {
     public IReadOnlyList<ChatTool> Offered { get; private set; } = [];
@@ -19,9 +20,13 @@ public sealed class StoreScreenModel : IChatModel
         (Offered, Messages) = (tools, messages);
         var result = messages.LastOrDefault(m => m.Role == "tool");
         ToolResult = result?.Content;
-        var screen = messages[^1].Content!.Split(' ')[^1];
+        var question = messages[^1].Content!;
+        var last = question.Split(' ')[^1];
+        var call = question.StartsWith("Crea la categoría", StringComparison.Ordinal)
+            ? new ChatToolCall("s1", "propose_create_category", JsonSerializer.Serialize(new { name = last }))
+            : new ChatToolCall("s1", "open_screen", JsonSerializer.Serialize(new { screen = last }));
         return Task.FromResult(result is null
-            ? new ChatMessage("assistant", null, [new ChatToolCall("s1", "open_screen", JsonSerializer.Serialize(new { screen }))], Tokens: 10)
+            ? new ChatMessage("assistant", null, [call], Tokens: 10)
             : new ChatMessage("assistant", "Listo.", Tokens: 10));
     }
 }
@@ -79,7 +84,7 @@ public sealed class StoreAssistantTests(StoreAssistantApp app) : IClassFixture<S
         var json = await r.Json();
         (json.GetProperty("answer").GetString(), json.GetProperty("screen").GetString()).ShouldBe(("Listo.", "/admin/products"));
         app.Model.ToolResult!.ShouldContain("Abrir Productos");
-        // Read-only: the knowledge base and open_screen. No data of the replica, no navigate of the panel, no propose_* (TK-343).
+        // Read-only: the knowledge base and open_screen. No data of the replica, no navigate of the panel, no propose_* (the store declared none).
         app.Model.Offered.Select(t => t.Name).ShouldBe(["search_knowledge", "open_screen"]);
         Enum(app.Model.Offered).ShouldContain("/admin/reports");
         Enum(app.Model.Offered).ShouldNotContain("/admin/customers"); // needs customers.manage
@@ -141,6 +146,76 @@ public sealed class StoreAssistantTests(StoreAssistantApp app) : IClassFixture<S
         over.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
         (await over.ErrorCode()).ShouldBe("Quota.Exceeded");
         Used(await owner.Client.GetFromJsonAsync<JsonElement>("/api/usage"), "AssistantQuestions").Used.ShouldBe(StoreAssistantApp.Questions);
+    }
+
+    private static object AskDeclaring(string question, string[]? actions, params string[] permissions) => new
+    {
+        question,
+        user = new { name = "Ana Pérez", permissions },
+        actions,
+    };
+
+    [Fact]
+    public async Task The_store_gets_a_typed_proposal_only_for_an_action_it_declared_and_the_user_may_do()
+    {
+        var node = await app.StoreWithNodeAsync(await app.OwnerAsync());
+
+        var json = await (await node.Client.PostAsJsonAsync("/api/nodes/assistant/ask",
+            AskDeclaring("Crea la categoría Bebidas", ["create_category"], "products.manage"))).Json();
+
+        app.Model.Offered.Select(t => t.Name).ShouldBe(["search_knowledge", "open_screen", "propose_create_category"]);
+        var proposal = json.GetProperty("proposal");
+        (proposal.GetProperty("type").GetString(), proposal.GetProperty("arguments").GetProperty("name").GetString()).ShouldBe(("create_category", "Bebidas"));
+        app.Model.ToolResult!.ShouldContain("Tarjeta de confirmación"); // the model hears of a card, never a result
+        json.GetProperty("screen").ValueKind.ShouldBe(JsonValueKind.Null);
+
+        // Not declared (an older store), not the user's permission, or a type the cloud does not know: no tool, and a call anyway is refused.
+        foreach (var (actions, permissions) in new[] { ((string[]?)null, "products.manage"), (["create_category"], "reports.view"), (["delete_everything"], "products.manage") })
+        {
+            var other = await app.StoreWithNodeAsync(await app.OwnerAsync()); // a business of its own: 3 questions a month here
+            var refused = await (await other.Client.PostAsJsonAsync("/api/nodes/assistant/ask", AskDeclaring("Crea la categoría Bebidas", actions, permissions))).Json();
+            app.Model.Offered.Select(t => t.Name).ShouldNotContain("propose_create_category");
+            refused.GetProperty("proposal").ValueKind.ShouldBe(JsonValueKind.Null);
+            JsonDocument.Parse(app.Model.ToolResult!).RootElement.GetProperty("error").GetString()!.ShouldContain("No existe la herramienta");
+        }
+    }
+
+    [Fact]
+    public async Task One_proposal_per_answer_with_the_closed_schema()
+    {
+        var actions = Abastalia.Sync.Contracts.StoreActions.For(["create_category"], new HashSet<string> { "products.manage" });
+        var model = new ScriptedChatModel([
+            new(ToolCalls: [new("propose_create_category", new() { ["name"] = "Bebidas", ["color"] = "#000000" })]), // not in the schema
+            new(ToolCalls: [new("propose_create_category", new() { ["name"] = new string('x', 81) })]),             // too long
+            new(ToolCalls: [new("propose_create_category", new() { ["name"] = "Bebidas" })]),
+            new(ToolCalls: [new("propose_create_category", new() { ["name"] = "Licores" })]),                       // a second one
+            new("Le dejé la tarjeta."),
+        ]);
+        var assistant = new StoreAssistant(model, new HashSet<string> { "products.manage" }, actions: actions);
+
+        await assistant.ConverseAsync("", "Crea Bebidas", [], call => assistant.RunToolAsync(Guid.Empty, call, CancellationToken.None), CancellationToken.None);
+
+        assistant.StoreProposal!.Arguments["name"]!.GetValue<string>().ShouldBe("Bebidas");
+        var results = model.Rounds.Skip(1).Select(r => r.Messages[^1].Content!).ToList();
+        results[0].ShouldContain("no tiene el argumento color");
+        results[1].ShouldContain("no es v"); // the JSON escapes the accent
+        results[2].ShouldContain("Tarjeta de confirmación");
+        results[3].ShouldContain("solo cabe una");
+    }
+
+    [Fact]
+    public void Every_store_action_has_a_closed_schema_and_store_permissions()
+    {
+        var all = Abastalia.Sync.Contracts.StoreActions.All;
+        all.ShouldNotBeEmpty();
+        all.Select(a => a.Type).ShouldBeUnique();
+        foreach (var a in all)
+        {
+            a.Type.ShouldMatch("^[a-z_]{3,40}$");
+            a.Parameters["additionalProperties"]!.GetValue<bool>().ShouldBeFalse(a.Type);
+            a.Permissions.ShouldNotBeEmpty(a.Type);
+            a.Permissions.ShouldAllBe(p => Abastalia.BuildingBlocks.Security.Permissions.All.Contains(p));
+        }
     }
 
     [Fact]

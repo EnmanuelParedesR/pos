@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Abastalia.SharedKernel;
 
 namespace Abastalia.Sync.Contracts;
@@ -72,7 +74,9 @@ public interface ICloudSnapshot
 /// store's session says, sent as data for the answer's wording and the screens offered; the store keeps checking every permission itself.</summary>
 /// <param name="History">The chat so far, user and assistant turns only.</param>
 /// <param name="Today">The store's business day.</param>
-public sealed record StoreAssistantRequest(string? Question, IReadOnlyList<StoreAssistantTurn>? History, StoreAssistantUser? User, DateOnly? Today);
+/// <param name="Actions">TK-343: the <see cref="StoreActions"/> types this store can run (its executor's registry); the cloud offers no others.</param>
+public sealed record StoreAssistantRequest(string? Question, IReadOnlyList<StoreAssistantTurn>? History, StoreAssistantUser? User, DateOnly? Today,
+    IReadOnlyList<string>? Actions = null);
 
 public sealed record StoreAssistantTurn(string? Role, string? Content);
 
@@ -80,4 +84,56 @@ public sealed record StoreAssistantTurn(string? Role, string? Content);
 public sealed record StoreAssistantUser(string? Name, string? Role, IReadOnlyList<string>? Permissions);
 
 /// <param name="Screen">A route of the store app's screen list (storeScreens.json) Talia suggests opening; the person clicks "Abrir …". Null when none.</param>
-public sealed record StoreAssistantAnswer(string Answer, string? Screen = null);
+/// <param name="Proposal">TK-343: the one store action Talia proposed, as the model asked for it (schema-checked by the cloud). The cloud never runs it:
+/// the store resolves it with its own data, writes the summary and runs it with the user's session after their click.</param>
+public sealed record StoreAssistantAnswer(string Answer, string? Screen = null, StoreProposal? Proposal = null);
+
+/// <param name="Type">A <see cref="StoreActions"/> type the store declared.</param>
+public sealed record StoreProposal(string Type, JsonObject Arguments);
+
+/// <summary>TK-343: one store action Talia may propose (storeActions.json, shared by the cloud and the store).</summary>
+/// <param name="Permissions">The store user needs every one (the same as its endpoint); the cloud offers it only then.</param>
+/// <param name="Parameters">Closed JSON schema (<c>additionalProperties: false</c>), checked by <see cref="ToolSchema.Error"/> on both sides.</param>
+public sealed record StoreActionSpec(string Type, string Description, IReadOnlyList<string> Permissions, JsonObject Parameters);
+
+public static class StoreActions
+{
+    public static readonly IReadOnlyList<StoreActionSpec> All = JsonSerializer.Deserialize<List<StoreActionSpec>>(
+        typeof(StoreActions).Assembly.GetManifestResourceStream("Abastalia.StoreActions.json")!, JsonSerializerOptions.Web)!;
+
+    /// <summary>What may be offered: known here, declared by the store and allowed by every permission of the user.</summary>
+    public static IReadOnlyList<StoreActionSpec> For(IEnumerable<string>? declared, IReadOnlySet<string> permissions)
+    {
+        var types = (declared ?? []).ToHashSet(StringComparer.Ordinal);
+        return [.. All.Where(a => types.Contains(a.Type) && a.Permissions.All(permissions.Contains))];
+    }
+}
+
+/// <summary>TK-338/343: the closed-schema check of a propose_* tool's arguments: string (enum, maxLength), boolean and integer properties only.</summary>
+public static class ToolSchema
+{
+    /// <returns>Why the arguments break the schema, or null.</returns>
+    public static string? Error(string tool, JsonObject parameters, JsonElement args)
+    {
+        if (args.ValueKind != JsonValueKind.Object) return "Los argumentos deben ser un objeto.";
+        var properties = parameters["properties"]!.AsObject();
+        foreach (var p in args.EnumerateObject())
+        {
+            if (properties[p.Name] is not JsonObject spec) return $"{tool} no tiene el argumento {p.Name}.";
+            var v = p.Value;
+            var ok = spec["type"]?.GetValue<string>() switch
+            {
+                "string" => v.ValueKind == JsonValueKind.String
+                    && (spec["maxLength"] is not { } max || v.GetString()!.Length <= max.GetValue<int>())
+                    && (spec["enum"] is not JsonArray options || options.Any(o => o!.GetValue<string>() == v.GetString())),
+                "boolean" => v.ValueKind is JsonValueKind.True or JsonValueKind.False,
+                "integer" => v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out _),
+                _ => false,
+            };
+            if (!ok) return $"El argumento {p.Name} no es válido para {tool}.";
+        }
+        foreach (var name in parameters["required"]?.AsArray().Select(r => r!.GetValue<string>()) ?? [])
+            if (!args.TryGetProperty(name, out _)) return $"Falta el argumento {name}.";
+        return null;
+    }
+}

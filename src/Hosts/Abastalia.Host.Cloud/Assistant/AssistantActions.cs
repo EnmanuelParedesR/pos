@@ -90,29 +90,7 @@ public abstract class AssistantActionType
     public abstract Task<Result<object?>> ExecuteAsync(ActionContext ctx, JsonObject args, CancellationToken ct);
 
     /// <returns>Why the arguments break the closed schema, or null.</returns>
-    public string? SchemaError(JsonElement args)
-    {
-        if (args.ValueKind != JsonValueKind.Object) return "Los argumentos deben ser un objeto.";
-        var properties = Parameters["properties"]!.AsObject();
-        foreach (var p in args.EnumerateObject())
-        {
-            if (properties[p.Name] is not JsonObject spec) return $"{Tool.Name} no tiene el argumento {p.Name}.";
-            var v = p.Value;
-            var ok = spec["type"]?.GetValue<string>() switch
-            {
-                "string" => v.ValueKind == JsonValueKind.String
-                    && (spec["maxLength"] is not { } max || v.GetString()!.Length <= max.GetValue<int>())
-                    && (spec["enum"] is not JsonArray options || options.Any(o => o!.GetValue<string>() == v.GetString())),
-                "boolean" => v.ValueKind is JsonValueKind.True or JsonValueKind.False,
-                "integer" => v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out _),
-                _ => false,
-            };
-            if (!ok) return $"El argumento {p.Name} no es válido para {Tool.Name}.";
-        }
-        foreach (var name in Parameters["required"]?.AsArray().Select(r => r!.GetValue<string>()) ?? [])
-            if (!args.TryGetProperty(name, out _)) return $"Falta el argumento {name}.";
-        return null;
-    }
+    public string? SchemaError(JsonElement args) => Sync.Contracts.ToolSchema.Error(Tool.Name, Parameters, args);
 }
 
 /// <summary>TK-338: the actions Talia can propose. DI registers each (tests add their own); the evaluation harness reads this list.</summary>

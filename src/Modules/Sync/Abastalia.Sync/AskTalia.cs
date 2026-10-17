@@ -37,7 +37,23 @@ internal static class AskTalia
     public static readonly Error Busy = Error.Conflict("Talia.Busy", "Se le hicieron muchas preguntas a Talia en poco tiempo. Espere un minuto e intente de nuevo.");
     public static readonly Error InvalidQuestion = Error.Validation("Talia.InvalidQuestion", "Escriba una pregunta (hasta 1000 letras).");
 
-    public static async Task<Result<StoreAssistantAnswer>> RunAsync(Request r, ClaimsPrincipal user, ICloudClient cloud, TimeProvider clock, CancellationToken ct)
+    /// <summary>TK-343: what Talia's window gets. <paramref name="Proposal"/> is the card the store built from its own data; when it could not
+    /// (the category exists, no permission), <paramref name="ProposalError"/> says why instead.</summary>
+    public sealed record Response(string Answer, string? Screen, TaliaProposalCard? Proposal = null, string? ProposalError = null);
+
+    public static async Task<Result<Response>> RunAsync(Request r, ClaimsPrincipal user, ICloudClient cloud, TaliaProposals proposals, TimeProvider clock,
+        CancellationToken ct)
+    {
+        var answer = await AskCloudAsync(r, user, cloud, proposals.Declared, clock, ct);
+        if (answer.IsFailure) return answer.Error!;
+        var a = answer.Value;
+        if (a.Proposal is not { } p) return new Response(a.Answer, a.Screen);
+        var card = await proposals.ProposeAsync(p, user, ct);
+        return card.IsSuccess ? new Response(a.Answer, a.Screen, card.Value) : new Response(a.Answer, a.Screen, null, card.Error!.Description);
+    }
+
+    private static async Task<Result<StoreAssistantAnswer>> AskCloudAsync(Request r, ClaimsPrincipal user, ICloudClient cloud, IReadOnlyList<string> actions,
+        TimeProvider clock, CancellationToken ct)
     {
         var question = r.Question?.Trim() ?? "";
         if (question.Length is 0 or > 1000) return InvalidQuestion;
@@ -47,7 +63,7 @@ internal static class AskTalia
         var history = (r.History ?? []).TakeLast(20).Select(t => t with { Content = t.Content is { Length: > 2000 } c ? c[..2000] : t.Content }).ToList();
         try
         {
-            using var response = await cloud.PostAsJsonAsync(CloudPath, new StoreAssistantRequest(question, history, who, BusinessDay.Of(clock.GetUtcNow().UtcDateTime)), ct);
+            using var response = await cloud.PostAsJsonAsync(CloudPath, new StoreAssistantRequest(question, history, who, BusinessDay.Of(clock.GetUtcNow().UtcDateTime), actions), ct);
             if (response.IsSuccessStatusCode) return (await response.Content.ReadFromJsonAsync<StoreAssistantAnswer>(ct))!;
             var body = await response.Content.ReadAsStringAsync(ct);
             var detail = body.Length > 0 && JsonSerializer.Deserialize<JsonElement>(body) is { ValueKind: JsonValueKind.Object } p
@@ -63,8 +79,8 @@ internal static class AskTalia
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/assistant/ask", async (Request r, ClaimsPrincipal user, ICloudClient cloud, TimeProvider clock, CancellationToken ct) =>
-                    (await RunAsync(r, user, cloud, clock, ct)).ToHttp())
+            app.MapPost("/api/assistant/ask", async (Request r, ClaimsPrincipal user, ICloudClient cloud, TaliaProposals proposals, TimeProvider clock,
+                    CancellationToken ct) => (await RunAsync(r, user, cloud, proposals, clock, ct)).ToHttp())
                 .RequireAuthorization(p => p.RequireClaim(AbastaliaClaims.Session).RequireAssertion(c => IsBackOffice(c.User))).WithTags("Sync");
     }
 }
