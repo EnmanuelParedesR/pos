@@ -35,7 +35,7 @@ public sealed class ReferralTests(BillingApp app) : IClassFixture<BillingApp>, I
             current_billing_period = new { starts_at = (nextBilled ?? PeriodEnd).AddMonths(-1).ToString("O"), ends_at = (nextBilled ?? PeriodEnd).ToString("O") },
             next_billed_at = status == "active" ? (nextBilled ?? PeriodEnd).ToString("O") : null,
             billing_cycle = new { interval, frequency = 1 },
-            custom_data = new { tenantId = tenant.ToString() },
+            custom_data = BillingApp.CustomData(tenant), // R12 I: signed, as our checkout makes it
         },
     });
 
@@ -52,7 +52,7 @@ public sealed class ReferralTests(BillingApp app) : IClassFixture<BillingApp>, I
                 items = new[] { new { price = new { id = price }, quantity = 1 } },
                 details = new { totals = new { grand_total = total, currency_code = "USD" } },
                 billing_period = new { starts_at = Now.ToString("O"), ends_at = PeriodEnd.ToString("O") },
-                custom_data = new { tenantId = tenant.ToString() },
+                custom_data = BillingApp.CustomData(tenant), // R12 I: signed, as our checkout makes it
             },
         })).EnsureSuccessStatusCode();
         return txn;

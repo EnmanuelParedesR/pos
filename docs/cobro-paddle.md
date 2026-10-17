@@ -119,7 +119,7 @@ La prueba de Abastalia **no** es de Paddle: la tienda empieza sus 14 días con l
 - **Firma:** encabezado `Paddle-Signature: ts=…;h1=…`; se calcula HMAC SHA-256 de `ts:cuerpo` con el secreto del destino y se compara en tiempo constante con cada `h1` ([verificación de firma](https://developer.paddle.com/webhooks/signature-verification)). Se acepta un `ts` dentro de **5 minutos** (los SDK de Paddle usan 5 segundos; aquí se tolera un reintento lento y la hora desfasada, y la repetición la frena el `event_id`). Firma mala, ausente o vieja: **401**.
 - **Una sola vez por `event_id`** (tabla `cloud.BillingEvents`): Paddle reintenta hasta recibir 2xx (en vivo 60 veces en 3 días) y un reenvío se contesta 200 sin repetir nada ([responder a webhooks](https://developer.paddle.com/webhooks/about/respond-to-webhooks)).
 - **Orden:** Paddle no garantiza el orden; un evento de suscripción con `occurred_at` anterior al último aplicado se registra pero no se aplica.
-- **A qué negocio:** `custom_data.tenantId`, que pone nuestro checkout y Paddle copia a la suscripción; si no viene, el id de suscripción ya conocido.
+- **A qué negocio:** primero el id de suscripción ya conocido; si es nueva, `custom_data.tenantId`, que pone nuestro checkout y Paddle copia a la suscripción, **solo con su `tenantSig`** (HMAC-SHA256 del id con el secreto del webhook, R12 I): el navegador entrega `customData` a Paddle.js y podría cambiarlo.
 - `subscription.created/updated/activated/trialing/past_due/paused/resumed/canceled` → estado, cliente, forma de pago, próximo cobro, "pagado hasta" (solo si está activa o en prueba) y **el plan y los adicionales del negocio** (los mismos campos que pone la consola en TK-248) según los precios de `items[].price.id`.
 - `transaction.completed` → "pagado hasta" = fin de `billing_period` si es mayor, y una suscripción pendiente vuelve a activa.
 - `product.*` y `price.*` → el catálogo se relee enseguida (precios y límites nuevos).
@@ -130,7 +130,7 @@ La prueba de Abastalia **no** es de Paddle: la tienda empieza sus 14 días con l
 | Ruta | Qué hace |
 |---|---|
 | `GET /api/billing` | Plan, adicionales, estado, pagado hasta, próximo cobro, acuerdo manual, si hay cliente de Paddle, y los planes y adicionales que tienen precio |
-| `POST /api/billing/checkout` | Sin suscripción: devuelve lo que Paddle.js necesita (`environment`, `clientToken`, `items` con `priceId`, correo del dueño y `customData.tenantId`). Con suscripción viva: cambia sus `items` en Paddle (`PATCH /subscriptions/{id}`, prorrateado) y responde `{ changed: true }` |
+| `POST /api/billing/checkout` | Sin suscripción: devuelve lo que Paddle.js necesita (`environment`, `clientToken`, `items` con `priceId`, correo del dueño y `customData.tenantId` con `tenantSig`). Con suscripción viva: cambia sus `items` en Paddle (`PATCH /subscriptions/{id}`, prorrateado) y responde `{ changed: true }` |
 | `POST /api/billing/portal` | Crea una sesión del portal del cliente (`POST /customers/{id}/portal-sessions`) y devuelve el enlace (tarjeta, facturas, cancelar). El enlace lleva un token temporal: no se guarda ([portal](https://developer.paddle.com/api-reference/customer-portals/create-customer-portal-session)) |
 
 ### Página "Plan y facturación" (`/app/billing`, Dueños)

@@ -113,16 +113,29 @@ internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, Bil
         return Results.Ok();
     }
 
-    /// <summary><c>custom_data.tenantId</c> (set by our checkout, copied by Paddle to the subscription), else the subscription we already know.</summary>
+    /// <summary>R12 I: the subscription we already know first; else <c>custom_data.tenantId</c> (set by our checkout, copied by Paddle to the
+    /// subscription) only with its <c>tenantSig</c>. The panel hands custom_data to Paddle.js, so the browser could change it: without the
+    /// signature a buyer could pin their own subscription (and its cancellation) on another business.</summary>
     private async Task<Guid?> TenantOfAsync(string type, JsonElement data, CancellationToken ct)
     {
+        var subscriptionId = type == "transaction.completed" ? Text(data, "subscription_id") : Text(data, "id");
+        if (subscriptionId is not null
+            && await db.TenantSubscriptions.Where(s => s.PaddleSubscriptionId == subscriptionId).Select(s => (Guid?)s.TenantId).FirstOrDefaultAsync(ct) is { } known)
+            return known;
         if (data.TryGetProperty("custom_data", out var custom) && custom.ValueKind == JsonValueKind.Object && Guid.TryParse(Text(custom, "tenantId"), out var id)
+            && Text(custom, TenantSignatureKey) is { } sig
+            && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(sig), Encoding.ASCII.GetBytes(TenantSignature(paddle, id)))
             && await db.Tenants.AnyAsync(t => t.Id == id, ct))
             return id;
-        var subscriptionId = type == "transaction.completed" ? Text(data, "subscription_id") : Text(data, "id");
-        return subscriptionId is null ? null
-            : await db.TenantSubscriptions.Where(s => s.PaddleSubscriptionId == subscriptionId).Select(s => (Guid?)s.TenantId).FirstOrDefaultAsync(ct);
+        return null;
     }
+
+    public const string TenantSignatureKey = "tenantSig";
+
+    /// <summary>HMAC-SHA256 of the tenant id with the webhook secret (server-only), Base64Url.</summary>
+    public static string TenantSignature(PaddleOptions paddle, Guid tenantId) =>
+        Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes(paddle.WebhookSecret), Encoding.UTF8.GetBytes($"abastalia-tenant:{tenantId:D}")))
+            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     private void Subscription(TenantSubscription s, Tenant tenant, JsonElement data, DateTime occurred, DateTime now)
     {

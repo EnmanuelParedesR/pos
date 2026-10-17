@@ -63,10 +63,11 @@ internal static class ReferralEndpoints
     }
 
     /// <summary>The code from <c>/precios?ref=</c>, kept at sign-in (TK-276) or at the business's first checkout; the checkout's custom_data carries it to Paddle.</summary>
-    public static async Task<Dictionary<string, string>> CheckoutDataAsync(CloudDbContext db, ReferralRewards rewards, Guid tenantId, string? code, DateTime nowUtc,
+    public static async Task<Dictionary<string, string>> CheckoutDataAsync(CloudDbContext db, ReferralRewards rewards, PaddleOptions paddle, Guid tenantId, string? code, DateTime nowUtc,
         CancellationToken ct)
     {
-        var data = new Dictionary<string, string> { ["tenantId"] = tenantId.ToString() };
+        // R12 I: the webhook trusts the tenant id only with its signature (PaddleWebhook.TenantSignature).
+        var data = new Dictionary<string, string> { ["tenantId"] = tenantId.ToString(), [PaddleWebhook.TenantSignatureKey] = PaddleWebhook.TenantSignature(paddle, tenantId) };
         var s = await KeepAsync(db, rewards, tenantId, code, nowUtc, ct);
         if (s.ReferredByCode is { } kept && await rewards.ReferrerOfAsync(kept, ct) is { } by)
             (data["referral_code"], data["referrer_tenant_id"]) = (kept, by.ToString());

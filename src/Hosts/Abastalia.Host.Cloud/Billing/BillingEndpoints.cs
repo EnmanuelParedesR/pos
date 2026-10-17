@@ -139,7 +139,7 @@ internal static class BillingEndpoints
                     ? Results.Ok(new BillingChangeResponse(true))
                     : EndpointExtensions.Problem(Error.Conflict("Billing.PaddleFailed", "Paddle no aceptó el cambio. Intente de nuevo en un momento."));
             return Results.Ok(new CheckoutResponse(paddle.Environment, paddle.ClientToken, items,
-                user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, await ReferralEndpoints.CheckoutDataAsync(db, referrals, tenantId, r.ReferralCode, clock.GetUtcNow().UtcDateTime, ct)));
+                user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, await ReferralEndpoints.CheckoutDataAsync(db, referrals, paddle, tenantId, r.ReferralCode, clock.GetUtcNow().UtcDateTime, ct)));
         });
 
         owner.MapPost("/portal", async (ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, PaddleApi api, CancellationToken ct) =>
