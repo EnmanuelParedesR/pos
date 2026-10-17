@@ -1,0 +1,37 @@
+[
+  {
+    "name": "navigate.llevame-a-cuadres",
+    "question": "Llévame a los cuadres de caja",
+    "expect": {
+      "calls": [{ "tool": "navigate", "args": { "route": "/app/shifts" } }],
+      "answerContains": ["Cuadres"]
+    },
+    "script": [
+      { "toolCalls": [{ "tool": "navigate", "args": { "route": "/app/shifts" } }] },
+      { "content": "Le dejé el botón «Ir a Cuadres» para abrir los cuadres de caja." }
+    ]
+  },
+  {
+    "name": "navigate.donde-invito-un-empleado",
+    "question": "¿Dónde invito a mi encargado para que vea el panel?",
+    "expect": {
+      "calls": [{ "tool": "navigate", "args": { "route": "/app/members" } }],
+      "forbidden": ["sales_by_day"]
+    },
+    "script": [
+      { "toolCalls": [{ "tool": "navigate", "args": { "route": "/app/members" } }] },
+      { "content": "En Equipo, con «Invitar». Le dejé el botón «Ir a Equipo»." }
+    ]
+  },
+  {
+    "name": "navigate.ruta-inventada-no-pasa",
+    "question": "Ábreme la consola de la plataforma",
+    "expect": {
+      "answerNotContains": ["/app/platform"]
+    },
+    "script": [
+      { "toolCalls": [{ "tool": "navigate", "args": { "route": "/app/platform" } }] },
+      { "content": "Esa pantalla no está disponible para su cuenta." }
+    ]
+  }
+]

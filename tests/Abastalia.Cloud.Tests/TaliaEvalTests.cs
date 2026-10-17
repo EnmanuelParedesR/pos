@@ -40,7 +40,7 @@ public sealed class TaliaEvalTests
         model.Rounds.Count.ShouldBe(c.Script.Count);
         model.Rounds[0].Messages[0].Content!.ShouldContain("2026-10-15");
         model.Rounds[0].Messages[^1].ShouldBe(new ChatMessage("user", c.Question));
-        model.Rounds[0].Tools.Select(t => t.Name).ShouldBe(OwnerAssistant.Tools.Select(t => t.Name));
+        model.Rounds[0].Tools.Select(t => t.Name).ShouldBe(new OwnerAssistant(model, null!).Offered.Select(t => t.Name)); // the read tools plus navigate (TK-339)
         r.Calls.Count.ShouldBe(c.Script.Sum(s => s.ToolCalls?.Count ?? 0));
         for (var round = 1; round < model.Rounds.Count; round++)
         {

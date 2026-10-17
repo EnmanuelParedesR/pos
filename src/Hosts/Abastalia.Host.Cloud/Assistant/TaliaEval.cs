@@ -104,7 +104,7 @@ public static class TaliaEval
     private static async Task<string> ToolResultAsync(OwnerAssistant assistant, EvalCase c, ChatToolCall call, CancellationToken ct)
     {
         if (c.ToolData?.TryGetValue(call.Name, out var data) == true) return data?.ToJsonString(CaseJson) ?? "null";
-        if (call.Name is "certification_faq" or "panel_help") return await assistant.RunToolAsync(Guid.Empty, call, ct); // static content
+        if (call.Name is "certification_faq" or "panel_help" or "navigate") return await assistant.RunToolAsync(Guid.Empty, call, ct); // static content; navigate checks its route list
         return OwnerAssistant.Tools.Any(t => t.Name == call.Name) ? "[]" : OwnerAssistant.Failure($"No existe la herramienta {call.Name}.");
     }
 
