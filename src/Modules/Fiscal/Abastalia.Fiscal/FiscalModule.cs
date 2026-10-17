@@ -112,8 +112,15 @@ internal sealed class FiscalDbContext(DbContextOptions<FiscalDbContext> options)
 }
 
 internal sealed class FiscalConfiguration : IEntityTypeConfiguration<NcfSequence>, IEntityTypeConfiguration<FiscalDocument>, IEntityTypeConfiguration<Taxpayer>,
-    IEntityTypeConfiguration<EcfVoid>, IEntityTypeConfiguration<Features.DgiiPublicAnswer>
+    IEntityTypeConfiguration<EcfVoid>, IEntityTypeConfiguration<Features.DgiiPublicAnswer>, IEntityTypeConfiguration<SequenceThreshold>
 {
+    public void Configure(EntityTypeBuilder<SequenceThreshold> b)
+    {
+        b.ToTable("EcfSequenceThresholds");
+        b.HasKey(t => t.Type);
+        b.Property(t => t.Type).HasConversion<int>().ValueGeneratedNever();
+    }
+
     public void Configure(EntityTypeBuilder<Features.DgiiPublicAnswer> b)
     {
         b.ToTable("DgiiPublicAnswers");
@@ -432,24 +439,29 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
         return waiting.Count(d => !d.AwaitingSignature);
     }
 
-    /// <summary>Environments whose ranges load themselves on first use: no owner step and no alert for a type never used there.</summary>
+    /// <summary>Environments whose ranges load themselves (TK-363: on first use; TK-376: also once used up or expired): no owner step, they never
+    /// stop a sale and never warn.</summary>
     internal static bool SelfLoads(FiscalEnvironment env) => env is FiscalEnvironment.Simulated or FiscalEnvironment.TesteCF;
 
     /// <summary>Takes the next number of the oldest valid range of the current environment. The update locks the range row until commit;
     /// a rollback gives the number back. In TesteCF the DGII range (1 to 10,000,000; the 32 to 50,000,000) is loaded on first use; TK-363: in
-    /// Simulated too (nothing leaves the store), so a new store sells from day one and the owner loads real ranges only to go to CerteCF or production.</summary>
+    /// Simulated too (nothing leaves the store), so a new store sells from day one and the owner loads real ranges only to go to CerteCF or production.
+    /// TK-376: in both, a new range after the last one also when every range is used up or expired, so a test environment never stops the sale.
+    /// CerteCF and production never load their own: without a current number the sale stops (the register warned before).</summary>
     internal async Task<(long Number, DateOnly? ExpiresOn)?> ReserveAsync(EcfType type, DateOnly today, CancellationToken ct)
     {
         var env = Environment;
         var candidates = await db.Sequences.Where(s => s.Type == type && s.Environment == env && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today))
             .OrderBy(s => s.From).Select(s => new { s.Id, s.ExpiresOn }).ToListAsync(ct);
-        if (candidates.Count == 0 && SelfLoads(env) && !await db.Sequences.AnyAsync(s => s.Type == type && s.Environment == env, ct))
+        if (candidates.Count == 0 && SelfLoads(env))
         {
-            // shortcut: two first sales at the same instant could both load it; harmless in a test environment.
+            // shortcut: two sales at the same instant could both load one (overlapping numbers); harmless in a test environment.
+            var last = await db.Sequences.Where(s => s.Type == type && s.Environment == env).MaxAsync(s => (long?)s.To, ct) ?? 0;
             var range = new NcfSequence
             {
-                Id = Guid.CreateVersion7(), Type = type, Environment = env, From = 1, To = type == EcfType.Consumer32 ? 50_000_000 : 10_000_000, Next = 1,
-                ExpiresOn = type is EcfType.FiscalCredit31 or EcfType.DebitNote33 ? new DateOnly(2028, 12, 31) : null, CreatedUtc = clock.GetUtcNow().UtcDateTime,
+                Id = Guid.CreateVersion7(), Type = type, Environment = env, From = last + 1, To = last + (type == EcfType.Consumer32 ? 50_000_000 : 10_000_000),
+                Next = last + 1, CreatedUtc = clock.GetUtcNow().UtcDateTime,
+                ExpiresOn = type is EcfType.FiscalCredit31 or EcfType.DebitNote33 ? new DateOnly(Math.Max(2028, today.Year + 1), 12, 31) : null,
             };
             db.Sequences.Add(range);
             await db.SaveChangesAsync(ct);

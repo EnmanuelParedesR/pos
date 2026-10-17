@@ -184,7 +184,7 @@
                 </div>
             </form>
             <section class="esc-card esc-setting">
-                <div class="esc-setting__about"><h2>Comprobantes</h2><p>Las secuencias de e-NCF que autorizó la DGII. Le avisamos en el Resumen cuando queden pocos. Los envíos, los rechazos y las anulaciones están en <a href="admin/ecf">Comprobantes electrónicos</a>.</p></div>
+                <div class="esc-setting__about"><h2>Comprobantes</h2><p>Las secuencias de e-NCF que autorizó la DGII. En Certificación y Producción la caja y el Resumen avisan cuando quedan pocos o están por vencer: sin un número vigente no se puede facturar. Simulado y Pre-certificación cargan solos uno nuevo y nunca detienen la venta. Los envíos, los rechazos y las anulaciones están en <a href="admin/ecf">Comprobantes electrónicos</a>.</p></div>
                 <div class="esc-setting__body">
                     <div class="esc-table-wrap">
                         <table class="esc-table" style="min-width:560px">
@@ -234,6 +234,20 @@
                         </Field>
                     </div>
                     <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary">Cargar secuencia</Button></div>
+                </div>
+            </form>
+            <form class="esc-card esc-setting" @onsubmit="SaveThresholdsAsync" novalidate>
+                <div class="esc-setting__about"><h2>Aviso de pocos comprobantes</h2><p>La caja avisa cuando de un tipo queda menos de este porcentaje de sus números vigentes, y 30 días antes de que venzan.</p></div>
+                <div class="esc-setting__body">
+                    <div class="esc-form-grid">
+                        @foreach (var type in _thresholds.Keys.ToList())
+                        {
+                            <Field Label="@($"{Names.DocumentType(type)}: avisar con menos del (%)")" Error="@Err("threshold" + type)">
+                                <input class="esc-input esc-num" inputmode="numeric" maxlength="2" @bind="_thresholds[type]" @bind:after='() => Clear("threshold" + type)' aria-invalid="@Invalid("threshold" + type)" />
+                            </Field>
+                        }
+                    </div>
+                    <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Guardar avisos</Button></div>
                 </div>
             </form>
             <TaxpayerRegistryCard />
@@ -580,6 +594,7 @@
     private string _seqType = "Consumer32";
     private DateOnly _seqExpires = Format.Today.AddYears(1);
     private List<EcfSequence> _sequences = [];
+    private Dictionary<string, string?> _thresholds = [];
     private EcfCertificateStatus? _certificate;
     private byte[]? _certFile;
     private string? _certPassword;
@@ -637,6 +652,8 @@
                 break;
             case Section.FiscalSequences:
                 _sequences = (await Api.GetAsync<List<EcfSequence>>("/api/fiscal/sequences")).Value ?? [];
+                _thresholds = ((await Api.GetAsync<List<SequenceAlert>>("/api/fiscal/alerts")).Value ?? [])
+                    .ToDictionary(a => a.Type, a => (string?)a.ThresholdPercent.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 _certificate = (await Api.GetAsync<EcfCertificateStatus>("/api/fiscal/certificate")).Value;
                 break;
             case Section.Devices: _devices = (await Api.GetAsync<List<Device>>("/api/identity/devices")).Value ?? []; break;
@@ -937,6 +954,22 @@
         var r = await Api.PostAsync<Created>("/api/fiscal/sequences", new { Type = _seqType, From = from, To = to, ExpiresOn = _seqExpires, Environment = _seqEnvironment is { Length: > 0 } env ? env : null });
         await GoAsync(Section.FiscalSequences);
         ShowResult(r.Problem?.Code == "Fiscal.OverlappingRange" ? r.Problem with { Message = "Ese rango se cruza con uno ya cargado." } : r.Problem, "Secuencia cargada.");
+    }
+
+    /// <summary>TK-376: one PUT per type (the server keeps 20 % for a type never set).</summary>
+    private async Task SaveThresholdsAsync()
+    {
+        _errors.Clear();
+        foreach (var (type, text) in _thresholds)
+            if (!int.TryParse(text, out var p) || p is < 1 or > 99) _errors["threshold" + type] = "Escriba un número del 1 al 99.";
+        if (_errors.Count > 0) return;
+        _sending = true;
+        Problem? problem = null;
+        foreach (var (type, text) in _thresholds)
+            problem ??= (await Api.PutAsync<Empty>($"/api/fiscal/sequences/thresholds/{type}", new { Percent = int.Parse(text!, System.Globalization.CultureInfo.InvariantCulture) })).Problem;
+        _sending = false;
+        await GoAsync(Section.FiscalSequences);
+        ShowResult(problem, "Avisos guardados.");
     }
 
     /// <summary>A .p12 is a few KB; 200 KB is plenty.</summary>

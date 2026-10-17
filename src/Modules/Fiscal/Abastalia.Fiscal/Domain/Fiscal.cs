@@ -8,6 +8,15 @@ namespace Abastalia.Fiscal.Domain;
 /// Ranges and documents carry it: a number of one environment is never used in another, and only <c>eCF</c> is fiscal.</summary>
 internal enum FiscalEnvironment { Simulated, TesteCF, CerteCF, eCF }
 
+/// <summary>TK-376: per receipt type, the share of its usable numbers (percent) under which the register and the Resumen warn.
+/// Without a row, <see cref="DefaultPercent"/>.</summary>
+internal sealed class SequenceThreshold
+{
+    public const int DefaultPercent = 20;
+    public EcfType Type { get; set; }
+    public int Percent { get; set; }
+}
+
 /// <summary>An authorized e-NCF range for one receipt type.</summary>
 internal sealed class NcfSequence
 {

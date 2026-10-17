@@ -123,7 +123,8 @@ public sealed record HourlySales(DateOnly Day, int Hour, int SaleCount, decimal 
 public sealed record ShiftSummary(Guid ShiftId, string Register, string Cashier, DateTime OpenedUtc, DateTime? ClosedUtc, long? ZNumber, decimal OpeningFloat,
     decimal? ExpectedCash, decimal? CountedCash, decimal? Difference);
 public sealed record Receivable(Guid CustomerId, string Customer, decimal Over90, decimal Total, decimal CreditLimit);
-public sealed record SequenceAlert(string Type, long Available, DateOnly? ExpiresOn, bool Alert);
+/// <summary>Per receipt type of the current environment (TK-376): <c>Alert</c> under the threshold or within 30 days of expiry; <c>Critical</c> none left or the last day.</summary>
+public sealed record SequenceAlert(string Type, long Available, DateOnly? ExpiresOn, bool Alert, bool Critical, int ThresholdPercent);
 /// <summary>e-CF waiting to be sent; each must go out before its 72-hour deadline. And when the store's certificate expires (TK-176).</summary>
 public sealed record FiscalQueue(int Pending, int Overdue, DateTime? NextDeadlineUtc, int Rejected, int Simulated, DateTime? CertificateExpiresUtc = null);
 /// <summary>TK-254: Configuración → Actualizaciones.</summary>

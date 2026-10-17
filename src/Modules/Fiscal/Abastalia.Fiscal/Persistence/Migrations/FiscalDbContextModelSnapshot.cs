@@ -443,6 +443,22 @@ namespace Abastalia.Fiscal.Persistence.Migrations
                     b.ToTable("PaperSequences", "fiscal");
                 });
 
+            modelBuilder.Entity("Abastalia.Fiscal.Domain.SequenceThreshold", b =>
+                {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Percent")
+                        .HasColumnType("int");
+
+                    b.HasKey("TenantId", "Type");
+
+                    b.ToTable("EcfSequenceThresholds", "fiscal");
+                });
+
             modelBuilder.Entity("Abastalia.Fiscal.Domain.Taxpayer", b =>
                 {
                     b.Property<string>("Rnc")
