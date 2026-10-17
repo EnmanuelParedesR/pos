@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+    <!-- TK-324: the e-CF QR on the receipt the Lite app prints from the browser (the store prints it with ESC/POS) -->
+    <PackageReference Include="QRCoder" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Abastalia.Escuadra\Abastalia.Escuadra.csproj" />

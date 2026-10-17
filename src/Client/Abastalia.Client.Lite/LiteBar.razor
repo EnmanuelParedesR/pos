@@ -1,0 +1,91 @@
+@implements IDisposable
+@inject LiteDevice Device
+@inject LiteOptions Options
+@inject Session Session
+@inject BrowserHost Host
+@inject NavigationManager Nav
+@inject TimeProvider Clock
+
+@* TK-324: the e-CF this device still owes the DGII. After each sale and every minute while the app is open (and someone is signed in) it signs
+   what the host built and sends it (lite-signer fiscal.js); this bar says what is left and when the 72 hours run out. Amber, never red: the
+   sale goes on (principle 3). Hidden while there is nothing to say. *@
+@if (Message() is { } m)
+{
+    <div class="lite-bar @(m.Warn ? "lite-bar--warn" : "")" role="status">
+        <Icon Name="@(m.Warn ? "alert" : _running ? "clock" : "receipt")" Size="18" />
+        <span class="lite-bar__text">@m.Text</span>
+        @if (m.Certificate)
+        {
+            <button type="button" class="lite-bar__action" @onclick="ImportCertificate">Importar certificado</button>
+        }
+    </div>
+}
+
+@code {
+    private sealed record Line(string Text, bool Warn, bool Certificate = false);
+
+    private ITimer? _timer;
+    private bool _running, _keyMissing;
+    private string? _error;
+    private List<LiteDevice.PendingEcf> _pending = [];
+
+    protected override void OnInitialized()
+    {
+        Host.Sold += Soon;
+        Session.Changed += OnSessionChanged;
+        _timer = Clock.CreateTimer(_ => Soon(), null, TimeSpan.FromSeconds(5), Options.FiscalInterval);
+    }
+
+    private void Soon() => _ = InvokeAsync(RunAsync);
+
+    private void OnSessionChanged()
+    {
+        if (Session.IsOpen) Soon();
+        else _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RunAsync()
+    {
+        if (_running || Session.Token is not { } token || !Session.Online) return;
+        _running = true;
+        StateHasChanged();
+        try
+        {
+            var pass = await Device.ProcessFiscalAsync(token);
+            _keyMissing = pass.Error == "KeyMissing";
+            _error = _keyMissing ? null : pass.Error;
+            _pending = pass.Items.Where(i => i.Step != "Done").ToList();
+        }
+        finally
+        {
+            _running = false;
+            StateHasChanged();
+        }
+    }
+
+    private Line? Message()
+    {
+        if (!Session.IsOpen) return null;
+        if (_keyMissing)
+            return new("Falta el certificado digital en este equipo: las facturas no se pueden enviar a la DGII. Tiene 72 horas desde cada venta.", true, Certificate: true);
+        if (_error is not null) return new($"No se pudieron enviar las facturas a la DGII: {_error} Se reintenta solo.", true);
+        if (_pending.Count == 0) return _running ? new("Enviando facturas a la DGII…", false) : null;
+        var first = _pending.MinBy(p => p.SubmitDeadlineUtc)!;
+        var left = first.SubmitDeadlineUtc - Clock.GetUtcNow().UtcDateTime;
+        var when = left <= TimeSpan.Zero ? "ya pasó el plazo de 72 horas" : $"la más antigua vence en {Format(left)}";
+        var what = _pending.Count == 1 ? "1 factura por enviar a la DGII" : $"{_pending.Count} facturas por enviar a la DGII";
+        var why = Options.SendToDgii ? first.LastError is { } e ? $" Último intento: {e}" : "" : " Ya están firmadas; el envío a la DGII todavía no está activo.";
+        return new($"{what}: {when}.{why}", _pending.Any(p => p.DeadlineNear) || left <= TimeSpan.Zero);
+    }
+
+    private static string Format(TimeSpan t) => t.TotalHours >= 24 ? $"{(int)t.TotalDays} d {t.Hours} h" : t.TotalHours >= 1 ? $"{(int)t.TotalHours} h" : $"{Math.Max(1, t.Minutes)} min";
+
+    private void ImportCertificate() => Nav.NavigateTo($"{LiteRoutes.FirstRun}?step=certificate");
+
+    public void Dispose()
+    {
+        Host.Sold -= Soon;
+        Session.Changed -= OnSessionChanged;
+        _timer?.Dispose();
+    }
+}

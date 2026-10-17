@@ -30,7 +30,7 @@
                 <div class="checkout__methods" role="group" aria-label="Forma de pago">
                     @foreach (var (m, key) in Methods)
                     {
-                        <button type="button" class="esc-button" aria-pressed="@(m == _method ? "true" : "false")" onmousedown="event.preventDefault()" @onclick="() => Choose(m)">
+                        <button type="button" class="esc-button" aria-pressed="@(m == _method ? "true" : "false")" @onmousedown:preventDefault @onclick="() => Choose(m)">
                             <span>@Names.PaymentMethod(m)</span><Keycap>@key</Keycap>
                         </button>
                     }
@@ -55,7 +55,7 @@
                     <label class="esc-field">
                         <span>Efectivo recibido (pesos enteros)</span>
                         @* maxlength: a barcode scanned here by habit never becomes a seven-billion-peso payment (escuadra.js also ignores the burst). *@
-                        <input @ref="_input" data-no-scan class="esc-input esc-input--large esc-num" inputmode="numeric" maxlength="7" @bind="_received" @bind:event="oninput" onfocus="this.select()" />
+                        <input @ref="_input" data-no-scan class="esc-input esc-input--large esc-num" inputmode="numeric" maxlength="7" @bind="_received" @bind:event="oninput" data-select-on-focus />
                     </label>
                     @if (TooMuchCash)
                     {
@@ -64,7 +64,7 @@
                     <div class="esc-row">
                         @foreach (var quick in QuickAmounts)
                         {
-                            <button type="button" class="esc-chip" onmousedown="event.preventDefault()" @onclick="() => Suggest(quick)">@Format.Amount(quick)</button>
+                            <button type="button" class="esc-chip" @onmousedown:preventDefault @onclick="() => Suggest(quick)">@Format.Amount(quick)</button>
                         }
                     </div>
                     <Keypad OnKey="CashKey" />
@@ -73,7 +73,7 @@
                 {
                     <label class="esc-field">
                         <span>Monto</span>
-                        <input @ref="_input" data-no-scan class="esc-input esc-input--large esc-num" inputmode="decimal" @bind="_amount" @bind:event="oninput" onfocus="this.select()" />
+                        <input @ref="_input" data-no-scan class="esc-input esc-input--large esc-num" inputmode="decimal" @bind="_amount" @bind:event="oninput" data-select-on-focus />
                     </label>
                     @if (_method is PaymentMethod.Card or PaymentMethod.Transfer)
                     {

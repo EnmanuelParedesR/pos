@@ -64,7 +64,7 @@
                         <div class="checkout__methods" role="group" aria-label="Forma de pago">
                             @foreach (var (m, key) in Methods)
                             {
-                                <button type="button" class="esc-button" aria-pressed="@(m == _method ? "true" : "false")" onmousedown="event.preventDefault()" @onclick="() => Choose(m)">
+                                <button type="button" class="esc-button" aria-pressed="@(m == _method ? "true" : "false")" @onmousedown:preventDefault @onclick="() => Choose(m)">
                                     <span>@Names.PaymentMethod(m)</span><Keycap>@key</Keycap>
                                 </button>
                             }
@@ -86,7 +86,7 @@
                             <span>@(_method == PaymentMethod.Cash ? "Abono en efectivo (pesos enteros)" : "Monto del abono")</span>
                             @* maxlength: a barcode scanned here by habit never becomes a payment (escuadra.js also ignores the burst). *@
                             <input @ref="_amountInput" data-no-scan class="esc-input esc-input--large esc-num" inputmode="@(_method == PaymentMethod.Cash ? "numeric" : "decimal")" maxlength="10"
-                                   @bind="_amount" @bind:event="oninput" onfocus="this.select()" />
+                                   @bind="_amount" @bind:event="oninput" data-select-on-focus />
                         </label>
                         @if (Problem is { } why)
                         {
@@ -95,7 +95,7 @@
                         <div class="esc-row">
                             @foreach (var quick in QuickAmounts(c.Debt))
                             {
-                                <button type="button" class="esc-chip" onmousedown="event.preventDefault()" @onclick="() => Suggest(quick)">@(quick == All(c.Debt) ? $"Todo: {Format.Amount(quick)}" : Format.Amount(quick))</button>
+                                <button type="button" class="esc-chip" @onmousedown:preventDefault @onclick="() => Suggest(quick)">@(quick == All(c.Debt) ? $"Todo: {Format.Amount(quick)}" : Format.Amount(quick))</button>
                             }
                         </div>
                         @if (_method == PaymentMethod.Cash)

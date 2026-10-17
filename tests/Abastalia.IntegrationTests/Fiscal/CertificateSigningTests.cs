@@ -38,7 +38,7 @@ public sealed class CertificateSigningTests(AbastaliaApp app) : IClassFixture<Ab
     {
         var db = sp.GetRequiredService<FiscalDbContext>();
         var issued = await new FiscalDocuments(db, sp.GetRequiredService<ISettingsQueries>(), new CertificateEcfSigner(Certificate),
-            sp.GetRequiredService<IEcfProvider>(), sp.GetRequiredService<IOutbox>(), app.Clock, sp.GetRequiredService<DgiiClock>()).IssueAsync(doc, CancellationToken.None);
+            sp.GetRequiredService<IEcfProvider>(), sp.GetRequiredService<IOutbox>(), app.Clock, sp.GetRequiredService<DgiiClock>(), sp.GetRequiredService<DeviceSigning>()).IssueAsync(doc, CancellationToken.None);
         if (issued.IsFailure) return (issued, (string?)null);
         await db.SaveChangesAsync();
         var stored = db.Documents.Local.Single(d => d.ENcf == issued.Value.ENcf);
@@ -92,7 +92,7 @@ public sealed class ENcfPerEnvironmentTests(AbastaliaApp app) : IClassFixture<Ab
     {
         var db = sp.GetRequiredService<FiscalDbContext>();
         var fiscal = new FiscalDocuments(db, sp.GetRequiredService<ISettingsQueries>(), new CertificateEcfSigner(Certificate),
-            new TestEcfProvider { Environment = env }, sp.GetRequiredService<IOutbox>(), app.Clock, sp.GetRequiredService<DgiiClock>());
+            new TestEcfProvider { Environment = env }, sp.GetRequiredService<IOutbox>(), app.Clock, sp.GetRequiredService<DgiiClock>(), sp.GetRequiredService<DeviceSigning>());
         var issued = await fiscal.IssueAsync(new DocumentToIssue(EcfType.Consumer32, Guid.NewGuid(), null, null, Lines, 0m, 45m, null, null,
             Payments: [new FiscalPayment(EcfPaymentForm.Cash, 45m)]), CancellationToken.None);
         await db.SaveChangesAsync();

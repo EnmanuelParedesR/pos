@@ -12,6 +12,7 @@ using Microsoft.Extensions.Time.Testing;
 using Abastalia.BuildingBlocks.Persistence;
 using Abastalia.Host.Cloud.Assistant;
 using Abastalia.Host.Cloud.Ingest;
+using Abastalia.BuildingBlocks.Security;
 using Abastalia.Host.Cloud.Nodes;
 using Abastalia.Host.Cloud.Persistence;
 using Abastalia.SharedKernel;

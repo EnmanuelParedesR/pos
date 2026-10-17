@@ -37,6 +37,7 @@
 .receipt .row { display: flex; justify-content: space-between; gap: 8px; }
 .receipt .center { text-align: center; }
 .receipt__logo { display: block; margin: 0 auto 8px; max-width: 100%; height: auto; }
+.receipt__qr svg { display: block; width: 30mm; height: 30mm; margin: 8px auto; }
 /* TK-280: Configuración → Negocio → Logo. Both previews on paper white: that is where the logo goes. */
 .esc-logo-preview { display: flex; flex-wrap: wrap; gap: 16px; }
 .esc-logo-preview figure { flex: 1 1 200px; min-width: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }

@@ -15,15 +15,22 @@ public sealed class DatabaseOptions
     public string ConnectionString { get; set; } = "";
     /// <summary>Create or migrate the database when the host starts.</summary>
     public bool CreateOnStartup { get; set; }
+    /// <summary>TK-319: the Lite host's shared database (many businesses, ADR-0013). SQL Server only: applies Row-Level Security and tells each
+    /// connection its tenant. Never in a store.</summary>
+    public bool MultiTenant { get; set; }
 }
 
 /// <summary>One connection and one transaction per request, shared by every module's DbContext,
 /// so a sale writes sales, inventory, cash, fiscal, outbox and audit atomically.</summary>
-public sealed class UnitOfWork(DatabaseOptions options) : IAsyncDisposable
+public sealed class UnitOfWork : IAsyncDisposable
 {
-    public DbConnection Connection { get; } = options.Provider == DbProvider.Sqlite
-        ? new SqliteConnection(options.ConnectionString)
-        : new SqlConnection(options.ConnectionString);
+    public UnitOfWork(DatabaseOptions options, ITenantContext tenant)
+    {
+        Connection = options.Provider == DbProvider.Sqlite ? new SqliteConnection(options.ConnectionString) : new SqlConnection(options.ConnectionString);
+        if (options is { MultiTenant: true, Provider: DbProvider.SqlServer }) RowLevelSecurity.SetSessionTenantOnOpen(Connection, tenant);
+    }
+
+    public DbConnection Connection { get; }
 
     public DbTransaction? Transaction { get; private set; }
 

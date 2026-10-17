@@ -4,14 +4,14 @@
         @if (Mode == "Discount")
         {
             <div class="esc-row" role="group" aria-label="Tipo de descuento">
-                <button type="button" class="esc-chip" aria-pressed="@(_percentage ? "true" : "false")" onmousedown="event.preventDefault()" @onclick="() => _percentage = true">Porcentaje</button>
-                <button type="button" class="esc-chip" aria-pressed="@(!_percentage ? "true" : "false")" onmousedown="event.preventDefault()" @onclick="() => _percentage = false">Monto RD$</button>
+                <button type="button" class="esc-chip" aria-pressed="@(_percentage ? "true" : "false")" @onmousedown:preventDefault @onclick="() => _percentage = true">Porcentaje</button>
+                <button type="button" class="esc-chip" aria-pressed="@(!_percentage ? "true" : "false")" @onmousedown:preventDefault @onclick="() => _percentage = false">Monto RD$</button>
             </div>
         }
         <div style="display:flex;flex-direction:column;gap:12px">
             @* The value it opens with is selected: typing 2 over "1" gives 2, not 12 (same as the cash field). *@
             <input @ref="_input" data-no-scan class="esc-input esc-input--large esc-num" inputmode="decimal" aria-label="@Title" @bind="_text" @bind:event="oninput"
-                   @bind:after="() => _suggested = false" onfocus="this.select()" />
+                   @bind:after="() => _suggested = false" data-select-on-focus />
             <div class="esc-subtitle">@Help</div>
             <Keypad WithDot="@(Mode != "Quantity" || Line.ByWeight)" OnKey="Key" />
         </div>

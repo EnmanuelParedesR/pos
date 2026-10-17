@@ -1,7 +1,12 @@
 @* The invoice as the thermal printer prints it, and Imprimir to print it again (no drawer: a reprint takes no cash). *@
+@using Microsoft.JSInterop
 @inject Peripherals Peripherals
 @inject BusinessLogo Logo
-<Dialog Title="@($"Factura {Receipt.ENcf}")" Subtitle="@(Receipt.IsVoided ? "ANULADA" : null)" OnClose="OnClose">
+@inject IServiceProvider Services
+@inject AbastaliaApi Api
+@inject IJSRuntime JS
+@implements IDisposable
+<Dialog Title="@($"Factura {_receipt.ENcf}")" Subtitle="@(_receipt.IsVoided ? "ANULADA" : null)" OnClose="OnClose">
     <ChildContent>
         <div class="receipt" aria-label="Factura">
             @if (_logo is { } logo)
@@ -9,25 +14,25 @@
                 @* TK-280: the dots this printer gets, at their share of the paper (576 dots on 80 mm, 384 on 58 mm). *@
                 <img class="receipt__logo" src="@BusinessLogo.BmpDataUrl(logo)" alt="Logo del negocio" style="width:@(logo.Width * 100 / Dots)%" />
             }
-            <div class="center" style="font-weight:700">@Receipt.BusinessName</div>
-            @if (Receipt.Rnc is not null) { <div class="center">RNC @Receipt.Rnc</div> }
-            @if (Receipt.Address is not null) { <div class="center">@Receipt.Address</div> }
-            @if (Receipt.Phone is not null) { <div class="center">Tel. @Receipt.Phone</div> }
+            <div class="center" style="font-weight:700">@_receipt.BusinessName</div>
+            @if (_receipt.Rnc is not null) { <div class="center">RNC @_receipt.Rnc</div> }
+            @if (_receipt.Address is not null) { <div class="center">@_receipt.Address</div> }
+            @if (_receipt.Phone is not null) { <div class="center">Tel. @_receipt.Phone</div> }
             <hr />
-            <div class="center" style="font-weight:700">@Receipt.DocumentType</div>
-            <div class="row"><span>@(Receipt.ENcf.StartsWith('B') ? "NCF" : "e-NCF")</span><span>@Receipt.ENcf</span></div>
-            <div class="row"><span>Factura</span><span>#@Receipt.Number</span></div>
-            @if (Receipt.SequenceExpiresOn is { } expires) { <div class="row"><span>Válido hasta</span><span>@expires.ToString("dd-MM-yyyy", System.Globalization.CultureInfo.InvariantCulture)</span></div> }
+            <div class="center" style="font-weight:700">@_receipt.DocumentType</div>
+            <div class="row"><span>@(_receipt.ENcf.StartsWith('B') ? "NCF" : "e-NCF")</span><span>@_receipt.ENcf</span></div>
+            <div class="row"><span>Factura</span><span>#@_receipt.Number</span></div>
+            @if (_receipt.SequenceExpiresOn is { } expires) { <div class="row"><span>Válido hasta</span><span>@expires.ToString("dd-MM-yyyy", System.Globalization.CultureInfo.InvariantCulture)</span></div> }
             @* localDateTime is already store time even though it carries a Z: shown as is. *@
-            <div class="row"><span>Fecha</span><span>@Receipt.LocalDateTime.ToString("dd/MM/yyyy h:mm tt", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))</span></div>
-            <div class="row"><span>@Receipt.Register</span><span>@Receipt.Cashier</span></div>
-            @if (Receipt.Customer is not null)
+            <div class="row"><span>Fecha</span><span>@_receipt.LocalDateTime.ToString("dd/MM/yyyy h:mm tt", System.Globalization.CultureInfo.GetCultureInfo("es-DO"))</span></div>
+            <div class="row"><span>@_receipt.Register</span><span>@_receipt.Cashier</span></div>
+            @if (_receipt.Customer is not null)
             {
-                <div class="row"><span>Cliente</span><span>@Receipt.Customer</span></div>
-                @if (Receipt.CustomerRnc is not null) { <div class="row"><span>RNC</span><span>@Receipt.CustomerRnc</span></div> }
+                <div class="row"><span>Cliente</span><span>@_receipt.Customer</span></div>
+                @if (_receipt.CustomerRnc is not null) { <div class="row"><span>RNC</span><span>@_receipt.CustomerRnc</span></div> }
             }
             <hr />
-            @foreach (var l in Receipt.Lines)
+            @foreach (var l in _receipt.Lines)
             {
                 <div>@l.Description</div>
                 <div class="row"><span>&nbsp;&nbsp;@Format.Quantity(l.Quantity, l.Unit) × @Format.Amount(l.Price)</span><span>@Format.Amount(l.Total)</span></div>
@@ -35,25 +40,30 @@
             }
             <hr />
             @* Subtotal is the base without ITBIS after the discount, so the discount goes first and the base + ITBIS lines add up to the total. *@
-            @if (Receipt.Discount > 0) { <div class="row"><span>Descuento aplicado</span><span>−@Format.Amount(Receipt.Discount)</span></div> }
-            <div class="row"><span>Base sin ITBIS</span><span>@Format.Amount(Receipt.Subtotal)</span></div>
-            @foreach (var i in Receipt.Itbis)
+            @if (_receipt.Discount > 0) { <div class="row"><span>Descuento aplicado</span><span>−@Format.Amount(_receipt.Discount)</span></div> }
+            <div class="row"><span>Base sin ITBIS</span><span>@Format.Amount(_receipt.Subtotal)</span></div>
+            @foreach (var i in _receipt.Itbis)
             {
                 <div class="row"><span>@i.Rate</span><span>@Format.Amount(i.Itbis)</span></div>
             }
-            <div class="row" style="font-weight:700;font-size:16px"><span>TOTAL</span><span>RD$ @Format.Amount(Receipt.Total)</span></div>
+            <div class="row" style="font-weight:700;font-size:16px"><span>TOTAL</span><span>RD$ @Format.Amount(_receipt.Total)</span></div>
             <hr />
-            @foreach (var p in Receipt.Payments)
+            @foreach (var p in _receipt.Payments)
             {
                 <div class="row"><span>@p.Method</span><span>@Format.Amount(p.Received ?? p.Amount)</span></div>
             }
-            @if (Receipt.Change > 0) { <div class="row"><span>Devuelta</span><span>@Format.Amount(Receipt.Change)</span></div> }
+            @if (_receipt.Change > 0) { <div class="row"><span>Devuelta</span><span>@Format.Amount(_receipt.Change)</span></div> }
             <hr />
-            @if (Receipt.SecurityCode.Length > 0) { <div class="center">Código de seguridad: @Receipt.SecurityCode</div> }
-            @if (Receipt.SignedAt is { } signed) { <div class="center">Fecha de firma: @signed.ToString("dd-MM-yyyy HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)</div> }
-            @if (Receipt.ContingencyLegend is not null) { <div class="center" style="margin-top:8px;font-weight:700">@Receipt.ContingencyLegend</div> }
-            @if (Receipt.DgiiStatus is not null) { <div class="center">@Receipt.DgiiStatus</div> }
-            @if (Receipt.Footer is not null) { <div class="center" style="margin-top:8px">@Receipt.Footer</div> }
+            @if (_receipt.QrUrl.Length > 0 && Services.GetService(typeof(BrowserHost)) is not null)
+            {
+                @* TK-324: the QR the thermal printer prints in the store (the DGII's lookup of this e-CF), for the browser's print or PDF. *@
+                <div class="receipt__qr" role="img" aria-label="Código QR para consultar la factura en la DGII">@((MarkupString)Qr(_receipt.QrUrl))</div>
+            }
+            @if (_receipt.SecurityCode.Length > 0) { <div class="center">Código de seguridad: @_receipt.SecurityCode</div> }
+            @if (_receipt.SignedAt is { } signed) { <div class="center">Fecha de firma: @signed.ToString("dd-MM-yyyy HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture)</div> }
+            @if (_receipt.ContingencyLegend is not null) { <div class="center" style="margin-top:8px;font-weight:700">@_receipt.ContingencyLegend</div> }
+            @if (_receipt.DgiiStatus is not null) { <div class="center">@_receipt.DgiiStatus</div> }
+            @if (_receipt.Footer is not null) { <div class="center" style="margin-top:8px">@_receipt.Footer</div> }
         </div>
     </ChildContent>
     <Footer>
@@ -64,6 +74,12 @@
         @if (Peripherals.Printer is not null)
         {
             <Button Disabled="_printing" OnClick="PrintAsync"><Icon Name="printer" /> @(_printing ? "Imprimiendo…" : "Imprimir")</Button>
+        }
+        else if (Services.GetService(typeof(BrowserHost)) is not null)
+        {
+            @* TK-324: no printer on the Lite app: the browser prints it (or saves it as PDF), or the customer gets it by WhatsApp. *@
+            <a class="esc-button" href="@WhatsAppLink(_receipt)" target="_blank" rel="noopener noreferrer"><Icon Name="send" /> Enviar por WhatsApp</a>
+            <Button OnClick="BrowserPrintAsync"><Icon Name="printer" /> Imprimir o guardar PDF</Button>
         }
         <Button Variant="Button.Variants.Primary" Shortcut="Esc" OnClick="OnClose">Cerrar</Button>
     </Footer>
@@ -78,13 +94,68 @@
     private int Width => Peripherals.Settings.Printer?.Width == 58 ? 58 : 80;
     private int Dots => Width == 58 ? 384 : 576;
 
-    protected override async Task OnParametersSetAsync() => _logo = Peripherals.Settings.PrintLogo ? await Logo.RasterAsync(Receipt.LogoVersion, Width) : null;
+    /// <summary>TK-324: the Lite app reloads it from the sale: the device signs the e-CF right after the sale, which gives it its security code and QR.</summary>
+    [Parameter] public Guid? SaleId { get; set; }
+
+    private Receipt _receipt = default!;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _receipt = Receipt;
+        _logo = Peripherals.Settings.PrintLogo ? await Logo.RasterAsync(Receipt.LogoVersion, Width) : null;
+        if (SaleId is { } id && Services.GetService(typeof(BrowserHost)) is not null) _ = FollowSignatureAsync(id);
+    }
+
+    /// <summary>The code and QR reach the sale a few seconds after the device signs (the host's outbox): the open receipt keeps asking for
+    /// up to 30 s, so the cashier who opens it right after the sale sees them appear.</summary>
+    private async Task FollowSignatureAsync(Guid id)
+    {
+        for (var attempt = 0; attempt < 30 && !_closed; attempt++)
+        {
+            if ((await Api.GetAsync<Receipt>($"/api/sales/{id}/receipt")).Value is { } fresh)
+            {
+                _receipt = fresh;
+                await InvokeAsync(StateHasChanged);
+                if (fresh.SecurityCode.Length > 0) return;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(1));
+        }
+    }
+
+    private bool _closed;
+
+    public void Dispose() => _closed = true;
+
     private string? _message;
+
+    private Task BrowserPrintAsync() => JS.InvokeVoidAsync("print").AsTask();
+
+    private static string Qr(string url)
+    {
+        using var data = QRCoder.QRCodeGenerator.GenerateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.M);
+        return new QRCoder.SvgQRCode(data).GetGraphic(4, "#000000", "#FFFFFF", true, QRCoder.SvgQRCode.SizingMode.ViewBoxAttribute);
+    }
+
+    /// <summary>The receipt as a WhatsApp message (wa.me lets the cashier pick the chat): what the customer needs to look it up at the DGII.</summary>
+    internal static string WhatsAppLink(Receipt r)
+    {
+        var es = System.Globalization.CultureInfo.GetCultureInfo("es-DO");
+        var text = new System.Text.StringBuilder();
+        text.AppendLine(r.BusinessName);
+        if (r.Rnc is not null) text.AppendLine($"RNC {r.Rnc}");
+        text.AppendLine($"{r.DocumentType} {r.ENcf}");
+        text.AppendLine(r.LocalDateTime.ToString("dd/MM/yyyy h:mm tt", es));
+        foreach (var l in r.Lines) text.AppendLine($"{Format.Quantity(l.Quantity, l.Unit)} × {l.Description}: {Format.Amount(l.Total)}");
+        text.AppendLine($"TOTAL RD$ {Format.Amount(r.Total)}");
+        if (r.SecurityCode.Length > 0) text.AppendLine($"Código de seguridad: {r.SecurityCode}");
+        if (r.QrUrl.Length > 0) text.AppendLine($"Consúltela en la DGII: {r.QrUrl}");
+        return "https://wa.me/?text=" + Uri.EscapeDataString(text.ToString().TrimEnd());
+    }
 
     private async Task PrintAsync()
     {
         _printing = true;
-        var receipt = await Logo.ForPrinterAsync(Receipt, Peripherals.Settings);
+        var receipt = await Logo.ForPrinterAsync(_receipt, Peripherals.Settings);
         var ok = await Peripherals.TryAsync(p => p.PrintAsync(receipt, false, CancellationToken.None));
         (_printing, _message) = (false, ok ? "Factura enviada a la impresora." : "No se pudo imprimir. Revise el papel y que la impresora esté encendida.");
     }

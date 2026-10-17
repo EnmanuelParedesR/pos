@@ -117,7 +117,7 @@ internal sealed class ModeEcfProvider(FiscalMode mode, FiscalEnvironment configu
 /// valid certificate, the RNC and the address; CerteCF and production need their own e-NCF ranges (TesteCF loads its own); production needs the
 /// DGII's verification ticked in the certification assistant. Leaving production once it issued e-CF needs support (R10 #3).</summary>
 internal sealed class FiscalModeChecks(FiscalDbContext db, FiscalDocuments documents, EcfCertificate certificate, ISettingsQueries settings, TimeProvider clock,
-    IConfiguration config)
+    IConfiguration config, DeviceSigning device)
 {
     /// <summary>"Verificación del RNC por la DGII" in EcfCertificationPanel.razor: the step before the authorization.</summary>
     public const int VerifiedStep = CertificationSteps.Count - 2;
@@ -130,15 +130,17 @@ internal sealed class FiscalModeChecks(FiscalDbContext db, FiscalDocuments docum
         if (documents.Environment == FiscalEnvironment.eCF && !config.GetValue<bool>("Fiscal:AllowLeavingProduction")
             && await db.Documents.AnyAsync(d => d.Environment == FiscalEnvironment.eCF, ct))
             blockers.Add("La tienda ya emitió comprobantes en producción: no puede salir de producción desde aquí. Llame a soporte de Abastalia.");
-        var waiting = await db.Documents.CountAsync(d => d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.Sent, ct)
+        var waiting = await db.Documents.CountAsync(d => d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.Sent
+                || d.Status == SubmissionStatus.AwaitingDeviceSignature, ct)
             + await db.Voids.CountAsync(v => v.Status == SubmissionStatus.Pending || v.Status == SubmissionStatus.Sent, ct);
         if (waiting > 0)
             blockers.Add($"Hay {waiting} {(waiting == 1 ? "comprobante" : "comprobantes")} del ambiente actual por enviar o esperando la respuesta de la DGII. Espere a que salgan (o anúlelos) antes de cambiar.");
         if (target == FiscalEnvironment.Simulated) return blockers;
 
         var now = clock.GetUtcNow().UtcDateTime;
-        if (certificate.Current is null) blockers.Add("Importe el certificado digital en Configuración → Comprobantes.");
-        else if (new CertificateEcfSigner(certificate).CannotSign(now) is { } why) blockers.Add($"El certificado digital no sirve: {why}. Importe uno vigente.");
+        // TK-323: in the Lite host the certificate is on the business's device; the server checks every signature it gets instead.
+        if (!device.Enabled && certificate.Current is null) blockers.Add("Importe el certificado digital en Configuración → Comprobantes.");
+        else if (!device.Enabled && new CertificateEcfSigner(certificate).CannotSign(now) is { } why) blockers.Add($"El certificado digital no sirve: {why}. Importe uno vigente.");
         var business = await settings.GetBusinessProfileAsync(ct);
         if (!Rnc.IsValid(business.Rnc) || string.IsNullOrWhiteSpace(business.Address))
             blockers.Add("Escriba el RNC y la dirección del negocio en Configuración → Negocio: van en cada comprobante.");
@@ -172,12 +174,15 @@ internal static class GetFiscalMode
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/fiscal/mode", async (FiscalDbContext db, FiscalDocuments documents, FiscalMode mode, FiscalModeChecks checks, CancellationToken ct) =>
+            app.MapGet("/api/fiscal/mode", async (FiscalDbContext db, FiscalDocuments documents, FiscalMode mode, DeviceSigning device, FiscalModeChecks checks,
+                    CancellationToken ct) =>
                 {
                     var targets = new List<Target>();
                     foreach (var env in Enum.GetValues<FiscalEnvironment>()) targets.Add(new Target(env, await checks.BlockersAsync(env, ct)));
                     var changed = await db.Set<FiscalModeSetting>().AsNoTracking().Select(m => (DateTime?)m.ChangedUtc).FirstOrDefaultAsync(ct);
-                    return Results.Ok(new Response(documents.Environment, mode.Environment is not null, mode.AutoSubmit, changed, targets));
+                    // TK-323: in the Lite host the business's own row, and the server never sends (its device does).
+                    return Results.Ok(device.Enabled ? new Response(documents.Environment, changed is not null, false, changed, targets)
+                        : new Response(documents.Environment, mode.Environment is not null, mode.AutoSubmit, changed, targets));
                 })
                 .RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");
     }
@@ -218,10 +223,11 @@ internal static class ChangeFiscalMode
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPut("/api/fiscal/mode", async (Command c, ICommandHandler<Command, Ok> h, FiscalMode mode, CancellationToken ct) =>
+            app.MapPut("/api/fiscal/mode", async (Command c, ICommandHandler<Command, Ok> h, FiscalMode mode, DeviceSigning device, CancellationToken ct) =>
                 {
                     var r = await h.Handle(c, ct);
-                    if (r.IsSuccess) mode.Set(c.Environment); // only once committed
+                    // Only once committed. TK-323: never in the Lite host, where the process's mode would be every business's.
+                    if (r.IsSuccess && !device.Enabled) mode.Set(c.Environment);
                     return r.ToHttp(_ => Results.NoContent());
                 })
                 .RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");

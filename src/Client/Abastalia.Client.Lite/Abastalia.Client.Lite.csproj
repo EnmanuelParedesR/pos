@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+  <!-- TK-324 (ADR-0013 decision 3): the Lite selling app. Client.UI's register in Blazor WebAssembly on its own origin, talking to
+       Abastalia.Host.Lite through lite-signer (every request signed by the device, the e-CF signed in the browser). -->
+  <PropertyGroup>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Abastalia.Client.UI\Abastalia.Client.UI.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The register's screens read their records from JSON by reflection: their assemblies stay whole when the publish trims. -->
+    <TrimmerRootAssembly Include="Abastalia.Client.UI" />
+    <TrimmerRootAssembly Include="Abastalia.Escuadra" />
+    <TrimmerRootAssembly Include="Abastalia.Hardware" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Abastalia.Client.UI.Tests" />
+  </ItemGroup>
+  <!-- SRI on index.html and the CSP of staticwebapp.config.json (seal.mjs, needs Node): dotnet publish -c Release -p:LiteApiUrl=https://<Host.Lite> -->
+  <Target Name="Seal" AfterTargets="Publish">
+    <Exec Command="node &quot;$(MSBuildProjectDirectory)/seal.mjs&quot; &quot;$(PublishDir)wwwroot&quot; &quot;$(LiteApiUrl)&quot;" />
+  </Target>
+</Project>

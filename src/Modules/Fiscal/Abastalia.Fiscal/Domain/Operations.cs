@@ -157,7 +157,7 @@ internal sealed class OperationsConfiguration : IEntityTypeConfiguration<EcfCont
         b.Property(c => c.ENcf).HasMaxLength(13);
         b.Property(c => c.Type).HasConversion<int>();
         b.Property(c => c.Channel).HasConversion<string>().HasMaxLength(10);
-        b.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+        b.Property(c => c.Status).HasConversion<string>().HasMaxLength(30);
         b.Property(c => c.SecurityCode).HasMaxLength(6);
         b.Property(c => c.Messages).HasMaxLength(2000);
     }

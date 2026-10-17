@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, ApiError, download, useApi, type ConnectionCode, type Store, type StoreBackup, type StoreSyncStatus } from "../api";
+import { api, ApiError, download, useApi, type ConnectionCode, type SellingDevices, type Store, type StoreBackup, type StoreSyncStatus } from "../api";
 import { usePanel } from "../App";
 import { ago, dateTime, isStale } from "../format";
 import { ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton } from "../ui";
@@ -82,6 +82,7 @@ export function StoresPage() {
         </form>
       )}
 
+      <LiteDevice canEdit={canEdit} />
       <LoadError error={status.error} />
       {status.loading && !status.data && (
         <div className="esc-card esc-card--padded store">
@@ -137,10 +138,91 @@ function StoreCard({ store: s, canEdit, onPoll, onConnected }: { store: StoreSyn
       {s.pendingEvents > 0 && <p className="esc-muted">{s.pendingEvents} datos recibidos por procesar.</p>}
       {s.failedEvents > 0 && <Notice kind="warning" title={`${s.failedEvents} datos recibidos no se pudieron procesar.`} />}
       {/* TK-217: a ReadOnly member sees the stores but cannot connect registers. */}
-      {canEdit && <ConnectRegister storeId={s.storeId} nodes={s.nodes.length} onPoll={onPoll} onConnected={onConnected} />}
+      {canEdit && (
+        <ConnectWithCode
+          path={`/api/stores/${s.storeId}/connection-codes`}
+          button="Conectar una caja"
+          where="En la PC principal de la tienda: Configuración → Nube → escriba este código."
+          waiting="esperando la caja…"
+          joined="Caja conectada. Sus ventas empiezan a llegar a este panel."
+          count={s.nodes.length}
+          onPoll={onPoll}
+          onConnected={onConnected}
+        />
+      )}
       {/* TK-238: owners only; the API refuses the rest. */}
       {/* R12 #7: also with no register left (a stolen PC was just removed): that is when the owner needs them most. */}
       {canEdit && <StoreBackups storeId={s.storeId} />}
+    </section>
+  );
+}
+
+/** TK-321: a business the cloud serves sells from browsers (phone or computer), as many at a time as its plan allows (TK-347). The API
+ *  answers 404 for a business with its own PC: then nothing shows. */
+function LiteDevice({ canEdit }: { canEdit: boolean }) {
+  const devices = useApi<SellingDevices>("/api/panel/lite/devices");
+  if (devices.error?.status === 404 || (!devices.data && !devices.error)) return null;
+  const list = devices.data?.devices ?? [];
+  const allowed = devices.data?.allowed ?? 1;
+  return (
+    <section className="esc-card esc-card--padded store" aria-labelledby="lite-device">
+      <div className="store__head">
+        <span className="store__icon">
+          <Icon name="register" />
+        </span>
+        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+          <h2 className="store__name" id="lite-device">
+            {allowed === 1 ? "Dispositivo de venta" : "Dispositivos de venta"}
+          </h2>
+          <span className="esc-muted">
+            {allowed === 1
+              ? "Se vende desde un celular o una computadora a la vez."
+              : `Su plan permite ${allowed} celulares o computadoras a la vez; ${list.length} en uso.`}
+          </span>
+        </div>
+      </div>
+      <LoadError error={devices.error} />
+      {list.length > 0 && (
+        <ul className="nodes">
+          {list.map((d) => (
+            <li key={d.id}>
+              <span className="esc-avatar" aria-hidden="true" style={{ background: "var(--surface-2)", color: "var(--text-2)" }}>
+                <Icon name="register" size={16} />
+              </span>
+              <span className="esc-col" style={{ flex: "1 1 auto", gap: 0, minWidth: 0 }}>
+                <span style={{ fontWeight: 600 }}>{d.name}</span>
+                <span className="esc-muted">Unido el {dateTime(d.createdUtc)}</span>
+              </span>
+              {canEdit && (
+                <ConfirmButton
+                  label="Revocar"
+                  danger
+                  confirm="Deja de vender al instante y se cierran sus sesiones."
+                  onConfirm={() => api(`/api/panel/lite/devices/${d.id}/revoke`, "POST").then(devices.reload)}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {list.length === 0 && !canEdit && <p className="esc-muted">Todavía no hay un dispositivo unido.</p>}
+      {/* Design review: before the hint, so "unido" shows right under the device that joined. */}
+      {canEdit && (
+        <ConnectWithCode
+          full={list.length >= allowed}
+          path="/api/panel/lite/device-codes"
+          button="Unir un dispositivo"
+          where="En el celular o la computadora que va a vender, abra Abastalia Venta y escriba este código."
+          waiting="esperando el dispositivo…"
+          joined="Dispositivo unido. Ya puede vender con él."
+          count={list.length}
+          onPoll={devices.reload}
+          onConnected={() => {}}
+        />
+      )}
+      {list.length >= allowed && canEdit && (
+        <p className="esc-muted">¿Perdió uno o lo cambia? Revóquelo aquí y una el nuevo con un código. Para más a la vez, suba de plan en Facturación.</p>
+      )}
     </section>
   );
 }
@@ -149,13 +231,16 @@ function SyncPill({ utc }: { utc: string | null }) {
   return <span className={`esc-pill esc-pill--${isStale(utc) ? "warning" : "success"}`}>{utc ? `Envió ${ago(utc)}` : "Sin datos todavía"}</span>;
 }
 
-/** "Conectar una caja": an 8-digit, single-use code that lasts 30 minutes. While it shows, the list checks every 5 s for the new register. */
-function ConnectRegister({ storeId, nodes, onPoll, onConnected }: { storeId: string; nodes: number; onPoll: () => void; onConnected: () => void }) {
+/** A single-use, 8-digit code to join this panel (a store's register: 30 minutes; TK-321, a Lite selling device: 10). While it shows, the list
+ *  checks every 5 s; when `count` grows, the code was used. `full`: no room for another one (the button hides; the notices stay). */
+function ConnectWithCode({ path, button, where, waiting, joined: joinedText, count, full = false, onPoll, onConnected }: {
+  path: string; button: string; where: string; waiting: string; joined: string; count: number; full?: boolean; onPoll: () => void; onConnected: () => void;
+}) {
   const [code, setCode] = useState<ConnectionCode | null>(null);
   const [error, setError] = useState<ApiError | null>(null);
   const [now, setNow] = useState(Date.now());
   const [joined, setJoined] = useState(false);
-  const nodesAtCode = useRef(nodes);
+  const countAtCode = useRef(count);
 
   useEffect(() => {
     if (!code) return;
@@ -164,21 +249,21 @@ function ConnectRegister({ storeId, nodes, onPoll, onConnected }: { storeId: str
     return () => (clearInterval(timer), clearInterval(poll));
   }, [code, onPoll]);
 
-  // The register used the code: hide it and say so.
+  // The device used the code: hide it and say so.
   useEffect(() => {
-    if (code && nodes > nodesAtCode.current) {
+    if (code && count > countAtCode.current) {
       setCode(null);
       setJoined(true);
       onConnected();
     }
-  }, [code, nodes, onConnected]);
+  }, [code, count, onConnected]);
 
   async function create() {
     setError(null);
     setJoined(false);
     try {
-      nodesAtCode.current = nodes;
-      setCode(await api<ConnectionCode>(`/api/stores/${storeId}/connection-codes`, "POST"));
+      countAtCode.current = count;
+      setCode(await api<ConnectionCode>(path, "POST"));
       setNow(Date.now());
     } catch (err) {
       setError(err as ApiError);
@@ -191,7 +276,7 @@ function ConnectRegister({ storeId, nodes, onPoll, onConnected }: { storeId: str
   return (
     <div className="esc-col" style={{ gap: 12 }}>
       {error && <Notice kind={error.offline ? "warning" : "error"} title={error.detail} />}
-      {joined && <Notice kind="success" title="Caja conectada. Sus ventas empiezan a llegar a este panel." />}
+      {joined && <Notice kind="success" title={joinedText} />}
       {code && left > 0 ? (
         <div className="esc-code" role="status">
           <div className="esc-col" style={{ gap: 4 }}>
@@ -201,20 +286,22 @@ function ConnectRegister({ storeId, nodes, onPoll, onConnected }: { storeId: str
             </strong>
           </div>
           <div className="esc-col" style={{ gap: 4, flex: "1 1 220px" }}>
-            <span>En la PC principal de la tienda: Configuración → Nube → escriba este código.</span>
+            <span>{where}</span>
             <span className="esc-muted">
-              Vence en {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} · sirve una sola vez · esperando la caja…
+              Vence en {Math.floor(left / 60)}:{String(left % 60).padStart(2, "0")} · sirve una sola vez · {waiting}
             </span>
           </div>
         </div>
       ) : (
         <>
           {code && <Notice kind="warning" title="El código venció. Pida uno nuevo." />}
-          <div>
-            <button type="button" className="esc-button" onClick={create}>
-              <Icon name="plus" size={18} /> Conectar una caja
-            </button>
-          </div>
+          {!full && (
+            <div>
+              <button type="button" className="esc-button" onClick={create}>
+                <Icon name="plus" size={18} /> {button}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

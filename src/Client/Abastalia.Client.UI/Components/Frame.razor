@@ -221,7 +221,8 @@
         // The e-CF send queue, only for whoever may manage it (the endpoint needs fiscal.manage); hidden for everyone else.
         _queue = Session.Can("fiscal.manage") && !IsBackOffice ? (await Api.PollAsync<FiscalQueue>("/api/fiscal/queue")).Value ?? _queue : null;
         _contingency = Session.IsOpen && !IsBackOffice ? (await Api.PollAsync<EcfContingencyStatus>("/api/fiscal/contingency")).Value ?? _contingency : null;
-        _backup = Session.Can("backups.manage") && !IsBackOffice ? (await Api.PollAsync<BackupWarning>("/api/backups/warning")).Value ?? _backup : null;
+        // TK-324: the Lite app's data lives in Azure SQL, with its own backups: the store's backup warning is not for it.
+        _backup = Session.Can("backups.manage") && !IsBackOffice && Services.GetService<BrowserHost>() is null ? (await Api.PollAsync<BackupWarning>("/api/backups/warning")).Value ?? _backup : null;
         await ReportVersionAsync();
         StateHasChanged();
     }
@@ -268,8 +269,10 @@
     private void Guard()
     {
         var route = Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
-        if (!Session.IsPaired && route != "setup") Nav.NavigateTo("setup");
-        else if (Session.IsPaired && !Session.IsOpen && !Public.Contains(route)) Nav.NavigateTo("sign-in");
+        // TK-324: the Lite app pairs on its own page, and stays there after pairing to import the .p12.
+        var firstRun = Services.GetService<BrowserHost>()?.FirstRun ?? "setup";
+        if (!Session.IsPaired && route != firstRun) Nav.NavigateTo(firstRun);
+        else if (Session.IsPaired && !Session.IsOpen && !Public.Contains(route) && route != firstRun) Nav.NavigateTo("sign-in");
     }
 
     private async Task PairAgainAsync()

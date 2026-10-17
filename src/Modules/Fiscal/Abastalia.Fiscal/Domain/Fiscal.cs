@@ -30,8 +30,10 @@ internal sealed class NcfSequence
 
 /// <summary>Pending → (e-CF) Sent with a TrackId → Accepted / AcceptedConditional / Rejected; (RFCE) straight to the final state.
 /// Simulated: signed by the stand-in signer or queued with the simulated provider; never sent to the DGII.
-/// Voided (TK-205): signed but never sent, and voided with an ANECF instead; the queue never sends it.</summary>
-internal enum SubmissionStatus { Pending, Sent, Accepted, AcceptedConditional, Rejected, Simulated, Voided }
+/// Voided (TK-205): signed but never sent, and voided with an ANECF instead; the queue never sends it.
+/// AwaitingDeviceSignature (TK-323, the Lite host): built unsigned at the sale; the business's device signs it, sends it to the DGII itself and
+/// reports back (<see cref="DeviceSigned"/>): then Pending (signed, not sent yet), Sent or a final state as above.</summary>
+internal enum SubmissionStatus { Pending, Sent, Accepted, AcceptedConditional, Rejected, Simulated, Voided, AwaitingDeviceSignature }
 
 /// <summary>How the DGII receives it: the whole e-CF (reception + TrackId) or, for a 32 under RD$250,000, the signed summary (RFCE).</summary>
 internal enum EcfChannel { Ecf, Rfce }
@@ -58,7 +60,7 @@ internal sealed class FiscalDocument
     /// <summary>GZip of the signed XML.</summary>
     public byte[] SignedXml { get; set; } = [];
     public SubmissionStatus Status { get; set; }
-    /// <summary>DGII deadline: 72 hours after signing.</summary>
+    /// <summary>DGII deadline: 72 hours after signing (a device-signed one: after <c>FechaHoraFirma</c>, written when it was built).</summary>
     public DateTime SubmitDeadlineUtc { get; set; }
     public string? TrackId { get; set; }
     /// <summary>Failed sends in a row, or result polls while Sent; drives the backoff.</summary>
@@ -107,7 +109,8 @@ internal sealed class EcfVoid
 }
 
 /// <summary>A row of the DGII taxpayer registry (DGII_RNC.TXT), to fill the buyer's name from an RNC or cédula.</summary>
-internal sealed class Taxpayer
+/// <remarks>TK-319: public data, the same for every business: one copy in the Lite database.</remarks>
+internal sealed class Taxpayer : Abastalia.BuildingBlocks.Persistence.ISharedAcrossTenants
 {
     public string Rnc { get; set; } = "";
     public string Name { get; set; } = "";
@@ -152,6 +155,9 @@ internal static class FiscalErrors
     public static readonly Error AlreadyReplaced = Error.Conflict("Fiscal.AlreadyReplaced", "Ese comprobante ya tiene un reemplazo.");
     public static readonly Error SequenceNotFound = Error.NotFound("Fiscal.SequenceNotFound", "La secuencia no existe en el ambiente actual.");
     public static readonly Error NothingToVoid = Error.Conflict("Fiscal.NothingToVoid", "Esa secuencia no tiene números sin usar para anular.");
+    // TK-323: an ANECF is signed when created; in the Lite host only the device can, and that is not built yet.
+    public static readonly Error VoidOnDevice = Error.Conflict("Fiscal.VoidOnDevice",
+        "En el plan Ligero todavía no se anulan números e-NCF (ANECF) desde aquí: el equipo de venta tiene que firmar la anulación.");
     public static readonly Error InvalidVoidRange = Error.Validation("Fiscal.InvalidVoidRange", "La anulación va desde el próximo número sin usar hasta un número dentro del rango.");
 
     public static Error InvalidXml(string detail) =>

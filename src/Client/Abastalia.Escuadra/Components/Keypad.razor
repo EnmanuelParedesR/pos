@@ -2,18 +2,18 @@
 <div class="esc-keypad" role="group" aria-label="Teclado numérico">
     @foreach (var k in Digits)
     {
-        <button type="button" onmousedown="event.preventDefault()" @onclick="() => OnKey.InvokeAsync(k)">@k</button>
+        <button type="button" @onmousedown:preventDefault @onclick="() => OnKey.InvokeAsync(k)">@k</button>
     }
     @if (WithDot)
     {
-        <button type="button" onmousedown="event.preventDefault()" @onclick='() => OnKey.InvokeAsync(".")'>.</button>
+        <button type="button" @onmousedown:preventDefault @onclick='() => OnKey.InvokeAsync(".")'>.</button>
     }
     else
     {
-        <button type="button" onmousedown="event.preventDefault()" @onclick='() => OnKey.InvokeAsync("clear")' aria-label="Limpiar">C</button>
+        <button type="button" @onmousedown:preventDefault @onclick='() => OnKey.InvokeAsync("clear")' aria-label="Limpiar">C</button>
     }
-    <button type="button" onmousedown="event.preventDefault()" @onclick='() => OnKey.InvokeAsync("0")'>0</button>
-    <button type="button" onmousedown="event.preventDefault()" @onclick='() => OnKey.InvokeAsync("backspace")' aria-label="Borrar">⌫</button>
+    <button type="button" @onmousedown:preventDefault @onclick='() => OnKey.InvokeAsync("0")'>0</button>
+    <button type="button" @onmousedown:preventDefault @onclick='() => OnKey.InvokeAsync("backspace")' aria-label="Borrar">⌫</button>
 </div>
 
 @code {

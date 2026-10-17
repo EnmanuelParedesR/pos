@@ -25,6 +25,9 @@ namespace Abastalia.Settings.Persistence.Migrations
 
             modelBuilder.Entity("Abastalia.Settings.Business", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
@@ -134,13 +137,14 @@ namespace Abastalia.Settings.Persistence.Migrations
                     b.Property<DateTime?>("UpdateRequestedUtc")
                         .HasColumnType("datetime2");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
                     b.ToTable("Business", "settings");
 
                     b.HasData(
                         new
                         {
+                            TenantId = new Guid("00000000-0000-0000-0000-000000000000"),
                             Id = 1,
                             DiscountCapPercent = 10m,
                             Name = "Mi tienda",
@@ -163,6 +167,9 @@ namespace Abastalia.Settings.Persistence.Migrations
                     b.Property<DateTime?>("RestartRequestedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Version")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -181,6 +188,9 @@ namespace Abastalia.Settings.Persistence.Migrations
                     b.Property<string>("ReleaseNotesSeen")
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("UserId");
 

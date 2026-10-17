@@ -11,7 +11,7 @@ internal sealed class EcfQueueHealthCheck(FiscalDbContext db, TimeProvider clock
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         var now = clock.GetUtcNow().UtcDateTime;
-        var pending = db.Documents.Where(d => d.Status == SubmissionStatus.Pending);
+        var pending = db.Documents.Where(d => d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.AwaitingDeviceSignature);
         if (await pending.AnyAsync(d => d.SignedUtc < now.AddHours(-60), cancellationToken))
             return HealthCheckResult.Unhealthy("Some e-CF have not been sent for more than 60 hours (the DGII deadline is 72).");
         if (await pending.AnyAsync(d => d.SignedUtc < now.AddHours(-24), cancellationToken))

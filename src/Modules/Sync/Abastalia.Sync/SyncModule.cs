@@ -35,7 +35,8 @@ public static class SyncModule
         services.AddScoped<CloudClient>();
         services.AddScoped<ICloudClient>(sp => sp.GetRequiredService<CloudClient>());
         services.AddScoped<CloudUploader>();
-        services.AddSingleton<LicenseSignal>();
+        services.AddPerTenant((_, _) => new LicenseSignal()); // TK-320: each Lite business has its own license stamp
+        services.AddScoped<ICloudConnector, CloudConnector>();
         services.AddHostedService<CloudUploaderWorker>();
         services.AddHostedService<HeartbeatWorker>();
         services.AddScoped<CloudBackupUploader>();
@@ -49,7 +50,8 @@ public static class SyncModule
 internal sealed class CloudConnection
 {
     public int Id { get; set; } = 1;
-    public Guid TenantId { get; set; }
+    /// <summary>The cloud tenant the store is connected to. TK-319 renamed it: <c>TenantId</c> is now the business that owns each row.</summary>
+    public Guid CloudTenantId { get; set; }
     public Guid StoreId { get; set; }
     public Guid NodeId { get; set; }
     /// <summary>The node's credential, protected for this machine with ASP.NET Core Data Protection (the key ring Settings sets up): its private key
@@ -138,7 +140,9 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
     private async Task<HttpResponseMessage> SendSignedAsync(CloudConnection connection, string path, HttpContent content, byte[] bodyHash, HttpClient client,
         CancellationToken ct)
     {
-        if (backoff.Remaining(path) is { } wait) return CloudBackoff.TooManyRequests(wait);
+        // TK-320: per node, so one Lite business the cloud asked to wait does not hold back the others' uploads.
+        var key = $"{connection.NodeId} {path}";
+        if (backoff.Remaining(key) is { } wait) return CloudBackoff.TooManyRequests(wait);
         string secret;
         try { secret = Protector.Unprotect(connection.NodeSecret); }
         catch (CryptographicException e)
@@ -151,7 +155,7 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
         request.Headers.Add(BodyHashHeader, Base64Url(bodyHash));
         var response = await client.SendAsync(request, ct);
         if (response.Headers.Date is { } cloudNow) _skew = cloudNow - clock.GetUtcNow();
-        backoff.Record(path, response);
+        backoff.Record(key, response);
         return response;
     }
 
@@ -212,7 +216,7 @@ internal static class GetSyncStatus
     {
         var c = await db.Connections.AsNoTracking().SingleOrDefaultAsync(ct);
         var pending = await infra.Outbox.CountAsync(m => m.UploadedUtc == null, ct);
-        return new SyncStatus(c is not null, c?.TenantId, c?.StoreId, c?.CloudUrl, c?.LastUploadUtc, pending, c?.LastError);
+        return new SyncStatus(c is not null, c?.CloudTenantId, c?.StoreId, c?.CloudUrl, c?.LastUploadUtc, pending, c?.LastError);
     }
 
     internal sealed class Endpoint : IEndpoint
@@ -278,7 +282,7 @@ internal static class ConnectToCloud
             var r = c.Registration;
             db.Connections.Add(new CloudConnection
             {
-                TenantId = r.TenantId, StoreId = r.StoreId, NodeId = r.NodeId, NodeSecret = cloud.Protect(c.Credential), CloudUrl = c.CloudUrl,
+                CloudTenantId = r.TenantId, StoreId = r.StoreId, NodeId = r.NodeId, NodeSecret = cloud.Protect(c.Credential), CloudUrl = c.CloudUrl,
                 ConnectedUtc = clock.GetUtcNow().UtcDateTime,
             });
             foreach (var snapshot in snapshots) await snapshot.EnqueueAsync(ct);
@@ -294,6 +298,14 @@ internal static class ConnectToCloud
                     ICommandHandler<Command, Ok> save, CancellationToken ct) => (await RunAsync(r.Code, config["Cloud:Url"], db, infra, http, save, ct)).ToHttp())
                 .RequirePermission(Permissions.SettingsManage).WithTags("Sync");
     }
+}
+
+/// <summary>TK-320: the Lite host connects each business with its own code, as the owner does on a store's screen (its own node and key).</summary>
+internal sealed class CloudConnector(IConfiguration config, SyncDbContext db, InfraDbContext infra, IHttpClientFactory http, ICommandHandler<ConnectToCloud.Command, Ok> save)
+    : ICloudConnector
+{
+    public async Task<Error?> ConnectAsync(string code, CancellationToken ct) =>
+        (await ConnectToCloud.RunAsync(code, config["Cloud:Url"], db, infra, http, save, ct)).Error;
 }
 
 /// <summary>Stops uploading. Pending events stay in the outbox and go up when the store connects again.</summary>
@@ -322,7 +334,7 @@ internal static class DisconnectFromCloud
             var connection = await db.Connections.SingleOrDefaultAsync(ct);
             if (connection is null) return Ok.Value;
             db.Connections.Remove(connection);
-            await audit.RecordAsync("sync.disconnect", "CloudConnection", connection.NodeId, new { connection.TenantId, connection.StoreId, connection.NodeId }, ct);
+            await audit.RecordAsync("sync.disconnect", "CloudConnection", connection.NodeId, new { TenantId = connection.CloudTenantId, connection.StoreId, connection.NodeId }, ct);
             return Ok.Value;
         }
     }

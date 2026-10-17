@@ -66,8 +66,11 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("TrackId")
                         .HasMaxLength(200)
@@ -83,6 +86,9 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
             modelBuilder.Entity("Abastalia.Fiscal.Domain.CertificationStep", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("Step")
                         .HasColumnType("int");
 
@@ -92,7 +98,7 @@ namespace Abastalia.Fiscal.Persistence.Migrations
                     b.Property<DateTime?>("DoneUtc")
                         .HasColumnType("datetime2");
 
-                    b.HasKey("Step");
+                    b.HasKey("TenantId", "Step");
 
                     b.ToTable("CertificationSteps", "fiscal");
                 });
@@ -113,6 +119,9 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
                     b.Property<DateTime>("StartedUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
 
@@ -159,8 +168,11 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<long>("To")
                         .HasColumnType("bigint");
@@ -276,11 +288,14 @@ namespace Abastalia.Fiscal.Persistence.Migrations
                     b.Property<string>("Status")
                         .IsConcurrencyToken()
                         .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
 
                     b.Property<DateTime>("SubmitDeadlineUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Total")
                         .HasPrecision(19, 4)
@@ -301,10 +316,10 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
                     b.HasIndex("ResultUtc");
 
-                    b.HasIndex("Environment", "ENcf")
-                        .IsUnique();
-
                     b.HasIndex("Status", "SubmitDeadlineUtc");
+
+                    b.HasIndex("TenantId", "Environment", "ENcf")
+                        .IsUnique();
 
                     b.ToTable("EcfDocuments", "fiscal");
                 });
@@ -331,6 +346,9 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
                     b.Property<long>("Next")
                         .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<long>("To")
                         .HasColumnType("bigint");
@@ -375,6 +393,9 @@ namespace Abastalia.Fiscal.Persistence.Migrations
                     b.Property<DateTime?>("RegularizedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<decimal>("Total")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
@@ -384,7 +405,7 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Ncf")
+                    b.HasIndex("TenantId", "Ncf")
                         .IsUnique();
 
                     b.ToTable("PaperDocuments", "fiscal");
@@ -407,6 +428,9 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
                     b.Property<long>("Next")
                         .HasColumnType("bigint");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<long>("To")
                         .HasColumnType("bigint");
@@ -482,6 +506,9 @@ namespace Abastalia.Fiscal.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("DocumentId");
 
                     b.HasIndex("Status", "NextAttemptUtc");
@@ -491,6 +518,9 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
             modelBuilder.Entity("Abastalia.Fiscal.Features.DgiiPublicAnswer", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Key")
                         .HasMaxLength(40)
                         .HasColumnType("nvarchar(40)");
@@ -503,7 +533,7 @@ namespace Abastalia.Fiscal.Persistence.Migrations
                     b.Property<DateTime>("ExpiresUtc")
                         .HasColumnType("datetime2");
 
-                    b.HasKey("Key");
+                    b.HasKey("TenantId", "Key");
 
                     b.HasIndex("ExpiresUtc");
 
@@ -512,6 +542,9 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
             modelBuilder.Entity("Abastalia.Fiscal.FiscalModeSetting", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
@@ -523,7 +556,7 @@ namespace Abastalia.Fiscal.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("nvarchar(10)");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
                     b.ToTable("Mode", "fiscal");
                 });
@@ -591,6 +624,9 @@ namespace Abastalia.Fiscal.Persistence.Migrations
                     b.Property<DateTime>("ReceivedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<decimal>("Total")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
@@ -604,10 +640,10 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CloudId")
-                        .IsUnique();
-
                     b.HasIndex("ReceivedUtc");
+
+                    b.HasIndex("TenantId", "CloudId")
+                        .IsUnique();
 
                     b.ToTable("EcfReceived", "fiscal");
                 });

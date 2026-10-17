@@ -522,7 +522,8 @@
 /* TK-155/156: certification steps, XML preview and the contingency help panel on "Comprobantes electrónicos". */
 .esc-steps { margin: 0 0 16px; padding-left: 20px; display: grid; gap: 8px; }
 .esc-steps label { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
-.esc-code { max-height: 240px; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+/* TK-321 design review: on <pre> only; on the pairing-code box (.esc-code above) it broke the instructions mid-word. */
+pre.esc-code { max-height: 240px; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
 .esc-help { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
 .esc-help summary { cursor: pointer; font-weight: 600; }
 .esc-help ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 6px; }

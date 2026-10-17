@@ -66,6 +66,8 @@ internal sealed class Warehouse
     public static readonly Guid MainId = new("0199e000-0000-7000-8000-0000000000a1");
 
     public Guid Id { get; set; }
+    /// <summary>TK-319: a property, not a shadow one, because EF seeds skip shadow properties; set on save.</summary>
+    public Guid TenantId { get; set; }
     public string Name { get; set; } = "";
     public bool IsActive { get; set; } = true;
 }
@@ -101,6 +103,8 @@ internal sealed class StockMovement
 internal sealed class LabelFormat
 {
     public string Prefix { get; set; } = "";
+    /// <summary>TK-319: a property, not a shadow one, because EF seeds skip shadow properties; set on save.</summary>
+    public Guid TenantId { get; set; }
     public int PluLength { get; set; }
     public bool IsPrice { get; set; }
     public int Decimals { get; set; }

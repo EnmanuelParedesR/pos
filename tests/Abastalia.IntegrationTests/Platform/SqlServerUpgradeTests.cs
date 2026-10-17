@@ -60,4 +60,36 @@ public sealed class SqlServerUpgradeTests
             await db.Database.EnsureDeletedAsync();
         }
     }
+
+    /// <summary>TK-319: the TenantId migrations on a store with data. The cloud tenant moves to CloudTenantId, the audit head keeps its place
+    /// (EF had written a delete and re-insert of the seed rows), and every row gets the store's tenant, so the "Tenant" filter still finds it.</summary>
+    [Fact]
+    public async Task The_tenant_migrations_keep_a_stores_rows()
+    {
+        if (!TestSqlServer.IsEnabled) Assert.Skip("Sqlite creates the tables from the model; migrations only run on SQL Server (ABASTALIA_TEST_DB=sqlserver).");
+        var connection = new SqlConnectionStringBuilder(TestSqlServer.BaseConnectionString) { InitialCatalog = $"abastalia_test_{Guid.NewGuid():N}" }.ConnectionString;
+        await using var sync = new Abastalia.Sync.SyncDbContext(new DbContextOptionsBuilder<Abastalia.Sync.SyncDbContext>().UseSqlServer(connection).Options);
+        await using var infra = new Abastalia.BuildingBlocks.Persistence.InfraDbContext(
+            new DbContextOptionsBuilder<Abastalia.BuildingBlocks.Persistence.InfraDbContext>().UseSqlServer(connection).Options);
+        try
+        {
+            var cloudTenant = Guid.CreateVersion7();
+            await sync.GetService<IMigrator>().MigrateAsync("20261015161241_InitialSync");
+            await sync.Database.ExecuteSqlAsync($"""
+                INSERT INTO sync.CloudConnection (Id, TenantId, StoreId, NodeId, NodeSecret, CloudUrl, ConnectedUtc) VALUES (1, {cloudTenant}, NEWID(), NEWID(), 'x', 'https://nube', SYSUTCDATETIME());
+                """);
+            await infra.GetService<IMigrator>().MigrateAsync("20261015161243_OutboxUploadedIndexInfra");
+            await infra.Database.ExecuteSqlRawAsync("UPDATE infra.AuditHead SET Sequence = 5, Hash = 0x01 WHERE Id = 1");
+
+            await sync.Database.MigrateAsync();
+            await infra.Database.MigrateAsync();
+
+            (await sync.Connections.SingleAsync()).CloudTenantId.ShouldBe(cloudTenant);
+            (await infra.AuditHead.SingleAsync()).Sequence.ShouldBe(5);
+        }
+        finally
+        {
+            await sync.Database.EnsureDeletedAsync();
+        }
+    }
 }

@@ -57,6 +57,7 @@ internal sealed class LicenseService : IFeatureService
     private readonly IServiceScopeFactory _scopes;
     private readonly ServiceKeys _secrets;
     private readonly IDgiiTime? _dgii;
+    private readonly Guid _tenant;
     private readonly ECDsa[] _keys;
     private readonly Lock _gate = new();
     private bool _trialLoaded;
@@ -64,9 +65,12 @@ internal sealed class LicenseService : IFeatureService
     private int? _trialDays;
     private LicenseClock? _time;
 
-    public LicenseService(IConfiguration config, IHostEnvironment environment, TimeProvider clock, IServiceScopeFactory scopes, ServiceKeys secrets, IDgiiTime? dgii = null)
+    /// <param name="tenant">TK-320: the business (a store's is <see cref="StoreTenant.Id"/>). A Lite business keeps its license in
+    /// <c>tenants/{id}.jws</c> next to <c>License:File</c>, and its sealed values with its id in their names.</param>
+    public LicenseService(IConfiguration config, IHostEnvironment environment, TimeProvider clock, IServiceScopeFactory scopes, ServiceKeys secrets, IDgiiTime? dgii = null,
+        Guid tenant = default)
     {
-        (_clock, _scopes, _secrets, _dgii) = (clock, scopes, secrets, dgii);
+        (_clock, _scopes, _secrets, _dgii, _tenant) = (clock, scopes, secrets, dgii, tenant);
         // Only test and development hosts may trust other keys; a store (Production) always checks against Abastalia's.
         var test = !environment.IsProduction();
         _keys = [.. new[]
@@ -82,6 +86,7 @@ internal sealed class LicenseService : IFeatureService
                 return key;
             })];
         FilePath = config["License:File"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Abastalia", "license.jws");
+        if (tenant != StoreTenant.Id) FilePath = Path.Combine(Path.GetDirectoryName(FilePath)!, "tenants", $"{tenant:N}.jws");
         if (File.Exists(FilePath) && Jws.Verify(File.ReadAllText(FilePath), _keys) is { IsSuccess: true } saved) (_data, _current) = (saved.Value, File.ReadAllText(FilePath).Trim());
     }
 
@@ -175,7 +180,7 @@ internal sealed class LicenseService : IFeatureService
         var seen = Time.SeenUtc;
         var seal = LicenseClock.Seal(seen, ClockKey);
         WriteSealed(SeenFile, seen.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        await using var scope = _scopes.CreateAsyncScope();
+        await using var scope = _scopes.CreateTenantScope(_tenant);
         await scope.ServiceProvider.GetRequiredService<SettingsDbContext>().Business
             .ExecuteUpdateAsync(s => s.SetProperty(b => b.ClockSeenUtc, seen).SetProperty(b => b.ClockSeenSeal, seal), ct);
     }
@@ -189,7 +194,7 @@ internal sealed class LicenseService : IFeatureService
     internal void WriteSealed(string name, string value)
     {
         Directory.CreateDirectory(_secrets.Folder);
-        var path = Path.Combine(_secrets.Folder, name);
+        var path = Path.Combine(_secrets.Folder, SealedPrefix + name);
         File.WriteAllText(path + ".tmp", $"{value}|{SealOf(name, value)}");
         File.Move(path + ".tmp", path, overwrite: true);
     }
@@ -197,7 +202,7 @@ internal sealed class LicenseService : IFeatureService
     /// <summary>The value, or null when the file is missing or its seal does not match.</summary>
     internal string? ReadSealed(string name)
     {
-        var path = Path.Combine(_secrets.Folder, name);
+        var path = Path.Combine(_secrets.Folder, SealedPrefix + name);
         if (!File.Exists(path)) return null;
         var text = File.ReadAllText(path);
         var bar = text.LastIndexOf('|');
@@ -205,6 +210,8 @@ internal sealed class LicenseService : IFeatureService
         var value = text[..bar];
         return CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(text[(bar + 1)..]), Encoding.ASCII.GetBytes(SealOf(name, value))) ? value : null;
     }
+
+    private string SealedPrefix => _tenant == StoreTenant.Id ? "" : $"{_tenant:N}.";
 
     private string SealOf(string name, string value) => Convert.ToBase64String(HMACSHA256.HashData(ClockKey, Encoding.UTF8.GetBytes($"{name}:{value}")));
 
@@ -232,7 +239,7 @@ internal sealed class LicenseService : IFeatureService
     /// <summary>On its own connection. The scope only disposes asynchronously (UnitOfWork).</summary>
     private T Read<T>(Func<IServiceProvider, T> read)
     {
-        var scope = _scopes.CreateAsyncScope();
+        var scope = _scopes.CreateTenantScope(_tenant);
         try
         {
             return read(scope.ServiceProvider);
@@ -421,7 +428,7 @@ internal sealed class LicenseClock(TimeProvider clock, DateTime? seenUtc)
 }
 
 /// <summary>TK-279: saves the license clock every 10 minutes and when the server stops (a crash loses at most that much).</summary>
-internal sealed class LicenseClockKeeper(LicenseService license, ILogger<LicenseClockKeeper> log) : BackgroundService
+internal sealed class LicenseClockKeeper(PerTenant<LicenseService> licenses, ILogger<LicenseClockKeeper> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -444,7 +451,7 @@ internal sealed class LicenseClockKeeper(LicenseService license, ILogger<License
     {
         try
         {
-            await license.SaveTimeAsync(CancellationToken.None);
+            foreach (var license in licenses.All) await license.SaveTimeAsync(CancellationToken.None);
         }
         catch (Exception e)
         {

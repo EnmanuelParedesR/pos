@@ -71,11 +71,12 @@ public sealed partial class ArchitectureRules
             .Should().NotDependOnAny(Types().That().Are(typeof(Abastalia.BuildingBlocks.Security.IFeatureService)))
             .Check(Architecture);
 
+    /// <remarks>arquitectura §10: the only SQL function allowed is the Lite database's Row-Level Security predicate (TK-319).</remarks>
     [Fact]
     public void There_are_no_stored_procedures_or_triggers()
     {
         var offenders = Directory.EnumerateFiles(Path.Combine(Root, "src"), "*.cs", SearchOption.AllDirectories)
-            .Where(f => ForbiddenSql().IsMatch(File.ReadAllText(f)))
+            .Where(f => ForbiddenSql().IsMatch(File.ReadAllText(f).Replace("CREATE OR ALTER FUNCTION rls.TenantPredicate(", "", StringComparison.Ordinal)))
             .ToList();
         offenders.ShouldBeEmpty();
     }

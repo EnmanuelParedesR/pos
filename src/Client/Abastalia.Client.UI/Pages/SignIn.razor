@@ -67,11 +67,11 @@
     {
         await Session.LoadAsync();
         var r = await Api.GetAsync<List<ActiveUser>>("/api/identity/users/active");
-        if (r.Problem?.Code == "Identity.DeviceNotPaired")
+        if (r.Problem?.Code is "Identity.DeviceNotPaired" or "Lite.UnknownDevice")
         {
-            // This PC was revoked by the owner: pair it again.
+            // This PC was revoked by the owner (TK-324: or the Lite device, in the panel): pair it again. Home knows where.
             await Session.ForgetDeviceAsync();
-            Nav.NavigateTo("setup");
+            Nav.NavigateTo("");
             return;
         }
         _listError = r.Problem?.Message;

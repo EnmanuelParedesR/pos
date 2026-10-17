@@ -101,6 +101,12 @@ param allowCloudCustody bool = false
 @description('TK-267: the site and panel\'s own domain (e.g. abastalia.com, bound to the Static Web App with its www). Empty = only the Static Web App\'s default host.')
 param panelDomain string = ''
 
+@description('TK-320 (ADR-0013): the Lite plan\'s server (Abastalia.Host.Lite): a second Web App on the same B1 plan (no extra cost) and its own Basic database sqldb-abastalia-lite (~US$5/month). Off until the Lite pilot.')
+param deployLite bool = false
+
+@description('TK-324: the Lite selling app\'s own domain (e.g. venta.abastalia.com), once its CNAME points at the app\'s Static Web App. Empty: only the default address.')
+param liteDomain string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var name = 'abastalia-${env}'
 var tags = { app: 'abastalia', env: env }
@@ -424,8 +430,8 @@ resource apiSignsLicenses 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   }
 }
 
-// TK-249, R11 B-Low7: Key Vault Secrets User only while Paddle is on (its two secrets are Key Vault references); nothing else reads secrets.
-resource apiReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(paddleEnvironment)) {
+// TK-249, R11 B-Low7: Key Vault Secrets User only while Paddle or Lite is on (their secrets are Key Vault references); nothing else reads secrets.
+resource apiReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(paddleEnvironment) || deployLite) {
   name: guid(vault.id, api.id, '4633458b-17de-408a-b874-0445c86b69e6')
   scope: vault
   properties: {
@@ -485,9 +491,112 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Billing__Paddle__ClientToken: paddleClientToken
     Billing__Paddle__ApiKey: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Billing--Paddle--ApiKey)'
     Billing__Paddle__WebhookSecret: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Billing--Paddle--WebhookSecret)'
+  }, !deployLite ? {} : {
+    // TK-321: the panel pairs and revokes Lite selling devices on Host.Lite with the same key as provisioning (made by hand in the vault).
+    Lite__Url: 'https://${liteApp!.properties.defaultHostName}'
+    Lite__ProvisioningKey: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Lite--ProvisioningKey)'
   }, empty(licenseKeyName) ? {} : {
     // TK-249: the API signs store licenses with this key (Key Vault Crypto User above); the private half never leaves the vault.
     Billing__License__KeyId: '${vault.properties.vaultUri}keys/${licenseKeyName}'
+  })
+}
+
+// TK-320 (ADR-0013): the Lite plan. Its own database on the same server, so its DTU never compete with the cloud's ingest and Row-Level
+// Security lives only there. Basic up to ~20 businesses or 1.5 GB, then S0 (move it online like the cloud's).
+resource liteDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = if (deployLite) {
+  parent: sqlServer
+  name: 'sqldb-abastalia-lite'
+  location: sqlLocation
+  tags: tags
+  sku: { name: 'Basic', tier: 'Basic' }
+  properties: {
+    maxSizeBytes: 2 * 1024 * 1024 * 1024
+    zoneRedundant: false
+    requestedBackupStorageRedundancy: 'Local'
+  }
+}
+
+// On the same plan as the API (no extra cost; the plan's one instance runs both). Each Lite business is a node of the API (ADR-0008).
+resource liteApp 'Microsoft.Web/sites@2023-12-01' = if (deployLite) {
+  name: 'app-${name}-lite-${take(suffix, 6)}'
+  location: location
+  tags: tags
+  kind: 'app,linux'
+  identity: { type: 'SystemAssigned' }
+  properties: {
+    serverFarmId: plan.id
+    httpsOnly: true
+    siteConfig: {
+      linuxFxVersion: 'DOTNETCORE|10.0'
+      alwaysOn: true
+      http20Enabled: true
+      minTlsVersion: '1.2'
+      ftpsState: 'Disabled'
+      healthCheckPath: '/health'
+    }
+  }
+}
+
+resource liteNoScmBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = if (deployLite) {
+  parent: liteApp
+  name: 'scm'
+  properties: { allow: false }
+}
+
+resource liteNoFtpBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = if (deployLite) {
+  parent: liteApp
+  name: 'ftp'
+  properties: { allow: false }
+}
+
+// TK-324: the provisioning key is the vault's Lite--ProvisioningKey (made by hand, never in the repository): a Key Vault reference, so a
+// redeploy keeps it. Without the secret the reference fails and provisioning does not exist.
+resource liteReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployLite) {
+  name: guid(vault.id, 'lite', '4633458b-17de-408a-b874-0445c86b69e6')
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
+    principalId: liteApp!.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// TK-324 (ADR-0013 decision 3): the selling app (Abastalia.Client.Lite) on its own origin, Free like the panel.
+resource liteSite 'Microsoft.Web/staticSites@2023-12-01' = if (deployLite) {
+  name: 'stapp-${name}-venta'
+  location: staticWebAppLocation
+  tags: tags
+  sku: { name: 'Free', tier: 'Free' }
+  properties: {}
+}
+
+resource liteSiteDomain 'Microsoft.Web/staticSites/customDomains@2023-12-01' = if (deployLite && !empty(liteDomain)) {
+  parent: liteSite
+  name: empty(liteDomain) ? 'none' : liteDomain
+  properties: {}
+}
+
+resource liteSettings 'Microsoft.Web/sites/config@2023-12-01' = if (deployLite) {
+  parent: liteApp
+  name: 'appsettings'
+  dependsOn: [liteReadsSecrets]
+  properties: union({
+    ASPNETCORE_ENVIRONMENT: 'Production'
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
+    APPLICATIONINSIGHTS_CONNECTION_STRING: insights.properties.ConnectionString
+    ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
+    Database__Provider: 'SqlServer'
+    Database__ConnectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=sqldb-abastalia-lite;Authentication=Active Directory Managed Identity;Encrypt=True;Connect Timeout=120'
+    Database__MultiTenant: 'true'
+    Cloud__Url: 'https://${api.properties.defaultHostName}'
+    // /home survives restarts and redeploys: the Data Protection key ring (each business's node key) and the licenses live there.
+    Abastalia__KeysFolder: '/home/abastalia/keys'
+    License__File: '/home/abastalia/license.jws'
+    Lite__ProvisioningKey: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Lite--ProvisioningKey)'
+    // CORS: the selling app's origins (its default address and, once set, its own domain).
+    Lite__AppOrigins__0: deployLite ? 'https://${liteSite!.properties.defaultHostname}' : ''
+  }, empty(liteDomain) ? {} : {
+    Lite__AppOrigins__1: 'https://${liteDomain}'
   })
 }
 
@@ -719,3 +828,7 @@ output panelName string = panel.name
 output sqlServer string = sqlServer.properties.fullyQualifiedDomainName
 output keyVault string = vault.name
 output archiveStorage string = archive.name
+output liteName string = deployLite ? liteApp.name : ''
+output liteUrl string = deployLite ? 'https://${liteApp!.properties.defaultHostName}' : ''
+output liteSiteName string = deployLite ? liteSite.name : ''
+output liteSiteUrl string = deployLite ? 'https://${liteSite!.properties.defaultHostname}' : ''

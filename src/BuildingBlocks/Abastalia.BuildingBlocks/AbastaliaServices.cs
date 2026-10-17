@@ -22,6 +22,8 @@ public static class AbastaliaServices
         if (string.IsNullOrWhiteSpace(db.ConnectionString)) throw new InvalidOperationException("Missing Database:ConnectionString.");
         services.AddSingleton(db);
         services.AddScoped<UnitOfWork>();
+        services.TryAddSingleton<ITenantContext, StoreTenant>(); // the Lite host registers its own first (from the device, TK-320)
+        services.TryAddSingleton<ITenantDirectory, StoreTenants>(); // TK-320: the Lite host lists its businesses
         services.TryAddSingleton(TimeProvider.System); // a host may have registered its own first (ShiftedClock)
         services.AddHttpContextAccessor();
         services.AddScoped<IUserContext, HttpUserContext>();
@@ -72,13 +74,16 @@ public static class AbastaliaServices
         await using var scope = services.CreateAsyncScope();
         var contexts = scope.ServiceProvider.GetServices<ModuleDbContext>().ToList();
         var creator = (RelationalDatabaseCreator)contexts[0].GetService<IDatabaseCreator>();
-        if (scope.ServiceProvider.GetRequiredService<DatabaseOptions>().Provider == DbProvider.SqlServer)
+        var options = scope.ServiceProvider.GetRequiredService<DatabaseOptions>();
+        if (options.Provider == DbProvider.SqlServer)
         {
+            if (options.MultiTenant && await creator.ExistsAsync(ct)) await RowLevelSecurity.DropAsync(contexts[0], ct);
             foreach (var db in contexts)
             {
                 db.Database.SetCommandTimeout(TimeSpan.FromMinutes(30)); // an index over a year of sales takes a while on SQL Server Express
                 await db.Database.MigrateAsync(ct);
             }
+            if (options.MultiTenant) await RowLevelSecurity.CreateAsync(contexts, ct);
             return;
         }
         if (await creator.ExistsAsync(ct) && await creator.HasTablesAsync(ct)) return;

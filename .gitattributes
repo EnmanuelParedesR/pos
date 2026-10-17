@@ -2,3 +2,4 @@
 *.cs text eol=crlf
 src/Modules/Fiscal/Abastalia.Fiscal/Schemas/*.xsd -text
 tests/Abastalia.Hardware.Tests/Snapshots/* text eol=lf
+src/Client/Abastalia.Client.Lite/wwwroot/js/lite-signer.js -text

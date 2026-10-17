@@ -154,6 +154,7 @@ builder.Services.AddColdArchive(config);
 builder.Services.AddStoreBackups(config);
 builder.Services.AddFe(config, builder.Environment);
 builder.Services.AddBilling(config, builder.Environment); // TK-249: off until Billing:Paddle is set
+builder.Services.AddHttpClient(LiteDeviceEndpoints.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(15)); // TK-321
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
 // TK-348/TK-315: how each Talia calls the model, and the site's daily budget.
@@ -240,6 +241,7 @@ app.MapBilling();
 app.MapStores();
 app.MapMembers();
 app.MapNodes();
+app.MapLiteDevices();
 app.MapNodeUpdates();
 app.MapIngest();
 app.MapPanel();

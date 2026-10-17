@@ -95,9 +95,9 @@ internal static class PullLicense
         if (!response.IsSuccessStatusCode) return false;
         var answer = await response.Content.ReadFromJsonAsync<Answer>(ct);
         // R12 #3: before installing, so the license is judged by the corrected clock.
-        if (answer?.Time is { Length: > 0 } time) license.CorrectTime(time, connection.TenantId, nonce);
+        if (answer?.Time is { Length: > 0 } time) license.CorrectTime(time, connection.CloudTenantId, nonce);
         // TK-276: a business that came recommended. R12 (security B3): only the cloud-signed grant counts, never a bare number.
-        if (answer?.Trial is { Length: > 0 } trial) await license.ExtendTrialAsync(trial, connection.TenantId, ct);
+        if (answer?.Trial is { Length: > 0 } trial) await license.ExtendTrialAsync(trial, connection.CloudTenantId, ct);
         return answer?.License is { Length: > 0 } jws && await license.InstallFromCloudAsync(jws, ct);
     }
 
@@ -140,13 +140,15 @@ internal sealed class HeartbeatWorker(IServiceScopeFactory scopes, IConfiguratio
         {
             try
             {
-                await using var scope = scopes.CreateAsyncScope();
-                var result = await scope.ServiceProvider.GetRequiredService<ICommandHandler<SendHeartbeat.Command, Ok>>().Handle(new SendHeartbeat.Command(), stoppingToken);
-                if (result.IsFailure) log.LogWarning("The heartbeat was not saved: {Code}", result.Error!.Code);
-                if (await PullLicense.RunAsync(scope.ServiceProvider.GetRequiredService<CloudClient>(), scope.ServiceProvider.GetRequiredService<IStoreLicense>(), stoppingToken))
-                    log.LogInformation("Installed the license the cloud issued");
-                await PullUpdatePolicy.RunAsync(scope.ServiceProvider.GetRequiredService<CloudClient>(), scope.ServiceProvider.GetRequiredService<IUpdatePolicy>(),
-                    config, stoppingToken);
+                // TK-320: each Lite business is its own node: its heartbeat, its license.
+                await scopes.ForEachTenantAsync(async sp =>
+                {
+                    var result = await sp.GetRequiredService<ICommandHandler<SendHeartbeat.Command, Ok>>().Handle(new SendHeartbeat.Command(), stoppingToken);
+                    if (result.IsFailure) log.LogWarning("The heartbeat was not saved: {Code}", result.Error!.Code);
+                    if (await PullLicense.RunAsync(sp.GetRequiredService<CloudClient>(), sp.GetRequiredService<IStoreLicense>(), stoppingToken))
+                        log.LogInformation("Installed the license the cloud issued");
+                    await PullUpdatePolicy.RunAsync(sp.GetRequiredService<CloudClient>(), sp.GetRequiredService<IUpdatePolicy>(), config, stoppingToken);
+                }, stoppingToken);
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {

@@ -22,5 +22,8 @@
     <ProjectReference Include="..\..\src\Hosts\Abastalia.Host.Local\Abastalia.Host.Local.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\Hosts\Abastalia.Host.Cloud\Abastalia.Host.Cloud.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\Client\Abastalia.Client.Web\Abastalia.Client.Web.csproj" ReferenceOutputAssembly="false" />
+    <!-- TK-324: the Lite host it starts and the Lite app it publishes (LiteSellingTests). -->
+    <ProjectReference Include="..\..\src\Hosts\Abastalia.Host.Lite\Abastalia.Host.Lite.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\Client\Abastalia.Client.Lite\Abastalia.Client.Lite.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>
