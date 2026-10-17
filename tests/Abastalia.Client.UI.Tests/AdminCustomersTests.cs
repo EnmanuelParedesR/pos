@@ -35,9 +35,9 @@ public sealed class AdminCustomersTests
         .Json("GET", "/api/cash/registers", new[] { new { id = Guid.NewGuid(), name = "Caja 2", isActive = true, openShiftId = (Guid?)OpenShift, cashier = "Yudelka" } });
 
     [Fact]
-    public void The_list_shows_what_each_customer_owes_and_the_statement_its_running_balance()
+    public async Task The_list_shows_what_each_customer_owes_and_the_statement_its_running_balance()
     {
-        var (ctx, api) = ScreenContext.Create("customers.manage", "credit.manage", "reports.view", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("customers.manage", "credit.manage", "reports.view", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         Customers(api);
         var page = ctx.Render<Customers>();
@@ -54,9 +54,9 @@ public sealed class AdminCustomersTests
     }
 
     [Fact]
-    public void A_payment_goes_to_the_open_register_with_one_id_even_when_retried()
+    public async Task A_payment_goes_to_the_open_register_with_one_id_even_when_retried()
     {
-        var (ctx, api) = ScreenContext.Create("customers.manage", "credit.manage", "reports.view", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("customers.manage", "credit.manage", "reports.view", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         Customers(api).Respond("POST", $"/api/customers/{Ana}/payments", _ => throw new TaskCanceledException());
         var page = ctx.Render<Customers>();
@@ -92,9 +92,9 @@ public sealed class AdminCustomersTests
     }
 
     [Fact]
-    public void Voiding_a_payment_asks_a_supervisor_when_the_user_cannot()
+    public async Task Voiding_a_payment_asks_a_supervisor_when_the_user_cannot()
     {
-        var (ctx, api) = ScreenContext.Create("customers.manage", "reports.view", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("customers.manage", "reports.view", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var approval = Guid.NewGuid();
         Customers(api).Respond("POST", $"/api/customers/payments/{PaymentId}/void", body => body.Contains(approval.ToString())
@@ -117,9 +117,9 @@ public sealed class AdminCustomersTests
     }
 
     [Fact]
-    public void Without_the_credit_permission_the_limit_and_price_level_cannot_change_and_the_rest_is_kept()
+    public async Task Without_the_credit_permission_the_limit_and_price_level_cannot_change_and_the_rest_is_kept()
     {
-        var (ctx, api) = ScreenContext.Create("customers.manage", "reports.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("customers.manage", "reports.view");
         using var _ = ctx;
         Customers(api).Respond("PUT", $"/api/customers/{Ana}", _ => new HttpResponseMessage(HttpStatusCode.NoContent));
         var page = ctx.Render<Customers>();
@@ -139,9 +139,9 @@ public sealed class AdminCustomersTests
     }
 
     [Fact]
-    public void A_role_is_saved_with_the_checked_permissions_and_Administrador_is_not_editable()
+    public async Task A_role_is_saved_with_the_checked_permissions_and_Administrador_is_not_editable()
     {
-        var (ctx, api) = ScreenContext.Create("users.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("users.manage");
         using var _ = ctx;
         var cashier = Guid.NewGuid();
         api.Json("GET", "/api/identity/users", Array.Empty<object>())
@@ -171,9 +171,9 @@ public sealed class AdminCustomersTests
     }
 
     [Fact]
-    public void A_register_is_renamed_from_Cajas()
+    public async Task A_register_is_renamed_from_Cajas()
     {
-        var (ctx, api) = ScreenContext.Create("registers.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("registers.manage");
         using var _ = ctx;
         var register = Guid.NewGuid();
         api.Json("GET", "/api/settings/business", new { name = "Mi tienda", discountCapPercent = 10m })
@@ -192,9 +192,9 @@ public sealed class AdminCustomersTests
     }
 
     [Fact]
-    public void A_registers_standard_float_is_set_from_Cajas()
+    public async Task A_registers_standard_float_is_set_from_Cajas()
     {
-        var (ctx, api) = ScreenContext.Create("registers.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("registers.manage");
         using var _ = ctx;
         var register = Guid.NewGuid();
         api.Json("GET", "/api/settings/business", new { name = "Mi tienda", discountCapPercent = 10m })

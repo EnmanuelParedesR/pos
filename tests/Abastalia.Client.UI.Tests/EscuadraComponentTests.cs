@@ -2,6 +2,7 @@ using Bunit;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 using Abastalia.Client.UI.Components;
 using Abastalia.Client.UI.Pages;
@@ -170,36 +171,37 @@ public sealed class EscuadraComponentTests : IDisposable
 
     // ---- On the register's screens ----
 
-    private static (BunitContext Ctx, FakeApi Api, TestDrivers Hw) Register(HardwareSettings settings)
+    private static async Task<(BunitContext Ctx, FakeApi Api, TestDrivers Hw)> RegisterAsync(HardwareSettings settings)
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
-        ctx.Services.GetRequiredService<Peripherals>().SaveAsync(settings).GetAwaiter().GetResult();
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
+        await ctx.Services.GetRequiredService<Peripherals>().SaveAsync(settings);
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>());
         return (ctx, api, ctx.Services.GetRequiredService<TestDrivers>());
     }
 
     [Fact]
-    public void The_Sale_screen_shows_the_scale_fixed_while_this_PC_has_one()
+    public async Task The_Sale_screen_shows_the_scale_fixed_while_this_PC_has_one()
     {
-        var (ctx, _, hw) = Register(new(Scale: new("COM3", ScaleProtocol.Cas)));
+        var (ctx, _, hw) = await RegisterAsync(new(Scale: new("COM3", ScaleProtocol.Cas)));
         using var _ = ctx;
-        hw.Scale.Pounds = 1.255m;
+        hw.Scale.Reading = new(1.255m, ScaleStatus.Stable);
         var sale = ctx.Render<Sale>();
 
         sale.WaitForAssertion(() => sale.Find(".sale__totals .esc-scale .esc-pill").TextContent.ShouldBe("Estable"));
         sale.Find(".esc-scale__value").TextContent.ShouldBe("1.255 lb");
-        hw.Scale.Status = ScaleStatus.Disconnected;
+        hw.Scale.Reading = ScaleReading.Disconnected;
+        ctx.Services.GetRequiredService<FakeTimeProvider>().Advance(TimeSpan.FromMilliseconds(500)); // the screen's next reading
         sale.WaitForAssertion(() => sale.Find(".esc-scale .esc-pill").TextContent.ShouldBe("Desconectada"));
 
-        var (plain, _, _) = Register(new());
+        var (plain, _, _) = await RegisterAsync(new());
         using var __ = plain;
         plain.Render<Sale>().FindAll(".esc-scale").ShouldBeEmpty();
     }
 
     [Fact]
-    public void The_Sale_screen_names_its_scanner_its_lines_and_shows_each_key()
+    public async Task The_Sale_screen_names_its_scanner_its_lines_and_shows_each_key()
     {
-        var (ctx, _, _) = Register(new());
+        var (ctx, _, _) = await RegisterAsync(new());
         using var _ = ctx;
         var sale = ctx.Render<Sale>();
 
@@ -213,7 +215,7 @@ public sealed class EscuadraComponentTests : IDisposable
     [Fact]
     public async Task The_status_bar_shows_the_scale_and_the_printer_configured_connected_or_failing()
     {
-        var (ctx, _, hw) = Register(new(new PrinterSettings("EPSON TM-T20"), new ScaleSettings("COM3", ScaleProtocol.Cas)));
+        var (ctx, _, hw) = await RegisterAsync(new(new PrinterSettings("EPSON TM-T20"), new ScaleSettings("COM3", ScaleProtocol.Cas)));
         using var _ = ctx;
         var frame = ctx.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
         string[] Devices() => [.. frame.FindAll(".esc-status-bar__device").Select(d => d.TextContent.Trim() + (d.ClassList.Contains("esc-offline") ? " (ámbar)" : ""))];
@@ -226,7 +228,7 @@ public sealed class EscuadraComponentTests : IDisposable
         await peripherals.TryAsync(p => p.OpenDrawerAsync(CancellationToken.None));
         frame.WaitForAssertion(() => Devices().ShouldBe(["Balanza conectada", "Impresora sin respuesta (ámbar)"]));
 
-        hw.Scale.Status = ScaleStatus.Disconnected;
+        hw.Scale.Reading = ScaleReading.Disconnected;
         hw.Printer.Offline = false;
         await peripherals.ReadScaleAsync(CancellationToken.None);
         await peripherals.TryAsync(p => p.OpenDrawerAsync(CancellationToken.None));

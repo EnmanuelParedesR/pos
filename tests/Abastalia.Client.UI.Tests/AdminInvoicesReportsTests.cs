@@ -10,9 +10,9 @@ namespace Abastalia.Client.UI.Tests;
 public sealed class AdminInvoicesReportsTests
 {
     [Fact]
-    public void An_invoice_is_found_by_its_eNCF_opened_and_shown_for_reprint()
+    public async Task An_invoice_is_found_by_its_eNCF_opened_and_shown_for_reprint()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view", "sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view", "sales.create");
         using var _ = ctx;
         var id = Guid.NewGuid();
         api.Json("GET", "/api/sales", Array.Empty<object>())
@@ -43,9 +43,9 @@ public sealed class AdminInvoicesReportsTests
     }
 
     [Fact]
-    public void A_report_downloads_as_a_file_for_the_chosen_period()
+    public async Task A_report_downloads_as_a_file_for_the_chosen_period()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.reports");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.reports");
         using var _ = ctx;
         api.Respond("GET", "/api/reports/dgii/607", _ =>
         {
@@ -68,9 +68,9 @@ public sealed class AdminInvoicesReportsTests
     }
 
     [Fact]
-    public void A_refused_period_is_explained()
+    public async Task A_refused_period_is_explained()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view");
         using var _ = ctx;
         api.Respond("GET", "/api/reports/sales/by-day", _ => FakeApi.Problem(HttpStatusCode.BadRequest, "Reports.InvalidPeriod", "El período…"));
         var page = ctx.Render<Reports>();

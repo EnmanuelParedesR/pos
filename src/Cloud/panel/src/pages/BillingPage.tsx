@@ -60,12 +60,12 @@ export function BillingPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<ApiError | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const [chosen, setChosen] = useState<string[]>([]); // TK-258: add-ons, one entry per unit
+  // TK-258: add-ons, one entry per unit. TK-305: the owner's picks hold only for the data they were made on (no fill-in effect racing a click).
+  const [picked, setPicked] = useState<{ on: Billing; addOns: string[] } | null>(null);
 
   useEffect(() => {
     if (data?.enabled) void loadPaddle().catch(() => undefined); // ready before the click; a failure shows on the click
   }, [data?.enabled]);
-  useEffect(() => setChosen([...(data?.addOns ?? [])].sort()), [data]);
 
   if (error) return <LoadError error={error} />;
   if (!data) return <Skeleton height={160} />;
@@ -73,6 +73,8 @@ export function BillingPage() {
   const subscribed = data.status !== "None" && data.status !== "Canceled" && data.canManage;
   const annual = data.plans.some((p) => p.annual);
   const yearly = (subscribed && data.interval === "Annual") || (!subscribed && interval === "Annual");
+  const chosen = picked?.on === data ? picked.addOns : [...data.addOns].sort();
+  const setChosen = (addOns: string[]) => setPicked({ on: data, addOns });
   const addOnsChanged = chosen.join() !== [...data.addOns].sort().join();
 
   async function buy(plan: string | null, addOns: string[]) {

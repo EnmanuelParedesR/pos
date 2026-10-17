@@ -44,9 +44,9 @@ public sealed class PricesAndLeavingTests
     }
 
     [Fact]
-    public void The_register_line_says_wholesale_price()
+    public async Task The_register_line_says_wholesale_price()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>());
         var cart = ctx.Services.GetRequiredService<Cart>();
@@ -59,9 +59,9 @@ public sealed class PricesAndLeavingTests
     }
 
     [Fact]
-    public void After_the_server_corrects_the_total_the_lines_take_the_current_prices()
+    public async Task After_the_server_corrects_the_total_the_lines_take_the_current_prices()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(Ribs, null);
@@ -77,9 +77,9 @@ public sealed class PricesAndLeavingTests
     }
 
     [Fact]
-    public void Leaving_the_back_office_with_an_unpaid_sale_asks_to_hold_or_void_it_first()
+    public async Task Leaving_the_back_office_with_an_unpaid_sale_asks_to_hold_or_void_it_first()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "reports.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "reports.view");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business", new BusinessProfile("Carnicería", null, null, null, null, 10))
            .Respond("DELETE", "/api/identity/sessions/current", _ => new HttpResponseMessage(HttpStatusCode.NoContent));
@@ -98,9 +98,9 @@ public sealed class PricesAndLeavingTests
     }
 
     [Fact]
-    public void The_status_bar_shows_the_ecf_queue_amber_when_the_oldest_waits_over_a_day()
+    public async Task The_status_bar_shows_the_ecf_queue_amber_when_the_oldest_waits_over_a_day()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/queue", new FiscalQueue(3, 0, DateTime.UtcNow.AddHours(40), 0, 0));
         var frame = ctx.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
@@ -110,9 +110,9 @@ public sealed class PricesAndLeavingTests
     }
 
     [Fact]
-    public void A_cashier_without_the_fiscal_permission_does_not_see_the_queue()
+    public async Task A_cashier_without_the_fiscal_permission_does_not_see_the_queue()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var frame = ctx.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
 

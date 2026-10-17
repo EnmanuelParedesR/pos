@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api, ApiError, useApi, type Meter, type PlatformUsage, type Usage } from "../api";
 import { dayName } from "../format";
 import { Card, LoadError, Notice } from "../ui";
@@ -99,17 +99,16 @@ export function UsageCard() {
 /** Abastalia staff (TK-248): the business's usage, and its plan and add-ons, which set its limits at once. */
 export function PlatformUsageCard({ tenantId }: { tenantId: string }) {
   const { data, error, reload } = useApi<PlatformUsage>(`/api/platform/tenants/${tenantId}/usage`);
-  const [plan, setPlan] = useState("");
-  const [addOns, setAddOns] = useState<string[]>([]);
+  // TK-305: the staff's edits hold only for the data they were made on (no fill-in effect racing a choice).
+  const [edit, setEdit] = useState<{ on: PlatformUsage; plan: string; addOns: string[] } | null>(null);
   const [saveError, setSaveError] = useState<ApiError | null>(null);
-  useEffect(() => {
-    if (!data?.usage) return;
-    setPlan(data.usage.plan);
-    setAddOns([...data.usage.addOns].sort());
-  }, [data]);
 
   if (error) return <LoadError error={error} />;
   if (!data?.usage) return null;
+  const current = edit?.on === data ? edit : { on: data, plan: data.usage.plan, addOns: [...data.usage.addOns].sort() };
+  const { plan, addOns } = current;
+  const setPlan = (p: string) => setEdit({ ...current, plan: p });
+  const setAddOns = (a: string[]) => setEdit({ ...current, addOns: a });
   const changed = plan !== data.usage.plan || addOns.join() !== [...data.usage.addOns].sort().join();
 
   async function save() {

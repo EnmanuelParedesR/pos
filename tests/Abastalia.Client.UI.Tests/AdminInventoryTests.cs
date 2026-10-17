@@ -20,9 +20,9 @@ public sealed class AdminInventoryTests
             : new[] { new { id = Main, name = "Tienda", isActive = true, isMain = true } });
 
     [Fact]
-    public void The_stock_list_values_the_inventory_filters_what_is_low_and_an_adjustment_takes_stock_out_with_its_reason()
+    public async Task The_stock_list_values_the_inventory_filters_what_is_low_and_an_adjustment_takes_stock_out_with_its_reason()
     {
-        var (ctx, api) = ScreenContext.Create("inventory.view", "inventory.adjust", "costs.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("inventory.view", "inventory.adjust", "costs.view");
         using var _ = ctx;
         Warehouses(api);
         api.Json("GET", "/api/inventory/stock", new[]
@@ -59,9 +59,9 @@ public sealed class AdminInventoryTests
     }
 
     [Fact]
-    public void Someone_who_only_counts_does_not_see_the_inventory_menu_items_they_cannot_use()
+    public async Task Someone_who_only_counts_does_not_see_the_inventory_menu_items_they_cannot_use()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view", "inventory.count");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view", "inventory.count");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/stock-counts", Array.Empty<object>());
         var page = ctx.Render<StockCounts>();
@@ -73,9 +73,9 @@ public sealed class AdminInventoryTests
     }
 
     [Fact]
-    public void A_blind_count_is_typed_saved_and_applied_and_shows_what_was_missing()
+    public async Task A_blind_count_is_typed_saved_and_applied_and_shows_what_was_missing()
     {
-        var (ctx, api) = ScreenContext.Create("inventory.count", "inventory.adjust");
+        var (ctx, api) = await ScreenContext.CreateAsync("inventory.count", "inventory.adjust");
         using var _ = ctx;
         var count = Guid.NewGuid();
         Warehouses(api);
@@ -116,9 +116,9 @@ public sealed class AdminInventoryTests
     }
 
     [Fact]
-    public void A_transfer_moves_the_picked_products_between_two_warehouses()
+    public async Task A_transfer_moves_the_picked_products_between_two_warehouses()
     {
-        var (ctx, api) = ScreenContext.Create("inventory.transfer");
+        var (ctx, api) = await ScreenContext.CreateAsync("inventory.transfer");
         using var _ = ctx;
         Warehouses(api, two: true);
         api.Json("GET", "/api/inventory/products", new[]

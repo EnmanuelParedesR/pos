@@ -1,18 +1,16 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
-import { App } from "../App";
-import "../Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
-import type { Me, ProductSales, ShiftReport } from "../api";
-import { json } from "../testing";
+import type { ReactElement } from "react";
+import { cleanup, screen } from "@testing-library/react";
+import type { ProductSales, ShiftReport } from "../api";
+import { json, renderPage } from "../testing";
+import { SalesPage } from "./SalesPage";
+import { ShiftReportPage } from "./ShiftReportPage";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   localStorage.clear();
 });
-
-const me: Me = { email: "contable@example.com", tenantId: "t0", tenantName: "Carnicería La Esquina", role: "ReadOnly", tenants: [], canViewCosts: false };
 
 const report: ShiftReport = {
   shift: {
@@ -24,22 +22,17 @@ const report: ShiftReport = {
   cashMovements: [{ type: "Withdrawal", method: "Cash", count: 1, amount: 200 }],
 };
 
-function renderApp(path: string, routes: Record<string, unknown>) {
-  localStorage.setItem("abastalia.refreshToken", "saved");
+/** `page` at `path` (matched by `route`), the API answering `routes` (a read-only member). */
+function renderApp(page: ReactElement, path: string, route: string, routes: Record<string, unknown>) {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-    if (url.endsWith("/api/me")) return json(200, me);
     const hit = Object.keys(routes).find((r) => url.includes(r));
     return json(200, hit ? routes[hit] : []);
   }));
-  render(
-    <MemoryRouter initialEntries={[path]}>
-      <App />
-    </MemoryRouter>,
-  );
+  renderPage(page, { path, route, context: { canEdit: false } });
 }
 
 it("TK-200: a closed shift opens as one printable Z page", async () => {
-  renderApp("/shifts/s1", { "/api/panel/shifts/s1": report });
+  renderApp(<ShiftReportPage />, "/shifts/s1", "shifts/:shiftId", { "/api/panel/shifts/s1": report });
 
   expect(await screen.findByText("Cierre de turno Z #7")).toBeTruthy();
   expect(screen.getByText("Caja 1 · Ana")).toBeTruthy();
@@ -50,7 +43,7 @@ it("TK-200: a closed shift opens as one printable Z page", async () => {
 
 it("TK-201: without permission to see costs, top products show no profit", async () => {
   const products: ProductSales[] = [{ productId: "p1", description: "Bistec de res", quantity: 2, total: 500, profit: null, unit: "Pound" }];
-  renderApp("/sales", { "/api/panel/sales/top-products": products });
+  renderApp(<SalesPage />, "/sales", "sales", { "/api/panel/sales/top-products": products });
 
   expect(await screen.findByText("Bistec de res")).toBeTruthy();
   expect(screen.queryByText(/gana/)).toBeNull();

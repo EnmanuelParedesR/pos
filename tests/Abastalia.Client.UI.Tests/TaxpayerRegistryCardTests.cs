@@ -1,6 +1,8 @@
 using System.Net;
 using Bunit;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 using Abastalia.Client.UI.Components;
 
@@ -13,9 +15,9 @@ public sealed class TaxpayerRegistryCardTests
         new { running, percent, taxpayers, error = (string?)null, finishedUtc = running ? (DateTime?)null : DateTime.UtcNow };
 
     [Fact]
-    public void The_file_is_uploaded_as_is_and_the_progress_is_followed_until_it_ends()
+    public async Task The_file_is_uploaded_as_is_and_the_progress_is_followed_until_it_ends()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/taxpayer-registry/import", new { running = false, percent = 0, taxpayers = 0 })
            .Respond("POST", "/api/fiscal/taxpayer-registry", _ =>
@@ -27,14 +29,16 @@ public sealed class TaxpayerRegistryCardTests
 
         card.FindComponent<InputFile>().UploadFiles(InputFileContent.CreateFromText("131245678|COLMADO EL SOL SRL", "DGII_RNC.TXT"));
 
-        card.WaitForAssertion(() => card.Markup.ShouldContain("Padrón cargado: 712,345 contribuyentes"), TimeSpan.FromSeconds(5));
+        card.WaitForAssertion(() => card.Markup.ShouldContain("Cargando el padrón: 0 %"));
+        ctx.Services.GetRequiredService<FakeTimeProvider>().Advance(TimeSpan.FromSeconds(1)); // the card asks again every second
+        card.WaitForAssertion(() => card.Markup.ShouldContain("Padrón cargado: 712,345 contribuyentes"));
         api.Requests.Single(r => r.Method == "POST").Body.ShouldBe("131245678|COLMADO EL SOL SRL");
     }
 
     [Fact]
-    public void An_import_already_running_shows_its_progress_and_the_file_picker_waits()
+    public async Task An_import_already_running_shows_its_progress_and_the_file_picker_waits()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/taxpayer-registry/import", Status(true, 42, 300_000));
         var card = ctx.Render<TaxpayerRegistryCard>();

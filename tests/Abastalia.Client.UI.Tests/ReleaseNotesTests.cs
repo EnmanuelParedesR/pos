@@ -9,9 +9,9 @@ namespace Abastalia.Client.UI.Tests;
 public sealed class ReleaseNotesTests
 {
     [Fact]
-    public void Shows_the_versions_highlights_until_closed_and_saves_it()
+    public async Task Shows_the_versions_highlights_until_closed_and_saves_it()
     {
-        var (ctx, api) = ScreenContext.Create();
+        var (ctx, api) = await ScreenContext.CreateAsync();
         using var _ = ctx;
         api.Json("GET", "/api/settings/release-notes/seen", new { version = (string?)null })
            .Respond("PUT", "/api/settings/release-notes/seen", _ => new(System.Net.HttpStatusCode.NoContent));
@@ -27,9 +27,9 @@ public sealed class ReleaseNotesTests
     }
 
     [Fact]
-    public void Stays_hidden_once_seen_or_without_notes_for_the_version()
+    public async Task Stays_hidden_once_seen_or_without_notes_for_the_version()
     {
-        var (ctx, api) = ScreenContext.Create();
+        var (ctx, api) = await ScreenContext.CreateAsync();
         using var _ = ctx;
         api.Json("GET", "/api/settings/release-notes/seen", new { version = "1.0.0" });
         var seen = ctx.Render<ReleaseNotesCard>(p => p.Add(c => c.Version, "1.0.0"));

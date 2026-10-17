@@ -9,9 +9,9 @@ namespace Abastalia.Client.UI.Tests;
 public sealed class AdminSummaryTests
 {
     [Fact]
-    public void A_shortage_goes_first_with_the_person_the_amount_and_a_way_to_see_it()
+    public async Task A_shortage_goes_first_with_the_person_the_amount_and_a_way_to_see_it()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view");
         using var _ = ctx;
         var today = Format.Today;
         var shiftId = Guid.NewGuid();
@@ -34,9 +34,9 @@ public sealed class AdminSummaryTests
     }
 
     [Fact]
-    public void Today_is_compared_with_the_same_hours_of_last_week_and_the_mix_comes_from_the_sales()
+    public async Task Today_is_compared_with_the_same_hours_of_last_week_and_the_mix_comes_from_the_sales()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view");
         using var _ = ctx;
         var today = Format.Today;
         var lastWeek = today.AddDays(-7);

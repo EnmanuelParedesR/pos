@@ -28,9 +28,9 @@ public sealed class AdminEcfTests
         .Json("GET", "/api/fiscal/voids", Array.Empty<object>());
 
     [Fact]
-    public void A_rejected_e_CF_is_replaced_with_a_second_tap_and_the_environment_is_shown()
+    public async Task A_rejected_e_CF_is_replaced_with_a_second_tap_and_the_environment_is_shown()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         Ecf(api).Json("POST", $"/api/fiscal/documents/{Rejected}/replace", new { documentId = Guid.NewGuid(), eNcf = "E310000000003" }, HttpStatusCode.Created);
         var page = ctx.Render<Ecf>();
@@ -49,9 +49,9 @@ public sealed class AdminEcfTests
     }
 
     [Fact]
-    public void A_pending_e_CF_is_voided_and_unused_numbers_show_what_will_be_voided_before_asking()
+    public async Task A_pending_e_CF_is_voided_and_unused_numbers_show_what_will_be_voided_before_asking()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         Ecf(api).Json("POST", $"/api/fiscal/documents/{Pending}/void", new { id = Guid.NewGuid(), from = "E310000000002", to = "E310000000002", count = 1L }, HttpStatusCode.Created)
             .Json("POST", $"/api/fiscal/sequences/{Range}/void", new { id = Guid.NewGuid(), from = "E340000000011", to = "E340000000050", count = 40L }, HttpStatusCode.Created);
@@ -73,9 +73,9 @@ public sealed class AdminEcfTests
     }
 
     [Fact]
-    public void The_summary_warns_about_rejected_e_CF_and_a_certificate_that_expires_within_30_days()
+    public async Task The_summary_warns_about_rejected_e_CF_and_a_certificate_that_expires_within_30_days()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view", "fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view", "fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/queue", new { pending = 0, overdue = 0, nextDeadlineUtc = (DateTime?)null, rejected = 2, simulated = 0, certificateExpiresUtc = DateTime.UtcNow.AddDays(12.5) });
         var page = ctx.Render<Summary>();

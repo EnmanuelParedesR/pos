@@ -1,6 +1,7 @@
 using System.Net;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 using Abastalia.Client.UI.Api;
 using Abastalia.Client.UI.Components;
@@ -15,10 +16,10 @@ public sealed class PeripheralsTests
 {
     private static readonly ProductByCode Chuleta = new(Guid.NewGuid(), null, "Chuleta ahumada", "Pound", "General18", 185m, null, 1m, null, null, [], 40m);
 
-    private static (BunitContext Ctx, FakeApi Api, TestDrivers Hw) Create(HardwareSettings settings, params string[] permissions)
+    private static async Task<(BunitContext Ctx, FakeApi Api, TestDrivers Hw)> CreateAsync(HardwareSettings settings, params string[] permissions)
     {
-        var (ctx, api) = ScreenContext.Create(permissions.Length == 0 ? ["sales.create", "register.open", "register.close", "register.cash-in", "credit.collect"] : permissions);
-        ctx.Services.GetRequiredService<Peripherals>().SaveAsync(settings).GetAwaiter().GetResult();
+        var (ctx, api) = await ScreenContext.CreateAsync(permissions.Length == 0 ? ["sales.create", "register.open", "register.close", "register.cash-in", "credit.collect"] : permissions);
+        await ctx.Services.GetRequiredService<Peripherals>().SaveAsync(settings);
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Json("GET", "/api/inventory/products/by-code/2001", Chuleta)
            .Json("GET", "/api/inventory/products/by-code/7460000000017", RegisterTests.Salami);
@@ -32,12 +33,11 @@ public sealed class PeripheralsTests
     }
 
     [Fact]
-    public void A_by_the_pound_product_waits_for_a_stable_weight_then_takes_it()
+    public async Task A_by_the_pound_product_waits_for_a_stable_weight_then_takes_it()
     {
-        var (ctx, _, hw) = Create(new(Scale: new("COM3", ScaleProtocol.Cas)));
+        var (ctx, _, hw) = await CreateAsync(new(Scale: new("COM3", ScaleProtocol.Cas)));
         using var _ = ctx;
-        hw.Scale.Pounds = 1.8m;
-        hw.Scale.Status = ScaleStatus.Unstable;
+        hw.Scale.Reading = new(1.8m, ScaleStatus.Unstable);
         var sale = ctx.Render<Sale>();
 
         Scan(sale, "2001");
@@ -45,25 +45,28 @@ public sealed class PeripheralsTests
         sale.Find(".weigh .esc-pill").ClassList.ShouldContain("esc-pill--warning");
         sale.Find("[role=dialog] .esc-button--primary").HasAttribute("disabled").ShouldBeTrue();
 
-        hw.Scale.Pounds = 1.75m;
-        hw.Scale.Status = ScaleStatus.Stable;
-        sale.WaitForAssertion(() => sale.Find(".weigh .esc-pill").TextContent.ShouldBe("Peso estable"));
-        sale.Find(".weigh__value").TextContent.ShouldContain("1.750");
+        hw.Scale.Reading = new(1.75m, ScaleStatus.Stable);
+        ctx.Services.GetRequiredService<FakeTimeProvider>().Advance(TimeSpan.FromMilliseconds(250)); // the dialog's next reading
+        sale.WaitForAssertion(() =>
+        {
+            sale.Find(".weigh .esc-pill").TextContent.ShouldBe("Peso estable");
+            sale.Find(".weigh__value").TextContent.ShouldContain("1.750");
+        });
         sale.Find("[role=dialog] .esc-button--primary").Click();
 
         var cart = ctx.Services.GetRequiredService<Cart>();
-        sale.WaitForAssertion(() => cart.Lines.Count.ShouldBe(1)); // the click lands on the renderer while the scale keeps polling
+        sale.WaitForAssertion(() => cart.Lines.Count.ShouldBe(1));
         var line = cart.Lines[0];
         (line.Quantity, line.Note).ShouldBe((1.75m, null));
         line.ToSaleLine().Quantity.ShouldBe(1.75m);
     }
 
     [Fact]
-    public void When_the_scale_does_not_answer_the_weight_is_typed_with_a_reason()
+    public async Task When_the_scale_does_not_answer_the_weight_is_typed_with_a_reason()
     {
-        var (ctx, _, hw) = Create(new(Scale: new("COM3", ScaleProtocol.Toledo8217)));
+        var (ctx, _, hw) = await CreateAsync(new(Scale: new("COM3", ScaleProtocol.Toledo8217)));
         using var _ = ctx;
-        hw.Scale.Status = ScaleStatus.Disconnected;
+        hw.Scale.Reading = ScaleReading.Disconnected;
         var sale = ctx.Render<Sale>();
 
         Scan(sale, "2001");
@@ -82,9 +85,9 @@ public sealed class PeripheralsTests
     }
 
     [Fact]
-    public void Without_a_scale_the_weight_is_typed_as_before()
+    public async Task Without_a_scale_the_weight_is_typed_as_before()
     {
-        var (ctx, _, _) = Create(new());
+        var (ctx, _, _) = await CreateAsync(new());
         using var _ = ctx;
         var sale = ctx.Render<Sale>();
 
@@ -94,9 +97,9 @@ public sealed class PeripheralsTests
     }
 
     [Fact]
-    public void A_cash_sale_prints_the_receipt_and_opens_the_drawer_in_one_job()
+    public async Task A_cash_sale_prints_the_receipt_and_opens_the_drawer_in_one_job()
     {
-        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20", 80)));
+        var (ctx, api, hw) = await CreateAsync(new(Printer: new("EPSON TM-T20", 80)));
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         var receipt = RegisterTests.ReceiptFor(210m) with { Payments = [new("Efectivo", 210m, 500m)], Change = 290m };
@@ -116,9 +119,9 @@ public sealed class PeripheralsTests
     [Theory]
     [InlineData("Accepted", "Aceptada por la DGII")]
     [InlineData("Pending", "Pendiente de respuesta de la DGII")]
-    public void TK208_a_31_waits_for_the_DGII_and_prints_its_answer(string status, string printed)
+    public async Task TK208_a_31_waits_for_the_DGII_and_prints_its_answer(string status, string printed)
     {
-        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20", 80)));
+        var (ctx, api, hw) = await CreateAsync(new(Printer: new("EPSON TM-T20", 80)));
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         var receipt = RegisterTests.ReceiptFor(210m) with { ENcf = "E310000000005", Payments = [new("Tarjeta", 210m, null)] };
@@ -135,9 +138,9 @@ public sealed class PeripheralsTests
     }
 
     [Fact]
-    public void TK208_a_31_the_DGII_rejected_is_not_printed_and_the_cashier_is_told()
+    public async Task TK208_a_31_the_DGII_rejected_is_not_printed_and_the_cashier_is_told()
     {
-        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20", 80)));
+        var (ctx, api, hw) = await CreateAsync(new(Printer: new("EPSON TM-T20", 80)));
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         var receipt = RegisterTests.ReceiptFor(210m) with { ENcf = "E310000000006", Payments = [new("Tarjeta", 210m, null)] };
@@ -157,7 +160,7 @@ public sealed class PeripheralsTests
     [Fact]
     public async Task With_printing_off_a_cash_sale_only_opens_the_drawer_and_the_choice_is_remembered()
     {
-        var (ctx, api, hw) = Create(new(Printer: new("COM4", 58)));
+        var (ctx, api, hw) = await CreateAsync(new(Printer: new("COM4", 58)));
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         var receipt = RegisterTests.ReceiptFor(210m) with { Payments = [new("Efectivo", 210m, 210m)] };
@@ -177,9 +180,9 @@ public sealed class PeripheralsTests
     }
 
     [Fact]
-    public void A_failed_print_keeps_the_sale_and_says_how_to_reprint()
+    public async Task A_failed_print_keeps_the_sale_and_says_how_to_reprint()
     {
-        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20")));
+        var (ctx, api, hw) = await CreateAsync(new(Printer: new("EPSON TM-T20")));
         using var _ = ctx;
         hw.Printer.Offline = true;
         var cart = ctx.Services.GetRequiredService<Cart>();
@@ -196,9 +199,9 @@ public sealed class PeripheralsTests
     }
 
     [Fact]
-    public void The_receipt_dialog_reprints_without_opening_the_drawer()
+    public async Task The_receipt_dialog_reprints_without_opening_the_drawer()
     {
-        var (ctx, _, hw) = Create(new(Printer: new("EPSON TM-T20")));
+        var (ctx, _, hw) = await CreateAsync(new(Printer: new("EPSON TM-T20")));
         using var _ = ctx;
         var receipt = RegisterTests.ReceiptFor(210m);
         var dialog = ctx.Render<ReceiptDialog>(p => p.Add(x => x.Receipt, receipt));
@@ -210,10 +213,10 @@ public sealed class PeripheralsTests
     }
 
     [Fact]
-    public void Opening_the_drawer_without_a_sale_needs_the_permission_or_a_supervisor()
+    public async Task Opening_the_drawer_without_a_sale_needs_the_permission_or_a_supervisor()
     {
         // TK-239: the server records the opening (with its reason) before the drawer opens; without the permission it asks for a supervisor.
-        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20")), "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api, hw) = await CreateAsync(new(Printer: new("EPSON TM-T20")), "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var route = $"/api/cash/shifts/{ScreenContext.Shift.ShiftId}/drawer-openings";
         api.Respond("POST", route, body => body.Contains("\"supervisorApprovalId\":null", StringComparison.Ordinal)
@@ -242,7 +245,7 @@ public sealed class PeripheralsTests
         api.Requests.Last(r => r.Route == route).Body.ShouldContain("\"reason\":\"Cambio para un cliente\"");
 
         // The server refuses (shift closed elsewhere): the drawer stays shut.
-        var (ctx2, api2, hw2) = Create(new(Printer: new("EPSON TM-T20")), "register.open-drawer");
+        var (ctx2, api2, hw2) = await CreateAsync(new(Printer: new("EPSON TM-T20")), "register.open-drawer");
         using var __ = ctx2;
         api2.Respond("POST", route, _ => FakeApi.Problem(HttpStatusCode.Conflict, "CashRegister.ShiftClosed", "El turno ya está cerrado."));
         var closed = ctx2.Render<RegisterMenu>();
@@ -254,10 +257,10 @@ public sealed class PeripheralsTests
     }
 
     [Fact]
-    public void The_Z_prints_on_the_thermal_printer_after_closing_and_from_Turnos()
+    public async Task The_Z_prints_on_the_thermal_printer_after_closing_and_from_Turnos()
     {
         // TK-239: the closing's result and Admin → Turnos print the Z on this PC's printer, at its width.
-        var (ctx, api, hw) = Create(new(Printer: new("EPSON TM-T20", 58)), "register.close", "register.approve-close", "shifts.view");
+        var (ctx, api, hw) = await CreateAsync(new(Printer: new("EPSON TM-T20", 58)), "register.close", "register.approve-close", "shifts.view");
         using var _ = ctx;
         var shift = ScreenContext.Shift.ShiftId;
         var supervisor = Guid.NewGuid();
@@ -301,7 +304,7 @@ public sealed class PeripheralsTests
     [Fact]
     public async Task The_register_reports_only_the_kind_of_scale_and_printer_once_per_change()
     {
-        var (ctx, api, _) = Create(new(Printer: new("EPSON TM-T20", 58), Scale: new("COM3", ScaleProtocol.Cas)));
+        var (ctx, api, _) = await CreateAsync(new(Printer: new("EPSON TM-T20", 58), Scale: new("COM3", ScaleProtocol.Cas)));
         using var _ = ctx;
         api.Respond("PUT", "/api/identity/devices/current/peripherals", _ => new HttpResponseMessage(HttpStatusCode.NoContent));
         var peripherals = ctx.Services.GetRequiredService<Peripherals>();

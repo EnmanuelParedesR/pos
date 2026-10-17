@@ -16,7 +16,7 @@ builder.Services.AddSingleton<ILocalStore>(new FileStore(
     builder.Configuration["Client:File"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Abastalia", "client-web.json")));
 // Simulated scale and printer (development): receipts go to a text file; the scale weighs Hardware:Pounds.
 var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Abastalia");
-var scale = new SimulatedScale { Pounds = builder.Configuration.GetValue("Hardware:Pounds", 2.5m) };
+var scale = new SimulatedScale { Reading = new(builder.Configuration.GetValue("Hardware:Pounds", 2.5m), ScaleStatus.Stable) };
 builder.Services.AddAbastaliaHardware(new SimulatedDrivers(scale, builder.Configuration["Hardware:PrinterFile"] ?? Path.Combine(data, "receipts.txt")),
     new HardwareSettings(new PrinterSettings("Simulada", 80), new ScaleSettings("Simulada", ScaleProtocol.Continuous)));
 

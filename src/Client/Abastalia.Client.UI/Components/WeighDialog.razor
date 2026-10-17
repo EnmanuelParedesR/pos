@@ -2,6 +2,7 @@
    that travels with the line (the supervisor sees it in the sale). *@
 @implements IDisposable
 @inject Peripherals Peripherals
+@inject TimeProvider Clock
 
 <Dialog Title="Pesar" Subtitle="@Name" OnClose="OnClose" OnKey="KeyAsync">
     <ChildContent>
@@ -79,7 +80,7 @@
     {
         try
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250));
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(250), Clock);
             do
             {
                 if (Peripherals.Scale is null || _manual) continue;

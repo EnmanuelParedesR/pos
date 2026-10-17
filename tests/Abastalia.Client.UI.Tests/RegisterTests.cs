@@ -19,9 +19,9 @@ public sealed class RegisterTests
         DateTime.UtcNow, "Caja 1", "Yudelka M.", null, null, [], total, 0, [], total, [], 0, "abc123", "", null, false);
 
     [Fact]
-    public void F7_opens_the_line_discount_not_the_quantity()
+    public async Task F7_opens_the_line_discount_not_the_quantity()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Json("GET", $"/api/inventory/products/by-code/7460000000017", Salami);
@@ -40,9 +40,9 @@ public sealed class RegisterTests
     }
 
     [Fact]
-    public void When_the_server_corrects_the_total_it_is_shown_and_confirmed_again()
+    public async Task When_the_server_corrects_the_total_it_is_shown_and_confirmed_again()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(Salami, null);
@@ -66,9 +66,9 @@ public sealed class RegisterTests
 
     /// <summary>R11 A16 (e2e 2026-10-16): with the store's default the card authorization is required, as the server checks it.</summary>
     [Fact]
-    public void A_card_payment_needs_its_authorization_when_the_store_asks_for_it()
+    public async Task A_card_payment_needs_its_authorization_when_the_store_asks_for_it()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(Salami, null);
@@ -96,9 +96,9 @@ public sealed class RegisterTests
     }
 
     [Fact]
-    public void A_store_that_turned_the_reference_off_charges_the_card_without_it()
+    public async Task A_store_that_turned_the_reference_off_charges_the_card_without_it()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(Salami, null);
@@ -114,9 +114,9 @@ public sealed class RegisterTests
     }
 
     [Fact]
-    public void A_large_discount_asks_for_a_supervisor_and_retries_with_the_approval()
+    public async Task A_large_discount_asks_for_a_supervisor_and_retries_with_the_approval()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(Salami, null);
@@ -152,9 +152,9 @@ public sealed class RegisterTests
     }
 
     [Fact]
-    public void A_wrong_pin_is_explained_without_leaving_the_screen()
+    public async Task A_wrong_pin_is_explained_without_leaving_the_screen()
     {
-        var (ctx, api) = ScreenContext.Create();
+        var (ctx, api) = await ScreenContext.CreateAsync();
         using var _ = ctx;
         ctx.Services.GetRequiredService<Session>().Close();
         api.Json("GET", "/api/identity/users/active", new[] { new ActiveUser(Guid.NewGuid(), "Yudelka M.", "yudelka") })

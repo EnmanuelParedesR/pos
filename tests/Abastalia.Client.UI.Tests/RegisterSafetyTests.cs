@@ -27,9 +27,9 @@ public sealed class RegisterSafetyTests
         screen.Find(selector).KeyDown(new KeyboardEventArgs { Key = key });
 
     [Fact]
-    public void When_the_session_expires_the_register_asks_for_the_pin_and_keeps_the_cart()
+    public async Task When_the_session_expires_the_register_asks_for_the_pin_and_keeps_the_cart()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null);
@@ -51,9 +51,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void A_checkout_without_an_answer_locks_the_cart_until_the_server_says_whether_it_was_saved()
+    public async Task A_checkout_without_an_answer_locks_the_cart_until_the_server_says_whether_it_was_saved()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null);
@@ -89,9 +89,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void A_return_retried_after_a_timeout_sends_the_same_id()
+    public async Task A_return_retried_after_a_timeout_sends_the_same_id()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "sales.return");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "sales.return");
         using var _ = ctx;
         var saleId = Guid.NewGuid();
         var line = new SaleDetailLine(Guid.NewGuid(), "Chuleta", 5m, 165m, 0, 825m, 0, 0, null, "Pound");
@@ -124,9 +124,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void Closing_counts_the_field_still_being_typed_when_F12_is_pressed()
+    public async Task Closing_counts_the_field_still_being_typed_when_F12_is_pressed()
     {
-        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect", "register.approve-close");
+        var (ctx, api) = await ScreenContext.CreateAsync("register.open", "register.close", "register.cash-in", "credit.collect", "register.approve-close");
         using var _ = ctx;
         api.Json("GET", "/api/cash/denominations", Denominations)
            .Json("POST", $"/api/cash/shifts/{ScreenContext.Shift.ShiftId}/close", Z(7));
@@ -143,9 +143,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void Opening_counts_the_field_still_being_typed_when_F12_is_pressed()
+    public async Task Opening_counts_the_field_still_being_typed_when_F12_is_pressed()
     {
-        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var register = new RegisterInfo(Guid.NewGuid(), "Caja 1", true, null, null);
         api.Json("GET", "/api/cash/denominations", Denominations)
@@ -163,9 +163,9 @@ public sealed class RegisterSafetyTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void TK281_with_no_registers_the_first_day_is_not_a_dead_end(bool canManageRegisters)
+    public async Task TK281_with_no_registers_the_first_day_is_not_a_dead_end(bool canManageRegisters)
     {
-        var (ctx, api) = canManageRegisters ? ScreenContext.Create("register.open", "registers.manage") : ScreenContext.Create("register.open");
+        var (ctx, api) = await (canManageRegisters ? ScreenContext.CreateAsync("register.open", "registers.manage") : ScreenContext.CreateAsync("register.open"));
         using var _ = ctx;
         api.Json("GET", "/api/cash/denominations", Denominations)
            .Json("GET", "/api/cash/registers", Array.Empty<RegisterInfo>())
@@ -183,9 +183,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void A_close_retried_after_it_was_saved_shows_its_Z()
+    public async Task A_close_retried_after_it_was_saved_shows_its_Z()
     {
-        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect", "register.approve-close");
+        var (ctx, api) = await ScreenContext.CreateAsync("register.open", "register.close", "register.cash-in", "credit.collect", "register.approve-close");
         using var _ = ctx;
         var shift = ScreenContext.Shift.ShiftId;
         api.Json("GET", "/api/cash/denominations", Denominations)
@@ -203,9 +203,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void A_supervisor_closes_another_registers_shift_from_the_main_PC()
+    public async Task A_supervisor_closes_another_registers_shift_from_the_main_PC()
     {
-        var (ctx, api) = ScreenContext.Create("register.close", "register.approve-close", "shifts.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("register.close", "register.approve-close", "shifts.view");
         using var _ = ctx;
         var other = Guid.NewGuid();
         var open = new ZReport(other, null, "Caja 3", "Cajera", DateTime.UtcNow.AddHours(-3), null, 500m, [], 2, 0, 0, 0, 0, 0, 0, 900m, null, null);
@@ -226,9 +226,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void A_scanned_pack_of_a_by_the_pound_product_adds_one_piece_without_asking_the_weight()
+    public async Task A_scanned_pack_of_a_by_the_pound_product_adds_one_piece_without_asking_the_weight()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var pack = new ProductByCode(Guid.NewGuid(), Guid.NewGuid(), "Chuleta, paquete 2 lb", "Pound", "Exempt", 450m, null, 2m, null, null, [], null);
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
@@ -246,9 +246,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void Confirming_twice_while_the_first_is_in_flight_sends_one_sale()
+    public async Task Confirming_twice_while_the_first_is_in_flight_sends_one_sale()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null);
@@ -269,9 +269,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void F3_and_a_key_on_the_pad_replace_the_quantity_instead_of_appending_to_it()
+    public async Task F3_and_a_key_on_the_pad_replace_the_quantity_instead_of_appending_to_it()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null);
@@ -287,9 +287,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void A_screen_that_fails_shows_a_notice_and_the_cart_survives()
+    public async Task A_screen_that_fails_shows_a_notice_and_the_cart_survives()
     {
-        var (ctx, _) = ScreenContext.Create("sales.create");
+        var (ctx, _) = await ScreenContext.CreateAsync("sales.create");
         using var __ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null);
@@ -305,9 +305,9 @@ public sealed class RegisterSafetyTests
     }
 
     [Fact]
-    public void Sign_in_shows_why_the_session_ended()
+    public async Task Sign_in_shows_why_the_session_ended()
     {
-        var (ctx, api) = ScreenContext.Create();
+        var (ctx, api) = await ScreenContext.CreateAsync();
         using var _ = ctx;
         ctx.Services.GetRequiredService<Session>().Close();
         api.Json("GET", "/api/identity/users/active", Array.Empty<ActiveUser>());

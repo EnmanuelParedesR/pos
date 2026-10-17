@@ -14,9 +14,9 @@ public sealed class AdminAuditRestoreTests
     private static readonly Guid Ana = Guid.NewGuid();
 
     [Fact]
-    public void The_audit_log_filters_shows_spanish_actions_and_expands_the_details()
+    public async Task The_audit_log_filters_shows_spanish_actions_and_expands_the_details()
     {
-        var (ctx, api) = ScreenContext.Create("audit.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("audit.view");
         using var _ = ctx;
         api.Json("GET", "/api/audit/users", new[] { new { id = Ana, name = "Ana" } })
            .Json("GET", "/api/audit", new object[]
@@ -44,9 +44,9 @@ public sealed class AdminAuditRestoreTests
     }
 
     [Fact]
-    public void Restoring_asks_for_the_passphrase_closed_registers_and_a_second_confirmation()
+    public async Task Restoring_asks_for_the_passphrase_closed_registers_and_a_second_confirmation()
     {
-        var (ctx, api) = ScreenContext.Create("backups.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("backups.manage");
         using var _ = ctx;
         const string file = "abastalia-20261014-233000.abastalia-backup";
         api.Json("GET", "/api/backups", new[] { new { fileName = file, bytes = 1_048_576L, dateUtc = DateTime.UtcNow } })

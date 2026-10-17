@@ -1,10 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
-import { App } from "../App";
-import "../Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import type { AlertPreferences, Me, ReceivedEcf } from "../api";
-import { json } from "../testing";
+import { json, renderPage } from "../testing";
+import { NotificationsPage, UnsubscribePage } from "./NotificationsPage";
+import { ReceivedPage } from "./ReceivedPage";
 
 afterEach(() => {
   cleanup();
@@ -26,11 +25,12 @@ const received: ReceivedEcf = {
   approvalDgiiUtc: null, approvalMessage: null, acknowledgedUtc: null,
 };
 
-function renderApp(me: Me | null, path: string) {
-  if (me) localStorage.setItem("abastalia.refreshToken", "saved");
+const pages = { "/notifications": <NotificationsPage />, "/unsubscribe": <UnsubscribePage />, "/received": <ReceivedPage /> };
+
+/** The page at `path` as `me` sees it (null: no session); returns the fetch mock. */
+function renderApp(me: Me | null, path: keyof typeof pages) {
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
-    if (url.endsWith("/api/me")) return json(200, me);
     if (url.endsWith("/api/notifications/unsubscribe")) return json(JSON.parse(String(init?.body)).token === "good" ? 204 : 404, { detail: "no" });
     if (url.endsWith("/api/notifications")) return json(200, method === "PUT" ? { ...prefs, ...JSON.parse(String(init?.body)) } : prefs);
     if (url.endsWith("/api/panel/fe/received")) return json(200, [received]);
@@ -38,11 +38,7 @@ function renderApp(me: Me | null, path: string) {
     return json(200, []);
   });
   vi.stubGlobal("fetch", fetch);
-  render(
-    <MemoryRouter initialEntries={[path]}>
-      <App />
-    </MemoryRouter>,
-  );
+  renderPage(pages[path], { path, context: { canEdit: me?.role === "Owner" } });
   return fetch;
 }
 
