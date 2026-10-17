@@ -33,9 +33,27 @@ Ajuste por bot en la configuración `Talia:Panel` y `Talia:Public` (`Deployment`
 
 **Resultados de las evaluaciones** (38 casos, juez gpt-5-mini; tabla completa en la sección 6):
 
-RESULTADOS_RONDA_2
+Precios por millón de tokens (Azure Global Standard, eastus2, 17/10/2026; entrada · entrada en caché · salida): gpt-5-nano 0.05 · 0.005 · 0.40;
+gpt-4.1-nano 0.10 · 0.025 · 0.40; gpt-5.4-nano 0.20 · 0.02 · 1.25; **gpt-5.6-luna 0.20 · 0.02 · 1.20**; gpt-5-mini 0.25 · 0.025 · 2.00.
 
-**Decisión:** DECISION_MODELO
+| Modelo (razonamiento) | Pasa las reglas | Juez (1–5) | Juez ≥ 4 | US$ por 1,000 preguntas | p50 |
+|---|---|---|---|---|---|
+| **gpt-5.6-luna (none)** — ronda 2 | **76/76 (100 %)** | **4.72** | 86 % | 0.39 | **3.0 s** |
+| **gpt-5.6-luna (none)** — confirmación, ya con caché y límites | 71/76 (93 %; 3 de las 5 fallas son 429 del despliegue de pruebas) | **4.79** | **90 %** | **0.24** | **3.1 s** |
+| gpt-5-nano (low) — ronda 2 / confirmación | 69/76 (91 %) / 72/76 (95 %) | 4.44 / 4.42 | 74 % | 0.27 / 0.29 | 5.1 s |
+| gpt-5.4-nano (low) | 72/76 (95 %) | 4.54 | 79 % | 0.50 | 3.2 s |
+| gpt-5-mini (low) | 67/76 (88 %) | 4.79 | 91 % | 0.93 | 5.7 s |
+| gpt-5-nano (medium) | 68/76 (89 %) | 4.63 | 82 % | 0.91 | 14.8 s |
+| gpt-5-nano (minimal) — ronda 1 | 24/38 (63 %) | 4.00 | 63 % | 0.10 | 3.4 s |
+| gpt-4.1-nano — ronda 1 | 31/38 (82 %) | 3.84 | 49 % | 0.19 | 1.8 s |
+
+38 casos (17 del panel, 21 del sitio) × 2 corridas; juez gpt-5-mini. Un p95 de ~33 s aparece en todos: son los reintentos de las evaluaciones cuando el despliegue de pruebas (50K tokens/min) se satura, no la respuesta normal.
+
+**Decisión:** **gpt-5.6-luna sin razonamiento (`none`) y verbosidad baja para las dos Talias**, en su propio despliegue `talia` (Bicep). Es la mejor nota del juez junto a gpt-5-mini a la cuarta parte del costo, la más rápida, y la única que no rompió una regla en la ronda 2; con la caché de las reglas sale **más barata que gpt-5-nano** (US$0.24 frente a 0.29 por 1,000 preguntas: no gasta tokens de razonamiento). Además se soporta hasta 2028-01 (gpt-5-nano, hasta 2027-02). Con el Esencial (100 preguntas al mes) son ~US$0.02 por negocio al mes; el sitio con su tope diario, ≤ US$0.80 al día.
+
+Lo que se descartó y por qué: razonamiento *minimal* (63 %), gpt-4.1-nano (inventa y no sigue reglas), *medium* (3 veces más caro y 3 veces más lento sin ganar reglas), gpt-5-mini (4 veces más caro, mismo juez). La lectura de facturas sigue en `chat` (gpt-5-nano): luna no se probó con imágenes ni PDF. **Para TK-341** (acciones, que dice "gpt-5-nano para todo mientras pase el arnés"): estos números sugieren correr su arnés también con `talia` (luna) antes de decidir entre nano y mini.
+
+Lo que todavía falla (y queda en los casos): a veces omite un detalle de la base (el aviso de 24 y 60 horas sin internet, el número del cierre Z) y, si el visitante nombra un competidor, lo repite al contestar. Si un 👎 repite esto, se ajusta la regla y se vuelve a medir.
 
 ## 3. El arnés (harness): cómo sabemos que Talia contesta bien
 
@@ -53,6 +71,8 @@ Tres capas, de la más barata a la más cara:
 3. **Producción:**
    - Una línea de log por respuesta, **sin la pregunta**: bot, vueltas, herramientas, tokens, caché, razonamiento, ms y versión de la base (`Talia answered …`). En Application Insights se grafica costo y uso por bot.
    - «Me sirvió / No me sirvió» bajo cada respuesta: solo al tocarlo se envían la pregunta y la respuesta (`Talia feedback …`, el chat lo dice). Es la fuente de nuevos casos de evaluación.
+
+**Relación con el arnés de TK-337** (Talia con acciones, `docs/talia-acciones.md`): aquel corre conversaciones guionadas con un modelo falso en CI y el comando `talia-eval` para comprobar **qué herramienta o acción** elige Talia y con qué argumentos; este mide **la respuesta** (verdad, tono, costo, latencia, búsqueda) y sirve para **elegir el modelo**. Se complementan; `OwnerAssistant.ConverseAsync` y `SystemPrompt` son la entrada que usan los dos.
 
 **Regla de trabajo:** un cambio en las reglas, la base o el modelo se prueba primero con `talia-evals.ps1` y no baja la nota del juez ni el % que pasa del modelo elegido. Un 👎 con una pregunta nueva se vuelve un caso en `cases.json` o en `knowledge-evals.json`.
 
@@ -117,7 +137,13 @@ Cada fase se activa por una señal medible, no por adelantado.
 
 ## 6. Resultados completos de las evaluaciones
 
-TABLA_COMPLETA
+Los informes completos (cada falla con su respuesta, tokens y latencia por caso) quedan en `TestResults/talia/report-*.md` al correr `deploy/azure/talia-evals.ps1` (no se versionan). Resumen de las tres corridas del 17/10/2026:
+
+- **Ronda 1** (38 casos × 1, 6 configuraciones): encontró los defectos del arnés y del bot, ya corregidos — el filtro de contenido de Azure devolvía 503, rutas inventadas (`/panel/products`, ids de artículo como ruta), un `storeId` en la respuesta, "RD$ -150", la búsqueda no unía "instalo" con "instalación", el juez castigaba la fecha y las páginas que Talia sí conoce, y gpt-5.6 rechaza herramientas con razonamiento.
+- **Ronda 2** (38 × 2, 5 configuraciones): tabla de la sección 2; gpt-5.6-luna (none) 100 % de las reglas.
+- **Confirmación** (38 × 2, luna y nano) con lo que va a producción: página que mira el visitante, sin tuteo, tope de salida, historial corto del sitio. Luna 4.79 / 90 % ≥ 4 a US$0.24; nano 4.42 / 74 % a US$0.29.
+
+Búsqueda (determinista, en CI): recall@3 = 96.1 % (98/102). Las que fallan: «¿Qué es Abastalia?» (todas son palabras vacías; la herramienta cae al artículo general), «que es abastalia y para que sirve» (encuentra *para qué negocios*), «¿Qué computadora necesito?» y «¿Cómo uno una segunda caja?» («uno» de *unir* es palabra vacía).
 
 ## 7. Lo que el dueño tiene que completar para que Talia conteste todo
 

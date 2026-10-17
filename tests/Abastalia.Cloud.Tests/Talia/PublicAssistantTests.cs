@@ -122,7 +122,7 @@ public sealed class PublicBudgetTests(PublicTaliaApp app) : IClassFixture<Public
         // 3 rounds × 400 tokens per question: the third question finds 2,400 of 3,000 spent and still runs; then no room.
         for (var i = 0; i < 3; i++) (await client.PostAsJsonAsync("/api/public/assistant/ask", new { question = "¿Sin internet?" })).StatusCode.ShouldBe(HttpStatusCode.OK);
         var resting = await client.PostAsJsonAsync("/api/public/assistant/ask", new { question = "¿Sin internet?" });
-        resting.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        resting.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
         (await resting.ErrorCode()).ShouldBe("Assistant.Resting");
 
         app.Clock.Advance(TimeSpan.FromDays(1));

@@ -78,13 +78,7 @@ internal sealed class AzureOpenAIChatModel(HttpClient http, AzureOpenAIOptions o
         if (tuning.MaxCompletionTokens is { } max) body["max_completion_tokens"] = max;
         var deployment = string.IsNullOrWhiteSpace(tuning.Deployment) ? options.Deployment! : tuning.Deployment;
         var url = $"{options.Endpoint!.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(deployment)}/chat/completions?api-version={options.ApiVersion}";
-        using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json") };
-        if (!string.IsNullOrWhiteSpace(options.ApiKey)) request.Headers.Add("api-key", options.ApiKey);
-        else
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", (await Identity.Value.GetTokenAsync(
-                new Azure.Core.TokenRequestContext(["https://cognitiveservices.azure.com/.default"]), ct)).Token); // cached by the credential
-        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        using var response = await http.SendAsync(request, ct);
+        using var response = await SendAsync(url, body.ToJsonString(), ct);
         // TK-348 (evals): Azure's content filter answers a jailbreak or an abusive prompt with 400 "content_filter". That is a question Talia
         // declines, not an outage: answer it like one instead of "no disponible".
         if (response.StatusCode == System.Net.HttpStatusCode.BadRequest && (await response.Content.ReadAsStringAsync(ct)).Contains("\"content_filter\"", StringComparison.Ordinal))
@@ -106,6 +100,26 @@ internal sealed class AzureOpenAIChatModel(HttpClient http, AzureOpenAIOptions o
         var content = message.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String ? c.GetString() : null;
         var usage = json.RootElement.TryGetProperty("usage", out var u) ? Usage(u) : null;
         return new ChatMessage("assistant", content, calls, Tokens: usage?.Total ?? 0, Usage: usage);
+    }
+
+    /// <summary>One POST, retried once when the deployment is over its tokens per minute (429) and asks to wait 5 s or less: the evals hit it, and a
+    /// short wait beats "no disponible". A longer wait is not retried (the person would be waiting anyway).</summary>
+    private async Task<HttpResponseMessage> SendAsync(string url, string json, CancellationToken ct)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+            if (!string.IsNullOrWhiteSpace(options.ApiKey)) request.Headers.Add("api-key", options.ApiKey);
+            else
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", (await Identity.Value.GetTokenAsync(
+                    new Azure.Core.TokenRequestContext(["https://cognitiveservices.azure.com/.default"]), ct)).Token); // cached by the credential
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            var response = await http.SendAsync(request, ct);
+            var wait = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromSeconds(2);
+            if (response.StatusCode != System.Net.HttpStatusCode.TooManyRequests || attempt > 1 || wait > TimeSpan.FromSeconds(5)) return response;
+            response.Dispose();
+            await Task.Delay(wait, ct);
+        }
     }
 
     public const string Declined = "No puedo ayudar con eso. Pregúnteme sobre Abastalia o sobre su negocio y con gusto le ayudo.";

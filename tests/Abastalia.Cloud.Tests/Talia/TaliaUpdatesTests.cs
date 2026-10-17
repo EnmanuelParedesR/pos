@@ -171,6 +171,36 @@ public sealed class TaliaUpdatesTests
         e.Message.ShouldContain("reasoning_effort");
     }
 
+    [Fact]
+    public async Task A_short_429_is_retried_once_and_a_second_one_is_the_answer()
+    {
+        var handler = new SequenceHandler(HttpStatusCode.TooManyRequests, HttpStatusCode.OK);
+        var model = new AzureOpenAIChatModel(new HttpClient(handler), new AzureOpenAIOptions { Endpoint = "https://ai.test", Deployment = "chat", ApiKey = "k" });
+        (await model.CompleteAsync([new("user", "Hola")], [], CancellationToken.None)).Content.ShouldBe("Hola");
+        handler.Calls.ShouldBe(2);
+
+        var busy = new SequenceHandler(HttpStatusCode.TooManyRequests, HttpStatusCode.TooManyRequests, HttpStatusCode.OK);
+        var stillBusy = new AzureOpenAIChatModel(new HttpClient(busy), new AzureOpenAIOptions { Endpoint = "https://ai.test", Deployment = "chat", ApiKey = "k" });
+        await Should.ThrowAsync<HttpRequestException>(() => stillBusy.CompleteAsync([new("user", "Hola")], [], CancellationToken.None));
+        busy.Calls.ShouldBe(2);
+    }
+
+    private sealed class SequenceHandler(params HttpStatusCode[] statuses) : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var status = statuses[Math.Min(Calls++, statuses.Length - 1)];
+            var response = new HttpResponseMessage(status)
+            {
+                Content = new StringContent("""{"choices":[{"message":{"role":"assistant","content":"Hola"}}]}""", Encoding.UTF8, "application/json"),
+            };
+            response.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromMilliseconds(10));
+            return Task.FromResult(response);
+        }
+    }
+
     private sealed class CaptureHandler(string response, HttpStatusCode status = HttpStatusCode.OK) : HttpMessageHandler
     {
         public string? Body { get; private set; }

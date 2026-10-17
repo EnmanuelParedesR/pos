@@ -150,7 +150,13 @@ internal static class PublicAssistantEndpoints
             if (question.Length is 0 or > PublicAssistant.MaxQuestion)
                 return EndpointExtensions.Problem(Error.Validation("Assistant.InvalidQuestion", $"Escriba una pregunta (hasta {PublicAssistant.MaxQuestion} letras)."));
             var ip = http.Connection.RemoteIpAddress?.ToString() ?? "";
-            if (!budget.HasRoom(ip)) return Unavailable("Assistant.Resting", "Talia ya contestó muchas preguntas hoy. Vuelva mañana o escríbanos en /precios#contacto.");
+            if (!budget.HasRoom(ip))
+            {
+                // A limit, not a fault: 429 like the other limits, and the platform's limit watch counts it (TK-311), not its 5xx watch.
+                services.GetService<Platform.LimitWatch>()?.Record(http, Platform.LimitReasons.RateLimit, "talia-public-budget");
+                return Results.Problem(detail: "Talia ya contestó muchas preguntas hoy. Vuelva mañana o escríbanos en /precios#contacto.",
+                    statusCode: StatusCodes.Status429TooManyRequests, title: "Assistant.Resting", extensions: new Dictionary<string, object?> { ["code"] = "Assistant.Resting" });
+            }
 
             var knowledge = store.Current; // TK-350: the refreshed base, if there is one
             try

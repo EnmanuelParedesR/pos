@@ -78,7 +78,7 @@ test("a thumbs-down on the site offers to talk to a person", async () => {
 
 // A resting Talia (daily budget) is amber, not an error: it is not the visitor's fault.
 test("when Talia is resting the visitor sees why and the question stays in the box", async () => {
-  vi.stubGlobal("fetch", vi.fn(async () => json(503, { code: "Assistant.Resting", detail: "Talia ya contestó muchas preguntas hoy." })));
+  vi.stubGlobal("fetch", vi.fn(async () => json(429, { code: "Assistant.Resting", detail: "Talia ya contestó muchas preguntas hoy." })));
   renderTalia();
 
   fireEvent.click(screen.getByRole("button", { name: "Pregúntale a Talia" }));
