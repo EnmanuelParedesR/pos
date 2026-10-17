@@ -56,6 +56,9 @@ internal sealed class SalesConfiguration :
         b.HasIndex(s => s.ShiftId);
         b.HasIndex(s => s.DateUtc);
         b.HasIndex(s => s.CustomerId);
+        // TK-304: the register finds a sale by its e-NCF, and a DGII replacement follows the sale or void that had the rejected one.
+        b.HasIndex(s => s.ENcf);
+        b.HasIndex(s => s.VoidENcf);
         b.Property(s => s.ENcf).HasMaxLength(13);
         b.Property(s => s.CustomerRnc).HasMaxLength(11);
         b.Property(s => s.QrUrl).HasMaxLength(1000);

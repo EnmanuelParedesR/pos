@@ -97,5 +97,4 @@ internal static class CashRegisterErrors
     public static readonly Error ShiftClosed = Error.Conflict("CashRegister.ShiftClosed", "El turno ya está cerrado.");
     public static readonly Error NotYourShift = Error.Forbidden("CashRegister.NotYourShift", "Este turno es de otro cajero.");
     public static readonly Error OtherDevice = Error.Forbidden("CashRegister.OtherDevice", "Esta caja está asignada a otro equipo.");
-    public static readonly Error InvalidDenomination = Error.Validation("CashRegister.InvalidDenomination", "Esa denominación no existe.");
 }

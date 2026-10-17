@@ -68,6 +68,42 @@ public sealed class CustomersTests(AbastaliaApp app) : IClassFixture<AbastaliaAp
     }
 
     [Fact]
+    public async Task TK304_two_registers_selling_on_account_at_once_never_pass_the_limit()
+    {
+        var (first, second) = (await app.CashierWithShiftAsync(), await app.CashierWithShiftAsync());
+        var customer = await CustomerAsync(limit: 1000m);
+        var rice = await ProductAsync();
+
+        var both = await Task.WhenAll(first.SellAsync(OnAccountSale(first.ShiftId, customer, rice, 8, 800m)),
+            second.SellAsync(OnAccountSale(second.ShiftId, customer, rice, 8, 800m)));
+
+        both.Count(r => r.StatusCode == HttpStatusCode.Created).ShouldBe(1);
+        // SQL Server: both read a debt of 0 and the customer's lock refuses the second; Sqlite runs them one after the other, so the second
+        // already sees 800 and asks for a supervisor.
+        (await both.Single(r => r.StatusCode != HttpStatusCode.Created).ErrorCode()).ShouldBeOneOf("Customers.CreditLimitExceeded", "Approval.Required");
+        (await DebtAsync(customer)).ShouldBe(800m);
+    }
+
+    [Fact]
+    public async Task TK304_a_payment_applied_to_a_sale_that_was_voided_cannot_be_voided()
+    {
+        var cashier = await app.CashierWithShiftAsync();
+        var customer = await CustomerAsync(limit: 5000m);
+        var sale = await (await cashier.SellAsync(OnAccountSale(cashier.ShiftId, customer, await ProductAsync(), 10, 1000m))).Json();
+        var saleId = sale.GetProperty("saleId").GetGuid();
+        var paymentId = Guid.CreateVersion7();
+        (await PayAsync(cashier, customer, 400m, paymentId: paymentId)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/void",
+            new { Reason = "error", SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.void", saleId) })).EnsureSuccessStatusCode();
+
+        var voidPayment = await cashier.Client.PostAsJsonAsync($"/api/customers/payments/{paymentId}/void",
+            new { Reason = "se tecleó mal", SupervisorApprovalId = await cashier.Client.ApproveAsync("credit.manage", paymentId) });
+
+        (await voidPayment.ErrorCode()).ShouldBe("Customers.PaymentOnVoidedSale"); // the 400 is already the customer's balance in favor
+        (await CreditBalanceAsync(customer)).ShouldBe(400m);
+    }
+
+    [Fact]
     public async Task A_payment_goes_into_the_register_pays_the_oldest_debts_and_cannot_exceed_the_debt()
     {
         var cashier = await app.CashierWithShiftAsync(openingFloat: 0m);

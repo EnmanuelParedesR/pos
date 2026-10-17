@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Abastalia.BuildingBlocks.Persistence;
+using Abastalia.Inventory.Contracts;
 using Abastalia.Inventory.Domain;
 
 namespace Abastalia.Inventory.Persistence;
@@ -19,6 +20,14 @@ internal sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> op
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<LabelFormat> LabelFormats => Set<LabelFormat>();
     public DbSet<StockCount> StockCounts => Set<StockCount>();
+
+    /// <summary>TK-304: a retried adjustment or transfer (same client id) is not applied twice. The warehouse row stays locked until commit, so a
+    /// concurrent retry waits here and then finds the first one's movements.</summary>
+    public async Task<bool> AlreadyMovedAsync(Guid warehouseId, Guid referenceId, StockMovementType type, CancellationToken ct)
+    {
+        await Warehouses.Where(w => w.Id == warehouseId).ExecuteUpdateAsync(s => s.SetProperty(w => w.Name, w => w.Name), ct);
+        return await StockMovements.AnyAsync(m => m.ReferenceId == referenceId && m.Type == type, ct);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

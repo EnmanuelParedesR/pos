@@ -97,7 +97,8 @@ public sealed class ClientContractTests(AbastaliaApp app) : IClassFixture<Abasta
         var range = $"from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}";
         var day = (await Send<List<C.DailySales>>(api, HttpMethod.Get, $"/api/reports/sales/by-day?{range}")).ShouldHaveSingleItem();
         (day.SaleCount, day.SalesWithItbis, day.Returns).ShouldBe((1, 500m, 250m));
-        (await Send<List<C.ProductSales>>(api, HttpMethod.Get, $"/api/reports/sales/by-product?{range}")).ShouldHaveSingleItem().Quantity.ShouldBe(1m);
+        var top = (await Send<List<C.ProductSales>>(api, HttpMethod.Get, $"/api/reports/sales/by-product?{range}")).ShouldHaveSingleItem();
+        (top.Quantity, top.Unit).ShouldBe((1m, "Pound")); // TK-304: the summary reads the unit from here (1 lb, not "1 unidad")
         (await Send<List<C.ShiftSummary>>(api, HttpMethod.Get, $"/api/reports/shifts?{range}")).ShouldHaveSingleItem().OpeningFloat.ShouldBe(2000m);
 
         // Electronic receipts (TK-204, TK-205, TK-176)
@@ -122,11 +123,17 @@ public sealed class ClientContractTests(AbastaliaApp app) : IClassFixture<Abasta
         var low = (await Send<List<C.StockLevel>>(api, HttpMethod.Get, "/api/inventory/stock?belowMinimumOnly=true")).ShouldHaveSingleItem();
         (low.ProductId, low.Quantity, low.Value, low.BelowMinimum).ShouldBe((ribs, 10m, 1200m, true));
         (await Send<List<C.StockLevel>>(api, HttpMethod.Get, $"/api/inventory/stock?warehouseId={store.Id}")).Count.ShouldBe(2);
-        await Send<C.AdjustmentRecorded>(api, HttpMethod.Post, "/api/inventory/adjustments", new C.AdjustStock(ribs, null, -1.5m, C.AdjustmentReason.Damage, "se cayó"));
+        var adjustment = new C.AdjustStock(ribs, null, -1.5m, C.AdjustmentReason.Damage, "se cayó", Guid.CreateVersion7());
+        await Send<C.AdjustmentRecorded>(api, HttpMethod.Post, "/api/inventory/adjustments", adjustment);
+        await Send<C.AdjustmentRecorded>(api, HttpMethod.Post, "/api/inventory/adjustments", adjustment); // TK-304: a retry, applied once
         var kardex = await Send<List<C.StockMovement>>(api, HttpMethod.Get, $"/api/inventory/products/{ribs}/movements?last=100");
         (kardex[0].Type, kardex[0].Quantity, kardex[0].ResultingStock).ShouldBe((C.StockMovementType.Adjustment, -1.5m, 8.5m));
+        kardex.Count(k => k.Type == C.StockMovementType.Adjustment && k.Quantity == -1.5m).ShouldBe(1);
         var cold = (await Send<C.Created>(api, HttpMethod.Post, "/api/inventory/warehouses", new { Name = "Cuarto frío" })).Id;
-        await Send<C.TransferRecorded>(api, HttpMethod.Post, "/api/inventory/transfers", new C.TransferStock(store.Id, cold, [new C.TransferLine(ribs, 2)]));
+        var transfer = new C.TransferStock(store.Id, cold, [new C.TransferLine(ribs, 2)], Guid.CreateVersion7());
+        await Send<C.TransferRecorded>(api, HttpMethod.Post, "/api/inventory/transfers", transfer);
+        (await Send<C.TransferRecorded>(api, HttpMethod.Post, "/api/inventory/transfers", transfer)).TransferId.ShouldBe(transfer.TransferId); // a retry
+        (await Send<List<C.StockLevel>>(api, HttpMethod.Get, $"/api/inventory/stock?warehouseId={cold}")).Single(s => s.ProductId == ribs).Quantity.ShouldBe(2m);
         var started = await Send<C.StockCountStarted>(api, HttpMethod.Post, "/api/inventory/stock-counts", new C.StartStockCount(null, category));
         (await Send<List<C.StockCountSummary>>(api, HttpMethod.Get, "/api/inventory/stock-counts")).ShouldHaveSingleItem().Status.ShouldBe(C.StockCountStatus.Open);
         var sheet = await Send<C.StockCountSheet>(api, HttpMethod.Get, $"/api/inventory/stock-counts/{started.StockCountId}");
@@ -189,6 +196,9 @@ public sealed class ClientContractTests(AbastaliaApp app) : IClassFixture<Abasta
         // Back office: invoices and reports (TK-187)
         (await Send<List<C.SaleSummary>>(api, HttpMethod.Get, $"/api/sales?{range}&page=1")).Count.ShouldBe(2);
         (await Send<List<C.SaleSummary>>(api, HttpMethod.Get, $"/api/sales?search={onAccount.ENcf}&page=1")).ShouldHaveSingleItem().Customer.ShouldBe("Ana Pérez");
+        // TK-304: a number goes by Number, anything else by the e-NCF (typed in lowercase too).
+        (await Send<List<C.SaleSummary>>(api, HttpMethod.Get, $"/api/sales?search={onAccount.Number}")).ShouldHaveSingleItem().ENcf.ShouldBe(onAccount.ENcf);
+        (await Send<List<C.SaleSummary>>(api, HttpMethod.Get, $"/api/sales?search={onAccount.ENcf.ToLowerInvariant()}")).ShouldHaveSingleItem().Number.ShouldBe(onAccount.Number);
         using (var csv = await api.GetAsync($"/api/reports/sales/by-day?format=csv&{range}"))
         {
             csv.IsSuccessStatusCode.ShouldBeTrue();

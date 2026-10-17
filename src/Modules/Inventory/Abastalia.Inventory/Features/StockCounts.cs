@@ -134,13 +134,18 @@ internal static class ApplyStockCount
             var ids = counted.Select(l => l.ProductId).ToList();
             var products = await db.Products.Where(p => ids.Contains(p.Id)).Select(p => new { p.Id, p.Name, p.Cost }).ToDictionaryAsync(p => p.Id, ct);
 
+            // TK-304: one statement clears the count flag of every counted product; only the lines that differ touch their stock row one by one,
+            // so a count of thousands of products keeps the registers' stock rows locked for as short as possible.
+            await db.Stock.Where(e => e.WarehouseId == count.WarehouseId
+                    && db.Set<StockCountLine>().Any(l => l.StockCountId == count.Id && l.Counted != null && l.ProductId == e.ProductId))
+                .ExecuteUpdateAsync(s => s.SetProperty(e => e.NeedsCount, false), ct);
             var differences = new List<CountDifference>();
-            foreach (var l in counted.OrderBy(l => l.ProductId))
+            foreach (var l in counted.Where(l => l.Counted!.Value != (l.SystemAtCount ?? 0)).OrderBy(l => l.ProductId))
             {
                 var p = products[l.ProductId];
                 var diff = l.Counted!.Value - (l.SystemAtCount ?? 0);
                 await movements.ApplyDifferenceAsync(StockMovementType.Count, count.Id, l.ProductId, count.WarehouseId, diff, p.Cost, "Conteo físico", ct);
-                if (diff != 0) differences.Add(new CountDifference(l.ProductId, p.Name, l.SystemAtCount ?? 0, l.Counted.Value, diff, Money.Round(diff * p.Cost)));
+                differences.Add(new CountDifference(l.ProductId, p.Name, l.SystemAtCount ?? 0, l.Counted.Value, diff, Money.Round(diff * p.Cost)));
             }
             var total = differences.Sum(d => d.Value);
             await audit.RecordAsync("inventory.apply-stock-count", "StockCount", count.Id, new { Lines = counted.Count, Differences = differences.Count, Value = total }, ct);

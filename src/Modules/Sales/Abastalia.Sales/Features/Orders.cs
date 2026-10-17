@@ -117,8 +117,15 @@ internal static class CreateOrder
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/orders", async (Command c, ICommandHandler<Command, Response> h, CancellationToken ct) =>
-                    (await h.Handle(c, ct)).ToHttp(r => Results.Created($"/api/orders/{r.OrderId}", r)))
+            app.MapPost("/api/orders", async (Command c, ICommandHandler<Command, Response> h, SalesDbContext db, CancellationToken ct) =>
+                {
+                    var result = await h.Handle(c, ct);
+                    // TK-304: two simultaneous retries of a new order: the second one hits the key the first one saved. Same order, same answer.
+                    if (result.IsFailure && result.Error!.Code == "Duplicate"
+                        && await db.Orders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == c.OrderId, ct) is { } saved)
+                        result = new Response(saved.Id, saved.Total);
+                    return result.ToHttp(r => Results.Created($"/api/orders/{r.OrderId}", r));
+                })
                 .RequirePermission(Permissions.SalesCreate).RequireUsableLicense().WithTags("Orders"); // TK-279
     }
 }
