@@ -1,0 +1,17 @@
+{
+  "name": "abastalia-lite-poc",
+  "private": true,
+  "version": "0.0.0",
+  "description": "TK-317: e-CF signing in the browser (F0 proof of concept, not shipped)",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "bench": "node bench.mjs"
+  },
+  "dependencies": {
+    "node-forge": "1.4.0"
+  },
+  "devDependencies": {
+    "@xmldom/xmldom": "0.9.12"
+  }
+}
