@@ -214,12 +214,25 @@ public sealed record Owner(HttpClient Client, Guid TenantId, string Email);
 /// <summary>The code an authenticator app shows (RFC 6238: HMAC-SHA1, 30 s, 6 digits) for Identity's Base32 key. Identity checks it against the real clock.</summary>
 public static class Totp
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> Used = new();
+
+    /// <summary>R12 #4: the cloud takes each step's code once per account, so a second code inside the same 30 s is the next step's (the cloud
+    /// accepts up to two steps ahead), as an authenticator app shows after the wait.</summary>
     public static string Code(string base32Key)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
+        return CodeAt(base32Key, Used.AddOrUpdate(base32Key, now, (_, last) => Math.Max(now, last + 1)));
+    }
+
+    /// <summary>The code given last for this key again (a replay).</summary>
+    public static string Again(string base32Key) => CodeAt(base32Key, Used[base32Key]);
+
+    private static string CodeAt(string base32Key, long counter)
     {
         var bits = string.Concat(base32Key.ToUpperInvariant().Where(c => c != ' ' && c != '=')
             .Select(c => Convert.ToString("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".IndexOf(c), 2).PadLeft(5, '0')));
         var key = Enumerable.Range(0, bits.Length / 8).Select(i => Convert.ToByte(bits.Substring(i * 8, 8), 2)).ToArray();
-        var step = BitConverter.GetBytes(DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30);
+        var step = BitConverter.GetBytes(counter);
         if (BitConverter.IsLittleEndian) Array.Reverse(step);
 #pragma warning disable CA5350 // RFC 6238 is HMAC-SHA1, as every authenticator app
         var hash = HMACSHA1.HashData(key, step);

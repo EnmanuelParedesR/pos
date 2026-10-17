@@ -59,7 +59,8 @@ builder.Services.AddIdentityApiEndpoints<CloudUser>(o =>
     .AddEntityFrameworkStores<CloudDbContext>()
     .AddClaimsPrincipalFactory<CloudClaimsFactory>()
     .AddUserManager<CloudUserManager>()
-    .AddSignInManager<CloudSignInManager>();
+    .AddSignInManager<CloudSignInManager>()
+    .AddTokenProvider<OneTimeAuthenticatorTokenProvider>(TokenOptions.DefaultAuthenticatorProvider); // R12 #4: a code works once
 // R11 B-Med5: short-lived tokens. The panel keeps the refresh token in localStorage (the API and the panel are on different sites, so an HttpOnly
 // cookie would be a third-party cookie); a strict CSP on the panel (swa-config.mjs) is what keeps scripts from reading it.
 builder.Services.Configure<Microsoft.AspNetCore.Authentication.BearerToken.BearerTokenOptions>(IdentityConstants.BearerScheme, o =>
@@ -158,9 +159,12 @@ builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tag
 var app = builder.Build();
 
 // Abastalia staff only (TK-189), never self-service: dotnet run --project src/Hosts/Abastalia.Host.Cloud -- grant-platform-admin <email>
-if (args is [PlatformCli.Grant or PlatformCli.Revoke or PlatformCli.ResetTwoFactor, var email])
+// R12 #5: reset-2fa <email> --reason "<who asked, how it was checked>" [--force for a staff account]
+if (args is [PlatformCli.Grant or PlatformCli.Revoke or PlatformCli.ResetTwoFactor, var email, .. var options])
 {
-    Environment.ExitCode = await PlatformCli.RunAsync(app.Services, args[0], email);
+    var reasonAt = Array.IndexOf(options, "--reason");
+    Environment.ExitCode = await PlatformCli.RunAsync(app.Services, args[0], email,
+        reasonAt >= 0 && reasonAt + 1 < options.Length ? options[reasonAt + 1] : null, options.Contains("--force"));
     return;
 }
 

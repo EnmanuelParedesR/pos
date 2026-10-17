@@ -67,9 +67,9 @@ public sealed class TwoFactorTests(CloudApp app) : IClassFixture<CloudApp>
         var refresh = (await (await LoginAsync(owner, Totp.Code(key))).Json()).GetProperty("refreshToken").GetString();
         (await LoginAsync(owner)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized); // RequiresTwoFactor
 
-        (await PlatformCli.RunAsync(app.Services, PlatformCli.ResetTwoFactor, owner.Email)).ShouldBe(0);
+        (await PlatformCli.RunAsync(app.Services, PlatformCli.ResetTwoFactor, owner.Email, "Llamó al teléfono del negocio")).ShouldBe(0);
 
-        (await app.InDbAsync(db => db.PlatformAudit.AnyAsync(a => a.Method == "CLI" && a.Path == $"{PlatformCli.ResetTwoFactor} {owner.Email}"))).ShouldBeTrue();
+        (await app.InDbAsync(db => db.PlatformAudit.AnyAsync(a => a.Method == "CLI" && a.Path == $"{PlatformCli.ResetTwoFactor} {owner.Email} --reason Llamó al teléfono del negocio"))).ShouldBeTrue();
         (await app.CreateClient().PostAsJsonAsync("/api/auth/refresh", new { refreshToken = refresh })).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         var again = await app.SignInAsync(owner.Email); // the password alone, then 2FA on again with a new key and new codes
         var status = await TwoFactorAsync(again, new { });
