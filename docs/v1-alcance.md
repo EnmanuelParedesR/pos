@@ -8,7 +8,6 @@ Venta, caja y cuadre ciego; inventario, compras y 606/607/608; clientes y fiado;
 ## 2. V1 con código pendiente (los hace el equipo ahora)
 | Ticket | Qué falta |
 |---|---|
-| TK-280 | Logo del negocio en recibo, RI y catálogo |
 | TK-282 | LCP del inicio < 2.5 s en móvil (imágenes) |
 | TK-283 | Regla del reloj para ACECF/ARECF |
 | TK-160 | Probar el instalador y el servicio en la VM de Azure |
