@@ -171,6 +171,9 @@ internal static class PlatformEndpoints
             return Results.NoContent();
         });
 
+        // TK-311: Salud de la plataforma, the last 24 hours or 7 days.
+        platform.MapGet("/watch", async (int? days, PlatformHealth health, CancellationToken ct) => Results.Ok(await health.ReportAsync(days == 7 ? 7 : 1, ct)));
+
         Certification.AccompanimentEndpoints.MapPlatformAccompaniment(platform); // TK-234
         Billing.BillingEndpoints.MapPlatformBilling(platform); // TK-249
         Releases.MapPlatformReleases(platform); // TK-254

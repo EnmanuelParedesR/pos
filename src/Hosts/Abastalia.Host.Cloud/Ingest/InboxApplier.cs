@@ -78,6 +78,15 @@ public sealed class InboxApplier(IServiceScopeFactory scopes, TimeProvider clock
         {
             log.LogWarning(ex, "The alerts run failed");
         }
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<Platform.PlatformHealth>().WhileAwakeAsync(ct); // TK-311
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            log.LogWarning(ex, "The limit watch run failed");
+        }
     }
 
     /// <summary>TK-251: applied events live on in the replica; their inbox rows go after this long. A store re-sending one that old

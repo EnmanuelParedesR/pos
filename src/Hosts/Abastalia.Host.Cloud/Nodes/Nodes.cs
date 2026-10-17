@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using Abastalia.BuildingBlocks.Endpoints;
 using Abastalia.Host.Cloud.Accounts;
 using Abastalia.Host.Cloud.Persistence;
+using Abastalia.Host.Cloud.Platform;
 using Abastalia.SharedKernel;
 
 namespace Abastalia.Host.Cloud.Nodes;
@@ -209,22 +210,29 @@ public sealed class FailedCodes(TimeProvider clock, IConfiguration config)
 
 /// <summary>Node calls, signed with the node's key (<see cref="NodeSignature"/>, ADR-0008). The tenant and store come from the node row, never from the body.</summary>
 internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, CloudDbContext db,
-    TimeProvider clock, NodeNonces nonces)
+    TimeProvider clock, NodeNonces nonces, LimitWatch watch)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
+    /// <summary>TK-311: counted for Salud de la plataforma.</summary>
+    private AuthenticateResult Refuse(string reason, string message)
+    {
+        watch.Record(Context, reason);
+        return AuthenticateResult.Fail(message);
+    }
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var header = Request.Headers.Authorization.ToString();
         if (!header.StartsWith(CloudAuth.NodeScheme + " ", StringComparison.Ordinal)) return AuthenticateResult.NoResult();
 
         var parts = header[(CloudAuth.NodeScheme.Length + 1)..].Trim().Split('.');
-        if (parts.Length != 4 || !Guid.TryParse(parts[0], out var nodeId)) return AuthenticateResult.Fail("Malformed node credentials.");
+        if (parts.Length != 4 || !Guid.TryParse(parts[0], out var nodeId)) return Refuse(LimitReasons.BadSignature, "Malformed node credentials.");
 
         var node = await db.Nodes.AsNoTracking().SingleOrDefaultAsync(n => n.Id == nodeId, Context.RequestAborted);
         // TK-189: revoked or disabled. The node keeps its events and retries; nothing is lost. R12 #1: checked before any of the body is read.
-        if (node is null) return AuthenticateResult.Fail("Invalid node credentials.");
-        if (node.RevokedUtc is not null) return AuthenticateResult.Fail("Revoked node.");
-        if (!await SignatureMatchesAsync(node, parts)) return AuthenticateResult.Fail("Invalid node credentials.");
+        if (node is null) return Refuse(LimitReasons.UnknownNode, "Invalid node credentials.");
+        if (node.RevokedUtc is not null) return Refuse(LimitReasons.RevokedNode, "Revoked node.");
+        if (!await SignatureMatchesAsync(node, parts)) return Refuse(LimitReasons.BadSignature, "Invalid node credentials.");
         if (await db.Tenants.AnyAsync(t => t.Id == node.TenantId && t.DisabledUtc != null, Context.RequestAborted)) return AuthenticateResult.Fail("Disabled tenant.");
 
         var identity = new ClaimsIdentity(
@@ -283,11 +291,12 @@ internal static class NodeGate
         var config = app.Configuration;
         var concurrent = config.GetValue("Nodes:ConcurrentPerIp", 8);
         var perMinute = config.GetValue("Nodes:RequestsPerMinutePerIp", 300);
-        var limiter = PartitionedRateLimiter.CreateChained(
-            PartitionedRateLimiter.Create<HttpContext, string>(h => RateLimitPartition.GetConcurrencyLimiter(Ip(h),
-                _ => new ConcurrencyLimiterOptions { PermitLimit = concurrent, QueueLimit = 0 })),
-            PartitionedRateLimiter.Create<HttpContext, string>(h => RateLimitPartition.GetFixedWindowLimiter(Ip(h),
-                _ => new FixedWindowRateLimiterOptions { PermitLimit = perMinute, Window = TimeSpan.FromMinutes(1) })));
+        // TK-311: two limiters (not chained) so Salud de la plataforma knows which one refused; the rate is only taken once a slot is.
+        var concurrency = PartitionedRateLimiter.Create<HttpContext, string>(h => RateLimitPartition.GetConcurrencyLimiter(Ip(h),
+            _ => new ConcurrencyLimiterOptions { PermitLimit = concurrent, QueueLimit = 0 }));
+        var rate = PartitionedRateLimiter.Create<HttpContext, string>(h => RateLimitPartition.GetFixedWindowLimiter(Ip(h),
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = perMinute, Window = TimeSpan.FromMinutes(1) }));
+        var watch = app.Services.GetRequiredService<LimitWatch>();
         app.Use(async (http, next) =>
         {
             if (!IsNodeCall(http.Request))
@@ -295,20 +304,28 @@ internal static class NodeGate
                 await next(http);
                 return;
             }
-            using var lease = await limiter.AcquireAsync(http, 1, http.RequestAborted);
-            if (!lease.IsAcquired)
+            using var slot = await concurrency.AcquireAsync(http, 1, http.RequestAborted);
+            using var permit = slot.IsAcquired ? await rate.AcquireAsync(http, 1, http.RequestAborted) : null;
+            if (permit is not { IsAcquired: true })
             {
-                if (lease.TryGetMetadata(MetadataName.RetryAfter, out var after))
+                var retry = false;
+                if (permit is not null && permit.TryGetMetadata(MetadataName.RetryAfter, out var after))
+                {
                     http.Response.Headers.RetryAfter = ((int)Math.Ceiling(after.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    retry = true;
+                }
+                watch.Record(http, permit is null ? LimitReasons.PerIpConcurrency : LimitReasons.PerIpRate, retryAfter: retry);
                 http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                 return;
             }
             if (Refused(http) is { } refused)
             {
-                await refused.ExecuteAsync(http);
+                watch.Record(http, refused.Reason);
+                await refused.Result.ExecuteAsync(http);
                 return;
             }
             await next(http);
+            if (Guid.TryParse(http.User.FindFirstValue(TenantClaims.StoreId), out var store)) watch.SeenStore(http, store);
         });
     }
 
@@ -318,20 +335,20 @@ internal static class NodeGate
         request.Path.StartsWithSegments("/api/nodes") || request.Headers.Authorization.ToString().StartsWith(CloudAuth.NodeScheme + " ", StringComparison.Ordinal);
 
     /// <summary>411 a body without its length, 413 one over the route's limit, 415 a compressed large upload.</summary>
-    private static IResult? Refused(HttpContext http)
+    private static (string Reason, IResult Result)? Refused(HttpContext http)
     {
         var request = http.Request;
         var endpoint = http.GetEndpoint();
         var large = endpoint?.Metadata.GetMetadata<LargeNodeUpload>();
         if (request.ContentLength is not { } length)
             return http.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true
-                ? Problem(StatusCodes.Status411LengthRequired, "Nodes.LengthRequired", "El envío no dice cuánto pesa. Actualice Abastalia en la PC de la tienda.") : null;
+                ? (LimitReasons.LengthRequired, Problem(StatusCodes.Status411LengthRequired, "Nodes.LengthRequired", "El envío no dice cuánto pesa. Actualice Abastalia en la PC de la tienda.")) : null;
         var limit = endpoint?.Metadata.GetMetadata<IRequestSizeLimitMetadata>()?.MaxRequestBodySize
                     ?? http.Features.Get<IHttpMaxRequestBodySizeFeature>()?.MaxRequestBodySize;
         if (length > limit)
-            return Problem(StatusCodes.Status413PayloadTooLarge, large?.TooLarge.Code ?? "Nodes.TooLarge", large?.TooLarge.Description ?? "El envío pesa más de lo que acepta la nube.");
+            return (LimitReasons.TooLarge, Problem(StatusCodes.Status413PayloadTooLarge, large?.TooLarge.Code ?? "Nodes.TooLarge", large?.TooLarge.Description ?? "El envío pesa más de lo que acepta la nube."));
         if (large is not null && request.Headers.ContentEncoding.Count > 0)
-            return Problem(StatusCodes.Status415UnsupportedMediaType, "Nodes.CompressedUpload", "Ese archivo se envía sin comprimir. Actualice Abastalia en la PC de la tienda.");
+            return (LimitReasons.Compressed, Problem(StatusCodes.Status415UnsupportedMediaType, "Nodes.CompressedUpload", "Ese archivo se envía sin comprimir. Actualice Abastalia en la PC de la tienda."));
         return null;
     }
 
