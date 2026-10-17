@@ -39,6 +39,32 @@ La tienda solo tiene **llaves públicas** (dentro de `LicenseService`): la del d
 
 Línea de tiempo con una licencia que vence el día 0: días 0–15 Gracia, 15–30 Restringido, desde el 30 Bloqueada. Con la prueba (14 días, o 30 si llegó recomendado): Prueba, luego Restringido 30 días, luego Bloqueada. Sin ninguna venta la prueba no empieza, así que nunca se bloquea una tienda que no ha vendido.
 
+### Instalar sin código: la prueba y sus abusos (TK-369)
+
+**Así es a propósito.** La instalación no pide código, cuenta ni tarjeta: la prueba es sin fricción (`docs/competencia-glecf.md` §7) y dura 14 días **desde la primera venta real** (30 con un `TrialGrant` firmado de la nube, TK-276), con todo encendido y 2 cajas además de la PC principal. Después, Restringido 30 días (sigue vendiendo y facturando) y luego Bloqueada. No se vende la prueba: lo que la limita es el tiempo, y el tiempo corre con el reloj de la licencia (no se atrasa con el de Windows).
+
+**Abusos revisados (17/10/2026):**
+
+| Abuso | Antes | Ahora |
+|---|---|---|
+| Borrar o mover la fecha de la primera venta en la base (el dueño es administrador de la PC y de SQL Server), o darse más días (`TrialDays`) | Prueba nueva, o tantos días como escribiera | **Cerrado (TK-369):** el inicio y los días tienen copia sellada en la carpeta de llaves (`license-trial.seen`, HMAC con el secreto del servidor, como `license-clock.seen`). Gana el inicio más temprano y los días sellados; la base sola no cambia nada. Una tienda de antes (sin copia) se cree la base, con 90 días como máximo, y desde ahí queda sellada |
+| Restaurar un respaldo de antes de la primera venta en la misma PC | Prueba nueva | **Cerrado:** misma copia sellada |
+| Desinstalar con "borrar datos" y volver a instalar | Prueba nueva | **Abierto:** se borra todo (carpeta de llaves incluida), también las ventas, el inventario y los clientes. Es caro para quien lo hace cada 44 días; lo cierra el ticket propuesto E |
+| Instalar en otra PC (o en varias) | Cada instalación es una tienda con su prueba | **Abierto, a propósito:** cada PC principal es una tienda con sus datos. Varias PC con el mismo RNC conectadas a la nube las vería el ticket E |
+| Quedarse sin conexión a la nube | La prueba corre igual | **Bien:** el reloj de la licencia nunca va hacia atrás (TK-279) y la prueba vence sola sin internet |
+| Vender siempre en el ambiente TesteCF o CerteCF de la DGII | Esas ventas no empiezan la prueba (R9 #12, para no gastarla en la certificación) | **Abierto:** una tienda que nunca pasa a producción nunca empieza la prueba. Pide configurar el proveedor DGII y un certificado: bajo. Ticket propuesto F |
+
+**Lo que no se hizo sin el dueño: registrar el negocio para probar.** Pedir correo y RNC en la nube antes de la primera venta (o para emitir e-CF reales) cerraría casi todo lo abierto, porque la nube recordaría la prueba por RNC aunque se reinstale. El costo:
+
+- **A favor:** la prueba queda atada al RNC del negocio (no se reinicia reinstalando ni en otra PC); Abastalia sabe quién está probando y puede ayudarle; el dueño ya tiene su cuenta del panel cuando compra.
+- **En contra:** un paso más justo cuando el dueño quiere ver la caja funcionando; pide internet el día de la instalación (muchos colmados lo tienen inestable); pide el RNC antes de que confíe en el producto; se pierde el "instale y venda" que nos diferencia; y quien quiera abusar igual puede inventar otro correo (el RNC sí es difícil de inventar si va a emitir e-CF reales, porque el certificado digital lo nombra).
+- **Término medio propuesto (ticket E):** no pedir nada al instalar; la **primera vez** que la tienda se conecte a la nube (o al emitir su primer e-CF real, que ya nombra el RNC) la nube recuerda el inicio de la prueba de ese RNC y la tienda adopta el más temprano (un `TrialGrant` firmado con el inicio). Así el que reinstala y se conecta sigue con su prueba vieja, y el que nunca se conecta pierde la nube, el respaldo en línea, el panel y Talia.
+
+**Tickets propuestos (TK-369):**
+
+- **E. La prueba por RNC en la nube.** La tienda manda en `POST /api/nodes/license` el inicio de su prueba; la nube guarda el más temprano por RNC (entre todas las cuentas) y responde un `TrialGrant` firmado con `startedUtc`; la tienda adopta el inicio más temprano (nunca uno más tardío). Opcional después: exigir la conexión para emitir e-CF en el ambiente `eCF` (decide el dueño, ver arriba).
+- **F. Prueba que empieza aunque la tienda nunca salga de TesteCF/CerteCF.** Que la prueba empiece igual 30 días después de la primera venta de prueba, si para entonces no hubo una real.
+
 ### La hora de la PC (TK-279)
 
 La licencia firmada vence sola, aunque la tienda nunca se conecte. Para que atrasar el reloj de Windows no la estire, la licencia corre con su propio reloj (`LicenseClock`): guarda la hora **más tardía** que la tienda vio y nunca va hacia atrás. Esa hora sale de: el reloj de la PC en cada consulta, el último registro de auditoría (encadenado, R11 A18), la fecha de emisión de la licencia (firmada) y la hora de la DGII en su última respuesta (encabezado HTTP `Date`, TK-156). Se guarda cada 10 minutos y al cerrar en `settings.Business.ClockSeenUtc` con un HMAC (`ClockSeenSeal`) hecho con un secreto del servidor que no está en la base de datos (carpeta de llaves, como el PIN pepper de R11 A3): cambiar la fecha a mano en la base de datos no sirve (se ignora y quedan los otros pisos).

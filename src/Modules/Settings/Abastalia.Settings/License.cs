@@ -144,15 +144,32 @@ internal sealed class LicenseService : IFeatureService
         }
     }
 
-    /// <summary>Reads the trial's start and length once per process.</summary>
+    /// <summary>Reads the trial's start and length once per process. TK-369: they have a sealed twin in the keys folder (<see cref="TrialFile"/>),
+    /// so clearing the start in the database (or setting it later, or giving it more days) does not restart or stretch the trial: the earlier start
+    /// wins and the length is the sealed one. Without the twin (a store before TK-369, a backup restored on a new PC) the database's values are
+    /// taken, the days at most <see cref="MaxTrialDays"/>, and sealed.</summary>
     private LicenseService LoadTrial()
     {
         if (_trialLoaded) return this;
         var trial = Read(sp => sp.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => new { b.TrialStartedUtc, b.TrialDays }).SingleOrDefault());
-        (_trialStartedUtc, _trialDays) = (trial?.TrialStartedUtc, trial?.TrialDays);
+        if (ReadSealed(TrialFile)?.Split('|') is [var start, var days])
+        {
+            DateTime? sealedStart = long.TryParse(start, out var t) ? new DateTime(t, DateTimeKind.Utc) : null;
+            _trialStartedUtc = new[] { trial?.TrialStartedUtc, sealedStart }.Where(d => d is not null).Min();
+            _trialDays = int.TryParse(days, out var d) ? d : null;
+        }
+        else (_trialStartedUtc, _trialDays) = (trial?.TrialStartedUtc, trial?.TrialDays is { } d ? Math.Min(d, MaxTrialDays) : null);
+        SealTrial();
         _trialLoaded = true;
         return this;
     }
+
+    /// <summary>TK-276: the longest trial a signed grant may give (and the most a pre-TK-369 database is believed).</summary>
+    public const int MaxTrialDays = 90;
+
+    internal const string TrialFile = "license-trial.seen";
+
+    private void SealTrial() => WriteSealed(TrialFile, $"{_trialStartedUtc?.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)}|{_trialDays}");
 
     /// <summary>TK-279: loaded once from the latest time this store saw: the sealed copy in settings.Business (ignored when its seal does not
     /// match, e.g. edited by hand), R12 B1 its sealed twin in the keys folder (so wiping the database's copy or its seal gains nothing), the newest
@@ -251,12 +268,20 @@ internal sealed class LicenseService : IFeatureService
 
     public void TrialStarted(DateTime utc)
     {
-        lock (_gate) LoadTrial()._trialStartedUtc = utc;
+        lock (_gate)
+        {
+            LoadTrial()._trialStartedUtc = utc;
+            SealTrial();
+        }
     }
 
     public void TrialLengthChanged(int days)
     {
-        lock (_gate) LoadTrial()._trialDays = days;
+        lock (_gate)
+        {
+            LoadTrial()._trialDays = days;
+            SealTrial();
+        }
     }
 
     public DateTime? TrialEndsUtc => TrialStartedUtc + TrialLength;
@@ -477,7 +502,7 @@ internal sealed class StoreLicense(LicenseService license, ICommandHandler<Insta
     {
         if (license.VerifyTrial(grant) is not { IsSuccess: true } verified || verified.Value.TenantId != tenantId) return false;
         var days = verified.Value.Days;
-        if (days <= license.TrialLength.TotalDays || days > 90) return false;
+        if (days <= license.TrialLength.TotalDays || days > LicenseService.MaxTrialDays) return false;
         await db.Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialDays, days), ct);
         license.TrialLengthChanged(days);
         return true;
@@ -503,7 +528,8 @@ internal sealed class StoreLicense(LicenseService license, ICommandHandler<Insta
 
 /// <summary>TK-196: the trial's 14 days start with the store's first sale, not with the installation. Runs again harmlessly (the first one wins).
 /// R9 #12: only a real sale counts: not one of the DGII certification or test environments, nor a simulated one with the sample products.</summary>
-/// <remarks>shortcut: the date lives in the store's own database; an owner who edits it by hand gets more days. A cloud copy (heartbeat) is the check if it matters.</remarks>
+/// <remarks>TK-369: the date also has a sealed twin in the keys folder (<see cref="LicenseService.TrialFile"/>), so editing the database alone gains
+/// nothing. shortcut: uninstalling with "borrar datos" deletes both and a new install starts a new trial; a cloud copy by RNC would close it.</remarks>
 internal sealed class StartTrialOnFirstSale(SettingsDbContext db, LicenseService license, IFiscalDocuments fiscal, ICatalogQueries catalog)
     : IEventHandler<SaleRecordedV2>
 {
