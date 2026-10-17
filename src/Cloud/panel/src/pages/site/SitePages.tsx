@@ -5,7 +5,7 @@ import { usePlanPrices, type SitePrice } from "./livePrices";
 import { useReferralLink } from "../../referral";
 import { legalPages } from "./LegalPages";
 import { Download } from "./DownloadPage";
-import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, IconTiles, LoopVideo, ProductArt, ProductVideo, Section, Steps, Tbd, Trial, type IconName } from "./SiteParts";
+import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, Photo, ProductVideo, Section, Steps, TaliaDemo, Tbd, Trial, type IconName } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
 export interface SitePage {
@@ -47,44 +47,56 @@ const switching: [string, ReactNode] = [
   </>,
 ];
 
+/** TK-312: what Abastalia does, next to the product video (declarative, never a narration of the clip; the transcript stays one tap away). */
+const milestones: [IconName, string][] = [
+  ["bolt", "Cobra por unidad o por código"],
+  ["ecf", "Emite el e-CF de cada venta"],
+  ["register", "Cuadra la caja al cerrar el turno"],
+  ["phone", "Le muestra el día en el celular"],
+];
+
+/** TK-312: Talia first (the owner's choice), then the six main benefits; weighing is one capability among others, not the headline. */
 function Home() {
   return (
     <>
       <Hero
-        eyebrow="Punto de venta con e-CF"
-        title="Venda, pese y facture. Aunque se vaya el internet."
-        sub="Cobre rápido, venda por libra o por unidad y emita el e-CF desde la PC de su tienda."
+        eyebrow="Punto de venta con e-CF y asistente"
+        title="Pregúntele a su negocio."
+        sub="Abastalia cobra, emite el e-CF y cuadra la caja, aunque se vaya el internet. Talia, su asistente, le dice cuánto vendió y quién le debe."
         cta={both}
         note="Sin tarjeta · Los 14 días empiezan con su primera venta"
-        art={<ProductArt />}
+        art={<TaliaDemo />}
       />
       <Section className="counter">
         <h2 className="esc-visually-hidden">Lo principal</h2>
         <IconTiles
+          cols={3}
           items={[
-            ["offline", "Sin internet, sigue vendiendo"],
-            ["scale", "Pesa por libra y lee etiquetas"],
-            ["ecf", "e-CF directo con la DGII"],
-            ["register", "La caja cuadra al cerrar"],
+            ["offline", "Sin internet, sigue vendiendo", "Las cajas cobran contra la PC de la tienda; los e-CF salen al volver la conexión."],
+            ["ecf", "e-CF directo con la DGII", "Firmado en su tienda, sin intermediarios, sin cupo ni cobro por factura."],
+            ["register", "La caja cuadra", "Cuadre ciego por billete, y cada descuento o anulación con su nombre."],
+            ["chat", "Talia, su asistente", "Pregúntele por las ventas, los cuadres, lo más vendido o quién le debe."],
+            ["phone", "Su negocio en el celular", "Lo vendido hoy, los cuadres y lo más vendido, desde donde esté."],
+            ["people", "Clientes y cuentas por cobrar", "Crédito con límite, abonos y el estado de cuenta listo para WhatsApp."],
           ]}
         />
       </Section>
-      <Section className="scene">
+      <Section className="scene reveal">
         <div className="scene__grid">
           <figure className="scene__media">
-            <LoopVideo name="pesando" poster="/media/pesando-portada.webp" label="Un comerciante pesa un producto en su tienda" />
+            <Photo name="colmado" alt="Estantes de una tienda de barrio llenos de productos" ratio={4 / 3} sizes="(min-width: 860px) 640px, 100vw" />
           </figure>
           <div className="scene__text">
-            <h2>Hecho para el mostrador</h2>
+            <h2>Cobre, facture y cuadre en la misma pantalla</h2>
             <ul className="checks">
-              <li>Por libra y por unidad en la misma venta.</li>
-              <li>Las ventas a crédito y el cuadre, sin cuaderno.</li>
-              <li>El e-CF sale solo, con o sin internet.</li>
+              <li>Escanee o busque el producto y cobre con F12.</li>
+              <li>Ventas a crédito con límite y abonos, en la misma caja.</li>
+              <li>Cuadre ciego al cerrar el turno.</li>
             </ul>
           </div>
         </div>
       </Section>
-      <Section>
+      <Section className="reveal">
         <h2>Se adapta a su negocio</h2>
         <BusinessCards />
       </Section>
@@ -93,15 +105,25 @@ function Home() {
           ¿Necesita certificarse? Le acompañamos →
         </Link>
       </EcfFlow>
-      <Section className="how-it-works">
+      <Section className="how-it-works reveal">
         <h2>Cómo funciona</h2>
-        <ProductVideo />
+        <div className="watch">
+          <ProductVideo />
+          <ul className="milestones">
+            {milestones.map(([icon, text]) => (
+              <li key={text}>
+                <Icon name={icon} size={28} />
+                {text}
+              </li>
+            ))}
+          </ul>
+        </div>
         <h3 className="how-it-works__lead">Empiece hoy, en 3 pasos</h3>
         <HowItWorks
           items={[
             { title: "Instale Abastalia", text: <>En la PC de la tienda. <Link to="/descargar">Descargar</Link></>, time: "10 minutos" },
-            { title: "Cargue sus productos", text: "Por libra o por unidad, o los de ejemplo.", time: "El mismo día" },
-            { title: "Venda", text: "Escanee o pese y cobre con F12.", time: "Desde la primera venta" },
+            { title: "Cargue sus productos", text: "Los suyos o los de ejemplo, por unidad o por libra.", time: "El mismo día" },
+            { title: "Venda", text: "Escanee y cobre con F12.", time: "Desde la primera venta" },
           ]}
         />
       </Section>
@@ -726,8 +748,8 @@ export const sitePages: SitePage[] = [
   {
     path: "/",
     nav: "Inicio",
-    title: "Abastalia: punto de venta con e-CF para su negocio",
-    description: "Abastalia cobra rápido, vende por libra o por unidad, cuadra la caja y emite el e-CF con la DGII aunque se vaya el internet. Hecho en República Dominicana.",
+    title: "Abastalia: punto de venta con e-CF y asistente con IA",
+    description: "Abastalia cobra, cuadra la caja y emite el e-CF con la DGII aunque se vaya el internet. Talia, su asistente, le dice cuánto vendió y quién le debe.",
     element: <Home />,
   },
   {

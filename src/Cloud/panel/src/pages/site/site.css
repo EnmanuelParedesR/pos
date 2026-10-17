@@ -110,43 +110,39 @@
 .site .eyebrow { display: inline-block; background: var(--brand-soft); color: var(--brand); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
   padding: 6px 10px; border-radius: 4px; }
 
-/* Product art: register screen with the phone overlapping its corner. Scales down on a phone; never wider than the screen. */
-.site .art { margin: 0; min-width: 0; }
-.site .art__stage { position: relative; }
-@media (min-width: 560px) { .site .art__stage { padding-bottom: 72px; } }
-.site .art figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; }
 .site .label { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
 .site .ok { color: var(--ok-ink); font-weight: 600; }
-.site .mock { max-width: 560px; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; background: var(--counter); box-shadow: 0 24px 48px var(--shadow);
-  font-size: 13px; line-height: 1.35; }
-.site .mock__bar { display: flex; justify-content: space-between; align-items: center; gap: 8px; background: var(--night); color: var(--night-ink); padding: 8px 12px; font-size: 12px; }
-.site .pill { border-radius: 4px; padding: 3px 8px; font-weight: 600; white-space: nowrap; }
-.site .pill--amber { background: var(--night-amber-bg); color: var(--night-amber); }
-.site .mock__body { display: flex; gap: 8px; padding: 10px; }
-.site .mock__cart { flex: 1 1 auto; min-width: 0; background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; padding: 4px 10px; }
-.site .mock__line { display: flex; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.site .mock__line:last-child { border-bottom: 0; }
-.site .mock__line span { min-width: 0; }
-.site .mock__line small { display: block; color: var(--muted); font-size: 11px; }
-.site .mock__line--on { background: var(--brand-soft); margin: 0 -10px; padding: 8px 10px; }
-.site .mock__side { flex: 0 0 38%; max-width: 190px; display: flex; flex-direction: column; gap: 8px; }
-.site .mock__box { background: var(--bg); border: 1px solid var(--line-strong); border-radius: 6px; padding: 10px; display: flex; flex-direction: column; }
-.site .mock__box--grow { flex: 1 1 auto; }
-.site .mock__box > small:last-child { font-size: 11px; color: var(--muted); }
-.site .mock__box .ok { color: var(--ok-ink); }
-.site .mock__big { font-size: clamp(18px, 5vw, 30px); font-weight: 700; line-height: 1.1; }
-.site .mock__big small { font-size: 13px; color: var(--muted); font-weight: 400; }
-.site .mock__pay { background: var(--brand); color: var(--on-brand); border-radius: 6px; padding: 12px 8px; text-align: center; font-weight: 700; font-size: 16px; }
-.site .mock__pay kbd { font: inherit; font-size: 11px; border: 1px solid currentColor; border-radius: 4px; padding: 1px 5px; margin-left: 4px; opacity: 0.8; }
-.site .phone { position: relative; margin: -8px 16px 0 auto; width: 190px; border-radius: 28px; background: var(--night); border: 1px solid var(--night-line); padding: 8px;
-  box-shadow: 0 24px 48px var(--shadow); font-size: 12px; line-height: 1.35; }
-@media (min-width: 560px) { .site .phone { position: absolute; right: 0; bottom: 0; margin: 0; width: 200px; } }
-.site .phone__screen { background: var(--bg); border-radius: 20px; padding: 14px 12px; display: flex; flex-direction: column; gap: 8px; }
-.site .phone__row { display: flex; justify-content: space-between; gap: 4px; white-space: nowrap; }
-.site .phone__row > span:last-child:not(.ok) { color: var(--muted); }
-.site .phone__row--top { border-top: 1px solid var(--line); padding-top: 8px; }
-.site .bars { fill: var(--brand); }
-.site .bars .bars__today { fill: var(--line); }
+/* TK-312: Talia on the home, drawn like her chat in the panel (escuadra-admin .esc-bubble): blue question on the right, grey answer on the left. */
+.site .talia-demo { margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.site .talia-demo__phone { width: 100%; max-width: 380px; border-radius: 32px; border: 10px solid var(--night); background: var(--bg); box-shadow: 0 24px 48px var(--shadow);
+  overflow: hidden; display: flex; flex-direction: column; }
+.site .talia-demo__head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.site .talia-demo__head span { display: flex; flex-direction: column; line-height: 1.2; }
+.site .talia-demo__head small { color: var(--muted); font-size: 13px; }
+.site .talia-demo__chat { display: flex; flex-direction: column; gap: 12px; padding: 18px 14px 22px; min-height: 236px; font-size: 15px; line-height: 1.5; }
+.site .talia-demo__chat p { margin: 0; padding: 10px 14px; border-radius: 18px; }
+.site .talia-demo__q { align-self: flex-end; max-width: 85%; background: var(--brand); color: var(--on-brand); border-bottom-right-radius: 6px; }
+.site .talia-demo__row { display: flex; gap: 8px; align-items: flex-end; }
+.site .talia-demo__row svg { flex: none; }
+.site .talia-demo__a { max-width: 85%; background: var(--counter); border-bottom-left-radius: 6px; }
+.site .talia-demo__asks { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 580px; }
+.site .talia-demo__asks button { font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-strong);
+  background: var(--bg); color: var(--ink); cursor: pointer; }
+.site .talia-demo__asks button:hover { border-color: var(--brand); color: var(--brand); }
+.site .talia-demo__asks button[aria-pressed="true"] { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+.site .talia-demo figcaption { font-size: 13px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .site .talia-demo__q { animation: talia-in 320ms ease-out 200ms backwards; }
+  .site .talia-demo__row { animation: talia-in 420ms ease-out 900ms backwards; }
+}
+@keyframes talia-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* TK-312: sections that ease in when they come on screen (SiteLayout useReveal adds .is-waiting only below the fold, with motion allowed). */
+.site .reveal.is-waiting { transition: opacity 600ms ease-out, transform 600ms ease-out; }
+.site .reveal.is-waiting:not(.is-in) { opacity: 0; transform: translateY(24px); }
+.site .scene.is-waiting .photo img { transition: transform 1600ms ease-out; }
+.site .scene.is-waiting:not(.is-in) .photo img { transform: scale(1.06); }
+.site .scene__media { border-radius: var(--radius-card); overflow: hidden; }
 
 /* Icon tiles. */
 .site .tiles { display: grid; gap: 16px; grid-template-columns: 1fr; }
@@ -177,7 +173,6 @@
 
 /* TK-281: real photos and screenshots (scripts/images.mjs) and the short loop. */
 .site .photo, .site .photo img { display: block; width: 100%; height: auto; }
-.site .loop { display: block; width: 100%; height: auto; aspect-ratio: 960 / 506; object-fit: cover; border-radius: var(--radius-card); background: var(--line); }
 .site .scene__grid { display: grid; gap: 24px; align-items: center; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 860px) { .site .scene__grid { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 48px; } }
 .site .scene__media { margin: 0; }
@@ -186,7 +181,7 @@
 .site .checks li::before { content: ""; position: absolute; left: 0; top: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--brand-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230B5CAD' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5 9-10'/%3E%3C/svg%3E") center / 12px no-repeat; }
 
 /* TK-296: the product video, click to play; the transcript below it. Fixed 16:9 box so nothing shifts while the poster loads. */
-.site .product-video { margin: 0 0 40px; }
+.site .product-video { margin: 0 0 40px; min-width: 0; }
 .site .product-video__frame { position: relative; border-radius: var(--radius-card); overflow: hidden; background: #0B2A4A; box-shadow: 0 10px 30px rgba(20, 24, 29, 0.12); }
 .site .product-video__video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #0B2A4A; }
 .site .product-video__play { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: flex-start; gap: 12px; padding: clamp(16px, 4vw, 32px);
@@ -246,6 +241,40 @@
 .site .night .flow > li::before, .site .night .flow p { color: var(--night-muted); }
 .site .night .flow__done h3 { color: var(--night-ok); }
 .site .night__link, .site .night__link:hover { display: inline-block; margin-top: 32px; color: var(--night-link); font-weight: 600; font-size: 17px; }
+
+/* TK-312: the e-CF path on the dark band: four steps joined by arrows (down on a phone, across from 960px), the offline queue and what is not in the middle. */
+.site .ecf__path { list-style: none; padding: 0; margin: 0 0 24px; display: grid; gap: 28px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 960px) { .site .ecf__path { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 40px; } }
+.site .ecf__node { position: relative; border: 1px solid var(--night-line); border-radius: var(--radius-card); padding: 18px; display: flex; flex-direction: column; gap: 6px; }
+.site .ecf__node h3, .site .ecf__node p { margin: 0; }
+.site .ecf__node h3 { font-size: 20px; }
+.site .ecf__node p { color: var(--night-muted); font-size: 15px; }
+.site .ecf__node:not(:last-child)::after { content: "→"; position: absolute; left: 50%; bottom: -26px; transform: translateX(-50%) rotate(90deg); color: var(--night-link); font-size: 20px; line-height: 1; }
+@media (min-width: 960px) { .site .ecf__node:not(:last-child)::after { left: auto; right: -30px; bottom: auto; top: 50%; transform: translateY(-50%); } }
+.site .ecf__node--ok { border-color: var(--night-ok); }
+.site .ecf__node--ok h3 { color: var(--night-ok); }
+.site .ecf__k { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--night-muted); }
+.site .ecf__mono { font-family: ui-monospace, Consolas, monospace; color: var(--night-ink); }
+.site .ecf__chip { align-self: flex-start; margin-top: 4px; font-size: 13px; font-weight: 600; padding: 3px 8px; border-radius: 4px; background: var(--night-line); color: var(--night-ink); white-space: nowrap; }
+.site .ecf__chip--warn { background: var(--night-amber-bg); color: var(--night-amber); margin: 0; }
+.site .ecf__offline { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-start; padding: 16px 0; border-top: 1px dashed var(--night-line); border-bottom: 1px dashed var(--night-line); }
+.site .ecf__offline p { flex: 1 1 280px; min-width: 0; margin: 0; color: var(--night-ink); }
+.site .ecf__none { list-style: none; padding: 0; margin: 20px 0 0; display: flex; flex-wrap: wrap; gap: 8px 24px; font-weight: 600; }
+.site .ecf__none li::before { content: "✕"; color: var(--night-amber); margin-right: 8px; }
+/* The steps light up in turn the first time the band comes on screen. */
+@keyframes ecf-step { from { border-color: var(--night-line); opacity: 0.45; } 60% { border-color: var(--night-link); opacity: 1; } }
+.site .ecf.is-waiting.is-in .ecf__node { animation: ecf-step 700ms ease-out backwards; }
+.site .ecf.is-waiting.is-in .ecf__node:nth-child(2) { animation-delay: 450ms; }
+.site .ecf.is-waiting.is-in .ecf__node:nth-child(3) { animation-delay: 900ms; }
+.site .ecf.is-waiting.is-in .ecf__node:nth-child(4) { animation-delay: 1350ms; }
+
+/* TK-312: the video with four milestones beside it from 960px (under it on a phone). */
+.site .watch { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr); margin-bottom: 40px; align-items: center; }
+@media (min-width: 960px) { .site .watch { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 40px; } }
+.site .watch .product-video { margin: 0; }
+.site .milestones { list-style: none; padding: 0; margin: 0; display: grid; gap: 16px; font-size: 19px; font-weight: 600; line-height: 1.3; }
+.site .milestones li { display: flex; align-items: center; gap: 14px; }
+.site .milestones .icon { padding: 10px; width: 48px; height: 48px; border-radius: 12px; background: var(--brand-soft); }
 
 /* Closing band with the price. */
 .site .band { background: var(--brand-soft); }
@@ -327,10 +356,10 @@
 .site .vs .vs__ask { margin-top: auto; border-style: dashed; }
 .site .vs .vs__ask dd { color: var(--muted); font-style: italic; }
 .site .sources { padding-top: 0; font-size: 15px; }
-/* TK-263: 15 glossary terms on a phone: icon beside the term, so the list stays short. */
+/* TK-263, TK-312: icon tiles on a phone: icon beside the title, so a list of tiles stays short (the glossary has 15, the home 6). */
 @media (max-width: 559px) {
-  .site .glossary .tile { display: grid; grid-template-columns: 32px 1fr; gap: 4px 12px; padding: 16px; }
-  .site .glossary .tile .icon { grid-row: span 2; width: 32px; height: 32px; }
+  .site .tile { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 4px 12px; padding: 16px; }
+  .site .tile .icon { grid-row: span 2; width: 32px; height: 32px; }
 }
 
 .site .faq details { border-bottom: 1px solid var(--line); }
