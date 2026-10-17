@@ -17,10 +17,21 @@ public sealed class InboxSignal
 
 /// <summary>Applies received events with their projector, in arrival order, one transaction per event (projection + AppliedUtc together).
 /// Unknown types stay stored and unapplied; they are picked up once a projector for them exists (after a deploy, on start).</summary>
-public sealed class InboxApplier(IServiceScopeFactory scopes, TimeProvider clock, ILogger<InboxApplier> log)
+public sealed class InboxApplier(IServiceScopeFactory scopes, TimeProvider clock, IConfiguration config, ILogger<InboxApplier> log)
 {
     /// <summary>An event that keeps failing stops being retried and stays visible with its error.</summary>
     public const int MaxAttempts = 10;
+
+    private DateTimeOffset _lastAlerts = DateTimeOffset.MinValue;
+
+    /// <summary>R12 E: on start (a deploy may carry the fix), the events that ran out of attempts get them back.</summary>
+    /// <returns>How many events will be tried again.</returns>
+    public async Task<int> RetryFailedAsync(CancellationToken ct)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<CloudDbContext>().Inbox.Where(i => i.AppliedUtc == null && i.Attempts >= MaxAttempts)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.Attempts, 0), ct);
+    }
 
     /// <returns>How many events were applied.</returns>
     public async Task<int> ApplyPendingAsync(CancellationToken ct)
@@ -52,8 +63,12 @@ public sealed class InboxApplier(IServiceScopeFactory scopes, TimeProvider clock
     }
 
     /// <summary>TK-222: the alerts look at what just arrived, while the database is awake anyway. A failure never stops the applier.</summary>
+    /// <remarks>R12 H: at most every <c>Alerts:MinutesBetweenRuns</c> (5): a store sending a batch every few seconds would run them on each.</remarks>
     private async Task AlertAsync(CancellationToken ct)
     {
+        var now = clock.GetUtcNow();
+        if (now - _lastAlerts < TimeSpan.FromMinutes(config.GetValue("Alerts:MinutesBetweenRuns", 5))) return;
+        _lastAlerts = now;
         try
         {
             await using var scope = scopes.CreateAsyncScope();
@@ -67,7 +82,8 @@ public sealed class InboxApplier(IServiceScopeFactory scopes, TimeProvider clock
 
     /// <summary>TK-251: applied events live on in the replica; their inbox rows go after this long. A store re-sending one that old
     /// gets it applied again, which is harmless (projections replace by id).</summary>
-    public static readonly TimeSpan KeepApplied = TimeSpan.FromDays(30);
+    /// <remarks>R12 A: 7 days; the inbox is the biggest table and the replica already has every applied event.</remarks>
+    public static readonly TimeSpan KeepApplied = TimeSpan.FromDays(7);
 
     /// <summary>Deletes applied inbox rows older than <see cref="KeepApplied"/>, in batches so no statement holds a long lock.
     /// Failed and unknown events are kept: they are still waiting.</summary>
@@ -117,9 +133,12 @@ public sealed class InboxApplier(IServiceScopeFactory scopes, TimeProvider clock
             // No payload in the log: it can carry customer data. R11 B-Low2: nor the exception's text, which can quote values (a truncated column's
             // value, a JSON fragment): only its kind, here and in the row the panel shows.
             var error = ex is JsonException { Path: { } path } ? $"{nameof(JsonException)} at {path}" : ex.GetType().Name + (ex.InnerException is { } inner ? $" ({inner.GetType().Name})" : "");
-            log.LogWarning("Inbox event {Sequence} could not be applied: {Error}", sequence, error);
             await using var scope = scopes.CreateAsyncScope();
-            await scope.ServiceProvider.GetRequiredService<CloudDbContext>().Inbox.Where(i => i.Sequence == sequence)
+            var inbox = scope.ServiceProvider.GetRequiredService<CloudDbContext>().Inbox;
+            // R12 B: a key clash because another applier (a second instance, an overlapping run) applied it meanwhile is not a failure.
+            if (ex is DbUpdateException && await inbox.AnyAsync(i => i.Sequence == sequence && i.AppliedUtc != null, ct)) return false;
+            log.LogWarning("Inbox event {Sequence} could not be applied: {Error}", sequence, error);
+            await inbox.Where(i => i.Sequence == sequence)
                 .ExecuteUpdateAsync(s => s.SetProperty(i => i.Attempts, i => i.Attempts + 1).SetProperty(i => i.Error, error), ct);
             return false;
         }
@@ -134,6 +153,11 @@ internal sealed class InboxApplierWorker(InboxApplier applier, InboxSignal signa
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!config.GetValue("Ingest:ApplyInBackground", true)) return;
+        try
+        {
+            if (await applier.RetryFailedAsync(stoppingToken) is > 0 and var again) log.LogInformation("Retrying {Count} inbox events that had failed", again);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { log.LogError(ex, "Resetting the failed inbox events failed"); }
         while (!stoppingToken.IsCancellationRequested)
         {
             try { await applier.ApplyPendingAsync(stoppingToken); }

@@ -4,6 +4,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Abastalia.Host.Cloud.Ingest;
 using Shouldly;
 using Abastalia.CashRegister.Contracts;
 using Abastalia.Purchasing.Contracts;
@@ -123,19 +125,36 @@ public sealed class IngestTests(CloudApp app) : IClassFixture<CloudApp>
 public sealed class InboxPurgeTests(CloudApp app) : IClassFixture<CloudApp>
 {
     [Fact]
-    public async Task Applied_events_leave_the_inbox_after_30_days_and_their_projection_stays()
+    public async Task Applied_events_leave_the_inbox_after_7_days_and_their_projection_stays()
     {
         var node = await app.StoreWithNodeAsync(await app.OwnerAsync());
         var old = new ShiftClosedV1(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), 1, 1000, 1000, 0);
         await node.SendAsync(Events.Envelope(old, app.Clock.GetUtcNow().UtcDateTime));
         (await app.ApplyAsync()).ShouldBe(1);
 
-        app.Clock.Advance(TimeSpan.FromDays(31));
+        app.Clock.Advance(InboxApplier.KeepApplied + TimeSpan.FromDays(1)); // R12 A: 7 days
         var recent = new ShiftClosedV1(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), 2, 500, 500, 0);
         await node.SendAsync(Events.Envelope(recent, app.Clock.GetUtcNow().UtcDateTime));
         (await app.ApplyAsync()).ShouldBe(1);
 
         (await app.InDbAsync(db => db.Inbox.CountAsync(i => i.StoreId == node.StoreId))).ShouldBe(1); // only the recent one
         (await app.InDbAsync(db => db.ClosedShifts.CountAsync(s => s.StoreId == node.StoreId))).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task R12_E_events_that_ran_out_of_attempts_are_tried_again_after_a_restart()
+    {
+        var node = await app.StoreWithNodeAsync(await app.OwnerAsync());
+        var shift = new ShiftClosedV1(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), 3, 700, 700, 0);
+        await node.SendAsync(Events.Envelope(shift, app.Clock.GetUtcNow().UtcDateTime));
+        // As if it had failed every time before the fix was deployed.
+        await app.InDbAsync(db => db.Inbox.Where(i => i.EventId == shift.EventId)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.Attempts, InboxApplier.MaxAttempts).SetProperty(i => i.Error, "InvalidOperationException")));
+        (await app.ApplyAsync()).ShouldBe(0); // given up
+
+        var applier = app.Services.GetRequiredService<InboxApplier>();
+        (await applier.RetryFailedAsync(CancellationToken.None)).ShouldBe(1); // what the worker does on start
+        (await app.ApplyAsync()).ShouldBe(1);
+        (await app.InDbAsync(db => db.ClosedShifts.CountAsync(s => s.StoreId == node.StoreId))).ShouldBe(1);
     }
 }

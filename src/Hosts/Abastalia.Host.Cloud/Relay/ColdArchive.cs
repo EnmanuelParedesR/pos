@@ -76,7 +76,7 @@ internal sealed class BlobColdArchive(BlobContainerClient container) : IColdArch
     }
 }
 
-/// <summary>Moves archived e-CF XML older than <c>Archive:HotDays</c> (90) out of SQL into <see cref="IColdArchive"/>. The row stays as the index
+/// <summary>Moves archived e-CF XML older than <c>Archive:HotDays</c> (7; R12 A: SQL is the expensive copy) out of SQL into <see cref="IColdArchive"/>. The row stays as the index
 /// (e-NCF, status, DGII answer, <see cref="EcfRelayRecord.ColdKey"/>).</summary>
 internal sealed class ColdArchiver(CloudDbContext db, IColdArchive store, TimeProvider clock, IConfiguration config)
 {
@@ -86,7 +86,7 @@ internal sealed class ColdArchiver(CloudDbContext db, IColdArchive store, TimePr
     public async Task<int> MoveAsync(CancellationToken ct)
     {
         var now = clock.GetUtcNow().UtcDateTime;
-        var cutoff = now - TimeSpan.FromDays(config.GetValue("Archive:HotDays", 90));
+        var cutoff = now - TimeSpan.FromDays(config.GetValue("Archive:HotDays", 7));
         var moved = 0;
         while (true)
         {
