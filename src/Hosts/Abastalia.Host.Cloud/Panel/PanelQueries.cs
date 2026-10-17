@@ -17,9 +17,10 @@ public sealed record PaymentMix(string Method, int Count, decimal Amount);
 /// <param name="CashierName">Shift issues only, once the store sent the user's name (UserProfileChangedV1); otherwise null.</param>
 public sealed record PanelIssue(string Kind, Guid StoreId, string StoreName, Guid? ReferenceId, decimal? Amount, DateTime? OccurredUtc, string Message,
     string? CashierName = null, string? RegisterName = null);
+/// <param name="EcfThisMonth">TK-316: e-CF issued in the current store month, whatever <paramref name="Date"/> is (the panel's "sin costo adicional" notice).</param>
 public sealed record Summary(
     DateOnly Date, decimal SalesTotal, int SalesCount, decimal AverageTicket, decimal DiscountTotal, decimal ItbisTotal, decimal ReturnsTotal, decimal NetTotal,
-    int VoidedCount, IReadOnlyList<HourSales> ByHour, IReadOnlyList<PaymentMix> PaymentMix, IReadOnlyList<PanelIssue> Issues, DateTime? LastEventUtc);
+    int VoidedCount, IReadOnlyList<HourSales> ByHour, IReadOnlyList<PaymentMix> PaymentMix, IReadOnlyList<PanelIssue> Issues, DateTime? LastEventUtc, int EcfThisMonth);
 public sealed record DaySales(DateOnly Date, int Count, decimal Total, decimal Discount, decimal Itbis, decimal Returns, decimal Net, int VoidedCount);
 /// <param name="Unit">Unit of <paramref name="Quantity"/>, "Pound" or "Unit", from the newest sale with one (SaleRecordedV2, TK-180); null before that.</param>
 /// <param name="Profit">Null for a member who may not see costs (TK-201).</param>
@@ -71,11 +72,15 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
         issues.AddRange(sync.Where(s => (storeId is null || s.StoreId == storeId) && s.FailedEvents > 0)
             .Select(s => new PanelIssue("EventsFailed", s.StoreId, s.StoreName, null, s.FailedEvents, null, $"{s.FailedEvents} datos recibidos no se pudieron procesar.")));
 
+        var today = Today;
+        var (monthFrom, monthTo) = BusinessDay.UtcRange(new DateOnly(today.Year, today.Month, 1), today);
+        var ecfThisMonth = await Rows(db.FiscalDocuments, f).CountAsync(d => d.IssuedUtc >= monthFrom && d.IssuedUtc < monthTo, ct);
+
         return new Summary(date, total, sales.Count, sales.Count == 0 ? 0 : Money.Round(total / sales.Count), sales.Sum(s => s.Discount), sales.Sum(s => s.Itbis),
             returns.Sum(), total - returns.Sum(), voided,
             [.. sales.GroupBy(s => (s.SoldUtc + BusinessDay.Offset).Hour).OrderBy(g => g.Key).Select(g => new HourSales(g.Key, g.Count(), g.Sum(s => s.Total)))],
             await PaymentMixAsync(f, ct), issues,
-            sync.Where(s => storeId is null || s.StoreId == storeId).Max(s => s.LastEventUtc));
+            sync.Where(s => storeId is null || s.StoreId == storeId).Max(s => s.LastEventUtc), ecfThisMonth);
     }
 
     /// <summary>Every day of the range, also the ones without sales (for charts).</summary>

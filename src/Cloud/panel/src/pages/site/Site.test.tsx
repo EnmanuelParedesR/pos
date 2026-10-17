@@ -6,6 +6,7 @@ import "../../Panel"; // TK-278: the panel is lazy in App; loading it here keeps
 import type { Me } from "../../api";
 import { json } from "../../testing";
 import { preparation, sitePages } from "./SitePages";
+import { invoiceCost } from "./livePrices";
 
 afterEach(() => {
   cleanup();
@@ -192,8 +193,8 @@ it("TK-294: /comparar is a labelled carousel: one card per point with Abastalia,
   const carousel = screen.getByRole("region", { name: "Lado a lado" });
   expect(carousel.getAttribute("aria-roledescription")).toBe("carrusel");
   const slides = within(carousel).getAllByRole("group").filter((g) => g.getAttribute("aria-roledescription") === "diapositiva");
-  expect(slides.map((s) => s.getAttribute("aria-label"))[0]).toBe("1 de 8: Costo");
-  expect(slides.length).toBe(8);
+  expect(slides.map((s) => s.getAttribute("aria-label"))[0]).toBe("1 de 9: Costo");
+  expect(slides.length).toBe(9);
   for (const slide of slides) for (const option of ["Abastalia", "Facturador Gratuito (DGII)", "Otro programa: pregunte"]) expect(within(slide).getByText(option)).toBeTruthy();
   const track = document.getElementById(within(carousel).getByRole("button", { name: "Siguiente" }).getAttribute("aria-controls")!)!;
   expect(track.tabIndex).toBe(0); // the arrow keys scroll it
@@ -267,4 +268,45 @@ it("TK-312: the e-CF band shows the real path and the register's own queue chip"
   expect(screen.getByRole("heading", { name: "Envía a la DGII" })).toBeTruthy();
   expect(screen.getByText("e-CF en cola: 3")).toBeTruthy();
   expect(within(screen.getByRole("list", { name: "Lo que no hay en medio" })).getAllByRole("listitem")).toHaveLength(3);
+});
+
+it("TK-316: the calculator's month is a whole number from 0 to 1,000,000, at RD$1 to RD$2 per invoice", () => {
+  expect(invoiceCost("3000")).toEqual({ invoices: 3000, low: 3000, high: 6000 });
+  for (const typed of ["0", "", "-5", "abc"]) expect(invoiceCost(typed)).toEqual({ invoices: 0, low: 0, high: 0 });
+  expect(invoiceCost("12.7").invoices).toBe(12);
+  expect(invoiceCost("99999999999")).toEqual({ invoices: 1_000_000, low: 1_000_000, high: 2_000_000 });
+  expect(invoiceCost("1e400").invoices).toBe(1_000_000); // Infinity
+});
+
+it("TK-316: /precios has the savings calculator: typed invoices give the per-invoice range, RD$0 in Abastalia and the fair use above 50,000", () => {
+  renderAt("/precios");
+  const input = screen.getByLabelText("Facturas que emite al mes") as HTMLInputElement;
+  const result = () => document.querySelector(".calc__result[role=status]")!.textContent;
+  expect(input.getAttribute("aria-describedby")).toBe("calc-hint");
+  expect(result()).toBe("Con 3,000 facturas al mes se ahorra entre RD$3,000 y RD$6,000 al mes.");
+  expect(within(screen.getByRole("heading", { name: "Con Abastalia" }).closest(".card") as HTMLElement).getByText(/desde RD\$925 al mes/)).toBeTruthy();
+  fireEvent.change(input, { target: { value: "0" } });
+  expect(result()).toBe("Escriba cuántas facturas emite al mes.");
+  expect(screen.queryByText(/pasa del uso justo/)).toBeNull();
+  fireEvent.change(input, { target: { value: "60000" } });
+  expect(result()).toContain("entre RD$60,000 y RD$120,000");
+  expect(screen.getByText(/pasa del uso justo/).textContent).toContain("No hay cobro automático");
+  expect(document.body.textContent).not.toMatch(/poszy|facturapro|alegra|dgmax|glecf/i); // no brand names
+});
+
+it("TK-316: every plan card and /comparar say e-CF ilimitados with the fair-use number", () => {
+  renderAt("/precios");
+  for (const plan of ["Esencial", "Estándar", "Pro"])
+    expect(within(screen.getByRole("heading", { name: plan }).closest(".card") as HTMLElement).getByText("e-CF ilimitados (uso justo 50,000 al mes)")).toBeTruthy();
+  cleanup();
+  renderAt("/comparar");
+  const row = screen.getAllByRole("group").find((g) => g.getAttribute("aria-label")?.endsWith("Facturas al mes"))!;
+  expect(within(row).getByText("e-CF ilimitados (uso justo 50,000 al mes), sin cobro por factura")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "términos" }).getAttribute("href")).toBe("/terminos#uso-justo");
+});
+
+it("TK-316: /terminos has the e-CF fair use: 50,000 a month per business, we call, no automatic charge", () => {
+  renderAt("/terminos");
+  const clause = document.getElementById("uso-justo")!.textContent!;
+  for (const part of ["50,000 e-CF al mes por negocio", "le contactamos para revisar su plan", "No hay cobro automático", "sin cobro por documento"]) expect(clause).toContain(part);
 });

@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { site } from "./config";
-import { usePlanPrices, type SitePrice } from "./livePrices";
+import { fairUseEcf, invoiceCost, maxCalculatorInvoices, perInvoiceDop, usePlanPrices, type SitePrice } from "./livePrices";
 import { useReferralLink } from "../../referral";
 import { legalPages } from "./LegalPages";
 import { Download } from "./DownloadPage";
@@ -382,11 +382,15 @@ function EcfGuide() {
 
 const yes = <span className="ok">Sí</span>;
 
+/** TK-316: the line in the plan cards and on /comparar; the number is the fair use of /terminos#uso-justo and docs/cuotas.md. */
+const unlimitedEcf = `e-CF ilimitados (uso justo ${fairUseEcf.toLocaleString("en-US")} al mes)`;
+
 /** Criterion, Abastalia, Facturador Gratuito (the DGII's own FAQ unless dated otherwise), and what to ask any other program (TK-263, TK-294):
  * no claims about other programs, only questions. */
 const versus: [IconName, string, ReactNode, ReactNode, string][] = [
   ["tag", "Costo", <>Mensual, por tamaño de tienda. <Link to="/precios">Ver precios</Link></>, "Gratis", "¿Cuánto cobra al mes? ¿Cobra por factura?"],
-  ["ecf", "Pensado para", "Tiendas con mostrador, sin cupo ni cobro por documento", "Bajo volumen. Unas 150 facturas al mes, según la DGII (El Día, 12/05/2026)", "¿Tiene cupo o tope de facturas?"],
+  ["stores", "Pensado para", "Tiendas con mostrador", "Negocios de bajo volumen", "¿Sirve para una tienda con fila?"],
+  ["ecf", "Facturas al mes", <>{unlimitedEcf}, sin cobro por factura</>, "Unas 150 al mes, según la DGII (El Día, 12/05/2026)", "¿Tiene cupo? ¿Cuánto cobra por cada factura extra?"],
   ["offline", "Sin internet", <>{yes}: firma y envía al volver (72 horas)</>, "No emite", "¿Factura si se va el internet?"],
   ["scale", "Caja, balanza, inventario y crédito a clientes", yes, "No: emite, recibe y consulta e-CF", "¿Lee la balanza y vende por libra?"],
   ["pc", "Dónde se usa", "Programa en la PC de la tienda y panel en el celular", "Portal web de la DGII", "¿Funciona en la PC de la tienda o solo en la web?"],
@@ -419,7 +423,12 @@ function Compare() {
         items={[
           ["¿El Facturador Gratuito es legal para mi colmado?", "Sí. Lo da la DGII a cualquier contribuyente, sobre todo de bajo volumen. Excluye a los grandes contribuyentes nacionales."],
           ["¿Puedo empezar con el Facturador Gratuito y cambiar después?", "Sí, pero el nuevo programa debe certificarse con su RNC. El certificado gratis de la DGII no sirve fuera del Facturador Gratuito."],
-          ["¿Abastalia cobra por cada e-CF?", "No. No hay cupo ni cobro por documento, y la venta no se detiene por volumen."],
+          [
+            "¿Abastalia cobra por cada e-CF?",
+            <>
+              No. No hay cupo ni cobro por documento, y la venta no se detiene por volumen. El uso justo es de 50,000 e-CF al mes por negocio; si lo pasa, le llamamos para revisar su plan, sin cobro automático (<Link to="/terminos#uso-justo">términos</Link>).
+            </>,
+          ],
         ]}
       />
       <Sources links={[["Facturador Gratuito (DGII)", dgii.gratuito], ["Preguntas frecuentes del Facturador Gratuito (DGII)", dgii.gratuitoFaq], ["Límite de 150 al mes (El Día, 12/05/2026)", "https://eldia.com.do/quienes-pueden-usar-el-facturador-electronico-gratuito-de-la-dgii/"]]} />
@@ -558,6 +567,65 @@ function Certification() {
   );
 }
 
+const rd = (n: number) => `RD$${n.toLocaleString("en-US")}`;
+
+/** TK-316: invoices a month → what a per-invoice charge costs at a typical market rate, next to RD$0 in Abastalia. No brands, no script. */
+function SavingsCalculator({ plan }: { plan: SitePrice | null }) {
+  const [typed, setTyped] = useState("3000");
+  const { invoices, low, high } = invoiceCost(typed);
+  return (
+    <Section id="calculadora" className="calc counter">
+      <h2>¿Cuánto le costarían sus facturas?</h2>
+      <form className="calc__form" onSubmit={(e) => e.preventDefault()}>
+        <label htmlFor="calc-invoices">Facturas que emite al mes</label>
+        <input
+          id="calc-invoices"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={maxCalculatorInvoices}
+          step={1}
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          aria-describedby="calc-hint"
+        />
+        <p id="calc-hint" className="muted">
+          100 ventas al día son unas 3,000 facturas al mes.
+        </p>
+      </form>
+      <div className="grid grid--2">
+        <div className="card">
+          <h3>Con cobro por factura</h3>
+          <p className="price">{low === high ? rd(low) : `${rd(low)} a ${rd(high)}`}</p>
+          <p className="muted">
+            Al mes, solo por las facturas ({rd(perInvoiceDop.low)} a {rd(perInvoiceDop.high)} cada una), aparte de la mensualidad.
+          </p>
+        </div>
+        <div className="card card--brand">
+          <h3>Con Abastalia</h3>
+          <p className="price">RD$0</p>
+          <p className="muted">Por las facturas: vienen incluidas en su plan{plan ? `, desde ${plan.label}` : ""}.</p>
+        </div>
+      </div>
+      <p className="calc__result" role="status">
+        {invoices === 0 ? (
+          "Escriba cuántas facturas emite al mes."
+        ) : (
+          <>
+            Con {invoices.toLocaleString("en-US")} facturas al mes se ahorra entre <strong>{rd(low)}</strong> y <strong>{rd(high)}</strong> al mes.
+          </>
+        )}
+      </p>
+      {invoices > fairUseEcf && (
+        <p className="note">
+          Más de {fairUseEcf.toLocaleString("en-US")} al mes pasa del uso justo: le llamamos para revisar su plan. No hay cobro automático.
+        </p>
+      )}
+      <p className="muted calc__source">Tarifas públicas por factura de sistemas en República Dominicana, octubre de 2026. Es un ejemplo, no una cotización.</p>
+    </Section>
+  );
+}
+
 function Plan({ name, note, price, children, brand }: { name: string; note: string; price: SitePrice | null; children: ReactNode; brand?: boolean }) {
   return (
     <div className={brand ? "card card--brand" : "card"}>
@@ -585,18 +653,21 @@ function Pricing() {
         <h2>Planes</h2>
         <div className="grid grid--3">
           <Plan name="Esencial" note="Para empezar con un solo punto de cobro." price={price("Essential")}>
+            <li>{unlimitedEcf}</li>
             <li>Solo la PC principal</li>
             <li>2 cajeros incluidos</li>
             <li>2 usuarios del panel</li>
             <li>100 preguntas al asistente al mes</li>
           </Plan>
           <Plan name="Estándar" note="La PC principal y una caja más." price={price("Default")} brand>
+            <li>{unlimitedEcf}</li>
             <li>PC principal + 1 caja</li>
             <li>4 cajeros incluidos</li>
             <li>3 usuarios del panel</li>
             <li>300 preguntas al asistente al mes</li>
           </Plan>
           <Plan name="Pro" note="Para la tienda con fila." price={price("MultiRegister")}>
+            <li>{unlimitedEcf}</li>
             <li>PC principal + 3 cajas</li>
             <li>8 cajeros incluidos</li>
             <li>5 usuarios del panel</li>
@@ -614,6 +685,7 @@ function Pricing() {
           </Link>
         </p>
       </Section>
+      <SavingsCalculator plan={price("Essential")} />
       <Section>
         <h2>Adapte su plan</h2>
         <div className="table-wrap table-wrap--fit">

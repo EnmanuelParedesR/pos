@@ -106,6 +106,12 @@ function SummaryView({ summary: s, lastWeek, days, top, receivables, isToday }: 
         </div>
       </section>
 
+      {s.ecfThisMonth > 0 && (
+        <p className="ecf-month">
+          <Icon name="receipt" size={18} /> Este mes emitió {s.ecfThisMonth.toLocaleString("en-US")} e-CF sin costo adicional.
+        </p>
+      )}
+
       <div className="esc-grid">
         <Card title="Ventas de los últimos 7 días" aside={<Legend current="Estos días" ghost="Semana anterior" />} className="esc-span-8">
           <BarChart

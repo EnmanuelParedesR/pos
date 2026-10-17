@@ -66,6 +66,7 @@ public sealed class PanelTests(CloudApp app) : IClassFixture<CloudApp>
         summary.GetProperty("voidedCount").GetInt32().ShouldBe(1);
         summary.GetProperty("returnsTotal").GetDecimal().ShouldBe(100);
         summary.GetProperty("netTotal").GetDecimal().ShouldBe(400);
+        summary.GetProperty("ecfThisMonth").GetInt32().ShouldBe(1); // TK-316
         var hour = summary.GetProperty("byHour").EnumerateArray().ShouldHaveSingleItem();
         hour.GetProperty("hour").GetInt32().ShouldBe(11);
         hour.GetProperty("total").GetDecimal().ShouldBe(500);
@@ -80,6 +81,7 @@ public sealed class PanelTests(CloudApp app) : IClassFixture<CloudApp>
         var other = await b.Client.GetFromJsonAsync<JsonElement>($"/api/panel/summary?date={CloudApp.Today:yyyy-MM-dd}");
         other.GetProperty("salesTotal").GetDecimal().ShouldBe(1000);
         other.GetProperty("issues").GetArrayLength().ShouldBe(0);
+        other.GetProperty("ecfThisMonth").GetInt32().ShouldBe(0);
 
         // Asking for the other tenant's store gives nothing: the tenant comes from the token, never from the request.
         var foreign = await b.Client.GetFromJsonAsync<JsonElement>($"/api/panel/summary?date={CloudApp.Today:yyyy-MM-dd}&storeId={nodeA.StoreId}");
