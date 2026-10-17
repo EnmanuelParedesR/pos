@@ -4,6 +4,10 @@ html, body { background: #F6F5F2; }
 :root[data-theme="dark"], :root[data-theme="dark"] body { background: #131416; } /* TK-183: Escuadra Admin's dark --background */
 .esc-admin .esc-table td { white-space: nowrap; }
 
+/* TK-316: Resumen's monthly reminder that e-CF are included. */
+.ecf-month { display: flex; align-items: center; gap: 10px; margin: 0; padding: 12px 16px; border-radius: var(--r-card); background: var(--brand-50); color: var(--brand-700); font-weight: 600; }
+.ecf-month svg { flex: none; }
+
 /* Stores */
 .store { display: flex; flex-direction: column; gap: 16px; }
 .store__head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }

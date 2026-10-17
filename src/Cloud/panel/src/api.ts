@@ -315,6 +315,8 @@ export interface Summary {
   paymentMix: PaymentMix[];
   issues: Issue[];
   lastEventUtc: string | null;
+  /** TK-316: e-CF issued in the current store month, whatever `date` is. */
+  ecfThisMonth: number;
 }
 export interface DaySales { date: string; count: number; total: number; discount: number; itbis: number; returns: number; net: number; voidedCount: number }
 /** `unit`: "Pound" or "Unit"; null for sales the store uploaded before TK-180. */
