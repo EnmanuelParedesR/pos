@@ -30,6 +30,8 @@ public interface IFeatureService
     int LimitOf(Limit limit);
     /// <summary>R11 B-Low8: the installed license as Abastalia signed it (JWS), for the cloud to verify; null without one.</summary>
     string? LicenseJws => null;
+    /// <summary>R12: what a Blocked store answers, by cause (expired, trial over, suspended by Abastalia).</summary>
+    Error BlockedError => Jws.Blocked;
 }
 
 /// <summary>The license as the vendor signed it (docs/licencias.md). <see cref="Features"/> holds <see cref="Feature"/> names; <see cref="Limits"/> by <see cref="Limit"/> name.
@@ -38,8 +40,13 @@ public interface IFeatureService
 /// the store itself ignores it (it may not be connected to the cloud).</param>
 /// <param name="Blocked">TK-279: Abastalia blocked the business (platform console): the store is Blocked while this is its installed license.</param>
 /// <param name="BlockAfterDays">TK-279: days after <paramref name="ExpiresUtc"/> until Blocked; null = 30. Only a signed value sets it, never a local setting.</param>
+/// <param name="Rnc">R12: the business's RNC; the store refuses a license for another RNC. Null (older licenses): accepted until they expire.</param>
 public sealed record LicenseData(string Store, string Plan, IReadOnlyList<string> Features, IReadOnlyDictionary<string, int> Limits, DateTime IssuedUtc, DateTime ExpiresUtc,
-    Guid? TenantId = null, bool Blocked = false, int? BlockAfterDays = null);
+    Guid? TenantId = null, bool Blocked = false, int? BlockAfterDays = null, string? Rnc = null);
+
+/// <summary>R12 (security B3): the cloud's signed word that a business's store trial lasts <paramref name="Days"/> (TK-276, a referral). Signed with the
+/// license keys under its own JWS <c>typ</c> (<see cref="Jws.TrialType"/>), so it never passes for a license nor a license for it.</summary>
+public sealed record TrialGrant(Guid TenantId, int Days, DateTime IssuedUtc);
 
 /// <summary>Compact JWS with ES256 (ECDSA P-256, SHA-256, signature r‖s). Only the vendor's private keys sign; the store has only the public keys,
 /// so there is no license generator in the client (the old system shipped one).</summary>
@@ -53,20 +60,38 @@ public static class Jws
     public static readonly Error Blocked = Error.Forbidden("License.Blocked",
         "Su licencia está vencida: no se pueden hacer ventas nuevas. Pague su plan o escríbale a Abastalia y active la licencia en Configuración → Licencia. Sus datos, reportes y respaldos siguen disponibles.");
 
-    public static string Sign(LicenseData data, ECDsa privateKey)
+    /// <summary>R12: Blocked 30 days after the free trial ended (same code, its own words).</summary>
+    public static readonly Error TrialOver = Error.Forbidden("License.Blocked",
+        "La prueba gratis terminó: no se pueden hacer ventas nuevas. Compre su plan y active la licencia en Configuración → Licencia. Sus datos, reportes y respaldos siguen disponibles.");
+
+    /// <summary>R12: Blocked because Abastalia suspended the business from its console.</summary>
+    public static readonly Error Suspended = Error.Forbidden("License.Blocked",
+        "Abastalia suspendió el servicio de este negocio: no se pueden hacer ventas nuevas. Escríbale a Abastalia para resolverlo. Sus datos, reportes y respaldos siguen disponibles.");
+
+    /// <summary>The JWS <c>typ</c> of a license and of a <see cref="TrialGrant"/>.</summary>
+    public const string LicenseType = "JWT", TrialType = "abastalia-trial";
+
+    public static string Sign(LicenseData data, ECDsa privateKey) => Sign(data, privateKey, LicenseType);
+
+    public static string Sign<T>(T data, ECDsa privateKey, string type)
     {
-        var input = SigningInput(data);
+        var input = SigningInput(data, type);
         return Compose(input, privateKey.SignData(Encoding.ASCII.GetBytes(input), HashAlgorithmName.SHA256));
     }
 
     /// <summary><c>header.body</c>: what is signed. TK-249: the cloud hands its SHA-256 to Key Vault, which answers r‖s (<see cref="Compose"/>).</summary>
-    public static string SigningInput(LicenseData data) =>
-        $"{B64("""{"alg":"ES256","typ":"JWT"}"""u8)}.{B64(JsonSerializer.SerializeToUtf8Bytes(data, Options))}";
+    public static string SigningInput(LicenseData data) => SigningInput(data, LicenseType);
+
+    public static string SigningInput<T>(T data, string type) =>
+        $"{B64(JsonSerializer.SerializeToUtf8Bytes(new { alg = "ES256", typ = type }))}.{B64(JsonSerializer.SerializeToUtf8Bytes(data, Options))}";
 
     public static string Compose(string signingInput, byte[] signature) => $"{signingInput}.{B64(signature)}";
 
     /// <summary>Valid when any of <paramref name="publicKeys"/> signed it (TK-249: the owner's offline key or the cloud's Key Vault key).</summary>
-    public static Result<LicenseData> Verify(string jws, params IEnumerable<ECDsa> publicKeys)
+    public static Result<LicenseData> Verify(string jws, params IEnumerable<ECDsa> publicKeys) => Verify<LicenseData>(jws, LicenseType, publicKeys);
+
+    /// <summary>Valid when its header's <c>typ</c> is <paramref name="type"/> (a license without one counts as a license) and any of the keys signed it.</summary>
+    public static Result<T> Verify<T>(string jws, string type, IEnumerable<ECDsa> publicKeys)
     {
         var parts = jws.Trim().Split('.');
         if (parts.Length != 3) return Invalid;
@@ -74,10 +99,11 @@ public static class Jws
         {
             using var header = JsonDocument.Parse(Bytes(parts[0]));
             if (header.RootElement.GetProperty("alg").GetString() != "ES256") return Invalid;
+            if ((header.RootElement.TryGetProperty("typ", out var typ) ? typ.GetString() : LicenseType) != type) return Invalid;
             var input = Encoding.ASCII.GetBytes($"{parts[0]}.{parts[1]}");
             var signature = Bytes(parts[2]);
             if (!publicKeys.Any(k => k.VerifyData(input, signature, HashAlgorithmName.SHA256))) return Invalid;
-            return JsonSerializer.Deserialize<LicenseData>(Bytes(parts[1]), Options) is { } data ? data : Invalid;
+            return JsonSerializer.Deserialize<T>(Bytes(parts[1]), Options) is { } data ? data : Invalid;
         }
         catch (Exception e) when (e is FormatException or JsonException or KeyNotFoundException or InvalidOperationException)
         {

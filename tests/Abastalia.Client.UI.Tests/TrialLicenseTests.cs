@@ -84,6 +84,61 @@ public sealed class TrialLicenseTests
         frame.Markup.ShouldNotContain("Su licencia está vencida"); // the sign-in screen, not the block, for the next user
     }
 
+    [Theory]
+    [InlineData("Trial", "Terminó la prueba gratis", "Compre su plan")]
+    [InlineData("Suspended", "Abastalia suspendió el servicio de su negocio", "para resolverlo")]
+    [InlineData("Expired", "Su licencia está vencida", "Pague su plan")]
+    public void R12_the_block_screen_says_why(string reason, string title, string wayOut)
+    {
+        var (ctx, api) = ScreenContext.Create("sales.create");
+        using var _ = ctx;
+        api.Json("GET", "/api/settings/features", new
+        {
+            status = "Blocked", plan = (string?)null, expiresUtc = (DateTime?)null, enabled = Array.Empty<string>(), registers = 1, warning = "Blocked", blockReason = reason,
+        });
+        var frame = ctx.Render<Abastalia.Client.UI.Components.Frame>(p => p.Add(x => x.Body,
+            (Microsoft.AspNetCore.Components.RenderFragment)(b => b.AddContent(0, "PANTALLA DE VENTA"))));
+
+        frame.WaitForAssertion(() => frame.Find("main [role=alert] h1").TextContent.ShouldBe(title));
+        frame.Find("main [role=alert]").TextContent.ShouldContain(wayOut);
+        Names.LicenseNote(new Api.LicenseFeatures("Blocked", null, null, [], 1, Warning: "Blocked", BlockReason: reason))!.ShouldStartWith(title == "Su licencia está vencida" ? "Licencia vencida" : title[..12]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void R12_an_uncertain_checkout_is_resolved_from_the_block_screen(bool saved)
+    {
+        var (ctx, api) = ScreenContext.Create("sales.create");
+        using var _ = ctx;
+        var cart = ctx.Services.GetRequiredService<Abastalia.Client.UI.State.Cart>();
+        cart.Add(new Abastalia.Client.UI.Api.ProductByCode(Guid.NewGuid(), null, "Refresco", "Unit", "Exempt", 59m, null, 1m, null, null, [], null), null);
+        cart.CheckoutUncertain = true;
+        api.Json("GET", "/api/settings/features", new
+            {
+                status = "Blocked", plan = "Estándar", expiresUtc = DateTime.UtcNow.AddDays(-40), enabled = Array.Empty<string>(), registers = 1, warning = "Blocked",
+            })
+           .Respond("DELETE", "/api/identity/sessions/current", _ => new HttpResponseMessage(HttpStatusCode.NoContent))
+           .Respond("GET", $"/api/sales/{cart.SaleId}", _ => saved
+               ? FakeApi.Response(HttpStatusCode.OK, new { id = cart.SaleId, number = 7L, eNcf = "E320000000007", total = 59m })
+               : new HttpResponseMessage(HttpStatusCode.NotFound))
+           .Json("GET", $"/api/sales/{cart.SaleId}/receipt", new { change = 1m });
+        var frame = ctx.Render<Abastalia.Client.UI.Components.Frame>(p => p.Add(x => x.Body,
+            (Microsoft.AspNetCore.Components.RenderFragment)(b => b.AddContent(0, "PANTALLA DE VENTA"))));
+
+        frame.WaitForAssertion(() => frame.FindAll("main button").Single(b => b.TextContent.Contains("Cerrar sesión")).Click());
+        frame.WaitForAssertion(() => frame.Find("[role=dialog]").TextContent.ShouldContain("El último cobro no recibió respuesta."));
+        frame.FindAll("[role=dialog] button").Single(b => b.TextContent.Contains("Anularla y salir")).HasAttribute("disabled").ShouldBeTrue(); // the trap before R12
+        frame.FindAll("[role=dialog] button").Single(b => b.TextContent == "Comprobar el último cobro").Click();
+        if (!saved)
+        {
+            frame.WaitForAssertion(() => frame.Find("[role=dialog]").TextContent.ShouldContain("Ese cobro no se guardó"));
+            frame.FindAll("[role=dialog] button").Single(b => b.TextContent.Contains("Anularla y salir")).Click();
+        }
+        frame.WaitForAssertion(() => api.Requests.ShouldContain(r => r.Method == "DELETE" && r.Route == "/api/identity/sessions/current"));
+        cart.IsEmpty.ShouldBeTrue();
+    }
+
     [Fact]
     public void A_pasted_license_code_is_installed_and_sample_data_removed_with_one_click()
     {

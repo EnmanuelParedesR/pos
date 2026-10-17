@@ -91,11 +91,12 @@ internal static class PullLicense
         using var response = await cloud.SendAsync(connection, Path, new StringContent(""), ct);
         if (!response.IsSuccessStatusCode) return false;
         var answer = await response.Content.ReadFromJsonAsync<Answer>(ct);
-        if (answer?.TrialDays is { } days) await license.ExtendTrialAsync(days, ct); // TK-276: a business that came recommended
+        // TK-276: a business that came recommended. R12 (security B3): only the cloud-signed grant counts, never a bare number.
+        if (answer?.Trial is { Length: > 0 } trial) await license.ExtendTrialAsync(trial, connection.TenantId, ct);
         return answer?.License is { Length: > 0 } jws && await license.InstallFromCloudAsync(jws, ct);
     }
 
-    private sealed record Answer(string? License, int? TrialDays);
+    private sealed record Answer(string? License, string? Trial);
 }
 
 /// <summary>TK-254: asks the cloud which version this store may install on its channel (staged rollout from the platform console) and keeps the
