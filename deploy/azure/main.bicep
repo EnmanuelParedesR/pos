@@ -38,6 +38,14 @@ param openAiApiVersion string = '2025-04-01-preview'
 @description('Deployment SKU: GlobalStandard is the cheapest pay-per-token option where available.')
 param openAiDeploymentSku string = 'GlobalStandard'
 
+// TK-348: Talia's own deployment, chosen by the evals (docs/talia.md §2): best rules and judge score at ~US$0.39 per 1,000 questions, with
+// reasoning "none" (gpt-5.6 rejects tools + reasoning on Chat Completions). The invoice reader stays on 'chat': Talia's model was not tested on images.
+@description('Chat model of Talia (panel and site).')
+param taliaModelName string = 'gpt-5.6-luna'
+
+@description('Version of the Talia model, from az cognitiveservices model list.')
+param taliaModelVersion string = '2026-07-09'
+
 @description('SQL database edition: Basic (2 GB max, ~US$5/month) or a Standard objective such as S0 (~US$15).')
 param databaseSku string = 'Basic'
 
@@ -197,6 +205,18 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-1
   }
 }
 
+// Deployments of one account are created one at a time (Azure refuses two at once): after 'chat'.
+resource taliaDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = {
+  parent: openAi
+  name: 'talia'
+  dependsOn: [chatDeployment]
+  sku: { name: openAiDeploymentSku, capacity: openAiCapacity }
+  properties: {
+    model: { format: 'OpenAI', name: taliaModelName, version: taliaModelVersion }
+    versionUpgradeOption: 'OnceNewDefaultVersionAvailable'
+  }
+}
+
 
 // TK-207: cold archive of the signed e-CF (10 years, DGII). The API moves XML older than Archive:HotDays (7) out of SQL into here, as Cool.
 // Only the API's managed identity reaches it (no account keys, no public blobs).
@@ -231,6 +251,14 @@ resource archiveContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
 resource backupContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
   parent: archiveBlobs
   name: 'store-backups'
+  properties: { publicAccess: 'None' }
+}
+
+// TK-350: Talia's knowledge base outside the API (docs/talia.md §4). deploy/azure/talia-knowledge-publish.ps1 uploads the articles after their
+// tests pass; the API reads them every 10 minutes with its managed identity (same account role as the archive) and keeps the last valid base.
+resource taliaKnowledgeContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: archiveBlobs
+  name: 'talia-knowledge'
   properties: { publicAccess: 'None' }
 }
 
@@ -422,10 +450,16 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     AzureOpenAI__Endpoint: openAi.properties.endpoint
     AzureOpenAI__Deployment: chatDeployment.name
     AzureOpenAI__ApiVersion: openAiApiVersion
+    // TK-348: both Talias on their deployment; reasoning "none" is what gpt-5.6 takes with tools (the code's defaults are gpt-5-nano's).
+    Talia__Panel__Deployment: taliaDeployment.name
+    Talia__Panel__ReasoningEffort: 'none'
+    Talia__Public__Deployment: taliaDeployment.name
+    Talia__Public__ReasoningEffort: 'none'
     Panel__Origins__0: 'https://${panel.properties.defaultHostname}'
     Archive__Blob__ServiceUri: archive.properties.primaryEndpoints.blob
     Archive__Blob__Container: archiveContainer.name
     CloudBackup__Blob__Container: backupContainer.name // TK-238: same account (Archive__Blob__ServiceUri), same managed identity role
+    Talia__Knowledge__Container: taliaKnowledgeContainer.name // TK-350: same account and role; empty container = the compiled base
     Fe__Vault: 'KeyVault'
     Fe__KeyVaultUri: vault.properties.vaultUri
     Fe__DefaultSigningMode: 'StoreSigned' // TK-246 (ADR-0011)

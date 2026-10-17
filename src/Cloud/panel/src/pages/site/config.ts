@@ -3,7 +3,7 @@ export const site = {
   /** The canonical origin, without a trailing slash (TK-259): canonical, og:url, og:image, JSON-LD and sitemap.xml are built from it. */
   url: "https://abastalia.com",
   /** Digits only, with the country code (1809…); with it, "Hablemos" opens WhatsApp. shortcut: no number yet (owner decision). */
-  whatsapp: "",
+  whatsapp: "18496313513",
   /** AbastaliaSetup.exe on the release feed (TK-242). shortcut: no hosting yet; /descargar shows "[URL DEL INSTALADOR]". */
   installerUrl: "",
   /** Plan and one-off prices (TK-203, TK-219). null = "Precio por confirmar"; never invent one. */

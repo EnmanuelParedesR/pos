@@ -52,5 +52,21 @@
       { "toolCalls": [ { "tool": "panel_help", "args": { "topic": "panel" } } ] },
       { "content": "En Equipo (/app/members) el Dueño lo invita como Dueño o Solo lectura." }
     ]
+  },
+  {
+    "name": "search_knowledge.sin-internet",
+    "question": "¿Puedo seguir facturando si se va el internet?",
+    "toolData": {
+      "search_knowledge": { "results": [ { "title": "Sin internet, sin luz y contingencia del e-CF", "section": "¿Puedo vender sin internet?",
+        "text": "Sí. Abastalia sigue vendiendo y facturando sin internet; los e-CF quedan en cola y se envían a la DGII cuando vuelve la conexión.", "links": [ "/e-cf" ] } ] }
+    },
+    "expect": {
+      "calls": [ { "tool": "search_knowledge" } ],
+      "answerContains": [ "sin internet" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "search_knowledge", "args": { "query": "facturar sin internet" } } ] },
+      { "content": "Sí: Abastalia sigue vendiendo y facturando sin internet y envía los e-CF a la DGII cuando vuelve la conexión." }
+    ]
   }
 ]

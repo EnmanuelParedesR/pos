@@ -40,7 +40,11 @@ Suscripción **Visual Studio Enterprise Subscription – MPN** (`fc0b2ba5-daf7-4
 - **Migraciones:** las aplica la API al arrancar (`CreateCloudDatabaseOnStartup`). No hay paso aparte.
 - **Logs del contenedor:** están activados en el sistema de archivos (`az webapp log config --docker-container-logging filesystem`). Se leen con `az webapp log tail -g rg-abastalia-prod -n app-abastalia-prod-5qsy5n`.
 
-### Modelo del asistente: por qué `gpt-5-nano`
+### Talia: despliegue `talia` con `gpt-5.6-luna` (17/10/2026, TK-348)
+
+Las dos Talias (panel y sitio) usan su propio despliegue `talia` (`taliaModelName` = `gpt-5.6-luna`, `2026-07-09`), elegido con las evaluaciones de `docs/talia.md` §2: 100 % de las reglas y 4.72/5 del juez a ~US$0.39 por 1,000 preguntas, el más rápido (p50 ~3 s), y soportado hasta 2028-01 (`gpt-5-nano` se retira en 2027-02). Va con `Talia__*__ReasoningEffort` = `none`: los `gpt-5.6` no aceptan herramientas con razonamiento en Chat Completions. El despliegue `chat` (`gpt-5-nano`) sigue para la lectura de facturas. Cambiar de modelo: `Talia__Panel__Deployment` / `Talia__Public__Deployment` y su razonamiento, después de correr `deploy/azure/talia-evals.ps1`. La base de conocimiento se publica sin desplegar con `deploy/azure/talia-knowledge-publish.ps1` (contenedor `talia-knowledge`).
+
+### Modelo del asistente: por qué `gpt-5-nano` (historia; hoy solo lectura de facturas)
 
 Precios de pago por uso (GlobalStandard, eastus2, API pública de precios de Azure, USD por millón de tokens). Todos tienen *function calling* y cuota en la región:
 

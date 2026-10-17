@@ -38,7 +38,8 @@ public sealed class TaliaEvalTests
 
         r.Failures.ShouldBeEmpty(string.Join("; ", r.Failures));
         model.Rounds.Count.ShouldBe(c.Script.Count);
-        model.Rounds[0].Messages[0].Content!.ShouldContain("2026-10-15");
+        // TK-348: the rules and the day's context are two system messages (the rules first, so Azure caches them).
+        string.Join("\n", model.Rounds[0].Messages.Where(m => m.Role == "system").Select(m => m.Content)).ShouldContain("2026-10-15");
         model.Rounds[0].Messages[^1].ShouldBe(new ChatMessage("user", c.Question));
         model.Rounds[0].Tools.Select(t => t.Name).ShouldBe(TaliaEval.For(model, c).Offered.Select(t => t.Name)); // read tools, navigate (TK-339), propose_* (TK-338)
         r.Calls.Count.ShouldBe(c.Script.Sum(s => s.ToolCalls?.Count ?? 0));

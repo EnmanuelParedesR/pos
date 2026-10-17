@@ -17,40 +17,50 @@ export function Logo({ size = 28, withName = true, variant = "default" }: { size
   );
 }
 
-const taliaFaces = {
-  attentive: (
+/** TK-349: Talia v2. Same idea as TK-273 (the amber tag with a face in a blue circle), drawn to be read at the sizes she is used at: the tag
+ *  bigger and centred, a bigger face centred in it, taller eyes. At 32 px or less (chat, ask bar) the hang hole goes (it read as a third eye) and the
+ *  face grows again. Moods change only the face: attentive (default), happy (a wink: greeting, empty chat), thinking (eyes up, while she looks). */
+const taliaFace = (mood: TaliaMood, small: boolean) => {
+  const [l, r, ry, rx, w] = small ? [50, 80, 11, 9, 10] : [53, 79, 9, 7, 8];
+  const smile = small ? "M45 79 Q65 97 85 79" : "M49 78 Q66 94 83 78";
+  if (mood === "happy")
+    return (
+      <>
+        <ellipse cx={l} cy={60} rx={rx} ry={ry} />
+        <path d={`M${r - rx - 2} 61 Q${r} 52 ${r + rx + 2} 61`} fill="none" strokeWidth={w - 1} strokeLinecap="round" />
+        <path d={smile} fill="none" strokeWidth={w} strokeLinecap="round" />
+      </>
+    );
+  if (mood === "thinking")
+    return (
+      <>
+        <ellipse cx={l + 5} cy={55} rx={rx} ry={ry} />
+        <ellipse cx={r + 5} cy={55} rx={rx} ry={ry} />
+        <path d={small ? "M56 83 Q66 87 76 83" : "M58 82 Q67 86 76 82"} fill="none" strokeWidth={w} strokeLinecap="round" />
+      </>
+    );
+  return (
     <>
-      <circle cx="54" cy="62" r="6.5" />
-      <circle cx="80" cy="62" r="6.5" />
-      <path d="M52 78 Q67 92 82 78" fill="none" strokeWidth="7" strokeLinecap="round" />
+      <ellipse cx={l} cy={60} rx={rx} ry={ry} />
+      <ellipse cx={r} cy={60} rx={rx} ry={ry} />
+      <path d={smile} fill="none" strokeWidth={w} strokeLinecap="round" />
     </>
-  ),
-  happy: (
-    <>
-      <path d="M47.5 65 Q54 55 60.5 65 M73.5 65 Q80 55 86.5 65" fill="none" strokeWidth="6.5" strokeLinecap="round" />
-      <path d="M50 77 Q67 95 84 77" fill="none" strokeWidth="7" strokeLinecap="round" />
-    </>
-  ),
-  thinking: (
-    <>
-      <circle cx="58" cy="57" r="6.5" />
-      <circle cx="84" cy="57" r="6.5" />
-      <path d="M58 81 Q67 86 76 81" fill="none" strokeWidth="7" strokeLinecap="round" />
-    </>
-  ),
+  );
 };
 
-/** Talia, the owner's assistant (TK-273), same SVG as Escuadra's Talia.razor: the tag in amber with a face, in a blue circle. A mood changes only the face.
- *  Decorative: her name or the chat bubble next to her carries the meaning. */
-export function Talia({ size = 28, mood = "attentive" }: { size?: number; mood?: keyof typeof taliaFaces }) {
+export type TaliaMood = "attentive" | "happy" | "thinking";
+
+/** Talia, the owner's assistant: the tag in amber with a face, in a blue circle (TK-273, v2 in TK-349). The PNG avatars (public/og/talia*.png) are
+ *  drawn from this same SVG (scripts/talia-avatar.mjs). Decorative: her name or the chat bubble next to her carries the meaning. */
+export function Talia({ size = 28, mood = "attentive" }: { size?: number; mood?: TaliaMood }) {
+  const small = size <= 40; // TK-349: the 36 px dialog-header avatar too
+  const hole = small ? "" : " M45 37 A8 8 0 1 0 29 37 A8 8 0 1 0 45 37 Z";
   return (
     <svg className="esc-talia" aria-hidden="true" width={size} height={size} viewBox="0 0 120 120">
       <circle cx="60" cy="60" r="60" fill="#0B5CAD" />
-      <g transform="translate(60 60) scale(.74) translate(-60 -60)">
-        <path d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#FFC233" fillRule="evenodd" stroke="#FFC233" strokeWidth="6" strokeLinejoin="round" />
-        <g fill="#14181D" stroke="#14181D">
-          {taliaFaces[mood]}
-        </g>
+      <g transform={`translate(58 58) scale(${small ? 0.84 : 0.8}) translate(-60 -60)`}>
+        <path d={`M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z${hole}`} fill="#FFC233" fillRule="evenodd" stroke="#FFC233" strokeWidth="6" strokeLinejoin="round" />
+        <g fill="#14181D" stroke="#14181D">{taliaFace(mood, small)}</g>
       </g>
     </svg>
   );
@@ -92,6 +102,9 @@ const paths = {
   users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8z M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
   bell: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9 M10.3 21a1.94 1.94 0 0 0 3.4 0",
   x: "M18 6L6 18 M6 6l12 12",
+  // TK-349: rating an answer of Talia (Lucide thumbs-up / thumbs-down).
+  "thumbs-up": "M7 10v12 M15 5.88L14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88z",
+  "thumbs-down": "M17 14V2 M9 18.12L10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88z",
   menu: "M4 6h16 M4 12h16 M4 18h16",
 } as const;
 

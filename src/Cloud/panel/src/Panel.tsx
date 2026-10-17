@@ -1,5 +1,5 @@
 // TK-278: the owner's panel, in its own chunk so the public pages do not download it (App.tsx loads it lazily).
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router";
 import { api, hasSession, renewSession, setOnSignedOut, signOut, useApi, roleNames, type Me, type Store } from "./api";
 import { Icon, Logo, Talia, ThemeToggle, type IconName } from "./ui";
@@ -12,6 +12,7 @@ import { ShiftsPage } from "./pages/ShiftsPage";
 import { ShiftReportPage } from "./pages/ShiftReportPage";
 import { StoresPage } from "./pages/StoresPage";
 import { AssistantChat, AssistantPage, type PendingQuestion } from "./pages/AssistantPage";
+import { TaliaPopup } from "./TaliaPopup";
 import { BillingPage } from "./pages/BillingPage";
 import { PlatformAccompanimentPage, PlatformDelegationsPage, PlatformMetricsPage, PlatformReleasesPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage, PlatformWatchPage } from "./pages/PlatformPages";
 import { SecurityPage } from "./pages/SecurityPage";
@@ -208,7 +209,7 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
 
       <TabBar nav={nav} />
       {/* Every panel member may use the assistant (the API's panel policy); on its own page the popup would be the same chat twice. */}
-      {!onAssistant && <TaliaPopup open={taliaOpen} onOpen={() => setTaliaOpen(true)} onClose={() => setTaliaOpen(false)} pending={pending} onAsked={() => setPending(null)} />}
+      {!onAssistant && <PanelTalia open={taliaOpen} onOpen={() => setTaliaOpen(true)} onClose={() => setTaliaOpen(false)} pending={pending} onAsked={() => setPending(null)} />}
     </div>
   );
 }
@@ -267,66 +268,12 @@ function TabBar({ nav }: { nav: { to: string; label: string; icon: IconName }[] 
   );
 }
 
-/** TK-300: Talia one tap away on every screen. The popup stays mounted while closed, so the conversation survives moving between screens. */
-function TaliaPopup({ open, onOpen, onClose, pending, onAsked }: { open: boolean; onOpen: () => void; onClose: () => void; pending: PendingQuestion | null; onAsked: () => void }) {
-  const fab = useRef<HTMLButtonElement>(null);
-  const box = useRef<HTMLDivElement>(null);
-  const wasOpen = useRef(false);
-
-  useEffect(() => {
-    if (open) {
-      // A computer can type at once; on a phone the keyboard would cover the suggestions, so focus goes to the dialog.
-      const wide = window.matchMedia?.("(min-width: 761px)").matches;
-      (wide ? box.current?.querySelector<HTMLElement>("input") : box.current)?.focus();
-      const overflow = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      wasOpen.current = true;
-      return () => {
-        document.body.style.overflow = overflow;
-      };
-    }
-    if (wasOpen.current) fab.current?.focus();
-  }, [open]);
-
-  // Esc closes; Tab and Shift+Tab stay inside the dialog.
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === "Escape") return (e.stopPropagation(), onClose());
-    if (e.key !== "Tab") return;
-    const items = [...box.current!.querySelectorAll<HTMLElement>("button:not([disabled]), input, a[href]")];
-    const first = items[0];
-    const last = items[items.length - 1];
-    if (e.shiftKey && (document.activeElement === first || document.activeElement === box.current)) {
-      e.preventDefault();
-      last.focus();
-    } else if (!e.shiftKey && document.activeElement === last) {
-      e.preventDefault();
-      first.focus();
-    }
-  };
-
+/** TK-300: Talia one tap away on every screen (TaliaPopup.tsx). A link in an answer (TK-301): on the phone the sheet covers the screen, so it closes to show where it went. */
+function PanelTalia({ open, onOpen, onClose, pending, onAsked }: { open: boolean; onOpen: () => void; onClose: () => void; pending: PendingQuestion | null; onAsked: () => void }) {
   return (
-    <>
-      <button ref={fab} type="button" className="talia-fab" hidden={open} aria-label="Pregúntale a Talia" title="Pregúntale a Talia" aria-haspopup="dialog" onClick={onOpen}>
-        <Talia size={56} />
-      </button>
-      <div className="talia-pop" hidden={!open}>
-        <div className="talia-pop__backdrop" onClick={onClose} />
-        <div ref={box} className="talia-pop__box" role="dialog" aria-modal="true" aria-labelledby="talia-title" tabIndex={-1} onKeyDown={onKeyDown}>
-          <header className="talia-pop__head">
-            <Talia size={36} />
-            <div>
-              <h2 id="talia-title">Talia</h2>
-              <span>Su asistente</span>
-            </div>
-            <button type="button" className="esc-button esc-button--ghost esc-button--small talia-pop__close" aria-label="Cerrar" onClick={onClose}>
-              <Icon name="x" size={20} />
-            </button>
-          </header>
-          {/* A link in an answer (TK-301): on the phone the sheet covers the screen, so it closes to show where it went. */}
-          <AssistantChat pending={pending} onAsked={onAsked} inputId="talia-question" inPopup onNavigate={() => window.matchMedia?.("(max-width: 760px)").matches && onClose()} />
-        </div>
-      </div>
-    </>
+    <TaliaPopup open={open} onOpen={onOpen} onClose={onClose} subtitle="Su asistente">
+      <AssistantChat pending={pending} onAsked={onAsked} inputId="talia-question" inPopup onNavigate={() => window.matchMedia?.("(max-width: 760px)").matches && onClose()} />
+    </TaliaPopup>
   );
 }
 

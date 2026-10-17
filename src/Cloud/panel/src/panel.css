@@ -90,6 +90,9 @@ html, body { background: #F6F5F2; }
   background: transparent; box-shadow: var(--elev-pop); cursor: pointer; transition: transform 120ms; }
 .talia-fab:hover { transform: translateY(-2px); }
 .talia-fab:focus-visible { outline: none; box-shadow: var(--elev-pop), var(--ring); }
+/* On a dark page the blue circle melts into the background: a thin ring in the surface colour gives it an edge. */
+:root[data-theme="dark"] .talia-fab { box-shadow: 0 0 0 2px var(--surface), var(--elev-pop); }
+:root[data-theme="dark"] .talia-fab:focus-visible { box-shadow: 0 0 0 2px var(--surface), var(--elev-pop), var(--ring); }
 .talia-fab svg { display: block; }
 .talia-fab[hidden], .talia-pop[hidden] { display: none; }
 .talia-pop { position: fixed; inset: 0; z-index: 40; display: flex; align-items: flex-end; justify-content: flex-end; padding: 24px; }
@@ -103,10 +106,11 @@ html, body { background: #F6F5F2; }
 .esc-admin .talia-pop__close { width: 44px; min-height: 44px; padding: 0; justify-content: center; }
 .talia-pop__chat { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 16px; }
 .talia-pop__chat .esc-bubble { max-width: 85%; }
-/* TK-339: Talia's "Ir a …" under her answer, lined up with the bubble (avatar 28 + gap 10) and 8px below it (the chat's gap is 14). */
-.esc-admin .talia-go { align-self: flex-start; margin: -6px 0 0 38px; text-decoration: none; }
-/* TK-340: Talia's confirmation card, lined up with her bubble like "Ir a …". */
-.talia-card { margin: -6px 0 0 38px; max-width: 560px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-card); background: var(--surface); }
+/* TK-339: Talia's "Ir a …" under her answer, in the answer's column (TK-349), so it lines up with the bubble. */
+.esc-admin .talia-go { align-self: flex-start; text-decoration: none; }
+.talia-pop__chat > .esc-empty { margin: auto 0; } /* .esc-chat is a flex column: the greeting sits in the middle, not at the top */
+/* TK-340: Talia's confirmation card, in the answer's column (TK-349), under "Ir a …". */
+.talia-card { margin: 0; max-width: 560px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-card); background: var(--surface); }
 .talia-card__title { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: var(--t-13); font-weight: 600; color: var(--text-2); }
 .talia-card__summary { margin: 0; font-size: var(--t-15); font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
 .talia-card__status { margin: 8px 0 0; font-size: var(--t-13); color: var(--text-2); line-height: 1.45; outline-offset: 2px; }
@@ -124,7 +128,9 @@ html, body { background: #F6F5F2; }
 }
 .talia-pop__box > .esc-notice { margin: 0 16px 8px; }
 .talia-pop__box > .esc-composer { position: static; margin: 0; border-radius: 0; box-shadow: none; border-top: 1px solid var(--line); padding: 8px 8px 8px 8px; }
-.talia-pop__box > .esc-composer input { font-size: var(--t-16); }
+/* The input reads as a field (the base composer's is borderless, made for a card), with a visible focus (the base sets outline: 0). */
+.talia-pop__box > .esc-composer input { font-size: var(--t-16); min-height: 44px; padding: 0 12px; border-radius: 10px; background: var(--surface-2); }
+.talia-pop__box > .esc-composer input:focus-visible { box-shadow: var(--ring); }
 @media (max-width: 760px) {
   .talia-fab { right: 16px; bottom: calc(56px + 16px + env(safe-area-inset-bottom)); }
   .talia-pop { padding: 0; }
@@ -132,6 +138,28 @@ html, body { background: #F6F5F2; }
   .talia-pop__box { width: 100%; height: 100%; border-radius: 0; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
 }
 @media (prefers-reduced-motion: reduce) { .talia-fab { transition: none; } .talia-fab:hover { transform: none; } }
+/* TK-315: the site has no bottom bar, so Talia's button stays at the corner on a phone too. */
+@media (max-width: 760px) { .site-talia .talia-fab { bottom: calc(16px + env(safe-area-inset-bottom)); } }
+/* The site's page styles (.site h2, section, p in site.css) must not reach into the chat. */
+.site .site-talia h2 { margin: 0; font-size: var(--t-17); font-weight: 650; letter-spacing: 0; }
+.site .site-talia section { padding: 16px; }
+.site .site-talia p { margin: 0; }
+/* TK-349: an answer, its rating under it and the note under the chat. */
+.talia-answer { display: flex; flex-direction: column; gap: 4px; min-width: 0; max-width: min(85%, 640px); }
+.talia-answer .esc-bubble { max-width: 100%; }
+.esc-bubble-row--user .talia-answer { align-items: flex-end; }
+/* 44 px targets (house rule); the negative margin lines the first icon up with the bubble's edge. */
+.talia-rate { display: flex; gap: 2px; align-items: center; min-height: 44px; margin-left: -6px; font-size: var(--t-13); color: var(--text-2); }
+.talia-rate__button { display: inline-grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: transparent;
+  color: var(--text-2); cursor: pointer; }
+.talia-rate__button:hover { background: var(--hover-tint); color: var(--brand-600); }
+.talia-rate__button:focus-visible { outline: none; box-shadow: var(--ring); }
+/* Rated: both buttons stay, aria-disabled (a real disabled would drop the focus to the body), the chosen one in blue. */
+.talia-rate__button[aria-disabled="true"] { cursor: default; color: var(--text-3); background: transparent; }
+.talia-rate__button[aria-pressed="true"] { color: var(--brand-600); }
+.talia-rate__thanks { padding-left: 6px; }
+.talia-note { margin: 8px 0 0; font-size: var(--t-13); color: var(--text-2); }
+.talia-pop__box > .talia-note { margin: 0; padding: 0 16px 10px; }
 
 @media print {
   @page { size: A4; margin: 15mm; }
