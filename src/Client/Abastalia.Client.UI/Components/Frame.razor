@@ -56,6 +56,21 @@
                         <span class="esc-offline" role="status">@(expires < DateTime.UtcNow ? "Certificado digital vencido" : $"Certificado digital vence en {(int)(expires - DateTime.UtcNow).TotalDays} días")</span>
                     }
                 }
+                @* TK-376: e-NCF running low in CerteCF or production (the server sends nothing for Simulado and TesteCF): amber under the type's
+                   threshold or 30 days before expiry, red when none is left or on the last day (then the sale stops). The cashier tells the owner;
+                   whoever can load ranges gets a link to Configuración → Comprobantes. *@
+                @foreach (var a in _sequences)
+                {
+                    var css = a.Critical ? "esc-status-bar__critical" : "esc-offline";
+                    @if (Session.Can("fiscal.manage"))
+                    {
+                        <span role="status"><button type="button" class="@css esc-status-bar__alert" @onclick='() => Nav.NavigateTo("admin/settings?section=fiscal")'>@SequenceNote(a): cargue más</button></span>
+                    }
+                    else
+                    {
+                        <span class="@css" role="status">@SequenceNote(a): avise al dueño</span>
+                    }
+                }
                 @* TK-238: amber for whoever can fix it; the sale goes on. TK-362: checked here too, so a cashier who signs in after the owner
                    never sees the owner's last answer (the 15-second check had not run yet); a tap opens Respaldos to set the phrase. *@
                 @if (_backup is { PassphraseProblem: not null } && Session.Can("backups.manage"))
@@ -199,6 +214,18 @@
     private EcfContingencyStatus? _contingency;
     private LicenseFeatures? _license;
     private BackupWarning? _backup;
+    private List<SequenceAlert> _sequences = [];
+
+    /// <summary>TK-376: "Quedan 120 comprobantes de consumo", "Los comprobantes de crédito fiscal vencen en 12 días", "No quedan…".</summary>
+    private string SequenceNote(SequenceAlert a)
+    {
+        var kind = a.Type switch { "FiscalCredit31" => "crédito fiscal", "CreditNote34" => "nota de crédito", _ => "consumo" };
+        var days = a.ExpiresOn?.DayNumber - DateOnly.FromDateTime(Format.StoreTime(Clock.GetUtcNow())).DayNumber;
+        return a.Available == 0 ? $"No quedan comprobantes de {kind}"
+            : days <= 0 ? $"Los comprobantes de {kind} vencen hoy"
+            : days <= 30 ? $"Los comprobantes de {kind} vencen en {days} {(days == 1 ? "día" : "días")}"
+            : $"{(a.Available == 1 ? "Queda 1 comprobante" : $"Quedan {a.Available.ToString("#,##0", System.Globalization.CultureInfo.InvariantCulture)} comprobantes")} de {kind}";
+    }
 
     /// <summary>The oldest pending e-CF is over 24 h old: its 72-hour deadline is less than 48 h away.</summary>
     private static bool Late(FiscalQueue q) => q.Overdue > 0 || q.NextDeadlineUtc < DateTime.UtcNow.AddHours(48);
@@ -228,6 +255,8 @@
         // The e-CF send queue, only for whoever may manage it (the endpoint needs fiscal.manage); hidden for everyone else.
         _queue = Session.Can("fiscal.manage") && !IsBackOffice ? (await Api.PollAsync<FiscalQueue>("/api/fiscal/queue")).Value ?? _queue : null;
         _contingency = Session.IsOpen && !IsBackOffice ? (await Api.PollAsync<EcfContingencyStatus>("/api/fiscal/contingency")).Value ?? _contingency : null;
+        _sequences = Session.IsOpen && !IsBackOffice ? (await Api.PollAsync<List<SequenceAlert>>("/api/fiscal/alerts")).Value?.Where(a => a.Alert)
+            .OrderByDescending(a => a.Critical).ToList() ?? _sequences : [];
         // TK-324: the Lite app's data lives in Azure SQL, with its own backups: the store's backup warning is not for it.
         _backup = Session.Can("backups.manage") && !IsBackOffice && Services.GetService<BrowserHost>() is null ? (await Api.PollAsync<BackupWarning>("/api/backups/warning")).Value ?? _backup : null;
         await ReportVersionAsync();

@@ -194,6 +194,8 @@ h1, h2, h3, p { margin: 0; }
 .esc-status-bar__group + .esc-status-bar__group { margin-left: auto; justify-content: flex-end; } /* wrapped under the first: still on the right */
 .esc-status-bar__device { display: inline-flex; align-items: center; gap: 6px; }
 .esc-offline { background: var(--offline-bg); color: var(--offline); padding: 2px 10px; border-radius: var(--r-1); font-weight: 600; }
+/* TK-376: red on the frame, only when the sale is about to stop or stopped (no e-NCF left, last day). */
+.esc-status-bar__critical { background: var(--error); color: var(--paper); padding: 2px 10px; border-radius: var(--r-1); font-weight: 600; }
 .esc-key-bar { display: flex; flex-wrap: wrap; background: var(--frame); color: var(--frame-text); }
 .esc-key-bar button {
   flex: 1 1 140px; min-height: var(--touch); padding: 0 var(--s-2);

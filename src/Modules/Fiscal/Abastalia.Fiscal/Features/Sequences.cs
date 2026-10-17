@@ -79,29 +79,34 @@ internal static class ListSequences
     }
 }
 
-/// <summary>Per receipt type, over the ranges of the current environment that can still be used: an alert when fewer than 20 % of the numbers
-/// are left or the last usable range expires within 30 days. The register shows it as a banner before numbers run out.</summary>
+/// <summary>Per receipt type, over the ranges of the current environment that can still be used: an alert when fewer than the type's threshold
+/// (TK-376, 20 % unless the owner set another) of the numbers are left or the last usable range expires within 30 days; critical when none is left
+/// or today is the last day. The register's status bar shows it (TK-376) and the Resumen lists it, before the numbers run out: CerteCF and
+/// production stop the sale without a current e-NCF. Simulated and TesteCF never warn: they load a new range by themselves and never stop.</summary>
 internal static class SequenceAlerts
 {
-    public sealed record Item(EcfType Type, long Available, DateOnly? ExpiresOn, bool Alert);
+    public sealed record Item(EcfType Type, long Available, DateOnly? ExpiresOn, bool Alert, bool Critical, int ThresholdPercent);
 
     public static async Task<IReadOnlyList<Item>> ComputeAsync(FiscalDbContext db, FiscalEnvironment env, DateOnly today, CancellationToken ct)
     {
         var usable = await db.Sequences.Where(s => s.Environment == env && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today))
             .AsNoTracking().ToListAsync(ct);
-        // TK-363: a type never used in Simulated or TesteCF loads its own range on first use: nothing for the owner to do.
-        var selfLoading = FiscalDocuments.SelfLoads(env)
-            ? (await db.Sequences.Where(s => s.Environment == env).Select(s => s.Type).Distinct().ToListAsync(ct)) : null;
+        var thresholds = await db.Set<SequenceThreshold>().AsNoTracking().ToDictionaryAsync(t => t.Type, t => t.Percent, ct);
+        // A type never loaded here has nothing to run out of (the 31 is optional; the switch to CerteCF or production asked for the 32 and the 34).
+        var loaded = await db.Sequences.Where(s => s.Environment == env).Select(s => s.Type).Distinct().ToListAsync(ct);
         var types = new[] { EcfType.FiscalCredit31, EcfType.Consumer32, EcfType.CreditNote34 };
         return [.. types.Select(t =>
         {
+            var real = !FiscalDocuments.SelfLoads(env) && loaded.Contains(t);
             var ranges = usable.Where(s => s.Type == t).ToList();
-            if (selfLoading is not null && !selfLoading.Contains(t)) return new Item(t, 0, null, false);
+            var percent = thresholds.GetValueOrDefault(t, SequenceThreshold.DefaultPercent);
             var available = ranges.Sum(s => s.To - s.Next + 1);
             var total = ranges.Sum(s => s.Total);
             // A range without expiry (32 and 34 may have none) never expires.
             var expires = ranges.Count == 0 || ranges.Any(s => s.ExpiresOn is null) ? null : ranges.Max(s => s.ExpiresOn);
-            return new Item(t, available, expires, available == 0 || available * 5 < total || expires?.DayNumber - today.DayNumber <= 30);
+            var critical = real && (available == 0 || expires == today);
+            return new Item(t, available, expires, critical || real && (available * 100 < total * percent || expires?.DayNumber - today.DayNumber <= 30),
+                critical, percent);
         })];
     }
 
@@ -111,6 +116,42 @@ internal static class SequenceAlerts
             app.MapGet("/api/fiscal/alerts", async (FiscalDbContext db, FiscalDocuments documents, TimeProvider clock, CancellationToken ct) =>
                     Results.Ok(await ComputeAsync(db, documents.Environment, BusinessDay.Of(clock.GetUtcNow().UtcDateTime), ct)))
                 .RequireAuthorization().WithTags("Fiscal");
+    }
+}
+
+/// <summary>TK-376: the owner sets, per receipt type, under which share of numbers left (percent) the warning starts.</summary>
+internal static class SetSequenceThreshold
+{
+    public sealed record Body(int Percent);
+    public sealed record Command(EcfType Type, int Percent) : ICommand<Ok>;
+
+    internal sealed class Validator : AbstractValidator<Command>
+    {
+        public Validator()
+        {
+            RuleFor(c => c.Type).IsInEnum();
+            RuleFor(c => c.Percent).InclusiveBetween(1, 99);
+        }
+    }
+
+    internal sealed class Handler(FiscalDbContext db, IAuditLog audit) : ICommandHandler<Command, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
+        {
+            var t = await db.Set<SequenceThreshold>().SingleOrDefaultAsync(x => x.Type == c.Type, ct);
+            if (t is null) db.Set<SequenceThreshold>().Add(t = new SequenceThreshold { Type = c.Type });
+            t.Percent = c.Percent;
+            await audit.RecordAsync("fiscal.sequence-threshold", "SequenceThreshold", Guid.Empty, c, ct);
+            return Ok.Value;
+        }
+    }
+
+    internal sealed class Endpoint : IEndpoint
+    {
+        public void Map(IEndpointRouteBuilder app) =>
+            app.MapPut("/api/fiscal/sequences/thresholds/{type}", async (EcfType type, Body body, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
+                    (await h.Handle(new Command(type, body.Percent), ct)).ToHttp(_ => Results.NoContent()))
+                .RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");
     }
 }
 

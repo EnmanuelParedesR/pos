@@ -129,6 +129,44 @@ public sealed class PricesAndLeavingTests
     }
 
     [Fact]
+    public async Task TK376_running_low_on_e_NCF_warns_the_cashier_to_tell_the_owner_and_takes_the_owner_to_Comprobantes()
+    {
+        var alerts = new List<SequenceAlert>
+        {
+            new("FiscalCredit31", 4000, null, false, false, 20),
+            new("Consumer32", 120, null, true, false, 20),
+            new("CreditNote34", 0, null, true, true, 20),
+        };
+        var (cashier, cashierApi) = await ScreenContext.CreateAsync("sales.create");
+        using var _ = cashier;
+        cashierApi.Json("GET", "/api/fiscal/alerts", alerts);
+        var bar = cashier.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
+        bar.WaitForAssertion(() => bar.FindAll(".esc-status-bar [role=status]").Select(s => (s.TextContent, s.ClassName)).ShouldContain(("Quedan 120 comprobantes de consumo: avise al dueño", "esc-offline")));
+        // Red first: none left stops the sale.
+        var warnings = bar.FindAll(".esc-status-bar [role=status]").Where(s => s.TextContent.Contains("comprobantes de", StringComparison.Ordinal)).ToList();
+        warnings.Select(s => s.TextContent).ShouldBe(["No quedan comprobantes de nota de crédito: avise al dueño", "Quedan 120 comprobantes de consumo: avise al dueño"]);
+        warnings[0].ClassName.ShouldBe("esc-status-bar__critical");
+        bar.FindAll(".esc-status-bar button").ShouldNotContain(b => b.TextContent.Contains("comprobantes", StringComparison.Ordinal));
+
+        var (owner, ownerApi) = await ScreenContext.CreateAsync("sales.create", "fiscal.manage");
+        using var __ = owner;
+        ownerApi.Json("GET", "/api/fiscal/alerts", alerts);
+        var frame = owner.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
+        frame.WaitForAssertion(() => frame.FindAll(".esc-status-bar button").Select(b => b.TextContent)
+            .ShouldContain("Quedan 120 comprobantes de consumo: cargue más"));
+        frame.FindAll(".esc-status-bar button").Single(b => b.TextContent.StartsWith("Quedan 120", StringComparison.Ordinal)).Click();
+        owner.Services.GetRequiredService<NavigationManager>().Uri.ShouldEndWith("admin/settings?section=fiscal");
+
+        // Nothing to warn about (Simulado, TesteCF or plenty left): nothing on the bar.
+        var (calm, calmApi) = await ScreenContext.CreateAsync("sales.create", "fiscal.manage");
+        using var ___ = calm;
+        calmApi.Json("GET", "/api/fiscal/alerts", alerts.Select(a => a with { Alert = false, Critical = false }).ToList());
+        var quiet = calm.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
+        quiet.WaitForAssertion(() => calmApi.Requests.ShouldContain(r => r.Route == "/api/fiscal/alerts"));
+        quiet.Find(".esc-status-bar").TextContent.ShouldNotContain("comprobantes de");
+    }
+
+    [Fact]
     public async Task A_cashier_without_the_fiscal_permission_does_not_see_the_queue()
     {
         var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
