@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { App } from "../App";
+import "../Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
 import type { Me, MetricsOverview, PlatformAccompaniment } from "../api";
 import { json } from "../testing";
 import { fromStoreInput, toStoreInput } from "./PlatformPages";
