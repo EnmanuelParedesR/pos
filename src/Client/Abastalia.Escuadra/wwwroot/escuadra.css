@@ -15,9 +15,9 @@
   --control-border: #7A838C;
   --text: #14181D;
   --text-2: #4A535D;
-  --brand: #0B5CAD;
-  --brand-hover: #094C90;
-  --brand-tint: #E4EEF8;
+  --brand: #6B1F5E;
+  --brand-hover: #551849;
+  --brand-tint: #F5EAFA;
   --success: #176B35;
   --success-bg: #E3F4E8;
   --warning: #8A4B00;
@@ -210,12 +210,12 @@ h1, h2, h3, p { margin: 0; }
 .esc-scale__value span { font-size: var(--t-17); font-weight: 600; color: var(--text-2); }
 .esc-scale .esc-pill { min-width: 120px; justify-content: center; }
 
-/* Logo (TK-273). Blue tag, white "a"; on the dark frame and in the dark back office the tag turns white and the "a" blue (blue on #14181D is only 2.7:1). */
-.esc-logo { --logo-tag: #0B5CAD; --logo-mark: #FFFFFF; display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: -0.02em; }
-.esc-logo--on-dark, :root[data-theme="dark"] .esc-admin .esc-logo, .esc-admin[data-theme="dark"] .esc-logo { --logo-tag: #FFFFFF; --logo-mark: #0B5CAD; }
+/* Logo (TK-273). Berenjena tag, white "a" (TK-356); on the dark frame and in the dark back office the tag turns white and the "a" berenjena (berenjena on #14181D is only 1.7:1). */
+.esc-logo { --logo-tag: #6B1F5E; --logo-mark: #FFFFFF; display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: -0.02em; }
+.esc-logo--on-dark, :root[data-theme="dark"] .esc-admin .esc-logo, .esc-admin[data-theme="dark"] .esc-logo { --logo-tag: #FFFFFF; --logo-mark: #6B1F5E; }
 .esc-logo__tag { fill: var(--logo-tag); stroke: var(--logo-tag); }
 .esc-logo__mark { stroke: var(--logo-mark); }
-/* Talia, the assistant (the cloud panel shares this file): same colors everywhere, she carries her own blue circle */
+/* Talia, the assistant (the cloud panel shares this file): same colors everywhere, she carries her own berenjena circle */
 .esc-talia { flex: none; display: inline-block; vertical-align: middle; }
 
 /* Money */

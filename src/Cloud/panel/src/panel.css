@@ -90,7 +90,7 @@ html, body { background: #F6F5F2; }
   background: transparent; box-shadow: var(--elev-pop); cursor: pointer; transition: transform 120ms; }
 .talia-fab:hover { transform: translateY(-2px); }
 .talia-fab:focus-visible { outline: none; box-shadow: var(--elev-pop), var(--ring); }
-/* On a dark page the blue circle melts into the background: a thin ring in the surface colour gives it an edge. */
+/* On a dark page the berenjena circle melts into the background: a thin ring in the surface colour gives it an edge. */
 :root[data-theme="dark"] .talia-fab { box-shadow: 0 0 0 2px var(--surface), var(--elev-pop); }
 :root[data-theme="dark"] .talia-fab:focus-visible { box-shadow: 0 0 0 2px var(--surface), var(--elev-pop), var(--ring); }
 .talia-fab svg { display: block; }
@@ -154,7 +154,7 @@ html, body { background: #F6F5F2; }
   color: var(--text-2); cursor: pointer; }
 .talia-rate__button:hover { background: var(--hover-tint); color: var(--brand-600); }
 .talia-rate__button:focus-visible { outline: none; box-shadow: var(--ring); }
-/* Rated: both buttons stay, aria-disabled (a real disabled would drop the focus to the body), the chosen one in blue. */
+/* Rated: both buttons stay, aria-disabled (a real disabled would drop the focus to the body), the chosen one in the brand color. */
 .talia-rate__button[aria-disabled="true"] { cursor: default; color: var(--text-3); background: transparent; }
 .talia-rate__button[aria-pressed="true"] { color: var(--brand-600); }
 .talia-rate__thanks { padding-left: 6px; }

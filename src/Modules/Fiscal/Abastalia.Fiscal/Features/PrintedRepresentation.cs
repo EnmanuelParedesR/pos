@@ -46,7 +46,7 @@ internal static class PrintedRepresentation
         .seal { display: flex; gap: 14px; align-items: flex-end; margin-top: 20px; }
         .seal svg { width: 30mm; height: 30mm; display: block; }
         .warn { border-color: #B54708; color: #B54708; font-weight: 600; }
-        .print { display: block; margin: 0 auto 16px; padding: 10px 18px; border: 0; border-radius: 6px; background: #0B5CAD; color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer; }
+        .print { display: block; margin: 0 auto 16px; padding: 10px 18px; border: 0; border-radius: 6px; background: #6B1F5E; color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer; }
         footer { margin-top: 20px; font-size: 10px; color: #5B6470; }
         @media print { body { background: #FFFFFF; padding: 0; } main { padding: 0; max-width: none; } .print { display: none; } }
         @media (max-width: 600px) { body { padding: 8px; } main { padding: 14px; } header { flex-direction: column; } .doc { text-align: left; } }
