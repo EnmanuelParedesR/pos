@@ -13,6 +13,7 @@ const meterNames: Record<Meter, string> = {
   ArchiveRetrievals: "Consultas al archivo de comprobantes",
   AccompanimentRequests: "Solicitudes de acompañamiento",
   Invites: "Invitaciones",
+  CloudBackups: "Respaldos copiados a la nube",
 };
 
 export const planNames: Record<string, string> = { Essential: "Esencial", Default: "Estándar", MultiRegister: "Pro", MultiStore: "Varias sucursales" };

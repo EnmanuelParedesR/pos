@@ -17,7 +17,7 @@ namespace Abastalia.Fiscal;
 /// Documents of the DGII test environments (TesteCF, CerteCF) are left out, as in the 607.</summary>
 /// <remarks>shortcut: the void types (08 for an ANECF, 04 for a rejection) are our reading of DGII's table; the accountant confirms them with the
 /// open questions of TK-177. An ANECF of a very large range lists every number (the export caps Excel at 50,000 rows; use CSV or TXT).</remarks>
-internal sealed class FiscalReports(FiscalDbContext db, EcfCertificate certificate, TimeProvider clock) : IFiscalReports
+internal sealed class FiscalReports(FiscalDbContext db, EcfCertificate certificate, IEcfProvider provider, TimeProvider clock) : IFiscalReports
 {
     public const string SequenceErrors = "08";
     public const string InformationCorrection = "04";
@@ -43,7 +43,7 @@ internal sealed class FiscalReports(FiscalDbContext db, EcfCertificate certifica
         var since = clock.GetUtcNow().UtcDateTime.AddDays(-30);
         var rejected = await db.Documents.CountAsync(d => d.Status == SubmissionStatus.Rejected && d.ReplacedByENcf == null && d.SignedUtc > since, ct);
         var oldest = await db.Documents.Where(d => d.Status == SubmissionStatus.Pending).MinAsync(d => (DateTime?)d.SignedUtc, ct);
-        return new FiscalHealth(rejected, oldest, certificate.Describe()?.NotAfterUtc);
+        return new FiscalHealth(rejected, oldest, certificate.Describe()?.NotAfterUtc, provider.Environment.ToString());
     }
 
     private static IEnumerable<long> LongRange(long from, long to)

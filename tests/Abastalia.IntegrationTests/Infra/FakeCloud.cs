@@ -45,7 +45,8 @@ public sealed class FakeCloud : HttpMessageHandler
             using (var z = new GZipStream(new MemoryStream(bytes), CompressionMode.Decompress)) await z.CopyToAsync(inflated, cancellationToken);
             bytes = inflated.ToArray();
         }
-        var body = bytes.Length == 0 ? default : JsonDocument.Parse(bytes).RootElement.Clone();
+        // TK-238: a backup goes as raw bytes (Raw), not JSON.
+        var body = bytes.Length == 0 || request.Content?.Headers.ContentType?.MediaType == "application/octet-stream" ? default : JsonDocument.Parse(bytes).RootElement.Clone();
         var path = request.RequestUri!.AbsolutePath;
         lock (Requests) Requests.Add(new Received(request.RequestUri.GetLeftPart(UriPartial.Authority), path, request.Headers.Authorization?.ToString(), gzip, body, bytes));
 
@@ -58,6 +59,7 @@ public sealed class FakeCloud : HttpMessageHandler
             "/ingest/v1/events" =>
                 Json(new { accepted = body.GetProperty("events").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).Where(Accept).ToList() }),
             "/fiscal/v1/archive" => new HttpResponseMessage(HttpStatusCode.OK),
+            _ when path.StartsWith("/api/nodes/backups/", StringComparison.Ordinal) => new HttpResponseMessage(HttpStatusCode.OK),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         };
     }

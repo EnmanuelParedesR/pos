@@ -8,7 +8,7 @@ public sealed record FiscalModeTarget(string Environment, List<string> Blockers)
 public sealed record FiscalModeState(string Environment, bool Saved, bool AutoSubmit, DateTime? ChangedUtc, List<FiscalModeTarget> Targets);
 
 public sealed record BackupSettingsInfo(string? CopyTo, string Time, int Keep, bool Automatic, bool Saved, string Folder, string? PassphraseProblem,
-    BackupFile? Last, string? CopyProblem);
+    BackupFile? Last, string? CopyProblem, bool Cloud = false, BackupFile? CloudLast = null, string? CloudProblem = null);
 
 public sealed record BackupWarning(string? PassphraseProblem);
 

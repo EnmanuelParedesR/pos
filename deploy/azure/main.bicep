@@ -202,6 +202,14 @@ resource archiveContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
   properties: { publicAccess: 'None' }
 }
 
+// TK-238: the stores' backups, as each store encrypted them with the owner's passphrase (the cloud cannot read them). Private, no immutability:
+// the API keeps 7 daily + 4 weekly per store and deletes the rest (CloudBackup:KeepDaily / KeepWeekly).
+resource backupContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: archiveBlobs
+  name: 'store-backups'
+  properties: { publicAccess: 'None' }
+}
+
 // Write once: no blob can be changed or deleted for 10 years from its upload. Free. Left unlocked on purpose: locking is permanent
 // (az storage container immutability-policy lock); do it once the owner agrees, see docs/despliegue-azure.md.
 resource archiveRetention 'Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies@2023-05-01' = {
@@ -232,6 +240,16 @@ resource archiveLifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@
                 delete: { daysAfterCreationGreaterThan: 3660 }
               }
             }
+          }
+        }
+        {
+          // TK-238: the API prunes the backups itself (the oldest weekly one is ~5 weeks old); this only catches what it missed.
+          name: 'store-backups-safety-net'
+          enabled: true
+          type: 'Lifecycle'
+          definition: {
+            filters: { blobTypes: ['blockBlob'], prefixMatch: ['store-backups/'] }
+            actions: { baseBlob: { delete: { daysAfterCreationGreaterThan: 60 } } }
           }
         }
       ]
@@ -381,6 +399,7 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Panel__Origins__0: 'https://${panel.properties.defaultHostname}'
     Archive__Blob__ServiceUri: archive.properties.primaryEndpoints.blob
     Archive__Blob__Container: archiveContainer.name
+    CloudBackup__Blob__Container: backupContainer.name // TK-238: same account (Archive__Blob__ServiceUri), same managed identity role
     Fe__Vault: 'KeyVault'
     Fe__KeyVaultUri: vault.properties.vaultUri
     Fe__DefaultSigningMode: 'StoreSigned' // TK-246 (ADR-0011)

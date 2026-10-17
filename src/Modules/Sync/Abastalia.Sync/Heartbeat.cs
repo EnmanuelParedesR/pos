@@ -29,7 +29,7 @@ internal static class SendHeartbeat
     internal sealed record Command : ICommand<Ok>;
 
     internal sealed class Handler(SyncDbContext db, InfraDbContext infra, IOutbox outbox, ISalesReports sales, ICashRegisterReports cash,
-        ICustomerReports customers, IInventoryReports inventory, ISettingsQueries settings, IFeatureService license, IFiscalReports fiscal, IDevicePeripherals peripherals, IConfiguration config, TimeProvider clock)
+        ICustomerReports customers, IInventoryReports inventory, ISettingsQueries settings, IFeatureService license, IFiscalReports fiscal, IDevicePeripherals peripherals, TimeProvider clock)
         : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
@@ -58,7 +58,7 @@ internal static class SendHeartbeat
                 connection.NodeId, AppVersion, RuntimeInformation.OSDescription, UptimeMinutes(),
                 shifts.Select(s => s.Register).Distinct().Count(), shifts.Count(s => s.ClosedUtc is null),
                 await infra.Outbox.CountAsync(m => m.UploadedUtc == null, ct), CloudUploader.ErrorCode(connection.LastError),
-                new NodeFeaturesV1((await customers.ReceivablesAsync(ct)).Any(r => r.Total > 0), Any(devices.WithScale), Any(devices.WithPrinter), config["Fiscal:Provider"] ?? "Simulated"),
+                new NodeFeaturesV1((await customers.ReceivablesAsync(ct)).Any(r => r.Total > 0), Any(devices.WithScale), Any(devices.WithPrinter), fiscalHealth.Mode),
                 new NodeSetupV1(!string.IsNullOrWhiteSpace(profile.Name), !string.IsNullOrWhiteSpace(profile.Rnc), (await inventory.ValueAsync(ct)).Count(p => p.IsActive)),
                 days, new NodeLicenseV1(license.Status.ToString(), license.EndsUtc, license.LicenseJws),
                 new NodeFiscalV1(fiscalHealth.RejectedWithoutReplacement, fiscalHealth.OldestPendingUtc, fiscalHealth.CertificateExpiresUtc),

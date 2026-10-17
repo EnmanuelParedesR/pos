@@ -57,6 +57,16 @@ export function licenseLabel(status: string | null | undefined, endsUtc: string 
   return status === "Restricted" || !endsUtc ? (names[status] ?? status) : `${names[status] ?? status} · vence ${dayName(endsUtc.slice(0, 10))}`;
 }
 
+/** TK-238: the DGII environment the store sends to now (heartbeat); "Dgii" and "Relay" come from older versions. */
+const fiscalModes: Record<string, string> = {
+  Simulated: "simulada",
+  TesteCF: "pruebas de la DGII (TesteCF)",
+  CerteCF: "certificación de la DGII (CerteCF)",
+  eCF: "producción (DGII)",
+  Dgii: "DGII",
+  Relay: "por la nube (DGII)",
+};
+
 const count = (n: number) => n.toLocaleString("en-US");
 /** "50 %"; "—" when nothing reports it (NaN). */
 const percent = (n: number) => (Number.isNaN(n) ? "—" : `${Math.round(n)} %`);
@@ -626,7 +636,7 @@ export function PlatformStorePage() {
               <Check ok={c.firstSaleDay !== null} label="Primera venta" note={c.firstSaleDay ? dayName(c.firstSaleDay) : undefined} />
             </ul>
             <p className="esc-muted" style={{ marginTop: 12 }}>
-              Facturación electrónica: {c.fiscalProvider === "Relay" ? "por la nube (DGII)" : c.fiscalProvider === "Simulated" ? "simulada" : "sin datos"}
+              Facturación electrónica: {c.fiscalProvider ? (fiscalModes[c.fiscalProvider] ?? c.fiscalProvider) : "sin datos"}
             </p>
           </Card>
 

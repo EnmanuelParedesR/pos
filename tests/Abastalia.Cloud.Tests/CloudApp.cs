@@ -25,6 +25,9 @@ public class CloudApp : WebApplicationFactory<Program>
 
     /// <summary>TK-207: the cold archive on disk (<c>Archive:Folder</c>); tests move documents with <c>ColdArchiver</c> themselves.</summary>
     public string ArchiveFolder { get; } = Path.Combine(Path.GetTempPath(), $"abastalia_cloud_archive_{Guid.NewGuid():N}");
+
+    /// <summary>TK-238: the stores' backups on disk (<c>CloudBackup:Folder</c>).</summary>
+    public string BackupFolder { get; } = Path.Combine(Path.GetTempPath(), $"abastalia_cloud_backups_{Guid.NewGuid():N}");
     private readonly IChatModel? _chatModel;
 
     public CloudApp() : this(null) { }
@@ -44,6 +47,8 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("Ingest:ApplyInBackground", "false");
         builder.UseSetting("Archive:Folder", ArchiveFolder);
         builder.UseSetting("Archive:MoveInBackground", "false");
+        builder.UseSetting("CloudBackup:Folder", BackupFolder);
+        builder.UseSetting("CloudBackup:UploadsPerHourPerNode", "10000");
         builder.UseSetting("Nodes:RegisterPerMinute", "10000");
         builder.UseSetting("Catalog:RequestsPerMinute", "10000");
         builder.UseSetting("Fe:RequestsPerMinutePerIp", "10000");
@@ -186,6 +191,8 @@ public class CloudApp : WebApplicationFactory<Program>
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try { File.Delete(_file); }
         catch (IOException) { } // best effort: a temp file left behind is harmless
+        try { if (Directory.Exists(BackupFolder)) Directory.Delete(BackupFolder, recursive: true); }
+        catch (IOException) { }
         try { if (Directory.Exists(ArchiveFolder)) Directory.Delete(ArchiveFolder, recursive: true); }
         catch (IOException) { }
     }

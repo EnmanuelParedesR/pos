@@ -28,6 +28,7 @@ Planes (códigos de configuración, TK-258): `Essential` = **Esencial**; `Defaul
 | `ArchiveRetrievals` | Lecturas de un e-CF que ya está en almacenamiento frío (Blob) | 20 | 50 | 100 | 300 | Blob Cool/Archive: lectura ≈ US$0.0005–0.001 + rehidratación estándar ≈ US$0.02/GB | ≈ US$0.05 |
 | `AccompanimentRequests` | Solicitudes de acompañamiento a la certificación DGII | 2 | 3 | 3 | 10 | Tiempo del personal + 1–2 correos | — |
 | `Invites` | Invitaciones al panel (así se limitan los usuarios del panel) | 2 | 3 | 5 | 10 | Un correo cada una (a una dirección que elige el negocio) | — |
+| `CloudBackups` | Respaldos que las tiendas copian a la nube (TK-238) | 35 | 62 | 62 | 124 | Blob Hot ~0.02/GB-mes; se guardan 11 por tienda | ≈ US$0.07 (300 MB) |
 
 Notas:
 
@@ -65,6 +66,7 @@ Notas:
 | Subida de eventos (`POST /ingest/v1/events`) | Base de datos serverless despierta, almacenamiento | 1 a 200 eventos por lote; PC firmada (ADR-0008); negocio desactivado no sube | — | Propuesta: 120 lotes por minuto por PC (alcanza para vaciar 24,000 eventos atrasados por minuto). No se aplicó porque la subida no espera un 429 y reintentaría sin pausa: primero hacer que respete `Retry-After` |
 | Latido (`NodeHeartbeatV1`) | Ninguno aparte | Viaja con la subida, uno cada 240 minutos (`Sync:HeartbeatMinutes`); el más nuevo gana | — | — |
 | Archivo frío de e-CF (`GET /api/fiscal/archive/{encf}`) | Lectura y rehidratación de Blob Archive | Rehidratación estándar (la barata), una sola vez por documento | Mes: `ArchiveRetrievals`; 120 por minuto por usuario | — |
+| Respaldos en la nube (`POST /api/nodes/backups/{archivo}`, TK-238) | Almacenamiento, ancho de banda | PC firmada; solo respaldos cifrados con nombre de respaldo programado; licencia vigente o prueba | Mes: `CloudBackups`; 4 por hora por PC (`CloudBackup:UploadsPerHourPerNode`); 1,024 MB por archivo (`CloudBackup:MaxMegabytes`); 7 diarios + 4 semanales por tienda | — |
 | Solicitudes de acompañamiento (`POST /fiscal/v1/accompaniment`) | Tiempo del personal, correos | Una abierta por tienda | Mes: `AccompanimentRequests` | — |
 | Panel (`/api/panel/*`, `/api/members`, `/api/usage`, archivo) | Consultas pesadas a SQL | Rangos ≤ 366 días; solo miembros | 120 por minuto por usuario (`Panel:RequestsPerMinutePerUser`) | `/api/me`, `/api/stores`, `/api/notifications` y `/api/panel/fe` (en `Fe/`) sin límite por minuto: son livianos |
 | Consola de la plataforma (`/api/platform/*`) | Datos de todos los negocios | Solo personal de Abastalia (rol dado por comando), cada llamada auditada | — | — |

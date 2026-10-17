@@ -39,3 +39,19 @@ public interface IUpdatePolicy
     /// <summary>The server runs the requested version: "Actualizar ahora" is done.</summary>
     Task AppliedAsync(CancellationToken ct);
 }
+
+/// <summary>TK-238: an encrypted backup (owner's passphrase) waiting to be copied to the cloud.</summary>
+public sealed record CloudBackupFile(string FileName, string Path);
+
+/// <summary>TK-238: the copy of the backups in the cloud, which the Sync module uploads. Settings says what to upload and shows how it went.</summary>
+public interface ICloudBackups
+{
+    /// <summary>The newest scheduled backup when the owner turned the cloud copy on and it is not in the cloud yet; null otherwise.</summary>
+    Task<CloudBackupFile?> PendingAsync(CancellationToken ct);
+
+    /// <summary>The cloud keeps <paramref name="fileName"/>.</summary>
+    Task UploadedAsync(string fileName, CancellationToken ct);
+
+    /// <summary>Why the last upload did not happen (Spanish, for Configuración → Respaldos and the health check); null clears it.</summary>
+    void Failed(string? problem);
+}

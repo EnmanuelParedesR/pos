@@ -76,7 +76,8 @@ public interface IFiscalReports
 /// <param name="RejectedWithoutReplacement">e-CF the DGII rejected in the last 30 days that have no replacement yet.</param>
 /// <param name="OldestPendingUtc">Signing time of the oldest e-CF not yet delivered to the DGII (the deadline is 72 h); null when none waits.</param>
 /// <param name="CertificateExpiresUtc">Expiry of the installed e-CF certificate; null without one.</param>
-public sealed record FiscalHealth(int RejectedWithoutReplacement, DateTime? OldestPendingUtc, DateTime? CertificateExpiresUtc);
+/// <param name="Mode">TK-238: the DGII environment the store sends to now (saved on screen, else appsettings): Simulated, TesteCF, CerteCF or eCF.</param>
+public sealed record FiscalHealth(int RejectedWithoutReplacement, DateTime? OldestPendingUtc, DateTime? CertificateExpiresUtc, string Mode);
 
 /// <summary>TK-225: the owner ticked (or unticked) a step of the DGII certification assistant (TK-155). The whole progress travels, so the newest
 /// event alone says where the store is. <paramref name="DoneSteps"/> are step indexes (0 = the first); the last step is the authorization.</summary>

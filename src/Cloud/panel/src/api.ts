@@ -112,6 +112,19 @@ export async function api<T>(path: string, method = "GET", body?: unknown): Prom
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** TK-238: saves a file the API streams with the session (a store backup), as the browser's own download. */
+export async function download(path: string, fileName: string) {
+  let response = await send(path, "GET", undefined, true);
+  if (response.status === 401 && (await refresh())) response = await send(path, "GET", undefined, true);
+  if (!response.ok) throw await toError(response);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /** `twoFactorCode`: the authenticator app's code, for an account with 2FA on (R11 B-Med6); without it such an account gets "Auth.RequiresTwoFactor". */
 export async function signIn(email: string, password: string, twoFactorCode?: string) {
   const response = await send("/api/auth/login", "POST", { email, password, twoFactorCode: twoFactorCode || undefined }, false);
@@ -246,6 +259,8 @@ export interface CreatedInvite { invite: Invite; link: string | null }
 export interface InvitePreview { tenantName: string; email: string; role: MemberRole; expiresUtc: string }
 export interface Store { id: string; name: string; createdUtc: string; lastEventUtc: string | null; lastSyncUtc: string | null; nodes: number }
 export interface ConnectionCode { code: string; expiresUtc: string }
+/** TK-238: a store backup kept in the cloud, encrypted with the owner's passphrase (the cloud cannot open it). `createdUtc`: when the store made it. */
+export interface StoreBackup { id: string; fileName: string; bytes: number; createdUtc: string; uploadedUtc: string }
 
 export type PaymentMethod = "Cash" | "Card" | "Transfer" | "OnAccount" | "CreditBalance";
 export interface PaymentMix { method: PaymentMethod; count: number; amount: number }
@@ -458,7 +473,7 @@ export interface TenantMetrics {
   lastSaleDay: string | null;
 }
 /** TK-248: this store month's use of each metered service against the plan's limit (docs/cuotas.md). */
-export type Meter = "AssistantQuestions" | "AssistantTokens" | "SupplierInvoices" | "Emails" | "ArchiveRetrievals" | "AccompanimentRequests" | "Invites";
+export type Meter = "AssistantQuestions" | "AssistantTokens" | "SupplierInvoices" | "Emails" | "ArchiveRetrievals" | "AccompanimentRequests" | "Invites" | "CloudBackups";
 export interface Usage { plan: string; addOns: string[]; resetsOn: string; meters: { meter: Meter; used: number; limit: number }[] }
 export interface PlatformUsage { usage: Usage; plans: string[]; addOns: string[] }
 /** TK-249: Paddle Billing. `enabled` false = not set up yet (the page shows the plan and how to ask Abastalia). */

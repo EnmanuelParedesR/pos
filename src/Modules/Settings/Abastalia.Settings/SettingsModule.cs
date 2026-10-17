@@ -36,6 +36,7 @@ public static class SettingsModule
         if (OperatingSystem.IsWindows()) keys.ProtectKeysWithDpapi(protectToLocalMachine: true);
         services.AddSingleton<BackupStatus>();
         services.AddScoped<Backups>();
+        services.AddScoped<ICloudBackups, CloudBackups>();
         services.AddSingleton<LicenseService>();
         services.AddSingleton<IFeatureService>(sp => sp.GetRequiredService<LicenseService>());
         services.AddScoped<IStoreLicense, StoreLicense>();
@@ -68,6 +69,11 @@ internal sealed class Business
     public TimeSpan? BackupTime { get; set; }
     public int? BackupKeep { get; set; }
     public bool? BackupAutomatic { get; set; }
+    /// <summary>TK-238: copy each scheduled backup (already encrypted) to the cloud too; null follows appsettings (<c>Backup:Cloud</c>, off).</summary>
+    public bool? BackupCloud { get; set; }
+    /// <summary>TK-238: the newest backup the cloud confirmed it keeps, and when.</summary>
+    public string? BackupCloudFile { get; set; }
+    public DateTime? BackupCloudUtc { get; set; }
     /// <summary>TK-254: "pilot" or "stable"; null follows appsettings (Updates:Channel).</summary>
     public string? UpdateChannel { get; set; }
     /// <summary>TK-254: updates install on their own outside business hours; null = yes. Off, only "Actualizar ahora" installs them.</summary>
@@ -104,6 +110,7 @@ internal sealed class BusinessConfiguration : IEntityTypeConfiguration<Business>
         b.Property(n => n.BackupKey).HasMaxLength(1000);
         b.Property(n => n.SupervisorApprovals).HasMaxLength(500);
         b.Property(n => n.BackupCopyTo).HasMaxLength(260);
+        b.Property(n => n.BackupCloudFile).HasMaxLength(100);
         b.Property(n => n.UpdateChannel).HasMaxLength(10);
         b.Property(n => n.UpdateAvailableVersion).HasMaxLength(20);
         b.Property(n => n.UpdateAllowedVersion).HasMaxLength(20);
