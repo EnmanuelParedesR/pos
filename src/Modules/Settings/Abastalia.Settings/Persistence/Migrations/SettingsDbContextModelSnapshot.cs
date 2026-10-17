@@ -35,6 +35,16 @@ namespace Abastalia.Settings.Persistence.Migrations
                     b.Property<bool?>("BackupAutomatic")
                         .HasColumnType("bit");
 
+                    b.Property<bool?>("BackupCloud")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("BackupCloudFile")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime?>("BackupCloudUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("BackupCopyTo")
                         .HasMaxLength(260)
                         .HasColumnType("nvarchar(260)");
