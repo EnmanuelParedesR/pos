@@ -72,6 +72,7 @@ La propuesta: que la app de la PC principal (la de caja, WPF) hospede la API en 
 ## Decide el dueño
 
 - **Aprobación apagada = cualquiera lo hace (hallazgo 7).** Hoy, si el dueño apaga "pedir supervisor" para retiros o anulaciones, la hace cualquier cajero, tenga o no el permiso en su rol. Opción 1 (hoy): "apagar la aprobación" significa "cualquiera puede". Opción 2: apagarla solo quita al supervisor; quien no tiene el permiso en su rol sigue sin poder. La 2 es más segura y más fácil de explicar, pero cambia lo que pasa en tiendas que ya la apagaron.
+  **Decidido por el dueño (17/10/2026): opción 2** («no queremos que el cajero haga cosas malas»). Apagada = solo los roles con el permiso; Cajero recibe por defecto los permisos cuya aprobación viene apagada (hoy quitar línea). Se implementa en TK-378.
 - **Ticket A:** ¿obligatorio para todos, o solo cuando la caja no está en la misma PC?
 - **Ticket B:** ¿abrir la red sola al generar el primer código (necesita un paso de administrador) o pedirle al técnico que la abra?
 
