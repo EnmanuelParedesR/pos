@@ -274,6 +274,8 @@
 .site .tbd { display: inline-block; background: var(--warn-bg); color: var(--warn-ink); border-radius: 999px; padding: 2px 12px; font-size: 15px; font-weight: 600; letter-spacing: 0; }
 .site h2 .tbd { font-size: 0.6em; vertical-align: middle; }
 .site .price { font-size: 28px; font-weight: 700; margin: 8px 0; }
+/* TK-313: the US$ Paddle charges, under the RD$ amount. */
+.site .price__charged { display: block; margin-top: 2px; font-size: 14px; font-weight: 400; color: var(--muted); white-space: normal; }
 
 .site .table-wrap { overflow-x: auto; }
 .site table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 16px; }

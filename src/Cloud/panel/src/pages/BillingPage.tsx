@@ -51,6 +51,9 @@ export const statusNames: Record<SubscriptionStatus, string> = {
   Canceled: "Cancelada",
 };
 
+/** TK-313: the plans that can add another store ("Sucursal adicional"); on Esencial it would cost more than the plan. */
+const multiStorePlans = ["MultiRegister", "MultiStore"];
+
 const day = (utc: string | null) => (utc ? dayName(utc.slice(0, 10)) : "—");
 
 /** "Plan y facturación" (TK-249, Owners): the plan, its status and the buttons to pay with Paddle (overlay checkout) or manage the payment (Paddle's portal). */
@@ -229,7 +232,9 @@ export function BillingPage() {
             <>
               <h3 style={{ marginTop: 16 }}>Adapte su plan</h3>
               <div className="esc-row" style={{ gap: 12, flexWrap: "wrap" }}>
-                <AddOnQuantities codes={data.addOnOptions.map((a) => a.code)} value={chosen} onChange={setChosen}
+                <AddOnQuantities value={chosen} onChange={setChosen}
+                  // TK-313: another store only with Pro or more (one that already has it can still remove it)
+                  codes={data.addOnOptions.map((a) => a.code).filter((c) => c !== "ExtraStore" || multiStorePlans.includes(data.plan) || chosen.includes(c))}
                   note={(code) => {
                     const option = data.addOnOptions.find((a) => a.code === code);
                     const price = option && (yearly ? option.annual : option.monthly);

@@ -293,17 +293,17 @@ public sealed class ReferralTests(BillingApp app) : IClassFixture<BillingApp>, I
     [Fact]
     public void Annual_rewards_are_capped_at_half_the_plan()
     {
-        static Referral Flat(int i) => new() { Id = Guid.NewGuid(), DiscountType = "flat", DiscountAmount = "1200", Currency = "USD", CreatedUtc = DateTime.UnixEpoch.AddDays(i) };
+        static Referral Flat(int i) => new() { Id = Guid.NewGuid(), DiscountType = "flat", DiscountAmount = "1500", Currency = "USD", CreatedUtc = DateTime.UnixEpoch.AddDays(i) };
         var six = Enumerable.Range(0, 6).Select(Flat).ToList();
 
-        var (batch, amount) = ReferralRewards.Combine([], six, planTotal: 12000, capPercent: 50); // Esencial anual, US$120: at most US$60
-        (batch.Count, amount).ShouldBe((5, "6000"));
-        (batch, amount) = ReferralRewards.Combine(six[..5], [six[5]], 12000, 50); // the renewal is full: the sixth waits
+        var (batch, amount) = ReferralRewards.Combine([], six, planTotal: 15000, capPercent: 50); // Esencial anual, US$150: at most US$75
+        (batch.Count, amount).ShouldBe((5, "7500"));
+        (batch, amount) = ReferralRewards.Combine(six[..5], [six[5]], 15000, 50); // the renewal is full: the sixth waits
         batch.Count.ShouldBe(5);
         (batch, amount) = ReferralRewards.Combine([], six, planTotal: 2000, capPercent: 50); // one reward above the cap goes alone, cut to it
         (batch.Count, amount).ShouldBe((1, "1000"));
         (batch, amount) = ReferralRewards.Combine([], six, planTotal: null, capPercent: 50); // plan price unknown: one at a time
-        (batch.Count, amount).ShouldBe((1, "1200"));
+        (batch.Count, amount).ShouldBe((1, "1500"));
     }
 
     [Fact]

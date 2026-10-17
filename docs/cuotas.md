@@ -43,7 +43,7 @@ Notas:
 ## Servicio adicional: lectura de facturas con IA
 
 - **Incluido en todos los planes:** 20 facturas al mes (`Quotas:Default:SupplierInvoices`).
-- **Adicional pago** `SupplierInvoiceReading` ("Lectura de facturas"): **suma** 300 al mes por unidad (`Quotas:AddOns:SupplierInvoiceReading:SupplierInvoices`), o sea 320 con las 20 del plan. Precio: **US$7** al mes (US$70 al año), provisional, aprobado 16/10/2026.
+- **Adicional pago** `SupplierInvoiceReading` ("Lectura de facturas"): **suma** 300 al mes por unidad (`Quotas:AddOns:SupplierInvoiceReading:SupplierInvoices`), o sea 320 con las 20 del plan. Precio: **US$5** al mes (US$50 al año), TK-313, decidido por delegación del dueño 17/10/2026 (antes US$7).
 - Otros adicionales con cuota (TK-258): `AssistantPack` ("Asistente +1,000 preguntas", US$5): +1,000 preguntas y +10,000,000 tokens por unidad; `ExtraUsers` ("Usuarios del panel +5", US$3): +5 invitaciones al mes por unidad. Los adicionales sin cuota (`ExtraRegister`, `ExtraStore` y, desde TK-277, `ExtraCashier` "Cajero adicional", US$2) no son medidores de la nube: van en la licencia de la tienda (`docs/cobro-paddle.md`).
 - En la licencia de la tienda es la función `SupplierInvoiceReading` (`Feature` en `Abastalia.BuildingBlocks.Security`); la nube aplica la cuota según lo que el personal puso en la consola (ver el atajo arriba).
 - Además del mes siguen: 100 por día por negocio (`Ai:SupplierInvoicesPerDay`, tabla `AiUsage`, R9 #14), 10 por minuto por PC (`Ai:SupplierInvoicesPerMinutePerNode`) y nada con la licencia restringida. Si el día rechaza, la lectura del mes se devuelve.

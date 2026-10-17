@@ -86,11 +86,11 @@ Antes de la cita 1:
 | El certificado no llega como `.p12` o es de otra persona o de otro RNC | La app lo rechaza al importarlo (`Fiscal.CertificateWrongRnc`); el dueño pide uno correcto a la entidad certificadora |
 | El dueño no se presenta a una cita | Se reprograma una vez sin costo |
 | Algo que la DGII aún no ha confirmado sobre el proceso (preguntas abiertas en `docs/ecf-propio.md` §11) | Se resuelve con la DGII durante la certificación de la tienda piloto, antes de vender el servicio |
-| La DGII rechaza la certificación de forma definitiva por causas del negocio | Abastalia entrega el resumen de lo hecho y del motivo; las condiciones de devolución las define el dueño de Abastalia junto con el precio (TK-236) |
+| La DGII rechaza la certificación de forma definitiva por causas del negocio | Abastalia entrega el resumen de lo hecho y del motivo; no se devuelve el pago (TK-313). Si el fallo es de Abastalia, se devuelve todo |
 
 ## 7. Precio
 
-[PRECIO DEL SERVICIO], pago único por negocio (RNC). Incluye las dos citas, el trabajo de las pruebas, los reenvíos por rechazos y la revisión de la primera venta. No incluye el certificado digital, que el dueño compra directamente a la entidad certificadora. El precio se publica en `/certificacion` (`config.ts` → `prices`) cuando el dueño de Abastalia lo decida.
+**US$49** (≈ RD$3,015), pago único por negocio (RNC); TK-313, decidido por delegación del dueño 17/10/2026. **Gratis con plan anual.** **Promoción de lanzamiento:** gratis con cualquier plan pagado (mensual o anual) antes del 31/12/2026; después, gratis solo con el anual. Incluye las dos citas, el trabajo de las pruebas, los reenvíos por rechazos, una reprogramación sin costo y la revisión de la primera venta. No incluye el certificado digital, que el dueño compra directamente a la entidad certificadora. Se cobra fuera de Paddle (transferencia o enlace de pago, registrado con el acuerdo manual de la consola). Se publica en `/precios` y `/certificacion` (`config.ts` → `prices.certificationSupport` y `prices.launchPromo`).
 
 ## 8. Canal de soporte
 

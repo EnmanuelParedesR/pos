@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { site } from "./config";
-import { usePlanPrices } from "./livePrices";
+import { usePlanPrices, type SitePrice } from "./livePrices";
 import { useReferralLink } from "../../referral";
 import { legalPages } from "./LegalPages";
 import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, LoopVideo, ProductArt, ProductVideo, Section, Steps, Tbd, Trial, type IconName } from "./SiteParts";
@@ -17,6 +17,20 @@ export interface SitePage {
 }
 
 const Price = ({ value }: { value: string | null }) => (value ? <>{value}</> : <Tbd />);
+
+/** A plan or add-on price (TK-313): RD$ first, the US$ that Paddle charges under it. */
+const Amount = ({ value }: { value: SitePrice | null }) =>
+  value ? (
+    <>
+      {value.label}
+      {value.charged && <small className="price__charged">{value.charged}</small>}
+    </>
+  ) : (
+    <Tbd />
+  );
+
+/** TK-313: the launch offer, while there is one. */
+const Promo = () => (site.prices.launchPromo ? <p className="note">{site.prices.launchPromo}</p> : null);
 
 const both = (
   <>
@@ -451,6 +465,7 @@ function Certification() {
         <p className="hero__key">
           <strong>Abastalia nunca le pide esa clave.</strong>
         </p>
+        <Promo />
       </Hero>
       <Section id="preparacion">
         <h2>Antes de empezar</h2>
@@ -582,12 +597,12 @@ function Download() {
   );
 }
 
-function Plan({ name, note, price, children, brand }: { name: string; note: string; price: string | null; children: ReactNode; brand?: boolean }) {
+function Plan({ name, note, price, children, brand }: { name: string; note: string; price: SitePrice | null; children: ReactNode; brand?: boolean }) {
   return (
     <div className={brand ? "card card--brand" : "card"}>
       <h3>{name}</h3>
       <p className="muted">{note}</p>
-      <p className="price">{price ?? <Tbd>Precio por confirmar</Tbd>}</p>
+      <p className="price">{price ? <Amount value={price} /> : <Tbd>Precio por confirmar</Tbd>}</p>
       <ul className="checks">{children}</ul>
     </div>
   );
@@ -603,7 +618,7 @@ function Pricing() {
         eyebrow="Precios"
         title="Pague por el tamaño de su tienda, no por factura."
         sub="Tres planes según cuántas cajas tiene. Todas las funciones, en todos."
-        note={<>{provisional ? "Precios en US$, provisionales." : "Precios en US$."} Si prefiere, escríbanos y le damos una cotización.</>}
+        note={<>{provisional && "Precios provisionales. "}En RD$ a RD${site.prices.dopPerUsd} por US$1; se cobra en US$. Si prefiere, escríbanos y le damos una cotización.</>}
       />
       <Section>
         <h2>Planes</h2>
@@ -630,6 +645,7 @@ function Pricing() {
         </div>
         <p className="muted">Todas las funciones en todos los planes: balanza, carnicería, mayoreo, e-CF, inventario, respaldo en la nube y 20 facturas de suplidor leídas con IA al mes.</p>
         {/* TK-249: the account first, then "Plan y facturación" in the panel (pago con tarjeta por Paddle). */}
+        <Promo />
         {referred && <p className="note">Viene recomendado por un cliente de Abastalia: su prueba gratis dura 30 días en lugar de 14. Cree su cuenta y elija su plan.</p>}
         <p className="actions">
           <Link className="btn" to="/app/billing">
@@ -643,12 +659,12 @@ function Pricing() {
           <table>
             <thead><tr><th>Adicional</th><th>Incluye</th><th>Precio al mes</th></tr></thead>
             <tbody>
-              <tr><td>Caja adicional</td><td>Una caja más, cuantas necesite, con 2 cajeros más.</td><td><Price value={price("ExtraRegister")} /></td></tr>
-              <tr><td>Cajero adicional</td><td>Un cajero más, con su propio usuario y PIN.</td><td><Price value={price("ExtraCashier")} /></td></tr>
-              <tr><td>Sucursal adicional</td><td>Otra tienda con su licencia, las cajas de su plan y 4 cajeros más.</td><td><Price value={price("ExtraStore")} /></td></tr>
-              <tr><td>Lectura de facturas</td><td>300 facturas de suplidor más al mes, leídas con IA.</td><td><Price value={price("SupplierInvoiceReading")} /></td></tr>
-              <tr><td>Asistente +1,000 preguntas</td><td>1,000 preguntas más al mes al asistente del panel.</td><td><Price value={price("AssistantPack")} /></td></tr>
-              <tr><td>Usuarios del panel +5</td><td>Cinco invitaciones más al panel cada mes.</td><td><Price value={price("ExtraUsers")} /></td></tr>
+              <tr><td>Caja adicional</td><td>Una caja más, cuantas necesite, con 2 cajeros más.</td><td><Amount value={price("ExtraRegister")} /></td></tr>
+              <tr><td>Cajero adicional</td><td>Un cajero más, con su propio usuario y PIN.</td><td><Amount value={price("ExtraCashier")} /></td></tr>
+              <tr><td>Sucursal adicional</td><td>Solo con el plan Pro. Otra tienda con su licencia, 3 cajas y 4 cajeros más.</td><td><Amount value={price("ExtraStore")} /></td></tr>
+              <tr><td>Lectura de facturas</td><td>300 facturas de suplidor más al mes, leídas con IA.</td><td><Amount value={price("SupplierInvoiceReading")} /></td></tr>
+              <tr><td>Asistente +1,000 preguntas</td><td>1,000 preguntas más al mes al asistente del panel.</td><td><Amount value={price("AssistantPack")} /></td></tr>
+              <tr><td>Usuarios del panel +5</td><td>Cinco invitaciones más al panel cada mes.</td><td><Amount value={price("ExtraUsers")} /></td></tr>
             </tbody>
           </table>
         </div>
