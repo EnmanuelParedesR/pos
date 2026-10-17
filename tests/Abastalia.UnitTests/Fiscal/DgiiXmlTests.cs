@@ -71,15 +71,16 @@ public sealed class DgiiXmlTests
     [Fact]
     public void The_QR_points_to_consultatimbre_or_consultatimbrefc_on_the_host_of_each_environment()
     {
+        // R12 #6: FechaEmision is the XML's (an e-CF of the 14th signed on the 15th after a clock fix); FechaFirma the signature's.
         // 14:30:05 in Santo Domingo; the security code is Base64 and its + / = are escaped.
-        EcfQr.Url(FiscalEnvironment.eCF, EcfChannel.Ecf, "131245678", "101672919", "E310000000001", 1180.5m, Now, "a+b/c=")
+        EcfQr.Url(FiscalEnvironment.eCF, EcfChannel.Ecf, "131245678", "101672919", "E310000000001", 1180.5m, "14-10-2026", Now, "a+b/c=")
             .ShouldBe("https://ecf.dgii.gov.do/ecf/consultatimbre?RncEmisor=131245678&RncComprador=101672919&ENCF=E310000000001"
-                + "&FechaEmision=15-10-2026&MontoTotal=1180.50&FechaFirma=15-10-2026%2014%3A30%3A05&CodigoSeguridad=a%2Bb%2Fc%3D");
-        EcfQr.Url(FiscalEnvironment.CerteCF, EcfChannel.Rfce, "131245678", null, "E320000000001", 59m, Now, "Xy12Ab")
+                + "&FechaEmision=14-10-2026&MontoTotal=1180.50&FechaFirma=15-10-2026%2014%3A30%3A05&CodigoSeguridad=a%2Bb%2Fc%3D");
+        EcfQr.Url(FiscalEnvironment.CerteCF, EcfChannel.Rfce, "131245678", null, "E320000000001", 59m, "15-10-2026", Now, "Xy12Ab")
             .ShouldBe("https://fc.dgii.gov.do/certecf/consultatimbrefc?RncEmisor=131245678&ENCF=E320000000001&MontoTotal=59.00&CodigoSeguridad=Xy12Ab");
         // A 34 without a buyer leaves RncComprador out; a simulated receipt never points to production.
-        EcfQr.Url(FiscalEnvironment.TesteCF, EcfChannel.Ecf, "131245678", null, "E340000000001", 59m, Now, "Xy12Ab").ShouldNotContain("RncComprador");
-        EcfQr.Url(FiscalEnvironment.Simulated, EcfChannel.Ecf, "131245678", null, "E340000000001", 59m, Now, "Xy12Ab")
+        EcfQr.Url(FiscalEnvironment.TesteCF, EcfChannel.Ecf, "131245678", null, "E340000000001", 59m, "15-10-2026", Now, "Xy12Ab").ShouldNotContain("RncComprador");
+        EcfQr.Url(FiscalEnvironment.Simulated, EcfChannel.Ecf, "131245678", null, "E340000000001", 59m, "15-10-2026", Now, "Xy12Ab")
             .ShouldStartWith("https://ecf.dgii.gov.do/testecf/");
         BusinessDay.Offset.ShouldBe(TimeSpan.FromHours(-4));
     }

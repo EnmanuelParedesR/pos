@@ -220,7 +220,11 @@ internal static class RegularizePaper
                 var r = await RegularizeAsync(p, business, ct);
                 // All or nothing: a failure rolls back the whole run, so no e-NCF is used up without its e-CF.
                 if (r.IsFailure) return Error.Conflict(r.Error!.Code, $"{p.Ncf}: {r.Error.Description}");
-                (p.RegularizedByENcf, p.RegularizedUtc) = (r.Value.ENcf, r.Value.SignedUtc);
+                // R12 #3: a second "Regularizar" that read the receipt before this one finds it taken and rolls back the whole run.
+                var (encf, at) = (r.Value.ENcf, r.Value.SignedUtc);
+                if (await db.Set<PaperDocument>().Where(x => x.Id == p.Id && x.RegularizedByENcf == null)
+                        .ExecuteUpdateAsync(s => s.SetProperty(x => x.RegularizedByENcf, encf).SetProperty(x => x.RegularizedUtc, at), ct) != 1)
+                    return Error.Conflict(FiscalErrors.AlreadyReplaced.Code, $"{p.Ncf}: {FiscalErrors.AlreadyReplaced.Description}");
                 await audit.RecordAsync("fiscal.regularize-paper", "PaperDocument", p.Id, new { p.Ncf, ENcf = r.Value.ENcf }, ct);
             }
             return new Response(pending.Count, all.Count - pending.Count);

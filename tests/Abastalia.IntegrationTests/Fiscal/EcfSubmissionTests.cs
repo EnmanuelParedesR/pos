@@ -188,9 +188,96 @@ public sealed class EcfSubmissionCrashTests(AbastaliaApp app) : IClassFixture<Ab
         var dgii = new TestEcfProvider();
         dgii.Responses.Enqueue(() => new DgiiAnswer(DgiiState.Accepted, "TRACK-CRASH", true));
 
+        // R12 #1: a claim this young may still be sending: left alone until the lease runs out.
+        await app.ProcessAsync(dgii);
+        dgii.Calls.ShouldBeEmpty();
+        app.Clock.Advance(EcfSubmissionQueue.ClaimLease + TimeSpan.FromSeconds(1));
         (await app.ProcessAsync(dgii)).ShouldBe(1);
         (await app.DocumentAsync(id)).Status.ShouldBe(SubmissionStatus.Accepted);
         dgii.Calls.ShouldBe(["find E310000094001"]);
+    }
+}
+
+/// <summary>R12 #1: the register's SendNow and the worker at the same time. Own app.</summary>
+public sealed class EcfSubmissionClaimTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    [Fact]
+    public async Task Two_passes_at_once_send_the_document_once()
+    {
+        await app.AdminAsync();
+        var id = await app.PendingAsync("E310000094002", app.Clock.GetUtcNow().UtcDateTime.AddHours(72));
+        var (first, second) = (new TestEcfProvider(), new TestEcfProvider());
+        // R12 #1: the worker's pass starts while the register's SendNow is still waiting for the DGII.
+        first.Responses.Enqueue(() =>
+        {
+            Task.Run(() => app.ProcessAsync(second)).GetAwaiter().GetResult();
+            return new DgiiAnswer(DgiiState.InProcess, "TRACK-ONCE");
+        });
+
+        await app.ProcessAsync(first);
+        first.Calls.ShouldBe(["send E310000094002"]);
+        second.Calls.ShouldBeEmpty();
+        (await app.DocumentAsync(id)).TrackId.ShouldBe("TRACK-ONCE");
+    }
+}
+
+/// <summary>R12 #2: an RFCE left Sent without a TrackId. Own app.</summary>
+public sealed class EcfSubmissionRfceTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    [Fact]
+    public async Task An_RFCE_sent_without_a_final_answer_is_looked_up_by_e_NCF()
+    {
+        await app.AdminAsync();
+        var id = await app.PendingAsync("E320000094003", app.Clock.GetUtcNow().UtcDateTime.AddHours(72), channel: EcfChannel.Rfce);
+        var dgii = new TestEcfProvider();
+        dgii.Responses.Enqueue(() => new DgiiAnswer(DgiiState.InProcess)); // recepcionfc: no TrackId and no result yet
+        await app.ProcessAsync(dgii);
+        (await app.DocumentAsync(id)).Status.ShouldBe(SubmissionStatus.Sent);
+
+        // R12 #2: consultarfce, never consultaresultado with a null TrackId.
+        app.Clock.Advance(EcfSubmissionQueue.PollDelay(0));
+        dgii.Responses.Enqueue(() => null);
+        await app.ProcessAsync(dgii);
+        app.Clock.Advance(EcfSubmissionQueue.PollDelay(1));
+        dgii.Responses.Enqueue(() => new DgiiAnswer(DgiiState.Accepted, SequenceUsed: true));
+        await app.ProcessAsync(dgii);
+        (await app.DocumentAsync(id)).Status.ShouldBe(SubmissionStatus.Accepted);
+        dgii.Calls.ShouldBe(["rfce E320000094003", "find E320000094003", "find E320000094003"]);
+    }
+}
+
+/// <summary>R12 #10: one document the cloud refuses does not hold up the archive of the others. Own app: it connects to the cloud.</summary>
+public sealed class EcfArchiveTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    [Fact]
+    public async Task A_document_the_cloud_refuses_is_skipped_and_a_cloud_failure_stops_the_pass()
+    {
+        await app.AdminAsync();
+        await Abastalia.IntegrationTests.Sync.SyncApp.ConnectAsync(app);
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        var bad = await app.PendingAsync("E320000093001", now.AddHours(1));
+        var good = await app.PendingAsync("E320000093002", now.AddHours(2));
+        var dgii = new TestEcfProvider();
+        dgii.Responses.Enqueue(() => new DgiiAnswer(DgiiState.Accepted, SequenceUsed: true));
+        dgii.Responses.Enqueue(() => new DgiiAnswer(DgiiState.Accepted, SequenceUsed: true));
+        string? status = "422";
+        app.Cloud.Respond = path => path == EcfSubmissionQueue.ArchivePath
+            && (status == "503" || app.Cloud.Requests.Last().Body.GetProperty("encf").GetString() == "E320000093001")
+            ? new HttpResponseMessage(status == "503" ? System.Net.HttpStatusCode.ServiceUnavailable : System.Net.HttpStatusCode.UnprocessableEntity)
+            : null;
+        try
+        {
+            await app.ProcessAsync(dgii);
+            (await app.DocumentAsync(bad)).ArchivedUtc.ShouldBeNull();
+            (await app.DocumentAsync(good)).ArchivedUtc.ShouldNotBeNull();
+
+            // A 503: the pass stops at the first one and tries again next time.
+            status = "503";
+            var before = app.Cloud.To(EcfSubmissionQueue.ArchivePath).Count();
+            await app.ProcessAsync(dgii);
+            app.Cloud.To(EcfSubmissionQueue.ArchivePath).Count().ShouldBe(before + 1);
+        }
+        finally { app.Cloud.Respond = null; }
     }
 }
 

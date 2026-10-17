@@ -284,7 +284,7 @@ internal static class SendTestSet
                     {
                         try
                         {
-                            var a = x.Status == SubmissionStatus.Sent ? await provider.GetResultAsync(x.TrackId!, ct)
+                            var a = x.Status == SubmissionStatus.Sent ? await EcfSubmissionQueue.PollAsync(provider, rnc, x.ENcf, x.SecurityCode, x.Channel, x.TrackId, ct)
                                 : x.Channel == EcfChannel.Rfce ? await provider.SendRfceAsync(rnc, x.ENcf, EcfSubmissionQueue.Unzip(x.RfceXml!), ct)
                                 : await provider.SendEcfAsync(rnc, x.ENcf, EcfSubmissionQueue.Unzip(x.SignedXml), ct);
                             if (a.State is DgiiState.InProcess or DgiiState.NotFound) (x.Status, x.TrackId) = (SubmissionStatus.Sent, a.TrackId ?? x.TrackId);

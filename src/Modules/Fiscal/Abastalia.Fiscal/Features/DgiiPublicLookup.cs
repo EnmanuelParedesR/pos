@@ -135,13 +135,13 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IServiceScopeFacto
         if (!Rnc.IsValid(digits)) return Unavailable;
         var key = "rnc:" + digits;
         if (await CachedAsync<RncLookup>(key, ct) is { } hit) return hit;
-        var html = await AskAsync("rnc.aspx", new()
+        var html = await AskAsync("rnc.aspx", purchase: false, new()
         {
             ["__EVENTTARGET"] = "", ["__EVENTARGUMENT"] = "", ["ctl00$cphMain$txtRNCCedula"] = digits!, ["ctl00$cphMain$btnBuscarPorRNC"] = "BUSCAR",
             ["ctl00$cphMain$txtRazonSocial"] = "", ["ctl00$cphMain$hidActiveTab"] = "",
         }, ct);
         if (html is null) return Unavailable;
-        if (DgiiPages.ReadRnc(html) is not { } answer) return Failed("rnc.aspx", "a page it cannot read", Unavailable);
+        if (Read(html, DgiiPages.ReadRnc) is not { } answer) return Failed("rnc.aspx", "a page it cannot read", Unavailable);
         Remember(key, answer, answer.Kind == DgiiAnswerKind.Found ? TimeSpan.FromDays(7) : TimeSpan.FromDays(1));
         return answer;
     }
@@ -154,23 +154,30 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IServiceScopeFacto
         if (!Rnc.IsValid(rnc) || ncf is not { Length: 11 } || ncf[0] != 'B') return NcfCheck.Unknown;
         var key = $"ncf:{rnc}:{ncf}";
         if (await CachedAsync<NcfCheck>(key, ct) is { } hit) return hit;
-        var html = await AskAsync("ncf.aspx", new()
+        var html = await AskAsync("ncf.aspx", purchase: true, new()
         {
             ["ctl00$cphMain$txtRNC"] = rnc!, ["ctl00$cphMain$txtNCF"] = ncf, ["ctl00$cphMain$txtRncComprador"] = "", ["ctl00$cphMain$txtCodigoSeg"] = "",
             ["ctl00$cphMain$btnConsultar"] = "Buscar",
         }, ct);
         if (html is null) return NcfCheck.Unknown;
-        if (DgiiPages.ReadNcf(html) is not { } answer) return Failed("ncf.aspx", "a page it cannot read", NcfCheck.Unknown);
+        if (Read(html, DgiiPages.ReadNcf) is not { } answer) return Failed("ncf.aspx", "a page it cannot read", NcfCheck.Unknown);
         // A valid or expired receipt stays so; "does not match" may be a sequence the DGII is still loading.
         if (answer.Validity != NcfValidity.Unknown)
             Remember(key, answer, answer.Validity == NcfValidity.NotMatching ? TimeSpan.FromHours(1) : TimeSpan.MaxValue);
         return answer;
     }
 
-    /// <summary>GET the form (its ViewState and cookies), POST it back with <paramref name="fields"/>. Null when the store may not ask now or the DGII failed.</summary>
-    private async Task<string?> AskAsync(string page, Dictionary<string, string> fields, CancellationToken ct)
+    /// <summary>A page so odd its regular expressions time out is one Abastalia cannot read: never an error.</summary>
+    private static T? Read<T>(string html, Func<string, T?> read) where T : class
     {
-        if (!_enabled || !await TryTakeAsync(ct)) return null;
+        try { return read(html); }
+        catch (RegexMatchTimeoutException) { return null; }
+    }
+
+    /// <summary>GET the form (its ViewState and cookies), POST it back with <paramref name="fields"/>. Null when the store may not ask now or the DGII failed.</summary>
+    private async Task<string?> AskAsync(string page, bool purchase, Dictionary<string, string> fields, CancellationToken ct)
+    {
+        if (!_enabled || !await TryTakeAsync(purchase, ct)) return null;
         try
         {
             var client = http.CreateClient(HttpClientName);
@@ -193,8 +200,9 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IServiceScopeFacto
     }
 
     /// <summary>Takes one lookup from the store's minute and day allowance; false while paused after a failure or over the limit.
-    /// The day's count is read from the table on the first lookup of a day (so after a restart too) and saved after each one.</summary>
-    private async Task<bool> TryTakeAsync(CancellationToken ct)
+    /// The day's count is read from the table on the first lookup of a day (so after a restart too) and saved after each one.
+    /// R12: RNC lookups (any register) stop at four fifths of the day; the last fifth is kept for the NCF checks of purchases.</summary>
+    private async Task<bool> TryTakeAsync(bool purchase, CancellationToken ct)
     {
         var now = Now;
         if (now.Ticks < Interlocked.Read(ref _pausedUntilTicks)) return false;
@@ -205,7 +213,7 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IServiceScopeFacto
             if (day != _day)
                 (_day, _today) = (day, int.TryParse((await StoredAsync(DayKey(day), ct))?.Answer, NumberStyles.None, CultureInfo.InvariantCulture, out var n) ? n : 0);
             while (_lastMinute.TryPeek(out var t) && t <= now.AddMinutes(-1)) _lastMinute.Dequeue();
-            if (_lastMinute.Count >= _perMinute || _today >= _perDay) return false;
+            if (_lastMinute.Count >= _perMinute || _today >= (purchase ? _perDay : _perDay - _perDay / 5)) return false;
             _lastMinute.Enqueue(now);
             _today++;
             Save(DayKey(day), _today.ToString(CultureInfo.InvariantCulture), now.AddDays(2));
@@ -231,7 +239,10 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IServiceScopeFacto
         var now = Now;
         if (_cache.TryGetValue(key, out var e)) return e.ExpiresUtc > now ? (T)e.Answer : null;
         if (await StoredAsync(key, ct) is not { } row || row.ExpiresUtc <= now) return null;
-        var answer = JsonSerializer.Deserialize<T>(row.Answer)!;
+        T? answer;
+        try { answer = JsonSerializer.Deserialize<T>(row.Answer); }
+        catch (JsonException) { return null; } // a row from an older shape: as if not cached
+        if (answer is null) return null;
         _cache[key] = (answer, row.ExpiresUtc);
         return answer;
     }
@@ -243,10 +254,19 @@ internal sealed class DgiiPublicSite(IHttpClientFactory http, IServiceScopeFacto
         Save(key, JsonSerializer.Serialize(answer), expires);
     }
 
+    /// <summary>The table row, or null when it cannot be read (the database busy or down): a lookup never fails because of its cache.</summary>
     private async Task<DgiiPublicAnswer?> StoredAsync(string key, CancellationToken ct)
     {
-        await using var scope = scopes.CreateAsyncScope();
-        return await scope.ServiceProvider.GetRequiredService<FiscalDbContext>().DgiiPublicAnswers.AsNoTracking().FirstOrDefaultAsync(a => a.Key == key, ct);
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<FiscalDbContext>().DgiiPublicAnswers.AsNoTracking().FirstOrDefaultAsync(a => a.Key == key, ct);
+        }
+        catch (Exception e) when (!ct.IsCancellationRequested)
+        {
+            log.LogWarning(e, "Could not read the DGII public answer {Key}", key);
+            return null;
+        }
     }
 
     /// <summary>Queues an upsert after the previous ones; it also purges what expired. A failure only costs a lookup later.</summary>

@@ -154,6 +154,7 @@ public sealed class DgiiEndToEndTests(DgiiAbastaliaApp app) : IClassFixture<Dgii
         var newDoc = await app.DocumentAsync("E310000000002");
         newDoc.ReplacesENcf.ShouldBe("E310000000001");
         (await app.DocumentAsync("E310000000001")).ReplacedByENcf.ShouldBe("E310000000002");
+        (await app.DocumentAsync("E310000000001")).ArchivedUtc.ShouldBeNull(); // R12 #8: archived again with its replacement
         var newXml = XDocument.Parse(EcfSubmissionQueue.Unzip(newDoc.SignedXml));
         EcfXml.Validate(newXml, EcfType.FiscalCredit31).ShouldBeEmpty();
         newXml.Descendants("RNCComprador").Single().Value.ShouldBe("101672919");

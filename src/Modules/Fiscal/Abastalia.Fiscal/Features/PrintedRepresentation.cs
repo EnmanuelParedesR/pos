@@ -63,7 +63,7 @@ internal static class PrintedRepresentation
         string? V(XElement? e, string name) => e?.Element(name)?.Value.Trim() is { Length: > 0 } v ? v : null;
         var issuerRnc = V(issuer, "RNCEmisor") ?? "";
         var signedLocal = V(root, "FechaHoraFirma") ?? (d.SignedUtc + Abastalia.SharedKernel.BusinessDay.Offset).ToString("dd-MM-yyyy HH:mm:ss", Invariant);
-        var qr = EcfQr.Url(d.Environment, d.Channel, issuerRnc, d.BuyerRnc, d.ENcf, d.Total, d.SignedUtc, d.SecurityCode);
+        var qr = EcfQr.Url(d.Environment, d.Channel, issuerRnc, d.BuyerRnc, d.ENcf, d.Total, V(issuer, "FechaEmision") ?? "", d.SignedUtc, d.SecurityCode);
 
         var b = new StringBuilder();
         if (d.Environment == FiscalEnvironment.Simulated)

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -14,9 +15,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Abastalia.BuildingBlocks.Messaging;
+using Abastalia.BuildingBlocks.Persistence;
 using Abastalia.Fiscal.Contracts;
 using Abastalia.Fiscal.Domain;
 using Abastalia.Settings.Contracts;
+using Abastalia.SharedKernel;
 using Abastalia.Sync.Contracts;
 
 namespace Abastalia.Fiscal;
@@ -125,7 +129,7 @@ internal sealed class ReceiverDirectoryCache
 /// directory (cached a day) → the buyer's optional seed authentication → <c>POST</c> to its reception URL → its signed ARECF is kept.
 /// Retries with the queue's backoff for 72 hours. Separate from the DGII queue: a buyer that is down never delays a submission.</summary>
 internal sealed class EcfDeliveryQueue(FiscalDbContext db, IEcfProvider provider, IEcfSigner signer, ISettingsQueries settings, IHttpClientFactory http,
-    ReceiverDirectoryCache directory, TimeProvider clock, ILogger<EcfDeliveryQueue> log)
+    ReceiverDirectoryCache directory, ICommandHandler<TaxpayerReceiver.SeedSigned, Ok> seedSigned, TimeProvider clock, ILogger<EcfDeliveryQueue> log)
 {
     public const string HttpClientName = "Abastalia.EcfReceiver";
     public static readonly TimeSpan GiveUpAfter = TimeSpan.FromHours(72);
@@ -161,7 +165,7 @@ internal sealed class EcfDeliveryQueue(FiscalDbContext db, IEcfProvider provider
                 else
                 {
                     var xml = EcfSubmissionQueue.Unzip(await db.Documents.Where(x => x.Id == d.DocumentId).Select(x => x.SignedXml).SingleAsync(ct));
-                    var ack = await TaxpayerReceiver.PostAsync(http.CreateClient(HttpClientName), signer, reception, entry.Value.Authentication, "recepcion/api/ecf",
+                    var ack = await TaxpayerReceiver.PostAsync(http.CreateClient(HttpClientName), signer, seedSigned, reception, entry.Value.Authentication, "recepcion/api/ecf",
                         $"{issuerRnc}{d.ENcf}.xml", xml, ct);
                     var (state, reason) = ReadAck(ack, d.ENcf);
                     d.AckXml = EcfSubmissionQueue.Zip(ack);
@@ -238,29 +242,57 @@ internal sealed class EcfDeliveryQueue(FiscalDbContext db, IEcfProvider provider
 /// with the store's certificate: never in the cloud.</summary>
 internal static class TaxpayerReceiver
 {
-    /// <summary>Posts to <paramref name="service"/> of the receiver at <paramref name="url"/>, authenticating first when it publishes
-    /// <paramref name="authentication"/>. Returns the answer's body; throws when it refuses.</summary>
-    public static async Task<string> PostAsync(HttpClient client, IEcfSigner signer, string url, string? authentication, string service, string fileName,
-        string xml, CancellationToken ct)
+    /// <summary>The audit record of a seed the store signed for another taxpayer's receiver (a signed seed is a token for this RNC there).</summary>
+    internal sealed record SeedSigned(string Authentication, string Sha256) : ICommand<Ok>;
+
+    internal sealed class Handler(IAuditLog audit) : ICommandHandler<SeedSigned, Ok>
     {
-        using var request = Upload(ServiceUrl(url, service), fileName, xml);
-        if (!string.IsNullOrWhiteSpace(authentication))
+        public async Task<Result<Ok>> Handle(SeedSigned c, CancellationToken ct)
         {
-            using var seed = await client.GetAsync(ServiceUrl(authentication, "autenticacion/api/semilla"), ct);
-            seed.EnsureSuccessStatusCode();
-            var seedXml = XDocument.Parse(await seed.Content.ReadAsStringAsync(ct));
-            seedXml.Declaration = null;
-            using var validate = Upload(ServiceUrl(authentication, "autenticacion/api/validacioncertificado"), "semilla.xml", signer.Sign(seedXml).SignedXml);
-            using var token = await client.SendAsync(validate, ct);
-            token.EnsureSuccessStatusCode();
-            var json = await token.Content.ReadFromJsonAsync<JsonElement>(ct);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer",
-                json.TryGetProperty("token", out var t) ? t.GetString() : throw new HttpRequestException("El receptor no devolvió el token."));
+            await audit.RecordAsync("fiscal.receiver-seed-sign", "TaxpayerReceiver", Guid.Empty, new { c.Authentication, c.Sha256 }, ct);
+            return Ok.Value;
         }
-        using var response = await client.SendAsync(request, ct);
-        var body = await response.Content.ReadAsStringAsync(ct);
-        if (!response.IsSuccessStatusCode) throw new HttpRequestException($"El receptor respondió {(int)response.StatusCode}.");
-        return body;
+    }
+
+    /// <summary>Posts to <paramref name="service"/> of the receiver at <paramref name="url"/>. R12 #7: only when it answers 401 and publishes
+    /// <paramref name="authentication"/> is its seed signed (and recorded in the audit), then the post is sent again with the token.
+    /// Returns the answer's body; throws when it refuses.</summary>
+    public static async Task<string> PostAsync(HttpClient client, IEcfSigner signer, ICommandHandler<SeedSigned, Ok> record, string url, string? authentication,
+        string service, string fileName, string xml, CancellationToken ct)
+    {
+        var target = ServiceUrl(url, service);
+        HttpResponseMessage response;
+        using (var request = Upload(target, fileName, xml)) response = await client.SendAsync(request, ct);
+        if (response.StatusCode == HttpStatusCode.Unauthorized && !string.IsNullOrWhiteSpace(authentication))
+        {
+            response.Dispose();
+            using var retry = Upload(target, fileName, xml);
+            retry.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await TokenAsync(client, signer, record, authentication, ct));
+            response = await client.SendAsync(retry, ct);
+        }
+        using (response)
+        {
+            var body = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode) throw new HttpRequestException($"El receptor respondió {(int)response.StatusCode}.");
+            return body;
+        }
+    }
+
+    private static async Task<string?> TokenAsync(HttpClient client, IEcfSigner signer, ICommandHandler<SeedSigned, Ok> record, string authentication,
+        CancellationToken ct)
+    {
+        using var seed = await client.GetAsync(ServiceUrl(authentication, "autenticacion/api/semilla"), ct);
+        seed.EnsureSuccessStatusCode();
+        var seedXml = XDocument.Parse(await seed.Content.ReadAsStringAsync(ct));
+        seedXml.Declaration = null;
+        var signed = signer.Sign(seedXml).SignedXml;
+        var recorded = await record.Handle(new SeedSigned(authentication, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signed)))), ct);
+        if (recorded.IsFailure) throw new HttpRequestException($"No se pudo registrar la semilla firmada: {recorded.Error!.Description}");
+        using var validate = Upload(ServiceUrl(authentication, "autenticacion/api/validacioncertificado"), "semilla.xml", signed);
+        using var token = await client.SendAsync(validate, ct);
+        token.EnsureSuccessStatusCode();
+        var json = await token.Content.ReadFromJsonAsync<JsonElement>(ct);
+        return json.TryGetProperty("token", out var t) ? t.GetString() : throw new HttpRequestException("El receptor no devolvió el token.");
     }
 
     /// <summary>The directory may list a base URL or the whole service URL: either way the service goes after <c>/fe/</c> (§11, question 31).</summary>

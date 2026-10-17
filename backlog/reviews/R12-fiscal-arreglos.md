@@ -1,0 +1,22 @@
+# R12 · Arreglos de Fiscal de la auditoría V1
+
+Rama `r12-fiscal`. Solo `src/Modules/Fiscal` y sus pruebas. Compila sin advertencias; `dotnet test Abastalia.slnx` en verde y las pruebas de integración también en SQL Express.
+
+| # | Hallazgo | Estado | Cómo | Prueba |
+|---|---|---|---|---|
+| 1 | Doble envío del mismo e-CF (cola y "Enviar ya" a la vez) | Arreglado | `ClaimAsync` reclama solo si `SentUtc` es nulo o tiene más de 2 minutos (`ClaimLease`; el timeout HTTP es 30 s). Si el proceso murió (R9 #7), el documento se vuelve a reclamar pasado ese tiempo. | `EcfSubmissionClaimTests` (una segunda pasada en medio del envío no envía) y `EcfSubmissionCrashTests` (el reclamo joven se respeta; vencido, primero consulta) |
+| 2 | RFCE atascado en Sent sin TrackId | Arreglado | `EcfSubmissionQueue.PollAsync`: un RFCE enviado se consulta con `consultarfce` (FindAsync), no con `consultaresultado`. El envío del set de pruebas usa el mismo paso. | `EcfSubmissionRfceTests` |
+| 3 | Doble toque en "Reemplazar" o "Regularizar" emite dos e-CF | Arreglado | La fila se marca con `ExecuteUpdateAsync ... where ReplacedByENcf == null` (o `RegularizedByENcf == null` por cada B). Si actualiza 0 filas, devuelve `Fiscal.AlreadyReplaced` y la transacción deshace el e-CF y el número. | `EcfAdminTests.A_double_tap_on_Reemplazar_issues_one_replacement`, `EcfOperationsTests` (dos regularizar a la vez dan uno) |
+| 4 | Errores HTTP que no son de la DGII quedaban como rechazo final | Arreglado | Si la respuesta no trae el JSON de la DGII (`mensaje`/`error`, o `codigo` en la anulación), se lanza `HttpRequestException` y la cola reintenta. Aplica a recepción, recepcionfc y anulación. | `DgiiClientTests.An_answer_that_is_not_the_DGII_s_is_retried_never_a_rejection` (página WAF 403, 404, 408 y 413) |
+| 5 | Lecturas de tabla completa | Arreglado | `/health` toma el último contacto de `DgiiClock.LastDgiiUtc`. Índices nuevos en `ResultUtc` y `ArchivedUtc` (migración `R12FiscalIndexes`: solo crea índices, no toca datos). `await-result` filtra por ambiente y usa el índice único; si no encuentra, busca sin ambiente. | `EcfHealthTests` (último contacto); `has-pending-model-changes` limpio |
+| 6 | FechaEmision del QR equivocada en e-CF firmados después de corregir la hora | Arreglado | `EcfQr.Url` recibe la `FechaEmision` del XML aparte de la hora de firma (`EcfXml.IssuedOn`). | `ClockSkewTests` (un 31 de otro día conserva su fecha en el QR), `DgiiXmlTests` |
+| 7 | Se firmaba cualquier semilla que devolviera el receptor de un tercero | Arreglado | Primero se envía sin autenticar. Solo si responde 401 se firma la semilla, se anota en la auditoría (`fiscal.receiver-seed-sign`, con su SHA-256) y se reenvía con el token. | `ReceiverSeedTests` |
+| 8 | El reemplazo no actualizaba el archivo en la nube | Arreglado | Al reemplazar se pone `ArchivedUtc = null` en el mismo `ExecuteUpdate`. | `DgiiEndToEndTests` |
+| 9 | Reissue mantenía el IndicadorNotaCredito viejo | Arreglado | Se recalcula con `FechaNCFModificado` y la nueva fecha de emisión (más de 30 días da 1). | `EcfXmlTests.A_credit_note_reissued_past_30_days_after_the_invoice_changes_its_indicator` |
+| 10 | Un documento malo frenaba todo el archivo | Arreglado | Con un 4xx se salta ese documento y sigue con los demás. Con 5xx, 429, 401 o 403 (falla de la nube) para hasta la próxima pasada. | `EcfArchiveTests` |
+| — | Consulta pública DGII: la caché podía dar error | Arreglado | `StoredAsync` y `Deserialize` con try/catch: si falla, se trata como si no hubiera caché. `RegexMatchTimeoutException` al leer la página da Unavailable. | `DgiiPublicLookupTests.A_cached_row_that_cannot_be_read_is_as_if_not_cached` |
+| — | `GET /api/fiscal/taxpayers/{rnc}` abierto a cualquier usuario | Arreglado | Pide `customers.quick-add`, `customers.manage`, `purchasing.manage` o `fiscal.manage`. Se agregó `customers.manage` para que el formulario de clientes no pierda la búsqueda. Las búsquedas de RNC usan como máximo 4/5 del cupo diario; el último quinto queda para validar NCF de compras. | `TaxpayerRegistryTests` (Contador → 403), `DgiiPublicLookupTests.RNC_lookups_leave_a_fifth_...` |
+
+Pendiente o a vigilar:
+- Después de reiniciar, "Último contacto con la DGII" dice "Todavía no" hasta la próxima respuesta de la DGII. El worker mide la hora cada 10 minutos.
+- Si un RFCE nunca aparece en `consultarfce`, se sigue consultando cada 5 minutos sin reenviarlo. Hoy eso es raro, porque una respuesta que no es JSON ya no lo deja en Sent (#4).

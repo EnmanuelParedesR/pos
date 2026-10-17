@@ -69,6 +69,8 @@ public sealed class TaxpayerRegistryTests(SmallRegistryApp app) : IClassFixture<
 
         var cashier = app.Client(await app.UserAsync(Roles.Cashier));
         (await cashier.GetAsync("/api/fiscal/taxpayers/40212345678")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        // R12: who neither adds customers nor buys nor manages fiscal does not spend the store's DGII lookups.
+        (await app.Client(await app.UserAsync(Roles.Accountant)).GetAsync("/api/fiscal/taxpayers/40212345678")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await cashier.PostAsync("/api/fiscal/taxpayer-registry", new StringContent(RegistryFile))).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await cashier.GetAsync("/api/fiscal/taxpayer-registry/import")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }

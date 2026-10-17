@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Xml.Linq;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Abastalia.BuildingBlocks.Messaging;
@@ -113,6 +114,24 @@ public sealed class EcfAdminTests(DgiiAbastaliaApp app) : IClassFixture<DgiiAbas
         var charge = statement.GetProperty("lines").EnumerateArray().Single();
         (charge.GetProperty("type").GetString(), charge.GetProperty("document").GetString(), charge.GetProperty("charge").GetDecimal()).ShouldBe(("Fiado", replacement, 100m));
         statement.GetProperty("debt").GetDecimal().ShouldBe(100m);
+    }
+
+    [Fact]
+    public async Task A_double_tap_on_Reemplazar_issues_one_replacement()
+    {
+        var admin = await app.SetUpAsync();
+        var cashier = await app.CashierWithShiftAsync(loadSequences: false);
+        var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco", 59m, stock: 50);
+        var rejected = Encf(await cashier.SellAsync(soda, 59m, "FiscalCredit31", "131313131"));
+        app.Dgii.Result = encf => encf == rejected ? (2, true, "El RNC del comprador no corresponde") : (1, true, null);
+        await app.DrainAsync();
+        var id = (await app.DocumentAsync(rejected)).Id;
+
+        // R12 #3: both taps read the row before either wrote it; the second finds it taken and rolls back its e-CF and number.
+        var both = await Task.WhenAll(admin.PostAsync($"/api/fiscal/documents/{id}/replace", null), admin.PostAsync($"/api/fiscal/documents/{id}/replace", null));
+        both.Count(r => r.StatusCode == HttpStatusCode.Created).ShouldBe(1);
+        both.Count(r => r.StatusCode == HttpStatusCode.Conflict).ShouldBe(1);
+        (await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Documents.CountAsync(d => d.ReplacesENcf == rejected))).ShouldBe(1);
     }
 
     [Fact]

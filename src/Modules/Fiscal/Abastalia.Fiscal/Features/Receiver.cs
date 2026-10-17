@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -200,7 +200,7 @@ internal static class ReceivedDocuments
 /// cannot change once signed.</summary>
 /// <remarks>shortcut: no automatic retry; the admin presses again and only the missing leg goes.</remarks>
 internal sealed class CommercialApprovals(FiscalDbContext db, CertificateEcfSigner signer, IEcfProvider provider, ISettingsQueries settings, IHttpClientFactory http,
-    ICommandHandler<CommercialApprovals.Decided, ReceivedDocuments.Item> record, DgiiClock dgiiClock, TimeProvider clock,
+    ICommandHandler<CommercialApprovals.Decided, ReceivedDocuments.Item> record, ICommandHandler<TaxpayerReceiver.SeedSigned, Ok> seedSigned, DgiiClock dgiiClock, TimeProvider clock,
     ILogger<CommercialApprovals> log)
 {
     /// <param name="DecidedBy">TK-250: "panel: {e-mail}" when an owner decided it in the panel; null when decided at this PC (the audit has the user).</param>
@@ -273,7 +273,7 @@ internal sealed class CommercialApprovals(FiscalDbContext db, CertificateEcfSign
                 if (environment == FiscalEnvironment.CerteCF) messages.Add("En CerteCF no hay directorio: la aprobación va solo a la DGII.");
                 else if (await dgii.DirectoryAsync(d.IssuerRnc, ct) is { Approval: { } url, Authentication: var auth })
                 {
-                    await TaxpayerReceiver.PostAsync(http.CreateClient(EcfDeliveryQueue.HttpClientName), signer, url, auth, "aprobacioncomercial/api/ecf", file, xml, ct);
+                    await TaxpayerReceiver.PostAsync(http.CreateClient(EcfDeliveryQueue.HttpClientName), signer, seedSigned, url, auth, "aprobacioncomercial/api/ecf", file, xml, ct);
                     delivered = clock.GetUtcNow().UtcDateTime;
                 }
                 else messages.Add("El suplidor no aparece en el directorio de la DGII: la aprobación va solo a la DGII.");

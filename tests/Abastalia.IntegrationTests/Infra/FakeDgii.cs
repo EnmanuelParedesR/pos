@@ -48,6 +48,9 @@ public sealed class FakeDgii : HttpMessageHandler
     /// <summary>TK-156: how far the app's clock is ahead of the DGII's (negative: behind). Null: answers carry no <c>Date</c> header.</summary>
     public TimeSpan? AppAheadBy { get; set; }
 
+    /// <summary>R12 #4: takes over the answer of an authenticated request when it returns one (a firewall page, a proxy error).</summary>
+    public Func<Received, HttpResponseMessage?>? Override { get; set; }
+
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         if (Down) throw new HttpRequestException("No such host is known. (ecf.dgii.gov.do:443)");
@@ -92,6 +95,7 @@ public sealed class FakeDgii : HttpMessageHandler
             return Json(new { token, expira = (now + TokenLifetime).ToString("yyyy-MM-ddTHH:mm:ssZ"), expedido = now.ToString("yyyy-MM-ddTHH:mm:ssZ") });
         }
         if (received.Authorization is not { } auth || !Tokens.Contains(auth["Bearer ".Length..])) return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        if (Override?.Invoke(received) is { } custom) return custom;
 
         string Query(string name) => System.Web.HttpUtility.ParseQueryString(uri.Query)[name] ?? "";
         string EncfOf(string x) => XDocument.Parse(x).Descendants("eNCF").Single().Value;

@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -36,6 +36,9 @@ public sealed class FakeBuyerReceiver : HttpMessageHandler
     private static readonly CertificateEcfSigner Signer = new(Certificate());
 
     public bool Down { get; set; }
+
+    /// <summary>R12 #7: the receiver asks for a token (401 without one). False: it takes documents without authentication.</summary>
+    public bool RequireToken { get; set; } = true;
     public List<(string Path, string? Authorization, string? FileName, string? Xml)> Requests { get; } = [];
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -54,7 +57,7 @@ public sealed class FakeBuyerReceiver : HttpMessageHandler
                 ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { token = "buyer-token", expira = "2099-01-01T00:00:00Z" }) }
                 : new HttpResponseMessage(HttpStatusCode.Unauthorized);
         if (path is not ("/fe/recepcion/api/ecf" or "/fe/aprobacioncomercial/api/ecf")) return new HttpResponseMessage(HttpStatusCode.NotFound);
-        if (request.Headers.Authorization?.ToString() != "Bearer buyer-token") return new HttpResponseMessage(HttpStatusCode.Unauthorized);
+        if (RequireToken && request.Headers.Authorization?.ToString() != "Bearer buyer-token") return new HttpResponseMessage(HttpStatusCode.Unauthorized);
         if (path == "/fe/aprobacioncomercial/api/ecf") return new HttpResponseMessage(HttpStatusCode.OK); // TK-246: an ACECF from the store
 
         var ecf = XDocument.Parse(xml!);
@@ -109,7 +112,7 @@ public sealed class EcfExchangeTests(ExchangeAbastaliaApp app) : IClassFixture<E
         var delivered = (await DeliveriesAsync()).Single(d => d.ENcf == electronic);
         (delivered.Status, delivered.DeliveredUtc is null).ShouldBe((DeliveryStatus.Delivered, false));
         XDocument.Parse(EcfSubmissionQueue.Unzip(delivered.AckXml!)).Descendants("Estado").Single().Value.ShouldBe("0");
-        var sent = app.Buyer.Requests.Single(r => r.Path == "/fe/recepcion/api/ecf" && r.Authorization is not null);
+        var sent = app.Buyer.Requests.Single(r => r.Path == "/fe/recepcion/api/ecf" && r.Authorization is not null && r.FileName == $"{DgiiStore.Rnc}{electronic}.xml");
         sent.FileName.ShouldBe($"{DgiiStore.Rnc}{electronic}.xml");
         sent.Xml.ShouldBe(EcfSubmissionQueue.Unzip((await app.DocumentAsync(electronic)).SignedXml)); // the signed e-CF, untouched
 
@@ -138,6 +141,50 @@ public sealed class EcfExchangeTests(ExchangeAbastaliaApp app) : IClassFixture<E
         app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Set<EcfDelivery>().AsNoTracking().ToListAsync());
 }
 
+
+/// <summary>R12 #7: a buyer's seed is signed only for a receiver that asks for a token. Own app: the delivery test moves the clock past the sessions.</summary>
+public sealed class ReceiverSeedTests(ExchangeAbastaliaApp app) : IClassFixture<ExchangeAbastaliaApp>
+{
+    private const string ElectronicBuyer = "101672919";
+
+    [Fact]
+    public async Task The_store_signs_a_buyer_s_seed_only_when_its_receiver_asks_and_records_it()
+    {
+        var admin = await app.SetUpAsync();
+        var cashier = await app.CashierWithShiftAsync(loadSequences: false);
+        var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco", 59m, stock: 50);
+        app.Dgii.Directory[ElectronicBuyer] = FakeBuyerReceiver.Url;
+        (app.Buyer.Down, app.Buyer.RequireToken) = (false, false);
+        try
+        {
+            int Seeds() => app.Buyer.Requests.Count(r => r.Path == "/fe/autenticacion/api/validacioncertificado");
+            Task<int> Recorded() => app.InScopeAsync(sp => sp.GetRequiredService<Abastalia.BuildingBlocks.Persistence.InfraDbContext>().AuditRecords
+                .CountAsync(a => a.Action == "fiscal.receiver-seed-sign"));
+            var (seeds, recorded) = (Seeds(), await Recorded());
+
+            // R12 #7: a receiver that takes the document without a token never gets a signed seed (a token for this RNC).
+            var open = (await cashier.SellAsync(soda, 59m, "FiscalCredit31", ElectronicBuyer)).GetProperty("eNcf").GetString()!;
+            await app.DrainAsync();
+            await DeliverAsync();
+            (await DeliveriesAsync()).Single(d => d.ENcf == open).Status.ShouldBe(DeliveryStatus.Delivered);
+            (Seeds(), await Recorded()).ShouldBe((seeds, recorded));
+
+            // One that answers 401: its seed is signed, and the audit log says so.
+            app.Buyer.RequireToken = true;
+            var closed = (await cashier.SellAsync(soda, 59m, "FiscalCredit31", ElectronicBuyer)).GetProperty("eNcf").GetString()!;
+            await app.DrainAsync();
+            await DeliverAsync();
+            (await DeliveriesAsync()).Single(d => d.ENcf == closed).Status.ShouldBe(DeliveryStatus.Delivered);
+            (Seeds(), await Recorded()).ShouldBe((seeds + 1, recorded + 1));
+        }
+        finally { app.Buyer.RequireToken = true; }
+    }
+
+    private Task<int> DeliverAsync() => app.InScopeAsync(sp => sp.GetRequiredService<EcfDeliveryQueue>().ProcessAsync(CancellationToken.None));
+
+    private Task<List<EcfDelivery>> DeliveriesAsync() =>
+        app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Set<EcfDelivery>().AsNoTracking().ToListAsync());
+}
 
 /// <summary>TK-154 and TK-246 at the store, on its own app: the delivery test moves the clock past the admin's session. Received e-CF come down from
 /// the cloud; the receiver is activated with the store's signed proof (or, CloudCustody, the .p12); the commercial approval is signed here and sent from
@@ -210,7 +257,7 @@ public sealed class ReceivedDocumentsTests(ExchangeAbastaliaApp app) : IClassFix
         answer.GetProperty("approvalDeliveredUtc").ValueKind.ShouldBe(JsonValueKind.String);
         answer.GetProperty("approvalDgiiUtc").ValueKind.ShouldBe(JsonValueKind.String);
 
-        var toSupplier = app.Buyer.Requests.Single(r => r.Path == "/fe/aprobacioncomercial/api/ecf");
+        var toSupplier = app.Buyer.Requests.Single(r => r.Path == "/fe/aprobacioncomercial/api/ecf" && r.Authorization is not null);
         toSupplier.Authorization.ShouldBe("Bearer buyer-token");
         toSupplier.FileName.ShouldBe($"{DgiiStore.Rnc}E310000000005.xml");
         var toDgii = app.Dgii.To("/aprobacioncomercial/api/aprobacioncomercial").ShouldHaveSingleItem();
@@ -228,7 +275,7 @@ public sealed class ReceivedDocumentsTests(ExchangeAbastaliaApp app) : IClassFix
         // The decision cannot change; pressing again sends nothing that already went.
         (await (await admin.PostAsJsonAsync($"/api/fiscal/received/{id}/approval", new { approve = true })).ErrorCode()).ShouldBe("Fiscal.ApprovalAlreadySigned");
         (await admin.PostAsJsonAsync($"/api/fiscal/received/{id}/approval", new { approve = false, reason = "otra vez" })).StatusCode.ShouldBe(HttpStatusCode.OK);
-        app.Buyer.Requests.Count(r => r.Path == "/fe/aprobacioncomercial/api/ecf").ShouldBe(1);
+        app.Buyer.Requests.Count(r => r.Path == "/fe/aprobacioncomercial/api/ecf" && r.Authorization is not null).ShouldBe(1);
         app.Dgii.To("/aprobacioncomercial/api/aprobacioncomercial").Count().ShouldBe(1);
         (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/received"))[0].GetProperty("approvalReason").GetString().ShouldBe("Mercancía dañada");
     }
@@ -280,7 +327,7 @@ public sealed class PanelDecisionTests(ExchangeAbastaliaApp app) : IClassFixture
         (await PullAsync()).ShouldBe(0);
         (await PullAsync()).ShouldBe(0); // still pending in the cloud until the event lands: nothing goes twice
 
-        var toSupplier = app.Buyer.Requests.Where(r => r.Path == "/fe/aprobacioncomercial/api/ecf").ToList();
+        var toSupplier = app.Buyer.Requests.Where(r => r.Path == "/fe/aprobacioncomercial/api/ecf" && r.Authorization is not null).ToList();
         toSupplier.Count.ShouldBe(2);
         app.Dgii.To("/aprobacioncomercial/api/aprobacioncomercial").Count().ShouldBe(2);
         var acecf = XDocument.Parse(toSupplier.Single(r => r.FileName!.EndsWith("E310000000011.xml", StringComparison.Ordinal)).Xml!);

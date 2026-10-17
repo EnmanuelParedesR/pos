@@ -8,6 +8,7 @@ using Shouldly;
 using Abastalia.Fiscal;
 using Abastalia.Fiscal.Domain;
 using Abastalia.IntegrationTests.Infra;
+using Abastalia.Tests;
 
 namespace Abastalia.IntegrationTests.Fiscal;
 
@@ -106,5 +107,34 @@ public sealed class DgiiClientTests : IDisposable
         (await certification.FindAsync("131245678", "E310000000001", "abc", EcfChannel.Ecf, default)).ShouldBeNull();
         (await certification.VoidAsync("131245678", "<ANECF/>", default)).State.ShouldBe(DgiiState.Rejected);
         new DgiiUrls(FiscalEnvironment.eCF).Ecf.ShouldBe("https://ecf.dgii.gov.do/ecf");
+    }
+
+    [Fact]
+    public async Task An_answer_that_is_not_the_DGII_s_is_retried_never_a_rejection()
+    {
+        var xml = Signed("<ECF><Encabezado><IdDoc><eNCF>E310000000001</eNCF></IdDoc></Encabezado></ECF>");
+        HttpResponseMessage? next = null;
+        _dgii.Override = _ => next;
+
+        // R12 #4: the firewall's page, a proxy's 404 or 413, an empty 408: HttpRequestException, so the queue tries again.
+        foreach (var answer in new Func<HttpResponseMessage>[]
+        {
+            () => new(System.Net.HttpStatusCode.Forbidden) { Content = new StringContent(FakeDgiiPublic.Page("waf-denied"), System.Text.Encoding.UTF8, "text/html") },
+            () => new(System.Net.HttpStatusCode.NotFound),
+            () => new(System.Net.HttpStatusCode.RequestTimeout),
+            () => new(System.Net.HttpStatusCode.RequestEntityTooLarge) { Content = new StringContent("<html>Too large</html>") },
+        })
+        {
+            next = answer();
+            await Should.ThrowAsync<HttpRequestException>(() => _client.SendEcfAsync("131245678", "E310000000001", xml, default));
+            next = answer();
+            await Should.ThrowAsync<HttpRequestException>(() => _client.SendRfceAsync("131245678", "E320000000001", xml, default));
+            next = answer();
+            await Should.ThrowAsync<HttpRequestException>(() => _client.VoidAsync("131245678", "<ANECF/>", default));
+        }
+
+        // The DGII's own refusal stays a rejection.
+        next = new(System.Net.HttpStatusCode.BadRequest) { Content = System.Net.Http.Json.JsonContent.Create(new { trackId = (string?)null, error = "XML inválido", mensaje = "Firma" }) };
+        (await _client.SendEcfAsync("131245678", "E310000000001", xml, default)).ShouldBe(new DgiiAnswer(DgiiState.Rejected, Messages: "XML inválido: Firma"));
     }
 }
