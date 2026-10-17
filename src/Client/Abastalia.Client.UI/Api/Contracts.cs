@@ -23,7 +23,8 @@ public sealed record RenewedCertificate(string Certificate);
 public sealed record PairingCode(string Code, DateTime ExpiresUtc);
 public sealed record ActiveUser(Guid Id, string Name, string Code);
 public sealed record OpenedSession(string Token, Guid UserId, string Name, DateTime ExpiresUtc);
-public sealed record Me(Guid UserId, string Name, Guid DeviceId, string[] Permissions);
+/// <param name="IdleMinutes">TK-366: minutes without a key or a touch before the register locks back to the PIN; 0 = never (an older server).</param>
+public sealed record Me(Guid UserId, string Name, Guid DeviceId, string[] Permissions, int IdleMinutes = 0);
 public sealed record ApprovalGranted(Guid ApprovalId, string Supervisor, DateTime ExpiresUtc);
 public sealed record Device(Guid Id, string Name, bool IsRevoked, DateTime CreatedUtc);
 public sealed record User(Guid Id, string Name, string Code, Guid RoleId, string Role, bool IsActive, bool IsLocked);

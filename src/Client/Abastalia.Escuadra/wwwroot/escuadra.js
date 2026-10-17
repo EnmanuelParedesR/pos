@@ -111,7 +111,13 @@
   applyTheme();
   if (darkQuery) darkQuery.addEventListener('change', applyTheme);
 
+  // TK-366: the last key, click, touch or scroll (a scan is keys too). A moved mouse is not someone working.
+  let lastInput = Date.now();
+  for (const type of ['keydown', 'pointerdown', 'wheel']) window.addEventListener(type, () => { lastInput = Date.now(); }, { capture: true, passive: true });
+
   window.escuadra = {
+    // Seconds since the last key, click, touch or scroll (IdleGuard.razor locks the session after a while).
+    idleSeconds: () => (Date.now() - lastInput) / 1000,
     // "system", "light" or "dark".
     getTheme: () => storedTheme() || 'system',
     setTheme: choice => {

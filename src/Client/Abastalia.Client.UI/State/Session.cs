@@ -34,6 +34,8 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAdd
     public Guid UserId { get; private set; }
     public string? Name { get; private set; }
     public CurrentShift? Shift { get; set; }
+    /// <summary>TK-366: minutes without a key or a touch before this register locks back to the PIN (IdleGuard); 0 = never.</summary>
+    public int IdleMinutes { get; private set; }
     /// <summary>The session ended on the server (12 h, PIN change, revoked device).</summary>
     public bool Expired { get; private set; }
     /// <summary>Whether the last call reached the store server (the status bar shows it; Cobrar waits for it).</summary>
@@ -188,7 +190,7 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAdd
 
     public void Open(OpenedSession s, Me me)
     {
-        (Token, UserId, Name, _permissions, Expired) = (s.Token, s.UserId, s.Name, [.. me.Permissions], false);
+        (Token, UserId, Name, _permissions, Expired, IdleMinutes) = (s.Token, s.UserId, s.Name, [.. me.Permissions], false, me.IdleMinutes);
         Changed?.Invoke();
     }
 

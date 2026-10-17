@@ -384,29 +384,36 @@ public sealed class SecurityReviewTests(AbastaliaApp app) : IClassFixture<Abasta
     }
 }
 
-/// <summary>R11 A4: whoever can approve is signed out after five idle minutes; the register's own polling does not keep the session open.</summary>
+/// <summary>R11 A4 / TK-366: whoever can approve is signed out after five idle minutes, everyone else after fifteen; the register locks itself at
+/// that time and the server two minutes later (the backstop); the register's own polling does not keep the session open.</summary>
 public sealed class IdleLockTests(IdleLockTests.App app) : IClassFixture<IdleLockTests.App>
 {
     public sealed class App : AbastaliaApp
     {
-        protected override IReadOnlyDictionary<string, string> Settings { get; } = new Dictionary<string, string> { ["Identity:IdleMinutes"] = "5" };
+        protected override IReadOnlyDictionary<string, string> Settings { get; } =
+            new Dictionary<string, string> { ["Identity:IdleMinutes"] = "5", ["Identity:RegisterIdleMinutes"] = "15" };
     }
 
     [Fact]
-    public async Task An_approvers_session_closes_after_five_idle_minutes_a_cashiers_does_not()
+    public async Task An_approvers_session_closes_after_five_idle_minutes_a_cashiers_after_fifteen()
     {
-        var admin = await app.AdminAsync();
-        var cashier = await app.UserAsync(Roles.Cashier);
-        var owner = app.Client(admin);
-        (await owner.GetAsync("/api/identity/me")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        var owner = app.Client(await app.AdminAsync());
+        var cashier = app.Client(await app.UserAsync(Roles.Cashier));
+        (await owner.GetFromJsonAsync<JsonElement>("/api/identity/me")).GetProperty("idleMinutes").GetInt32().ShouldBe(5);
+        (await cashier.GetFromJsonAsync<JsonElement>("/api/identity/me")).GetProperty("idleMinutes").GetInt32().ShouldBe(15);
 
-        app.Clock.Advance(TimeSpan.FromMinutes(4));
+        app.Clock.Advance(TimeSpan.FromMinutes(6));
         using var poll = new HttpRequestMessage(HttpMethod.Get, "/api/identity/me");
         poll.Headers.Add("X-Abastalia-Background", "1");
-        (await owner.SendAsync(poll)).StatusCode.ShouldBe(HttpStatusCode.OK); // still inside the five minutes, but it does not count as activity
-        app.Clock.Advance(TimeSpan.FromMinutes(2));
+        (await owner.SendAsync(poll)).StatusCode.ShouldBe(HttpStatusCode.OK); // inside the five minutes and the grace, but it does not count as activity
+        app.Clock.Advance(TimeSpan.FromMinutes(1.5));
         (await owner.GetAsync("/api/identity/me")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-        (await app.Client(cashier).GetAsync("/api/identity/me")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await cashier.GetAsync("/api/identity/me")).StatusCode.ShouldBe(HttpStatusCode.OK); // 7.5 minutes: still working
+
+        app.Clock.Advance(TimeSpan.FromMinutes(16.5));
+        (await cashier.GetAsync("/api/identity/me")).StatusCode.ShouldBe(HttpStatusCode.OK); // 16.5 idle: inside the grace
+        app.Clock.Advance(TimeSpan.FromMinutes(17.5));
+        (await cashier.GetAsync("/api/identity/me")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 }
 
