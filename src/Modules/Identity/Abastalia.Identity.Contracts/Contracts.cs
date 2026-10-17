@@ -14,6 +14,16 @@ public interface IUserDirectory
     Task<IReadOnlyList<UserName>> AllAsync(CancellationToken ct);
 }
 
+/// <summary>TK-320: the first run (the owner and the first device) of a business the Lite host provisions, the same command as a store's setup.
+/// Only works while the business has no users. Never inside another command.</summary>
+public interface IFirstRun
+{
+    /// <returns>The device's secret (it proves the device on every request), or why not.</returns>
+    Task<Result<FirstDevice>> SetUpAsync(string ownerName, string ownerCode, string pin, string deviceName, CancellationToken ct);
+}
+
+public sealed record FirstDevice(Guid OwnerId, Guid DeviceId, string DeviceSecret);
+
 /// <summary>TK-190: how many active registers reported their peripherals, and how many have a scale or a printer.</summary>
 public sealed record PeripheralsSummary(int Reported, int WithScale, int WithPrinter);
 

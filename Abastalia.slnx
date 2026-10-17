@@ -18,6 +18,7 @@
   </Folder>
   <Folder Name="/src/Hosts/">
     <Project Path="src/Hosts/Abastalia.Host.Cloud/Abastalia.Host.Cloud.csproj" />
+    <Project Path="src/Hosts/Abastalia.Host.Lite/Abastalia.Host.Lite.csproj" />
     <Project Path="src/Hosts/Abastalia.Host.Local/Abastalia.Host.Local.csproj" />
   </Folder>
   <Folder Name="/src/Modules/">
@@ -48,6 +49,7 @@
     <Project Path="tests/Abastalia.E2ETests/Abastalia.E2ETests.csproj" />
     <Project Path="tests/Abastalia.Hardware.Tests/Abastalia.Hardware.Tests.csproj" />
     <Project Path="tests/Abastalia.IntegrationTests/Abastalia.IntegrationTests.csproj" />
+    <Project Path="tests/Abastalia.Lite.Tests/Abastalia.Lite.Tests.csproj" />
     <Project Path="tests/Abastalia.UnitTests/Abastalia.UnitTests.csproj" />
   </Folder>
 </Solution>

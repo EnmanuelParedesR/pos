@@ -59,6 +59,16 @@ internal static class Setup
         }
     }
 
+    /// <summary>TK-320: the Lite host's provisioning. No certificate request: Lite devices prove themselves with the secret (TK-321 replaces it).</summary>
+    internal sealed class FirstRun(ICommandHandler<Command, Response> setup) : IFirstRun
+    {
+        public async Task<Result<FirstDevice>> SetUpAsync(string ownerName, string ownerCode, string pin, string deviceName, CancellationToken ct)
+        {
+            var r = await setup.Handle(new Command(ownerName, ownerCode, pin, deviceName), ct);
+            return r.IsFailure ? r.Error! : new FirstDevice(r.Value.UserId, r.Value.DeviceId, r.Value.DeviceToken!);
+        }
+    }
+
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>

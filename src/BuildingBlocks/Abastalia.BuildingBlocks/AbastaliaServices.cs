@@ -23,6 +23,7 @@ public static class AbastaliaServices
         services.AddSingleton(db);
         services.AddScoped<UnitOfWork>();
         services.TryAddSingleton<ITenantContext, StoreTenant>(); // the Lite host registers its own first (from the device, TK-320)
+        services.TryAddSingleton<ITenantDirectory, StoreTenants>(); // TK-320: the Lite host lists its businesses
         services.TryAddSingleton(TimeProvider.System); // a host may have registered its own first (ShiftedClock)
         services.AddHttpContextAccessor();
         services.AddScoped<IUserContext, HttpUserContext>();

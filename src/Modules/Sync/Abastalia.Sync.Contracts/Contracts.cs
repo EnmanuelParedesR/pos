@@ -53,6 +53,14 @@ public interface ICloudClient
     Task<HttpResponseMessage> PostAsJsonAsync<T>(string path, T body, CancellationToken ct);
 }
 
+/// <summary>TK-320: connects this business to the cloud with a connection code from the panel (ADR-0008): the cloud registers it as a node and
+/// the node's private key stays here. Never inside a command (it calls the cloud first, then saves in its own).</summary>
+public interface ICloudConnector
+{
+    /// <returns>Null when connected, else why not (an invalid code, the cloud unreachable, already connected).</returns>
+    Task<Error?> ConnectAsync(string code, CancellationToken ct);
+}
+
 /// <summary>A module's reference data the cloud cannot learn from past events (names of users and registers created before their events
 /// existed). Called inside the connect command: each source writes its current rows to the outbox as its usual change events.</summary>
 public interface ICloudSnapshot

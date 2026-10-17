@@ -35,7 +35,8 @@ public static class SyncModule
         services.AddScoped<CloudClient>();
         services.AddScoped<ICloudClient>(sp => sp.GetRequiredService<CloudClient>());
         services.AddScoped<CloudUploader>();
-        services.AddSingleton<LicenseSignal>();
+        services.AddPerTenant((_, _) => new LicenseSignal()); // TK-320: each Lite business has its own license stamp
+        services.AddScoped<ICloudConnector, CloudConnector>();
         services.AddHostedService<CloudUploaderWorker>();
         services.AddHostedService<HeartbeatWorker>();
         services.AddScoped<CloudBackupUploader>();
@@ -139,7 +140,9 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
     private async Task<HttpResponseMessage> SendSignedAsync(CloudConnection connection, string path, HttpContent content, byte[] bodyHash, HttpClient client,
         CancellationToken ct)
     {
-        if (backoff.Remaining(path) is { } wait) return CloudBackoff.TooManyRequests(wait);
+        // TK-320: per node, so one Lite business the cloud asked to wait does not hold back the others' uploads.
+        var key = $"{connection.NodeId} {path}";
+        if (backoff.Remaining(key) is { } wait) return CloudBackoff.TooManyRequests(wait);
         string secret;
         try { secret = Protector.Unprotect(connection.NodeSecret); }
         catch (CryptographicException e)
@@ -152,7 +155,7 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
         request.Headers.Add(BodyHashHeader, Base64Url(bodyHash));
         var response = await client.SendAsync(request, ct);
         if (response.Headers.Date is { } cloudNow) _skew = cloudNow - clock.GetUtcNow();
-        backoff.Record(path, response);
+        backoff.Record(key, response);
         return response;
     }
 
@@ -295,6 +298,14 @@ internal static class ConnectToCloud
                     ICommandHandler<Command, Ok> save, CancellationToken ct) => (await RunAsync(r.Code, config["Cloud:Url"], db, infra, http, save, ct)).ToHttp())
                 .RequirePermission(Permissions.SettingsManage).WithTags("Sync");
     }
+}
+
+/// <summary>TK-320: the Lite host connects each business with its own code, as the owner does on a store's screen (its own node and key).</summary>
+internal sealed class CloudConnector(IConfiguration config, SyncDbContext db, InfraDbContext infra, IHttpClientFactory http, ICommandHandler<ConnectToCloud.Command, Ok> save)
+    : ICloudConnector
+{
+    public async Task<Error?> ConnectAsync(string code, CancellationToken ct) =>
+        (await ConnectToCloud.RunAsync(code, config["Cloud:Url"], db, infra, http, save, ct)).Error;
 }
 
 /// <summary>Stops uploading. Pending events stay in the outbox and go up when the store connects again.</summary>
