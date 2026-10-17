@@ -12,23 +12,7 @@ public sealed class StoreSettingsScriptTests : IDisposable
     [Fact, Trait("Category", "Windows")]
     public void The_app_reaches_the_installed_server_and_the_server_the_production_cloud()
     {
-        if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only: runs store-settings.ps1 with powershell.exe (the Windows CI job runs it).");
-        var app = Copy(@"src\Client\Abastalia.Client.Wpf\appsettings.json", "app.json");
-        var server = Copy(@"src\Hosts\Abastalia.Host.Local\appsettings.json", "server.json");
-
-        var info = new ProcessStartInfo("powershell.exe")
-        {
-            ArgumentList = { "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
-                $". '{Repo(@"deploy\installer\store-settings.ps1")}'; Set-StoreSettings -AppSettings '{app}' -ServerSettings '{server}' -FeedUrl 'https://feed.example' -Channel 'pilot' -SignerThumbprints 'AB12'" },
-            RedirectStandardError = true, RedirectStandardOutput = true,
-        };
-        using (var p = Process.Start(info)!)
-        {
-            var stderr = p.StandardError.ReadToEnd();
-            p.StandardOutput.ReadToEnd();
-            p.WaitForExit();
-            p.ExitCode.ShouldBe(0, stderr);
-        }
+        var (app, server) = Run("-SignerThumbprints 'AB12'");
 
         using var appJson = JsonDocument.Parse(File.ReadAllText(app));
         using var serverJson = JsonDocument.Parse(File.ReadAllText(server));
@@ -42,10 +26,43 @@ public sealed class StoreSettingsScriptTests : IDisposable
             json.RootElement.GetProperty("Updates").GetProperty("Channel").GetString().ShouldBe("pilot");
             // R11 C3: the update task of both roles only installs setups signed by this certificate.
             json.RootElement.GetProperty("Updates").GetProperty("SignerThumbprints").EnumerateArray().Select(t => t.GetString()).ShouldBe(["AB12"]);
+            json.RootElement.GetProperty("Updates").GetProperty("AllowUnsignedUpdates").GetBoolean().ShouldBeFalse();
         }
         serverJson.RootElement.GetProperty("Database").GetProperty("Provider").GetString().ShouldBe("SqlServer"); // the rest is kept
         // R11 C1: the store's own SQL Server instance, which the setup installs (development keeps .\SQLEXPRESS in launchSettings).
         serverJson.RootElement.GetProperty("Database").GetProperty("ConnectionString").GetString().ShouldStartWith(@"Server=.\ABASTALIA;");
+    }
+
+    [Fact, Trait("Category", "Windows")]
+    public void A_pilot_build_without_certificate_keeps_accepting_unsigned_updates()
+    {
+        // TK-292: every update replaces the installed appsettings, so the pilot setting has to come with the build (build.ps1 -AllowUnsignedUpdates).
+        var (app, server) = Run("-AllowUnsignedUpdates");
+        foreach (var path in new[] { app, server })
+        {
+            using var json = JsonDocument.Parse(File.ReadAllText(path));
+            json.RootElement.GetProperty("Updates").GetProperty("AllowUnsignedUpdates").GetBoolean().ShouldBeTrue();
+            json.RootElement.GetProperty("Updates").GetProperty("SignerThumbprints").GetArrayLength().ShouldBe(0);
+        }
+    }
+
+    private (string App, string Server) Run(string arguments)
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only: runs store-settings.ps1 with powershell.exe (the Windows CI job runs it).");
+        var app = Copy(@"src\Client\Abastalia.Client.Wpf\appsettings.json", "app.json");
+        var server = Copy(@"src\Hosts\Abastalia.Host.Local\appsettings.json", "server.json");
+        var info = new ProcessStartInfo("powershell.exe")
+        {
+            ArgumentList = { "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command",
+                $". '{Repo(@"deploy\installer\store-settings.ps1")}'; Set-StoreSettings -AppSettings '{app}' -ServerSettings '{server}' -FeedUrl 'https://feed.example' -Channel 'pilot' {arguments}" },
+            RedirectStandardError = true, RedirectStandardOutput = true,
+        };
+        using var p = Process.Start(info)!;
+        var stderr = p.StandardError.ReadToEnd();
+        p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+        p.ExitCode.ShouldBe(0, stderr);
+        return (app, server);
     }
 
     private string Copy(string source, string name)
