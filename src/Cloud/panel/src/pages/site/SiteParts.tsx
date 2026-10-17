@@ -119,15 +119,17 @@ export function Steps({ items, round = false, accentLast = false }: { items: [st
   );
 }
 
-/** Closing band: the entry price from Paddle (TK-249; "Precio por confirmar" while billing is off) and the two calls to action. */
+/** Closing band: the entry price (TK-249; TK-293: the provisional one while billing is off) and the two calls to action. */
 export function CtaBand({ title, text = "Sin cupo de e-CF. Nunca queda en solo lectura.", pricesLink = true }: { title?: ReactNode; text?: ReactNode; pricesLink?: boolean }) {
-  const price = usePlanPrices()("Essential"); // the cheapest plan (TK-258)
+  const prices = usePlanPrices();
+  const price = prices.price("Essential"); // the cheapest plan (TK-258)
   return (
     <section className="band">
       <div className="wrap band__grid">
         <div>
           <h2>{title ?? (price ? <>Desde {price}</> : <>Pruebe Abastalia 14 días gratis</>)}</h2>
           <p>{text}</p>
+          {!title && price && prices.provisional && <p className="band__note">Precios en US$, provisionales.</p>}
         </div>
         <div className="actions">
           <Trial />

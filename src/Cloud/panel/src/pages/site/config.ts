@@ -8,8 +8,19 @@ export const site = {
   installerUrl: "",
   /** Plan and one-off prices (TK-203, TK-219). null = "Precio por confirmar"; never invent one. */
   prices: {
-    /** By plan or add-on code (Essential, Default, MultiRegister, ExtraRegister…), shown until Paddle answers. Paddle is the source of truth. */
-    byCode: {} as Record<string, string>,
+    /** TK-293: monthly US$ by plan or add-on code, the provisional prices the owner approved on 16/10/2026 (TK-258, docs/cobro-paddle.md);
+     * annual = 10 × monthly. Shown while Paddle billing is off; once it is on, only Paddle's count. */
+    monthlyUsd: {
+      Essential: 12,
+      Default: 19,
+      MultiRegister: 35,
+      ExtraRegister: 6,
+      ExtraCashier: 2,
+      ExtraStore: 25,
+      SupplierInvoiceReading: 7,
+      AssistantPack: 5,
+      ExtraUsers: 3,
+    } as Record<string, number>,
     installation: null as string | null,
     certificationSupport: null as string | null,
   },

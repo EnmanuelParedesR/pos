@@ -233,6 +233,7 @@
 .site .band__grid { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 24px; }
 .site .band h2 { margin-bottom: 8px; }
 .site .band p { margin: 0; font-size: 18px; color: var(--muted); }
+.site .band .band__note { margin-top: 8px; font-size: 14px; }
 
 .site .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
 @media (min-width: 720px) { .site .grid--3 { grid-template-columns: repeat(3, 1fr); } }

@@ -24,7 +24,10 @@ export const canonical = (path: string) => `${site.url}${path}`;
 /** 1200×630; the design system supplies the file (TK-259). */
 export const ogImage = `${site.url}/og/abastalia.png`;
 
-const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+/** The plans on /precios, in its order. */
+const plans = [["Essential", "Esencial"], ["Default", "Estándar"], ["MultiRegister", "Pro"]] as const;
+
+const escape =(s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
 /** TK-285: with the site gate on, every page is the gate screen (render), nothing is indexed and the build writes no sitemap. */
 export const gated = () => siteGate() !== "";
@@ -64,7 +67,8 @@ const text = (html: string) =>
     .trim();
 
 /** Schema.org data for one page, from what the rendered page already shows (`html` is render(page.path)). Organization and the app on the
- * home page, the breadcrumb on the others, FAQPage where the page has "Preguntas frecuentes". No offers: prices come live from Paddle. */
+ * home page, the breadcrumb on the others, FAQPage where the page has "Preguntas frecuentes". The app's offers are the provisional monthly
+ * prices /precios shows while billing is off (TK-293). */
 export function jsonLd(page: Page, html: string): object[] {
   if (!indexed(page) || gated()) return [];
   const context = "https://schema.org";
@@ -79,6 +83,19 @@ export function jsonLd(page: Page, html: string): object[] {
       description: page.description,
       applicationCategory: "BusinessApplication",
       operatingSystem: "Windows",
+      offers: plans
+        .filter(([code]) => site.prices.monthlyUsd[code])
+        .map(([code, name]) => {
+          const price = site.prices.monthlyUsd[code].toFixed(2);
+          return {
+            "@type": "Offer",
+            name,
+            url: canonical("/precios"),
+            price,
+            priceCurrency: "USD",
+            priceSpecification: { "@type": "UnitPriceSpecification", price, priceCurrency: "USD", unitCode: "MON" },
+          };
+        }),
     });
   } else {
     blocks.push({

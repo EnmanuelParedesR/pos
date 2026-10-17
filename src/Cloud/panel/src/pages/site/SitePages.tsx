@@ -606,14 +606,17 @@ function Plan({ name, note, price, children, brand }: { name: string; note: stri
 }
 
 function Pricing() {
-  const price = usePlanPrices(); // TK-249: from Paddle; "Precio por confirmar" while billing is off
+  const { price, provisional } = usePlanPrices(); // TK-249, TK-293: Paddle's, or the provisional ones while billing is off
   const prices = site.prices;
   const referred = useReferralLink(); // TK-255: /precios?ref=CODE
   return (
     <>
-      <Hero eyebrow="Precios" title="Pague por el tamaño de su tienda, no por factura." sub="Tres planes según cuántas cajas tiene. Todas las funciones, en todos.">
-        <p className="note">Precios provisionales en dólares (US$), al mes. Si prefiere, escríbanos y le damos una cotización.</p>
-      </Hero>
+      <Hero
+        eyebrow="Precios"
+        title="Pague por el tamaño de su tienda, no por factura."
+        sub="Tres planes según cuántas cajas tiene. Todas las funciones, en todos."
+        note={<>{provisional ? "Precios en US$, provisionales." : "Precios en US$."} Si prefiere, escríbanos y le damos una cotización.</>}
+      />
       <Section>
         <h2>Planes</h2>
         <div className="grid grid--3">
