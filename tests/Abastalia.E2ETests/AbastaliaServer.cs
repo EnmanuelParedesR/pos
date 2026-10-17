@@ -145,6 +145,11 @@ public sealed class AbastaliaServer : IAsyncDisposable
             foreach (var f in Directory.EnumerateFiles(Path.GetDirectoryName(_sqliteFile)!, Path.GetFileName(_sqliteFile) + "*"))
                 try { File.Delete(f); }
                 catch (IOException) { } // best effort: a temp file left behind is harmless
+        // Each run made its own license file, backup and keys folders under %TEMP%; they piled up run after run.
+        foreach (var key in new[] { "License__File", "Backup__Folder", "Abastalia__KeysFolder" })
+            if (_environment.TryGetValue(key, out var path) && path.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase))
+                try { if (Directory.Exists(path)) Directory.Delete(path, recursive: true); else File.Delete(path); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     /// <summary>A shared server (ABASTALIA_TEST_SQLSERVER) outlives the run, so the throwaway database is dropped here.</summary>
