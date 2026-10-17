@@ -532,6 +532,35 @@ resource alertInbox 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' 
   dependsOn: [apiConsoleLogs]
 }
 
+// TK-286: a business passed the fair use of receiver signatures (TK-248, FeSigner.MeterAsync). Fair use never refuses: staff review its plan.
+// The warning is logged once per business per month (at the first signature over), so each alert is one business to look at.
+resource alertFairUse 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
+  name: 'alert-${name}-fair-use'
+  location: location
+  tags: tags
+  properties: {
+    description: 'A business passed its fair use of receiver signatures this month (still signing). Review its plan; the tenant id is in the log line.'
+    severity: 3
+    enabled: true
+    scopes: [logs.id]
+    evaluationFrequency: 'PT1H'
+    windowSize: 'PT1H'
+    criteria: {
+      allOf: [
+        {
+          query: 'AppServiceConsoleLogs | where ResultDescription has "passed its fair use of receiver signatures"'
+          timeAggregation: 'Count'
+          operator: 'GreaterThan'
+          threshold: 0
+          failingPeriods: { numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1 }
+        }
+      ]
+    }
+    actions: { actionGroups: empty(alertEmail) ? [] : [alertGroup.id] }
+  }
+  dependsOn: [apiConsoleLogs]
+}
+
 output apiUrl string = 'https://${api.properties.defaultHostName}'
 output apiName string = api.name
 output apiPrincipalId string = api.identity.principalId

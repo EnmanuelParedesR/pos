@@ -291,7 +291,7 @@ WhatsApp queda como complemento pagado futuro (solo la interfaz `IWhatsAppSender
 
 ### Alertas (TK-241)
 
-El Bicep crea tres alertas de Azure Monitor; con `alertEmail` también un grupo de acción `ag-abastalia-prod` que avisa por correo (vacío = las alertas
+El Bicep crea cuatro alertas de Azure Monitor; con `alertEmail` también un grupo de acción `ag-abastalia-prod` que avisa por correo (vacío = las alertas
 existen, se ven en el portal y no avisan a nadie):
 
 | Alerta | Señal |
@@ -299,6 +299,7 @@ existen, se ven en el portal y no avisan a nadie):
 | `alert-abastalia-prod-5xx` | Métrica `Http5xx` de la Web App: más de 5 en 15 minutos. |
 | `alert-abastalia-prod-health` | Métrica `HealthCheckStatus` (el chequeo de `/health` de App Service) por debajo de 100 en 5 minutos. |
 | `alert-abastalia-prod-inbox` | Registro: un evento de una tienda que el inbox no pudo aplicar (`could not be applied`) o una corrida fallida del aplicador. |
+| `alert-abastalia-prod-fair-use` | Registro (TK-286): un negocio pasó el uso justo de firmas del receptor del mes (`passed its fair use of receiver signatures`; sigue firmando). Se escribe una vez por negocio y mes; el id del negocio está en la línea del registro: revisar su plan. Cada hora. |
 
 A Application Insights solo llegan las solicitudes (Serilog escribe en la consola), así que el Bicep manda los registros de consola de la Web App
 (`AppServiceConsoleLogs`) al área de trabajo `log-abastalia-prod` y la alerta del inbox los consulta. Validado con `az bicep build`; se aplica con el
