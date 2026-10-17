@@ -19,12 +19,31 @@ public sealed class WebProcess : IAsyncDisposable
     /// <summary>A host project of src/ (Abastalia.Client.Web, Abastalia.Host.Cloud), built with the same configuration as these tests.</summary>
     public static Task<WebProcess> HostAsync(string folder, string project, Dictionary<string, string> environment, string readyPath = "/")
     {
-        var configuration = AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ? "Release" : "Debug";
-        var dll = Path.Combine(RepoRoot, "src", folder, project, "bin", configuration, "net10.0", project + ".dll");
-        if (!File.Exists(dll)) throw new FileNotFoundException("Build tests/Abastalia.UiTests before running it.", dll);
+        var dll = HostDll(folder, project);
         var port = FreePort();
         environment["ASPNETCORE_URLS"] = $"http://127.0.0.1:{port}";
         return StartAsync(new ProcessStartInfo("dotnet", $"\"{dll}\"") { WorkingDirectory = Path.GetDirectoryName(dll)! }, environment, port, readyPath);
+    }
+
+    /// <summary>TK-309: a host's command line to the end (the cloud's <c>grant-platform-admin</c>), with the running host's settings.</summary>
+    public static async Task RunHostAsync(string folder, string project, string arguments, Dictionary<string, string> environment)
+    {
+        var dll = HostDll(folder, project);
+        var info = new ProcessStartInfo("dotnet", $"\"{dll}\" {arguments}")
+        { WorkingDirectory = Path.GetDirectoryName(dll)!, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var (k, v) in environment) info.Environment[k] = v;
+        using var p = Process.Start(info)!;
+        var output = p.StandardOutput.ReadToEndAsync();
+        var errors = p.StandardError.ReadToEndAsync();
+        await p.WaitForExitAsync();
+        if (p.ExitCode != 0) throw new InvalidOperationException($"{project} {arguments} failed:\n{await output}\n{await errors}");
+    }
+
+    private static string HostDll(string folder, string project)
+    {
+        var configuration = AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ? "Release" : "Debug";
+        var dll = Path.Combine(RepoRoot, "src", folder, project, "bin", configuration, "net10.0", project + ".dll");
+        return File.Exists(dll) ? dll : throw new FileNotFoundException("Build tests/Abastalia.UiTests before running it.", dll);
     }
 
     /// <summary>Node serving from src/Cloud/panel (vite preview) on <paramref name="port"/>, which the arguments must name.</summary>
