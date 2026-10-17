@@ -84,6 +84,7 @@ var invoicesPerNodeMinute = config.GetValue("Ai:SupplierInvoicesPerMinutePerNode
 var authPerMinute = config.GetValue("Auth:RequestsPerMinute", 10);
 var panelPerUserMinute = config.GetValue("Panel:RequestsPerMinutePerUser", 120);
 var assistantPerUserMinute = config.GetValue("Ai:AssistantQuestionsPerMinutePerUser", 10);
+var confirmationsPerUserMinute = config.GetValue("Ai:AssistantConfirmationsPerMinutePerUser", 10); // TK-338
 // R11 B-Med2/B-Med3: account management per user; uploads per store PC (a compromised one cannot flood the database).
 var managePerUserMinute = config.GetValue("Auth:ManagePerMinutePerUser", 10);
 var ingestPerNodeMinute = config.GetValue("Ingest:BatchesPerMinutePerNode", 60);
@@ -119,6 +120,8 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = authPerMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(QuotaRateLimits.PanelUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.PanelPerMinute, panelPerUserMinute));
     o.AddPolicy(QuotaRateLimits.AssistantUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.AssistantPerMinute, assistantPerUserMinute));
+    o.AddPolicy(AssistantActionEndpoints.RateLimit, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = confirmationsPerUserMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(AccountSecurityEndpoints.ManageRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = managePerUserMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(IngestEndpoint.NodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "",
@@ -137,6 +140,7 @@ builder.Services.AddSingleton<InboxSignal>();
 builder.Services.AddSingleton<InboxApplier>();
 builder.Services.AddHostedService<InboxApplierWorker>();
 builder.Services.AddScoped<PanelQueries>();
+foreach (var action in AssistantActionTypes.Builtin) builder.Services.AddSingleton(action); // TK-338: what Talia may propose
 builder.Services.AddScoped<PlatformQueries>();
 builder.Services.AddSingleton<LimitWatch>(); // TK-311
 builder.Services.AddHostedService<LimitWatchWorker>();
@@ -233,6 +237,7 @@ app.MapNodeUpdates();
 app.MapIngest();
 app.MapPanel();
 app.MapAssistant();
+app.MapAssistantActions();
 app.MapSupplierInvoiceReader();
 app.MapEcfArchive();
 app.MapColdArchive();

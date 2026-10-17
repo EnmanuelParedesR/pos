@@ -13,7 +13,7 @@ namespace Abastalia.Host.Cloud.Assistant;
 public sealed record EvalCase(string Name, string Question, EvalExpect Expect, IReadOnlyList<AssistantTurn>? History = null,
     EvalContext? Context = null, Dictionary<string, JsonNode?>? ToolData = null, IReadOnlyList<EvalReply>? Script = null);
 
-/// <param name="Role">owner or readonly; with Plan, informative until TK-338 filters the tools by permission.</param>
+/// <param name="Role">owner or readonly (TK-338: readonly gets no Owner-only screen or action). Plan is informative: every plan has the actions in the pilot.</param>
 public sealed record EvalContext(string? Role = null, string? Plan = null, DateOnly? Today = null, Dictionary<Guid, string>? Stores = null);
 
 /// <param name="Calls">Each must match one call the model made: same tool and every listed argument
@@ -22,8 +22,10 @@ public sealed record EvalContext(string? Role = null, string? Plan = null, DateO
 /// <param name="NoTools">The model must answer without calling any tool.</param>
 /// <param name="AnswerContains">Every fragment must be in the answer (ignoring case and accents).</param>
 /// <param name="AnswerAnyOf">At least one must be in the answer (refusals worded in different ways).</param>
+/// <param name="NoProposal">TK-338: the answer must leave no proposal card (no propose_* call the server accepted).</param>
 public sealed record EvalExpect(IReadOnlyList<EvalCall>? Calls = null, IReadOnlyList<string>? Forbidden = null, bool NoTools = false,
-    IReadOnlyList<string>? AnswerContains = null, IReadOnlyList<string>? AnswerAnyOf = null, IReadOnlyList<string>? AnswerNotContains = null);
+    IReadOnlyList<string>? AnswerContains = null, IReadOnlyList<string>? AnswerAnyOf = null, IReadOnlyList<string>? AnswerNotContains = null,
+    bool NoProposal = false);
 
 public sealed record EvalCall(string Tool, JsonObject? Args = null);
 
@@ -63,7 +65,7 @@ public static class TaliaEval
     public static async Task<EvalResult> RunAsync(IChatModel model, EvalCase c, CancellationToken ct)
     {
         var recorder = new Recorder(model);
-        var assistant = new OwnerAssistant(recorder, null!); // the tools read the case's data, never a replica
+        var assistant = For(recorder, c); // the tools read the case's data, never a replica
         var calls = new List<ChatToolCall>();
         var failures = new List<string>();
         var prompt = OwnerAssistant.SystemPrompt(c.Context?.Today ?? DefaultToday,
@@ -97,12 +99,25 @@ public static class TaliaEval
             failures.Add($"answer has none of {string.Join(" | ", any.Select(f => $"\"{f}\""))}");
         foreach (var fragment in (e.AnswerNotContains ?? []).Where(f => Contains(answer, f)))
             failures.Add($"answer has \"{fragment}\"");
+        if (e.NoProposal && assistant.Proposal is not null) failures.Add($"left a proposal: {assistant.Proposal.Summary}");
 
         return new(c, answer, calls, failures, recorder.Replies, assistant.TokensUsed);
     }
 
+    /// <summary>The assistant as the case's user gets it: a readonly member has no Owner-only screen or action. TK-338: a proposal the closed schema
+    /// accepts gets a card whose summary is the action and its arguments (the real summary reads the database, which the harness never touches).</summary>
+    public static OwnerAssistant For(IChatModel model, EvalCase c)
+    {
+        var owner = c.Context?.Role is not "readonly";
+        return new OwnerAssistant(model, null!, isOwner: owner,
+            actions: [.. AssistantActionTypes.Builtin.Where(a => owner || !a.Policies.Contains(Nodes.CloudAuth.OwnerPolicy))],
+            propose: (a, args) => Task.FromResult<SharedKernel.Result<ProposalCard>>(new ProposalCard(Guid.Empty, $"{a.Type} {args.ToJsonString()}", DefaultToday.ToDateTime(TimeOnly.MinValue))));
+    }
+
     private static async Task<string> ToolResultAsync(OwnerAssistant assistant, EvalCase c, ChatToolCall call, CancellationToken ct)
     {
+        if (assistant.Offered.Any(t => t.Name == call.Name && t.Name.StartsWith("propose_", StringComparison.Ordinal)))
+            return await assistant.RunToolAsync(Guid.Empty, call, ct); // the closed schema and one per answer, as in the panel
         if (c.ToolData?.TryGetValue(call.Name, out var data) == true) return data?.ToJsonString(CaseJson) ?? "null";
         if (call.Name is "certification_faq" or "panel_help" or "navigate") return await assistant.RunToolAsync(Guid.Empty, call, ct); // static content; navigate checks its route list
         return OwnerAssistant.Tools.Any(t => t.Name == call.Name) ? "[]" : OwnerAssistant.Failure($"No existe la herramienta {call.Name}.");

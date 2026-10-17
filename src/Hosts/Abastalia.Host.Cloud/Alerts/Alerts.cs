@@ -1,9 +1,11 @@
 using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Abastalia.BuildingBlocks.Endpoints;
 using Abastalia.Host.Cloud.Accounts;
+using Abastalia.Host.Cloud.Assistant;
 using Abastalia.Host.Cloud.Nodes;
 using Abastalia.Host.Cloud.Persistence;
 using Abastalia.SharedKernel;
@@ -225,7 +227,7 @@ internal static class AlertEndpoints
             .AllowAnonymous();
     }
 
-    private static async Task<AlertPreference> MineAsync(ClaimsPrincipal user, CloudDbContext db, CancellationToken ct)
+    internal static async Task<AlertPreference> MineAsync(ClaimsPrincipal user, CloudDbContext db, CancellationToken ct)
     {
         var (tenantId, userId) = (user.GetTenantId(), user.FindFirstValue(ClaimTypes.NameIdentifier)!);
         var pref = await db.AlertPreferences.SingleOrDefaultAsync(p => p.TenantId == tenantId && p.UserId == userId, ct);
@@ -238,4 +240,73 @@ internal static class AlertEndpoints
 
     private static AlertPreferences ToResponse(AlertPreference p, ClaimsPrincipal user, IEmailSender email) => new(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name,
         p.DgiiRejected, p.CertificateExpiring, p.QueueStale, p.CertificationProgress, p.Unsubscribed, email.Delivers);
+}
+
+/// <summary>TK-338: the protocol's sample action, harmless on purpose: one of the asking member's own e-mail alerts on or off, as
+/// <c>PUT /api/notifications</c> does (same policy: any member, only their own). TK-341 adds the real list.</summary>
+internal sealed class AlertPreferenceAction : AssistantActionType
+{
+    /// <summary>As the panel's Avisos page names them (NotificationsPage.tsx).</summary>
+    private static readonly Dictionary<AlertKind, string> Labels = new()
+    {
+        [AlertKind.DgiiRejected] = "Comprobantes rechazados por la DGII",
+        [AlertKind.QueueStale] = "Comprobantes sin enviar",
+        [AlertKind.CertificateExpiring] = "Certificado digital por vencer",
+        [AlertKind.CertificationProgress] = "Avance de la certificación DGII",
+    };
+
+    private static readonly JsonObject Schema = new()
+    {
+        ["type"] = "object",
+        ["properties"] = new JsonObject
+        {
+            ["alert"] = new JsonObject
+            {
+                ["type"] = "string",
+                ["enum"] = new JsonArray([.. Labels.Keys.Select(k => (JsonNode)k.ToString())]),
+                ["description"] = string.Join("; ", Labels.Select(l => $"{l.Key}: {l.Value}")),
+            },
+            ["on"] = new JsonObject { ["type"] = "boolean", ["description"] = "true para encenderlo, false para apagarlo." },
+        },
+        ["required"] = new JsonArray("alert", "on"),
+        ["additionalProperties"] = false,
+    };
+
+    public override string Type => "alert_preference";
+    public override string Description =>
+        "Propone encender o apagar uno de los avisos por correo del usuario que pregunta (solo los suyos). El panel le muestra una tarjeta con el cambio; él la confirma.";
+    public override JsonObject Parameters => Schema;
+    public override IReadOnlyList<string> Policies { get; } = [CloudAuth.PanelPolicy];
+
+    public override async Task<Result<(JsonObject Arguments, string Summary)>> PrepareAsync(ActionContext ctx, JsonObject args, CancellationToken ct)
+    {
+        var (kind, on) = Read(args);
+        var pref = await AlertEndpoints.MineAsync(ctx.User, ctx.Db, ct);
+        var now = pref.Wants(kind);
+        if (now == on) return Error.Conflict("Assistant.NothingToChange", $"El aviso «{Labels[kind]}» ya está {State(on)}: no hace falta cambiarlo.");
+        var summary = $"Aviso por correo «{Labels[kind]}»: {State(now)} → {State(on)}";
+        if (pref.Unsubscribed) summary += " (se había dado de baja de los avisos: los demás siguen apagados)";
+        return (new JsonObject { ["alert"] = kind.ToString(), ["on"] = on }, summary);
+    }
+
+    public override async Task<Result<object?>> ExecuteAsync(ActionContext ctx, JsonObject args, CancellationToken ct)
+    {
+        var (kind, on) = Read(args);
+        var pref = await AlertEndpoints.MineAsync(ctx.User, ctx.Db, ct);
+        // As the Avisos page: after the e-mail's unsubscribe link everything counts as off, so turning one on leaves the rest off.
+        if (pref.Unsubscribed) (pref.DgiiRejected, pref.CertificateExpiring, pref.QueueStale, pref.CertificationProgress, pref.Unsubscribed) = (false, false, false, false, false);
+        switch (kind)
+        {
+            case AlertKind.DgiiRejected: pref.DgiiRejected = on; break;
+            case AlertKind.CertificateExpiring: pref.CertificateExpiring = on; break;
+            case AlertKind.QueueStale: pref.QueueStale = on; break;
+            default: pref.CertificationProgress = on; break;
+        }
+        await ctx.Db.SaveChangesAsync(ct);
+        return new { alert = kind.ToString(), on };
+    }
+
+    private static (AlertKind Kind, bool On) Read(JsonObject args) => (Enum.Parse<AlertKind>(args["alert"]!.GetValue<string>()), args["on"]!.GetValue<bool>());
+
+    private static string State(bool on) => on ? "encendido" : "apagado";
 }
