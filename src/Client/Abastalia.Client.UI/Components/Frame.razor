@@ -56,10 +56,11 @@
                         <span class="esc-offline" role="status">@(expires < DateTime.UtcNow ? "Certificado digital vencido" : $"Certificado digital vence en {(int)(expires - DateTime.UtcNow).TotalDays} días")</span>
                     }
                 }
-                @* TK-238: amber for whoever can fix it; the sale goes on. *@
-                @if (_backup is { PassphraseProblem: not null })
+                @* TK-238: amber for whoever can fix it; the sale goes on. TK-362: checked here too, so a cashier who signs in after the owner
+                   never sees the owner's last answer (the 15-second check had not run yet); a tap opens Respaldos to set the phrase. *@
+                @if (_backup is { PassphraseProblem: not null } && Session.Can("backups.manage"))
                 {
-                    <span class="esc-offline" role="status">Respaldos sin frase: no se están haciendo</span>
+                    <span role="status"><button type="button" class="esc-offline esc-status-bar__alert" @onclick='() => Nav.NavigateTo("admin/settings?section=backups")'>Respaldos sin frase: no se están haciendo · Poner la frase</button></span>
                 }
                 @* TK-196/220: the trial is calm (muted) until its last days, then amber; never blocks the sale. *@
                 @if (_license is { } l && Names.LicenseNote(l) is { } note)

@@ -110,6 +110,25 @@ public sealed class PricesAndLeavingTests
     }
 
     [Fact]
+    public async Task The_backup_phrase_warning_is_only_for_who_can_set_it_and_takes_them_there()
+    {
+        // TK-362: the owner sees it and a tap opens Respaldos; a cashier signing in next never sees the owner's last answer.
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "backups.manage");
+        using var _ = ctx;
+        api.Json("GET", "/api/backups/warning", new BackupWarning("Falta la frase de los respaldos."));
+        var frame = ctx.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
+        IEnumerable<AngleSharp.Dom.IElement> Warning() => frame.FindAll(".esc-status-bar button").Where(b => b.TextContent.Contains("Respaldos sin frase", StringComparison.Ordinal));
+
+        frame.WaitForAssertion(() => Warning().Single().TextContent.ShouldBe("Respaldos sin frase: no se están haciendo · Poner la frase"));
+        Warning().Single().Click();
+        ctx.Services.GetRequiredService<NavigationManager>().Uri.ShouldEndWith("admin/settings?section=backups");
+
+        var session = ctx.Services.GetRequiredService<Session>();
+        session.Open(new OpenedSession("token-2", Guid.NewGuid(), "Cajera", DateTime.UtcNow.AddHours(12)), new Me(Guid.NewGuid(), "Cajera", Guid.NewGuid(), ["sales.create"]));
+        frame.WaitForAssertion(() => Warning().ShouldBeEmpty());
+    }
+
+    [Fact]
     public async Task A_cashier_without_the_fiscal_permission_does_not_see_the_queue()
     {
         var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
