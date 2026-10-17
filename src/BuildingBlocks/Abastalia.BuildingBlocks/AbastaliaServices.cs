@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Abastalia.BuildingBlocks.Messaging;
 using Abastalia.BuildingBlocks.Persistence;
 using Abastalia.BuildingBlocks.Security;
@@ -21,7 +22,7 @@ public static class AbastaliaServices
         if (string.IsNullOrWhiteSpace(db.ConnectionString)) throw new InvalidOperationException("Missing Database:ConnectionString.");
         services.AddSingleton(db);
         services.AddScoped<UnitOfWork>();
-        services.AddSingleton(TimeProvider.System);
+        services.TryAddSingleton(TimeProvider.System); // a host may have registered its own first (ShiftedClock)
         services.AddHttpContextAccessor();
         services.AddScoped<IUserContext, HttpUserContext>();
 

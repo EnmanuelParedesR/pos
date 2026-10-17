@@ -34,7 +34,7 @@ builder.Services.AddDbContext<CloudDbContext>(o =>
     else o.UseSqlServer(connectionString, s => s.EnableRetryOnFailure());
 });
 builder.Services.AddHostedService<CreateCloudDatabaseOnStartup>();
-builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton(Abastalia.BuildingBlocks.ShiftedClock.From(config, builder.Environment)); // TK-307: E2E may move it
 
 // Panel users (bearer tokens) and store nodes (signed with their own key, TK-241).
 builder.Services.AddSingleton<NodeNonces>();
@@ -168,6 +168,17 @@ if (args is [PlatformCli.Grant or PlatformCli.Revoke or PlatformCli.ResetTwoFact
     return;
 }
 
+// TK-307: a moved clock (E2E) moves the Date header too: the store sets its cloud skew by it (SyncModule) and would undo the move.
+if (app.Services.GetRequiredService<TimeProvider>() is Abastalia.BuildingBlocks.ShiftedClock shifted)
+    app.Use((context, next) =>
+    {
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.Date = shifted.GetUtcNow().ToString("R");
+            return Task.CompletedTask;
+        });
+        return next(context);
+    });
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();

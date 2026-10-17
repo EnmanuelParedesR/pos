@@ -94,7 +94,7 @@
                     <span class="esc-offline" role="status">Sin conexión con el servidor · reintentando</span>
                 }
                 <button type="button" class="esc-status-bar__help" @onclick="ShowHelp">Ayuda <Keycap>F1</Keycap></button>
-                <span style="font-weight:600">@Format.Time(DateTimeOffset.UtcNow)</span>
+                <span style="font-weight:600">@Format.Time(Clock.GetUtcNow())</span>
             </div>
         </header>
         }

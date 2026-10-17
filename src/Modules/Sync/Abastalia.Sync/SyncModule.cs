@@ -247,8 +247,9 @@ internal static class ConnectToCloud
         Registration? registration;
         try
         {
-            using var response = await http.CreateClient(CloudClient.HttpClientName)
-                .PostAsJsonAsync($"{cloudUrl}/api/nodes/register", new { code, nodeName = Environment.MachineName, publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }, ct);
+            using var body = JsonContent.Create(new { code, nodeName = Environment.MachineName, publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) });
+            await body.LoadIntoBufferAsync(ct); // TK-307: with its length, not chunked: the cloud's node gate answers 411 otherwise (R12 #1)
+            using var response = await http.CreateClient(CloudClient.HttpClientName).PostAsync($"{cloudUrl}/api/nodes/register", body, ct);
             // 400/404 per ADR-0008; 409/410 too, in case the cloud tells a used or expired code apart.
             if (response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.NotFound or HttpStatusCode.Conflict or HttpStatusCode.Gone) return SyncErrors.InvalidCode;
             if (!response.IsSuccessStatusCode) return SyncErrors.CloudUnreachable;
