@@ -3,12 +3,16 @@ namespace Abastalia.Settings.Contracts;
 /// <summary>Shop data printed on receipts and limits that apply to every register.</summary>
 /// <param name="DiscountCapPercent">Largest discount (percent of each line, after the global discount) a cashier may give without a supervisor.</param>
 /// <param name="RequirePaymentReference">R11 A16: card and transfer payments at the register need their authorization or transfer number.</param>
+/// <param name="LogoVersion">TK-280: changes with each logo upload (a cache key); null when the business has no logo.</param>
 public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent,
-    bool RequirePaymentReference = true);
+    bool RequirePaymentReference = true, string? LogoVersion = null);
 
 public interface ISettingsQueries
 {
     Task<BusinessProfile> GetBusinessProfileAsync(CancellationToken ct);
+
+    /// <summary>TK-280: the business logo as the PNG Settings wrote (at most 600 px a side), or null.</summary>
+    Task<byte[]?> GetLogoAsync(CancellationToken ct);
 }
 
 /// <summary>TK-249: the store's license, for the cloud channel (Sync): a store with a paid subscription gets its signed license from the cloud.</summary>
@@ -55,3 +59,6 @@ public interface ICloudBackups
     /// <summary>Why the last upload did not happen (Spanish, for Configuración → Respaldos and the health check); null clears it.</summary>
     void Failed(string? problem);
 }
+
+/// <summary>TK-280: the business logo for the cloud (the public catalog shows it): the PNG Settings wrote, under 48 KB, or null when it was removed.</summary>
+public sealed record BusinessLogoChangedV1(byte[]? Png) : Abastalia.SharedKernel.IntegrationEvent(Guid.Empty);

@@ -74,6 +74,12 @@ namespace Abastalia.Settings.Persistence.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
 
+                    b.Property<byte[]>("Logo")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTime?>("LogoChangedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)

@@ -338,7 +338,8 @@ export interface ArchivedEcf {
 }
 /** TK-195: a store's public catalog (no sign-in). Never cost or stock. */
 export interface PublicCatalogItem { productId: string; name: string; category: string; unit: "Unit" | "Pound"; price: number }
-export interface PublicCatalog { storeName: string; whatsApp: string | null; items: PublicCatalogItem[] }
+/** TK-280: logoVersion is null when the store has no logo; else `/api/public/catalog/{storeId}/logo?v=` serves it. */
+export interface PublicCatalog { storeName: string; whatsApp: string | null; items: PublicCatalogItem[]; logoVersion?: string | null }
 export interface NodeStatus { nodeId: string; name: string; lastEventUtc: string | null; lastSyncUtc: string | null }
 export interface StoreSyncStatus {
   storeId: string;

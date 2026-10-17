@@ -15,7 +15,7 @@ public static class EscPos
     /// <summary>ESC p 0 25 250: pulse on drawer pin 2 for 50 ms, then 500 ms off.</summary>
     public static readonly byte[] DrawerKick = [Esc, (byte)'p', 0, 25, 250];
 
-    internal sealed record Line(string Text, bool Center = false, bool Bold = false, bool Tall = false, string? Qr = null);
+    internal sealed record Line(string Text, bool Center = false, bool Bold = false, bool Tall = false, string? Qr = null, ReceiptLogo? Image = null);
 
     public static byte[] Render(Receipt r, int columns, bool openDrawer) => Bytes(Layout(r, columns), columns, openDrawer);
 
@@ -31,10 +31,15 @@ public static class EscPos
         var o = new List<byte>(2048) { Esc, (byte)'@', Esc, (byte)'t', 2 }; // initialize; code table PC850
         foreach (var l in lines)
         {
-            o.AddRange([Esc, (byte)'a', l.Center || l.Qr is not null ? (byte)1 : (byte)0]);
+            o.AddRange([Esc, (byte)'a', l.Center || l.Qr is not null || l.Image is not null ? (byte)1 : (byte)0]);
             if (l.Qr is { } data)
             {
                 o.AddRange(Qr(data, columns == 32 ? (byte)5 : (byte)6));
+                continue;
+            }
+            if (l.Image is { } image)
+            {
+                o.AddRange(Raster(image));
                 continue;
             }
             if (l.Bold) o.AddRange([Esc, (byte)'E', 1]);
@@ -54,8 +59,8 @@ public static class EscPos
         var s = new StringBuilder();
         foreach (var l in lines)
         {
-            var text = l.Qr is not null ? "[QR] " + l.Qr : l.Text;
-            s.Append(l.Center || l.Qr is not null ? Center(text, columns) : text).Append('\n');
+            var text = l.Qr is not null ? "[QR] " + l.Qr : l.Image is { } i ? $"[Logo {i.Width}x{i.Height}]" : l.Text;
+            s.Append(l.Center || l.Qr is not null || l.Image is not null ? Center(text, columns) : text).Append('\n');
         }
         return s.ToString();
     }
@@ -76,9 +81,21 @@ public static class EscPos
         ];
     }
 
+    /// <summary>GS v 0, normal size: bytes a row and rows (little-endian), then the rows; the printer feeds the paper past the image itself.</summary>
+    internal static byte[] Raster(ReceiptLogo logo)
+    {
+        var stride = logo.Width / 8;
+        return [Gs, (byte)'v', (byte)'0', 0, (byte)(stride % 256), (byte)(stride / 256), (byte)(logo.Height % 256), (byte)(logo.Height / 256), .. logo.Bits];
+    }
+
+    /// <summary>The bits add up, and it is no wider than the paper (12 dots a column of font A: 384 on 58 mm, 576 on 80 mm).</summary>
+    private static bool Fits(ReceiptLogo l, int columns) =>
+        l.Width > 0 && l.Width % 8 == 0 && l.Width <= columns * 12 && l.Height is > 0 and <= 1000 && l.Bits.Length == l.Width / 8 * l.Height;
+
     internal static IEnumerable<Line> Layout(Receipt r, int w)
     {
         var rule = new Line(new string('-', w));
+        if (r.Logo is { } logo && Fits(logo, w)) yield return new("", Image: logo); // TK-280: a malformed or too wide one is left out; the receipt still prints
         foreach (var t in Wrap(r.BusinessName, w)) yield return new(t, Center: true, Bold: true);
         if (r.Rnc is not null) yield return new($"RNC {r.Rnc}", Center: true);
         if (r.Address is not null) foreach (var t in Wrap(r.Address, w)) yield return new(t, Center: true);

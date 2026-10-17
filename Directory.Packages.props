@@ -35,6 +35,8 @@
     <PackageVersion Include="ExcelDataReader" Version="3.7.0" />
     <!-- Public catalog QR as SVG (MIT) -->
     <PackageVersion Include="QRCoder" Version="1.6.0" />
+    <PackageVersion Include="SkiaSharp" Version="3.119.4" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
     <!-- Client (Blazor) -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.13" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebView.Wpf" Version="10.0.110" />

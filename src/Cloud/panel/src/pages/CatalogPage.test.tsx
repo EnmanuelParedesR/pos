@@ -61,6 +61,29 @@ it("TK-195: without a WhatsApp number the page says so instead of a broken butto
   expect(screen.queryByRole("link", { name: /WhatsApp/ })).toBeNull();
 });
 
+it("TK-280: the store's logo shows above its name when it has one, and not otherwise", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => json(200, { ...catalog, logoVersion: "638650000000000000" })));
+  const { container } = render(
+    <MemoryRouter initialEntries={["/c/s1"]}>
+      <App />
+    </MemoryRouter>,
+  );
+  await screen.findByRole("heading", { name: "Carnicería Don Pepe" });
+  const logo = container.querySelector("img.catalog__logo") as HTMLImageElement;
+  expect(logo.src).toMatch(/\/api\/public\/catalog\/s1\/logo\?v=638650000000000000$/);
+  expect(logo.alt).toBe(""); // the heading names the store
+  cleanup();
+
+  vi.stubGlobal("fetch", vi.fn(async () => json(200, { ...catalog, logoVersion: null })));
+  const without = render(
+    <MemoryRouter initialEntries={["/c/s1"]}>
+      <App />
+    </MemoryRouter>,
+  );
+  await screen.findByRole("heading", { name: "Carnicería Don Pepe" });
+  expect(without.container.querySelector("img.catalog__logo")).toBeNull();
+});
+
 it("TK-195: the message and the link only keep digits of the phone", () => {
   expect(orderMessage("Colmado", catalog.items, { p2: 2 })).toBe("Hola, Colmado. Quiero pedir:\n• 2 und. Salami (RD$ 150.00/und.)\nTotal aproximado: RD$ 300.00");
   expect(whatsAppLink("+1 (809) 555-0101", "hola")).toBe("https://wa.me/18095550101?text=hola");

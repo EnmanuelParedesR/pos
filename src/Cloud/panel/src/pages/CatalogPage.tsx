@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router";
-import { useApi, type PublicCatalog, type PublicCatalogItem } from "../api";
+import { apiUrl, useApi, type PublicCatalog, type PublicCatalogItem } from "../api";
 import { money, quantity } from "../format";
 import { Icon, LoadError, Logo, Notice, Skeleton } from "../ui";
 
@@ -32,6 +32,14 @@ export function CatalogPage() {
   return (
     <div className="esc-admin catalog">
       <header className="catalog__head">
+        {catalog.data?.logoVersion && (
+          // TK-280: the store's own logo (a PNG its server wrote); the name below says whose it is, so it is decorative.
+          <img
+            className="catalog__logo"
+            src={`${apiUrl}/api/public/catalog/${encodeURIComponent(storeId)}/logo?v=${encodeURIComponent(catalog.data.logoVersion)}`}
+            alt=""
+          />
+        )}
         <h1>{catalog.data?.storeName ?? "Catálogo"}</h1>
         <p>Elija lo que quiere y envíe su pedido por WhatsApp. Los productos por libra se cobran con el peso real.</p>
       </header>

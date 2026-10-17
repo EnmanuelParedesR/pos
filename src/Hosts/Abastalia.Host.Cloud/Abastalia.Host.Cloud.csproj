@@ -32,6 +32,7 @@
     <ProjectReference Include="..\..\Modules\Purchasing\Abastalia.Purchasing.Contracts\Abastalia.Purchasing.Contracts.csproj" />
     <ProjectReference Include="..\..\Modules\Customers\Abastalia.Customers.Contracts\Abastalia.Customers.Contracts.csproj" />
     <ProjectReference Include="..\..\Modules\Sync\Abastalia.Sync.Contracts\Abastalia.Sync.Contracts.csproj" />
+    <ProjectReference Include="..\..\Modules\Settings\Abastalia.Settings.Contracts\Abastalia.Settings.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Abastalia.Cloud.Tests" />

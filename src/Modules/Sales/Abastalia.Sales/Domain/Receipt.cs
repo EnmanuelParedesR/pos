@@ -17,11 +17,12 @@ public sealed record ReceiptPayment(string Method, decimal Amount, decimal? Rece
 /// <param name="SignedAt">Signing date and time (DR time), printed under the QR with the security code.</param>
 /// <param name="SequenceExpiresOn">"Válido hasta": the e-NCF range expiry, only on the 31.</param>
 /// <param name="ContingencyLegend">Printed when the e-CF was issued while the DGII could not be reached.</param>
+/// <param name="LogoVersion">TK-280: the business logo to print on top (the register fetches it once per version), or null.</param>
 public sealed record Receipt(
     string BusinessName, string? Rnc, string? Address, string? Phone, string DocumentType, string ENcf, long Number, DateTime LocalDateTime,
     string Register, string Cashier, string? Customer, string? CustomerRnc, IReadOnlyList<ReceiptLine> Lines, decimal Subtotal, decimal Discount,
     IReadOnlyList<ReceiptItbis> Itbis, decimal Total, IReadOnlyList<ReceiptPayment> Payments, decimal Change, string SecurityCode, string QrUrl,
-    string? Footer, bool IsVoided, DateTime? SignedAt = null, DateOnly? SequenceExpiresOn = null, string? ContingencyLegend = null)
+    string? Footer, bool IsVoided, DateTime? SignedAt = null, DateOnly? SequenceExpiresOn = null, string? ContingencyLegend = null, string? LogoVersion = null)
 {
     internal static Receipt From(Sale s, BusinessProfile b)
     {
@@ -35,7 +36,7 @@ public sealed record Receipt(
             s.Subtotal, s.Discount, itbis, s.Total, s.Payments.Select(p => new ReceiptPayment(PaymentMethodNames.Display(p.Method), p.Amount, p.Received)).ToList(), s.Change,
             // TK-156: an e-CF waiting for the clock is not signed yet (no code either); a reprint after the signature shows both.
             s.SecurityCode, s.QrUrl, b.ReceiptFooter, s.Status == SaleStatus.Voided, s.SecurityCode.Length == 0 ? null : s.SignedUtc + BusinessDay.Offset,
-            s.DocumentType == EcfType.FiscalCredit31 ? s.SequenceExpiresOn : null, s.Contingency ? EcfReceiptTexts.ContingencyLegend : null);
+            s.DocumentType == EcfType.FiscalCredit31 ? s.SequenceExpiresOn : null, s.Contingency ? EcfReceiptTexts.ContingencyLegend : null, b.LogoVersion);
     }
 
     private static string TypeName(EcfType t) => t == EcfType.FiscalCredit31 ? "Factura de Crédito Fiscal Electrónica" : "Factura de Consumo Electrónica";

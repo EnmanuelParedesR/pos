@@ -30,6 +30,7 @@ internal static class PrintedRepresentation
         body { margin: 0; padding: 24px; background: #F1F3F5; color: #14181D; font: 12px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
         main { max-width: 780px; margin: 0 auto; background: #FFFFFF; padding: 28px; border-radius: 8px; }
         header { display: flex; justify-content: space-between; gap: 24px; }
+        .logo { display: block; max-width: 60mm; max-height: 20mm; margin-bottom: 8px; }
         h1 { margin: 0 0 4px; font-size: 16px; }
         p { margin: 2px 0; }
         .doc { text-align: right; }
@@ -51,7 +52,7 @@ internal static class PrintedRepresentation
         @media (max-width: 600px) { body { padding: 8px; } main { padding: 14px; } header { flex-direction: column; } .doc { text-align: left; } }
         """;
 
-    public static (string FileName, byte[] Content) Build(FiscalDocument d)
+    public static (string FileName, byte[] Content) Build(FiscalDocument d, byte[]? logo = null)
     {
         var root = XDocument.Parse(EcfSubmissionQueue.Unzip(d.SignedXml)).Root!;
         var header = root.Element("Encabezado")!;
@@ -71,6 +72,8 @@ internal static class PrintedRepresentation
             b.Append($"<p class=\"box warn\">{(d.Status == SubmissionStatus.Rejected ? "Rechazado por la DGII" : "Anulado (ANECF)")}: esta representación impresa no tiene validez fiscal.</p>");
 
         b.Append("<header><div>");
+        // TK-280: the business logo above the issuer, top left as in the DGII models; the PNG is the one Settings wrote, never the uploaded file.
+        if (logo is not null) b.Append($"<img class=\"logo\" src=\"data:image/png;base64,{Convert.ToBase64String(logo)}\" alt=\"\">");
         b.Append($"<h1>{E(V(issuer, "NombreComercial") ?? V(issuer, "RazonSocialEmisor") ?? "")}</h1>");
         if (V(issuer, "NombreComercial") is not null) b.Append($"<p>{E(V(issuer, "RazonSocialEmisor") ?? "")}</p>");
         b.Append($"<p>RNC {E(issuerRnc)}</p>");
@@ -159,11 +162,11 @@ internal static class PrintedRepresentation
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/fiscal/documents/{id:guid}/printed", async (Guid id, FiscalDbContext db, CancellationToken ct) =>
+            app.MapGet("/api/fiscal/documents/{id:guid}/printed", async (Guid id, FiscalDbContext db, Abastalia.Settings.Contracts.ISettingsQueries settings, CancellationToken ct) =>
                 {
                     var d = await db.Documents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, ct);
                     if (d is null) return EndpointExtensions.Problem(FiscalErrors.NotFound);
-                    var (name, content) = Build(d);
+                    var (name, content) = Build(d, await settings.GetLogoAsync(ct));
                     return Results.File(content, "text/html; charset=utf-8", name);
                 })
                 .RequirePermission(Permissions.FiscalManage).WithTags("Fiscal");

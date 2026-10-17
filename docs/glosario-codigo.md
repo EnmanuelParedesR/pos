@@ -84,6 +84,7 @@ Los nombres propios no se traducen: Abastalia, Escuadra, ITBIS, RNC, e-NCF (`ENc
 | qué acciones piden supervisor en esta tienda | `ApprovalPolicy` (`/api/settings/approvals`) |
 | instalación | `Setup` |
 | datos del negocio, pie del recibo | `BusinessProfile`, `ReceiptFooter` |
+| logo del negocio (factura, RI, catálogo) | `BusinessLogo`, `LogoImage`, `ReceiptLogo`, `BusinessLogoChangedV1` |
 | licencia, funciones | `License`, `Features` |
 | suscripción, pagado hasta, pago pendiente, acuerdo manual (TK-249) | `TenantSubscription`, `PaidThroughUtc`, `PastDue`, `ManualUntilUtc` |
 | respaldo, frase | `Backup`, `Passphrase` |

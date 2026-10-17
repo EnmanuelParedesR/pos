@@ -416,6 +416,12 @@ namespace Abastalia.Host.Cloud.Persistence.Migrations
                     b.Property<DateTime>("ChangedUtc")
                         .HasColumnType("datetime2");
 
+                    b.Property<byte[]>("Logo")
+                        .HasColumnType("varbinary(max)");
+
+                    b.Property<DateTime?>("LogoChangedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("WhatsApp")
                         .HasMaxLength(15)
                         .HasColumnType("nvarchar(15)");

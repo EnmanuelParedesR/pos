@@ -45,7 +45,8 @@ public sealed record PrinterSettings(string Port, int Width = 80, int BaudRate =
 }
 
 /// <summary>This PC's peripherals; kept on the PC itself, not on the store server. Null: not connected.</summary>
-public sealed record HardwareSettings(PrinterSettings? Printer = null, ScaleSettings? Scale = null, bool PrintAfterSale = true);
+/// <param name="PrintLogo">TK-280: the business logo goes on top of the receipt; off for a printer that does not take raster images (GS v 0).</param>
+public sealed record HardwareSettings(PrinterSettings? Printer = null, ScaleSettings? Scale = null, bool PrintAfterSale = true, bool PrintLogo = true);
 
 /// <summary>Each host gives the real drivers (the store's WPF app) or the simulated ones (development, the web host).</summary>
 public interface IHardwareDrivers
