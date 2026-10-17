@@ -105,6 +105,23 @@ html, body { background: #F6F5F2; }
 .talia-pop__chat .esc-bubble { max-width: 85%; }
 /* TK-339: Talia's "Ir a …" under her answer, lined up with the bubble (avatar 28 + gap 10) and 8px below it (the chat's gap is 14). */
 .esc-admin .talia-go { align-self: flex-start; margin: -6px 0 0 38px; text-decoration: none; }
+/* TK-340: Talia's confirmation card, lined up with her bubble like "Ir a …". */
+.talia-card { margin: -6px 0 0 38px; max-width: 560px; padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-card); background: var(--surface); }
+.talia-card__title { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-size: var(--t-13); font-weight: 600; color: var(--text-2); }
+.talia-card__summary { margin: 0; font-size: var(--t-15); font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.talia-card__status { margin: 8px 0 0; font-size: var(--t-13); color: var(--text-2); line-height: 1.45; outline-offset: 2px; }
+.talia-card:not(.talia-card--pending) .talia-card__status { font-size: var(--t-15); } /* the outcome is the news once it is decided */
+.talia-card__status svg { vertical-align: -3px; margin-right: 4px; }
+.talia-card__good { color: var(--success); font-weight: 600; }
+.talia-card__warn { color: var(--warning); font-weight: 600; }
+.talia-card__bad { color: var(--error); font-weight: 600; }
+.talia-card__result { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--t-15); color: var(--text); user-select: all; }
+.talia-card__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.talia-card__time { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-13); color: var(--text-2); margin-left: auto; }
+@media (max-width: 480px) {
+  .talia-card__actions .esc-button { flex: 1 1 0; justify-content: center; }
+  .talia-card__time { margin-left: 0; flex-basis: 100%; }
+}
 .talia-pop__box > .esc-notice { margin: 0 16px 8px; }
 .talia-pop__box > .esc-composer { position: static; margin: 0; border-radius: 0; box-shadow: none; border-top: 1px solid var(--line); padding: 8px 8px 8px 8px; }
 .talia-pop__box > .esc-composer input { font-size: var(--t-16); }
