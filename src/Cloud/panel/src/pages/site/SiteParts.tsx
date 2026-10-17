@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { contactHref, site } from "./config";
 import { usePlanPrices } from "./livePrices";
@@ -119,15 +119,17 @@ export function Steps({ items, round = false, accentLast = false }: { items: [st
   );
 }
 
-/** Closing band: the entry price from Paddle (TK-249; "Precio por confirmar" while billing is off) and the two calls to action. */
+/** Closing band: the entry price (TK-249; TK-293: the provisional one while billing is off) and the two calls to action. */
 export function CtaBand({ title, text = "Sin cupo de e-CF. Nunca queda en solo lectura.", pricesLink = true }: { title?: ReactNode; text?: ReactNode; pricesLink?: boolean }) {
-  const price = usePlanPrices()("Essential"); // the cheapest plan (TK-258)
+  const prices = usePlanPrices();
+  const price = prices.price("Essential"); // the cheapest plan (TK-258)
   return (
     <section className="band">
       <div className="wrap band__grid">
         <div>
           <h2>{title ?? (price ? <>Desde {price}</> : <>Pruebe Abastalia 14 días gratis</>)}</h2>
           <p>{text}</p>
+          {!title && price && prices.provisional && <p className="band__note">Precios en US$, provisionales.</p>}
         </div>
         <div className="actions">
           <Trial />
@@ -340,6 +342,62 @@ export function HowItWorks({ items }: { items: { title: string; text: ReactNode;
     </ol>
   );
 }
+/** TK-294: cards in a row that scrolls sideways (native scroll-snap; swipe, the arrow keys on the focused row, or the buttons, which move one
+ * card). Without JavaScript it still scrolls. Smooth only when the device does not ask for reduced motion. */
+export function Carousel({ title, hint, slides }: { title: string; hint: ReactNode; slides: { icon: IconName; title: string; body: ReactNode }[] }) {
+  const id = useId();
+  const track = useRef<HTMLDivElement>(null);
+  const [edge, setEdge] = useState({ start: true, end: false });
+  useEffect(() => {
+    const el = track.current!;
+    const update = () => setEdge({ start: el.scrollLeft <= 1, end: el.scrollLeft + el.clientWidth >= el.scrollWidth - 1 });
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    window.addEventListener("resize", update);
+    return () => {
+      el.removeEventListener("scroll", update);
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+  const go = (direction: 1 | -1) => {
+    const el = track.current!;
+    const card = el.firstElementChild as HTMLElement;
+    const step = card.offsetWidth + parseFloat(getComputedStyle(el).columnGap || "0");
+    el.scrollBy({ left: direction * step, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  };
+  return (
+    <section className="counter carousel" aria-roledescription="carrusel" aria-labelledby={`${id}t`}>
+      <div className="wrap">
+        <div className="carousel__head">
+          <div>
+            <h2 id={`${id}t`}>{title}</h2>
+            <p className="muted">{hint}</p>
+          </div>
+          <div className="carousel__nav">
+            <button type="button" className="carousel__btn" aria-controls={`${id}r`} aria-label="Anterior" disabled={edge.start} onClick={() => go(-1)}>
+              <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 6l-6 6 6 6" /></svg>
+            </button>
+            <button type="button" className="carousel__btn" aria-controls={`${id}r`} aria-label="Siguiente" disabled={edge.end} onClick={() => go(1)}>
+              <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+            </button>
+          </div>
+        </div>
+        <div className="carousel__track" id={`${id}r`} ref={track} tabIndex={0} role="group" aria-label={`${title}: ${slides.length} tarjetas`}>
+          {slides.map((s, i) => (
+            <div className="slide" key={s.title} role="group" aria-roledescription="diapositiva" aria-label={`${i + 1} de ${slides.length}: ${s.title}`}>
+              <div className="slide__head">
+                <Icon name={s.icon} size={32} />
+                <h3>{s.title}</h3>
+              </div>
+              {s.body}
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function Faq({ items }: { items: [string, ReactNode][] }) {
   return (
     <Section className="faq">

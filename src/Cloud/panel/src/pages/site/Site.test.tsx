@@ -68,10 +68,16 @@ it("TK-249: /precios shows the prices Paddle has, and keeps the placeholder for 
   expect(screen.getAllByText("Precio por confirmar").length).toBe(1); // Esencial has no price in Paddle yet
 });
 
-it("TK-228: the prices stay as placeholders until the owner confirms them", () => {
+it("TK-293: with billing off, /precios shows the provisional prices, marked as such; only what has no price keeps the placeholder", () => {
   renderAt("/precios");
-  expect(screen.getAllByText("Precio por confirmar").length).toBe(3);
-  expect(screen.getByRole("link", { name: "Crear su cuenta y elegir plan" }).getAttribute("href")).toBe("/app/billing"); // TK-249
+  expect(screen.queryByText("Precio por confirmar")).toBeNull();
+  for (const [plan, label] of [["Esencial", "US$12.00 al mes"], ["Estándar", "US$19.00 al mes"], ["Pro", "US$35.00 al mes"]])
+    expect(within(screen.getByRole("heading", { name: plan }).closest(".card") as HTMLElement).getByText(label)).toBeTruthy();
+  for (const [addOn, label] of [["Caja adicional", "US$6.00 al mes"], ["Cajero adicional", "US$2.00 al mes"], ["Sucursal adicional", "US$25.00 al mes"], ["Lectura de facturas", "US$7.00 al mes"], ["Asistente +1,000 preguntas", "US$5.00 al mes"], ["Usuarios del panel +5", "US$3.00 al mes"]])
+    expect(within(screen.getByText(addOn).closest("tr")!).getByText(label)).toBeTruthy();
+  expect(screen.getByText(/Precios en US\$, provisionales/)).toBeTruthy();
+  const accompaniment = screen.getByText("Acompañamiento en la certificación e-CF").closest("tr")!;
+  expect(within(accompaniment).getByText("Por confirmar")).toBeTruthy(); // no price yet  expect(screen.getByRole("link", { name: "Crear su cuenta y elegir plan" }).getAttribute("href")).toBe("/app/billing"); // TK-249
 });
 
 it("TK-242: /descargar shows both roles and the installer placeholder until it is hosted; the menu and /certificacion link to it", () => {
@@ -125,8 +131,9 @@ it("TK-245: the home page shows the product: deadline banner, trial and contact 
   expect(screen.getByRole("link", { name: "Hablemos" }).getAttribute("href")).toBe("/precios#contacto"); // no WhatsApp number yet
   expect(document.querySelector(".art__stage")!.getAttribute("aria-hidden")).toBe("true");
   expect(screen.getByText(/cifras son ilustrativas/)).toBeTruthy();
-  expect(screen.queryByText("Precio por confirmar")).toBeNull(); // TK-274: no placeholder on the home; the band invites to the trial
-  expect(screen.getByRole("heading", { level: 2, name: "Pruebe Abastalia 14 días gratis" })).toBeTruthy();
+  expect(screen.queryByText("Precio por confirmar")).toBeNull(); // TK-274: no placeholder on the home
+  expect(screen.getByRole("heading", { level: 2, name: "Desde US$12.00 al mes" })).toBeTruthy(); // TK-293: the provisional entry price
+  expect(screen.getByText("Precios en US$, provisionales.")).toBeTruthy();
   expect(screen.getByRole("link", { name: "¿Necesita certificarse? Le acompañamos →" }).getAttribute("href")).toBe("/certificacion");
   for (const [name, href] of [["Carnicería", "/carniceria"], ["Colmado", "/colmado"], ["Deli", "/deli"]])
     expect(screen.getAllByRole("link", { name: new RegExp(`^${name}`) }).some((a) => a.getAttribute("href") === href)).toBe(true);
@@ -155,6 +162,20 @@ it("TK-263: the e-CF guide, the comparison and the glossary link to each other a
   renderAt("/");
   const footer = screen.getByRole("navigation", { name: "Pie de página" });
   for (const name of ["Guía e-CF", "Comparar", "Glosario"]) expect(footer.textContent).toContain(name);
+});
+
+it("TK-294: /comparar is a labelled carousel: one card per point with Abastalia, the Facturador Gratuito and what to ask another program", () => {
+  renderAt("/comparar");
+  const carousel = screen.getByRole("region", { name: "Lado a lado" });
+  expect(carousel.getAttribute("aria-roledescription")).toBe("carrusel");
+  const slides = within(carousel).getAllByRole("group").filter((g) => g.getAttribute("aria-roledescription") === "diapositiva");
+  expect(slides.map((s) => s.getAttribute("aria-label"))[0]).toBe("1 de 8: Costo");
+  expect(slides.length).toBe(8);
+  for (const slide of slides) for (const option of ["Abastalia", "Facturador Gratuito (DGII)", "Otro programa: pregunte"]) expect(within(slide).getByText(option)).toBeTruthy();
+  const track = document.getElementById(within(carousel).getByRole("button", { name: "Siguiente" }).getAttribute("aria-controls")!)!;
+  expect(track.tabIndex).toBe(0); // the arrow keys scroll it
+  expect((within(carousel).getByRole("button", { name: "Anterior" }) as HTMLButtonElement).disabled).toBe(true); // at the start
+  expect(screen.getByText(/Actualizado el/).textContent).toContain("16/10/2026"); // the dated sources stay
 });
 
 it("TK-245: /e-cf keeps the date, the extension note and the legal disclaimer", () => {

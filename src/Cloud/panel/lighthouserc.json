@@ -12,6 +12,7 @@
         "http://localhost:4173/certificacion",
         "http://localhost:4173/descargar",
         "http://localhost:4173/precios",
+        "http://localhost:4173/comparar",
         "http://localhost:4173/novedades"
       ],
       "numberOfRuns": 1,

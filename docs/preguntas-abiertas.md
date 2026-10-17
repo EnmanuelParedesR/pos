@@ -21,7 +21,7 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 ### D1 · Precios y límites de los planes (TK-203, TK-197)
 - **Pregunta:** ¿Cuánto cuestan y qué limita cada plan (Una caja, Varias cajas, Varias sucursales)? ¿Hace falta un plan de entrada para el colmado de una caja frente a Poszy (RD$950 al mes)?
 - **Por qué importa:** el sitio no se puede anunciar sin precios; el plan propuesto cuesta varias veces el Básico de Poszy.
-- **Hoy:** `config.ts` → `prices` en `null`; el sitio dice "Precio por confirmar".
+- **Hoy:** (TK-293) `config.ts` → `prices.monthlyUsd` con los provisionales del 16/10/2026; el sitio los muestra marcados "provisionales" mientras el cobro con Paddle esté apagado.
 - **Fuente:** TK-203, TK-197; `docs/competencia-poszy.md` §3 y "Lectura"; `src/Cloud/panel/src/pages/site/config.ts`.
 - **Respuesta:** (16/10/2026) Hacer un análisis con un consejo de analistas del mercado dominicano para identificar qué planes benefician al proyecto y a los clientes (en curso). (16/10/2026, TK-258) Aprobados como **provisionales**: Esencial US$12, Estándar US$19 y Pro US$35 al mes (anual = 10 meses), todas las funciones en todos, y adicionales con cantidad; detalle en `docs/cobro-paddle.md`. Pendiente: precio por cajero.
 

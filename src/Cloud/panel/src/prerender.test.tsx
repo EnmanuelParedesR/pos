@@ -77,11 +77,16 @@ describe("TK-260: JSON-LD", () => {
     }
   });
 
-  it("the home page has the organization and the app, without invented prices", () => {
+  it("the home page has the organization and the app, with the plans' provisional prices (TK-293)", () => {
     const [org, app] = blocksOf("/");
     expect(org).toMatchObject({ "@type": "Organization", name: "Abastalia", url: "https://abastalia.com/", logo: "https://abastalia.com/og/logo.png" });
     expect(app).toMatchObject({ "@type": "SoftwareApplication", applicationCategory: "BusinessApplication", operatingSystem: "Windows" });
-    expect(app.offers).toBeUndefined();
+    expect(app.offers.map((o: { name: string; price: string; priceCurrency: string; url: string }) => [o.name, o.price, o.priceCurrency, o.url])).toEqual([
+      ["Esencial", "12.00", "USD", "https://abastalia.com/precios"],
+      ["Estándar", "19.00", "USD", "https://abastalia.com/precios"],
+      ["Pro", "35.00", "USD", "https://abastalia.com/precios"],
+    ]);
+    expect(app.offers[0].priceSpecification).toMatchObject({ "@type": "UnitPriceSpecification", unitCode: "MON" });
   });
 
   it("subpages have a breadcrumb; FAQPage repeats the questions the page shows, as plain text", () => {
