@@ -199,19 +199,19 @@ export function EcfFlow({ children }: { children?: ReactNode }) {
 }
 
 /** TK-312: what Talia answers today with her read-only tools (Assistant.cs). The first answer is the one the product video captured from the panel
- *  (TK-296); the rest are examples with sample data. */
-const taliaAsks: [string, string][] = [
-  ["¿Qué se vendió más esta semana?", "Esta semana lo más vendido fue Huevos (30): RD$ 19,470.00. Le siguen Arroz selecto 5 lb (RD$ 16,530.00) y Café molido 1 lb (RD$ 15,300.00)."],
-  ["¿Qué cajera tuvo faltante esta semana?", "María tuvo un faltante de RD$ 150.00 al cerrar el turno del martes en la Caja 1. Los demás turnos cuadraron."],
-  ["¿Cuánto me deben y quién debe más?", "Hoy le deben RD$ 12,840.00 entre 9 clientes. Quien más debe es Pedro Gómez, con RD$ 3,200.00."],
-  ["¿En qué paso va mi certificación?", "Va en el set de pruebas: Abastalia ya envió los comprobantes y espera la respuesta de la DGII. Después sigue la simulación."],
+ *  (TK-296); the rest are examples with sample data. The last item is the screen her «Ir a» button opens (TK-339, assistantRoutes.json). */
+const taliaAsks: [string, string, string][] = [
+  ["¿Qué se vendió más esta semana?", "Esta semana lo más vendido fue Huevos (30): RD$ 19,470.00. Le siguen Arroz selecto 5 lb (RD$ 16,530.00) y Café molido 1 lb (RD$ 15,300.00).", "Ventas"],
+  ["¿Qué cajera tuvo faltante esta semana?", "María tuvo un faltante de RD$ 150.00 al cerrar el turno del martes en la Caja 1. Los demás turnos cuadraron.", "Cuadres"],
+  ["¿Cuánto me deben y quién debe más?", "Hoy le deben RD$ 12,840.00 entre 9 clientes. Quien más debe es Pedro Gómez, con RD$ 3,200.00.", "Resumen"],
+  ["¿En qué paso va mi certificación?", "Va en el set de pruebas: Abastalia ya envió los comprobantes y espera la respuesta de la DGII. Después sigue la simulación.", "Certificación"],
 ];
 
 /** TK-312: hero art of the home. Talia as the panel shows her (same bubbles), all HTML: sharp at any size and no image to wait for (LCP). A question
  *  button shows its answer here; nothing is sent anywhere. With motion allowed, the question and then the answer ease in. */
 export function TaliaDemo() {
   const [at, setAt] = useState(0);
-  const [question, answer] = taliaAsks[at];
+  const [question, answer, go] = taliaAsks[at];
   return (
     <figure className="talia-demo">
       <div className="talia-demo__phone">
@@ -228,6 +228,7 @@ export function TaliaDemo() {
             <Talia size={28} />
             <p className="talia-demo__a">{answer}</p>
           </div>
+          <span className="talia-demo__go">Ir a {go} →</span>
         </div>
       </div>
       <div className="talia-demo__asks" role="group" aria-label="Pregúntele a Talia">

@@ -246,6 +246,7 @@ it("TK-312: the home opens with Talia answering what her tools answer today; a q
   const fetch = renderAt("/");
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Pregúntele a su negocio.");
   expect(screen.getByText(/lo más vendido fue Huevos/)).toBeTruthy();
+  expect(screen.getByText("Ir a Ventas →")).toBeTruthy(); // TK-339: her button to the screen with the detail
   const calls = fetch.mock.calls.length;
   fireEvent.click(screen.getByRole("button", { name: "¿Cuánto me deben y quién debe más?" }));
   expect(screen.getByText(/Hoy le deben RD\$ 12,840\.00/)).toBeTruthy();

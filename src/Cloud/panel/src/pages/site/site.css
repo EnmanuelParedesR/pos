@@ -125,6 +125,8 @@
 .site .talia-demo__row { display: flex; gap: 8px; align-items: flex-end; }
 .site .talia-demo__row svg { flex: none; }
 .site .talia-demo__a { max-width: 85%; background: var(--counter); border-bottom-left-radius: 6px; }
+/* Her «Ir a» button in the panel, shown here as a label (the site has no panel to open). */
+.site .talia-demo__go { align-self: flex-start; margin-left: 36px; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--brand); color: var(--brand); font-size: 14px; font-weight: 600; }
 .site .talia-demo__asks { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; max-width: 580px; }
 .site .talia-demo__asks button { font: inherit; font-size: 14px; font-weight: 600; min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line-strong);
   background: var(--bg); color: var(--ink); cursor: pointer; }
@@ -134,6 +136,7 @@
 @media (prefers-reduced-motion: no-preference) {
   .site .talia-demo__q { animation: talia-in 320ms ease-out 200ms backwards; }
   .site .talia-demo__row { animation: talia-in 420ms ease-out 900ms backwards; }
+  .site .talia-demo__go { animation: talia-in 320ms ease-out 1400ms backwards; }
 }
 @keyframes talia-in { from { opacity: 0; transform: translateY(10px); } }
 
