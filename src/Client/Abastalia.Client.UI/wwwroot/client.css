@@ -84,3 +84,6 @@
   font: var(--t-13)/1.5 ui-monospace, Consolas, monospace; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-small); }
 .audit-chevron { display: inline-flex; transition: transform .15s; }
 .audit-chevron--open { transform: rotate(90deg); }
+/* TK-364: a row's buttons on the e-CF screen side by side, wrapping instead of overlapping at 1280–1366 px. */
+.ecf-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 8px 0; }
+.ecf-actions .esc-table__sub { flex-basis: 100%; text-align: right; }
