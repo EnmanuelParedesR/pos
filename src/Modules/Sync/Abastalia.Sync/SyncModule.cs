@@ -92,6 +92,7 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
 {
     public const string HttpClientName = "Abastalia.Cloud";
     public const string KeyPrefix = "ecdsa:";
+    public const string BodyHashHeader = "X-Body-Sha256"; // the cloud's NodeSignature.BodyHashHeader
 
     /// <summary>The cloud's clock minus this PC's, from the last answer's Date header: a shop PC whose clock is off still signs inside the window.</summary>
     private static TimeSpan _skew;
@@ -146,6 +147,8 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
         }
         using var request = new HttpRequestMessage(HttpMethod.Post, connection.CloudUrl + path) { Content = content };
         request.Headers.Authorization = new AuthenticationHeaderValue("Node", Sign(connection.NodeId, Convert.FromBase64String(secret[KeyPrefix.Length..]), "POST", path, bodyHash));
+        // R12 #1: the signed hash in clear, so the cloud checks the signature before it reads the body (required for a backup).
+        request.Headers.Add(BodyHashHeader, Base64Url(bodyHash));
         var response = await client.SendAsync(request, ct);
         if (response.Headers.Date is { } cloudNow) _skew = cloudNow - clock.GetUtcNow();
         backoff.Record(path, response);

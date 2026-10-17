@@ -50,6 +50,8 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("CloudBackup:Folder", BackupFolder);
         builder.UseSetting("CloudBackup:UploadsPerHourPerNode", "10000");
         builder.UseSetting("Nodes:RegisterPerMinute", "10000");
+        builder.UseSetting("Nodes:RequestsPerMinutePerIp", "10000");
+        builder.UseSetting("Nodes:ConcurrentPerIp", "1000");
         builder.UseSetting("Catalog:RequestsPerMinute", "10000");
         builder.UseSetting("Fe:RequestsPerMinutePerIp", "10000");
         builder.UseSetting("Fe:RequestsPerMinutePerRnc", "10000");
@@ -159,6 +161,12 @@ public class CloudApp : WebApplicationFactory<Program>
         return (nodeId, factory.CreateDefaultClient(new NodeSigner(nodeId, key, clock)));
     }
 
+    /// <summary>Set on a request to sign it as an older store did: no body-hash header (R12 #1).</summary>
+    public static readonly HttpRequestOptionsKey<bool> LegacySignature = new("LegacySignature");
+
+    /// <summary>Set on a request to send another body than the one signed (R12 #1).</summary>
+    public static readonly HttpRequestOptionsKey<byte[]> SwapBodyAfterSigning = new("SwapBodyAfterSigning");
+
     private sealed class NodeSigner(Guid nodeId, ECDsa key, TimeProvider clock) : DelegatingHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -181,6 +189,9 @@ public class CloudApp : WebApplicationFactory<Program>
             var payload = NodeSignature.Payload(nodeId, seconds, nonce, request.Method.Method, request.RequestUri!.PathAndQuery, NodeSignature.BodyHash(body));
             var signature = NodeSignature.Base64Url(key.SignData(Encoding.UTF8.GetBytes(payload), HashAlgorithmName.SHA256));
             request.Headers.Authorization = new AuthenticationHeaderValue("Node", $"{nodeId}.{seconds}.{nonce}.{signature}");
+            if (!request.Options.TryGetValue(LegacySignature, out var legacy) || !legacy)
+                request.Headers.Add(NodeSignature.BodyHashHeader, NodeSignature.BodyHash(body)); // R12 #1: as the store sends it
+            if (request.Options.TryGetValue(SwapBodyAfterSigning, out var swapped)) request.Content = new ByteArrayContent(swapped);
             return await base.SendAsync(request, cancellationToken);
         }
     }

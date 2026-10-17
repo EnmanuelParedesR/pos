@@ -89,6 +89,7 @@ var ingestPerNodeMinute = config.GetValue("Ingest:BatchesPerMinutePerNode", 60);
 var archivePerNodeMinute = config.GetValue("Archive:UploadsPerMinutePerNode", 120);
 // TK-238: a backup is hundreds of MB; a store makes one a night (and the odd manual one).
 var backupsPerNodeHour = config.GetValue("CloudBackup:UploadsPerHourPerNode", 4);
+var backupDownloadsPerUserHour = config.GetValue("CloudBackup:DownloadsPerHourPerUser", 10); // R12 #6
 // The e-CF receiver's limits (R9 #2) are the global limiter, set by AddFe.
 builder.Services.AddRateLimiter(o =>
 {
@@ -121,6 +122,8 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = archivePerNodeMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(StoreBackupEndpoints.NodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = backupsPerNodeHour, Window = TimeSpan.FromHours(1) }));
+    o.AddPolicy(StoreBackupEndpoints.DownloadRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = backupDownloadsPerUserHour, Window = TimeSpan.FromHours(1) }));
 });
 builder.Services.AddScoped<IQuota, Quota>();
 builder.Services.AddSingleton<LicenseCheck>();
@@ -165,10 +168,11 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
 app.UseCors();
+app.UseNodeGate(); // R12 #1: per IP and the body's length, before decompression and the node check read the body
 app.UseRequestDecompression();
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseRateLimiter(); // after authorization: the per-PC limit reads the node identity, which the node policy authenticates
+app.UseRateLimiter(); // after authorization: the per-PC limit reads the node identity, which the node policy authenticates (NodeGate limits per IP before)
 
 if (app.Environment.IsDevelopment())
 {
