@@ -79,7 +79,7 @@ internal static class VoidSale
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/sales/{id:guid}/void", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.Reason, b.SupervisorApprovalId), ct)).ToHttp())
-                .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
+                .RequirePermission(Permissions.SalesCreate).RequireUsableLicense().WithTags("Sales"); // TK-279: a credit note is a new e-CF
     }
 }
 
@@ -234,6 +234,6 @@ internal static class ReturnSale
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/sales/{id:guid}/returns", async (Guid id, Body b, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id, b.ReturnId, b.ShiftId, b.Lines, b.Method, b.Reason, b.SupervisorApprovalId), ct)).ToHttp())
-                .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
+                .RequirePermission(Permissions.SalesCreate).RequireUsableLicense().WithTags("Sales"); // TK-279: a credit note is a new e-CF
     }
 }

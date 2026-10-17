@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -7,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Abastalia.BuildingBlocks.Endpoints;
 using Abastalia.BuildingBlocks.Messaging;
 using Abastalia.BuildingBlocks.Persistence;
@@ -20,12 +22,17 @@ using Abastalia.SharedKernel;
 namespace Abastalia.Settings;
 
 /// <summary>The installed license, read from <c>License:File</c> (C:\ProgramData\Abastalia\license.jws). The status follows the clock:
-/// Active until it expires, then 15 days of Grace, then Restricted. Without a license the store runs as Trial for 14 days from its first
-/// sale (TK-196), then Restricted (TK-220). Installing a license lifts either at once, without reinstalling and keeping every sale.</summary>
+/// Active until it expires, then 15 days of Grace, then Restricted, then Blocked (TK-279) once <see cref="LicenseData.BlockAfterDays"/> (30) have
+/// passed since it expired, or at once when the license says Abastalia blocked the business. Without a license the store runs as Trial for 14 days
+/// from its first sale (TK-196), then Restricted (TK-220), then Blocked 30 days after the trial ended. Installing a license lifts any of them at
+/// once, without reinstalling and keeping every sale. The clock is <see cref="LicenseClock"/>: turning the PC's time back does not stretch it.</summary>
 internal sealed class LicenseService : IFeatureService
 {
     public static readonly TimeSpan GracePeriod = TimeSpan.FromDays(15);
     public static readonly TimeSpan TrialPeriod = TimeSpan.FromDays(14);
+
+    /// <summary>TK-279: days from expiry (or the trial's end) to Blocked when the license does not say (the trial never does).</summary>
+    public const int DefaultBlockAfterDays = 30;
 
     /// <summary>Registers a store without a valid license may pair (the main PC is not counted).</summary>
     public const int TrialRegisters = 2;
@@ -47,14 +54,16 @@ internal sealed class LicenseService : IFeatureService
 
     private readonly TimeProvider _clock;
     private readonly IServiceScopeFactory _scopes;
+    private readonly ServiceKeys _secrets;
     private readonly ECDsa[] _keys;
     private readonly Lock _gate = new();
     private bool _trialLoaded;
     private DateTime? _trialStartedUtc;
+    private LicenseClock? _time;
 
-    public LicenseService(IConfiguration config, IHostEnvironment environment, TimeProvider clock, IServiceScopeFactory scopes)
+    public LicenseService(IConfiguration config, IHostEnvironment environment, TimeProvider clock, IServiceScopeFactory scopes, ServiceKeys secrets)
     {
-        (_clock, _scopes) = (clock, scopes);
+        (_clock, _scopes, _secrets) = (clock, scopes, secrets);
         // Only test and development hosts may trust other keys; a store (Production) always checks against Abastalia's.
         var test = !environment.IsProduction();
         _keys = [.. new[]
@@ -90,19 +99,56 @@ internal sealed class LicenseService : IFeatureService
             lock (_gate)
             {
                 if (_trialLoaded) return _trialStartedUtc;
-                // Once per process, on its own connection. The scope only disposes asynchronously (UnitOfWork).
-                var scope = _scopes.CreateAsyncScope();
-                try
-                {
-                    _trialStartedUtc = scope.ServiceProvider.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => b.TrialStartedUtc).SingleOrDefault();
-                }
-                finally
-                {
-                    scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                }
+                _trialStartedUtc = Read(sp => sp.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => b.TrialStartedUtc).SingleOrDefault());
                 _trialLoaded = true;
                 return _trialStartedUtc;
             }
+        }
+    }
+
+    /// <summary>TK-279: loaded once from the latest time this store saw: the sealed copy in settings.Business (ignored when its seal does not
+    /// match, e.g. edited by hand), the newest audit record (hash-chained) and the installed license's issue date (signed).</summary>
+    public LicenseClock Time
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _time ??= new LicenseClock(_clock, Read(sp =>
+                {
+                    var saved = sp.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => new { b.ClockSeenUtc, b.ClockSeenSeal }).SingleOrDefault();
+                    var audited = sp.GetRequiredService<InfraDbContext>().AuditRecords.Max(r => (DateTime?)r.DateUtc);
+                    return new[] { LicenseClock.Unseal(saved?.ClockSeenUtc, saved?.ClockSeenSeal, ClockKey), audited, Data?.IssuedUtc }.Max();
+                }));
+            }
+        }
+    }
+
+    /// <summary>Keeps the latest time seen, sealed so that editing the database alone does not move it (<see cref="LicenseClockKeeper"/>).</summary>
+    public async Task SaveTimeAsync(CancellationToken ct)
+    {
+        if (_time is null) return; // nothing read yet
+        var seen = Time.SeenUtc;
+        var seal = LicenseClock.Seal(seen, ClockKey);
+        await using var scope = _scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<SettingsDbContext>().Business
+            .ExecuteUpdateAsync(s => s.SetProperty(b => b.ClockSeenUtc, seen).SetProperty(b => b.ClockSeenSeal, seal), ct);
+    }
+
+    /// <summary>A secret of this server kept outside the database (R11 A3), like the PIN pepper.</summary>
+    private byte[] ClockKey => _secrets.GetOrCreate("license-clock");
+
+    /// <summary>On its own connection. The scope only disposes asynchronously (UnitOfWork).</summary>
+    private T Read<T>(Func<IServiceProvider, T> read)
+    {
+        var scope = _scopes.CreateAsyncScope();
+        try
+        {
+            return read(scope.ServiceProvider);
+        }
+        finally
+        {
+            scope.DisposeAsync().AsTask().GetAwaiter().GetResult();
         }
     }
 
@@ -115,21 +161,30 @@ internal sealed class LicenseService : IFeatureService
 
     public DateTime? EndsUtc => Data?.ExpiresUtc ?? TrialEndsUtc;
 
+    /// <summary>TK-279: when the store goes Blocked by date: 30 days (or what the license says) after it expired or the trial ended.</summary>
+    public DateTime? BlocksUtc => Data is { } d ? d.ExpiresUtc.AddDays(d.BlockAfterDays ?? DefaultBlockAfterDays) : TrialEndsUtc?.AddDays(DefaultBlockAfterDays);
+
     public LicenseStatus Status
     {
         get
         {
-            var now = _clock.GetUtcNow().UtcDateTime;
+            var now = Time.UtcNow;
+            if (Data is { Blocked: true } || now > BlocksUtc) return LicenseStatus.Blocked;
             if (Data is null) return TrialEndsUtc is { } end && now > end ? LicenseStatus.Restricted : LicenseStatus.Trial;
             return now <= Data.ExpiresUtc ? LicenseStatus.Active : now <= Data.ExpiresUtc + GracePeriod ? LicenseStatus.Grace : LicenseStatus.Restricted;
         }
     }
 
     /// <summary>Days left of the trial (the day in course counts), or null outside the trial or before its first sale.</summary>
-    public int? TrialDaysLeft => Status == LicenseStatus.Trial && TrialEndsUtc is { } end ? (int)Math.Ceiling((end - _clock.GetUtcNow().UtcDateTime).TotalDays) : null;
+    public int? TrialDaysLeft => Status == LicenseStatus.Trial && TrialEndsUtc is { } end ? (int)Math.Ceiling((end - Time.UtcNow).TotalDays) : null;
 
-    /// <summary>TK-220: "Soon" from day 10 of the trial (5 days left), "Last" from day 13 (2 left), "Ended" once Restricted.</summary>
-    public string? Warning => Status == LicenseStatus.Restricted ? "Ended" : TrialDaysLeft switch { <= 2 => "Last", <= 5 => "Soon", _ => null };
+    /// <summary>TK-220: "Soon" from day 10 of the trial (5 days left), "Last" from day 13 (2 left), "Ended" once Restricted; TK-279: "Blocked".</summary>
+    public string? Warning => Status switch
+    {
+        LicenseStatus.Restricted => "Ended",
+        LicenseStatus.Blocked => "Blocked",
+        _ => TrialDaysLeft switch { <= 2 => "Last", <= 5 => "Soon", _ => null },
+    };
 
     public bool IsEnabled(Feature feature) => Status switch
     {
@@ -141,7 +196,7 @@ internal sealed class LicenseService : IFeatureService
     public int LimitOf(Limit limit) => Status switch
     {
         LicenseStatus.Active or LicenseStatus.Grace when Data!.Limits.TryGetValue(limit.ToString(), out var n) => n,
-        LicenseStatus.Restricted => limit switch { Limit.Registers => RestrictedRegisters, _ => 0 },
+        LicenseStatus.Restricted or LicenseStatus.Blocked => limit switch { Limit.Registers => RestrictedRegisters, _ => 0 },
         _ => limit switch { Limit.Registers => TrialRegisters, _ => 0 },
     };
 
@@ -154,7 +209,96 @@ internal sealed class LicenseService : IFeatureService
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         File.WriteAllText(FilePath, jws.Trim());
         (Data, Current) = (verified.Value, jws.Trim());
+        Time.Observe(verified.Value.IssuedUtc);
         return verified.Value;
+    }
+}
+
+/// <summary>TK-279: the time a license goes by. It never goes back: when the PC's clock is behind the latest time this store saw (beyond
+/// <see cref="Tolerance"/>), time runs on from that instant with the machine's own uptime counter, so turning the clock back stretches neither a
+/// license nor the trial, and <see cref="Behind"/> tells the owner "la hora de la PC está atrasada".</summary>
+/// <remarks>shortcut: while the clock is behind, the hours the PC is off are not counted; the DGII's HTTP Date (TK-156) would add an outside time.</remarks>
+internal sealed class LicenseClock(TimeProvider clock, DateTime? seenUtc)
+{
+    /// <summary>The clock may lag this much (time sync corrections) before it counts as turned back; as <c>ClockHealthCheck</c>.</summary>
+    public static readonly TimeSpan Tolerance = TimeSpan.FromMinutes(5);
+
+    private readonly Lock _gate = new();
+    private DateTime _seen = seenUtc ?? DateTime.MinValue;
+    private long _stamp = clock.GetTimestamp();
+
+    public bool Behind { get; private set; }
+
+    /// <summary>The latest time seen (what <see cref="LicenseService.SaveTimeAsync"/> keeps).</summary>
+    public DateTime SeenUtc
+    {
+        get
+        {
+            _ = UtcNow;
+            lock (_gate) return _seen;
+        }
+    }
+
+    public DateTime UtcNow
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var wall = clock.GetUtcNow().UtcDateTime;
+                var running = _seen == DateTime.MinValue ? wall : _seen + clock.GetElapsedTime(_stamp);
+                Behind = wall < running - Tolerance;
+                // Within the tolerance the PC's clock wins and the latest instant stays put, so small corrections never pile up.
+                (_seen, _stamp) = (Behind ? running : wall > _seen ? wall : _seen, clock.GetTimestamp());
+                return Behind ? running : wall;
+            }
+        }
+    }
+
+    /// <summary>A time known to have passed (a license's signed issue date).</summary>
+    public void Observe(DateTime utc)
+    {
+        lock (_gate)
+            if (utc > _seen) _seen = utc;
+    }
+
+    public static string Seal(DateTime utc, byte[] key) => Convert.ToBase64String(HMACSHA256.HashData(key, BitConverter.GetBytes(utc.Ticks)));
+
+    /// <summary>The saved time, or null when there is none or its seal does not match.</summary>
+    public static DateTime? Unseal(DateTime? utc, string? seal, byte[] key) =>
+        utc is { } t && seal is not null && CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(seal), Encoding.ASCII.GetBytes(Seal(t, key))) ? t : null;
+}
+
+/// <summary>TK-279: saves the license clock every 10 minutes and when the server stops (a crash loses at most that much).</summary>
+internal sealed class LicenseClockKeeper(LicenseService license, ILogger<LicenseClockKeeper> log) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMinutes(10), stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            await SaveAsync();
+        }
+        await SaveAsync();
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            await license.SaveTimeAsync(CancellationToken.None);
+        }
+        catch (Exception e)
+        {
+            log.LogWarning(e, "Could not save the license clock");
+        }
     }
 }
 
@@ -212,9 +356,11 @@ internal static class InstallLicense
     }
 
     /// <param name="TrialEndsUtc">While there is no license: null until the first sale starts the 14 days.</param>
-    /// <param name="Warning">Null, "Soon" (trial day 10 on), "Last" (day 13 on) or "Ended" (Restricted).</param>
+    /// <param name="Warning">Null, "Soon" (trial day 10 on), "Last" (day 13 on), "Ended" (Restricted) or "Blocked" (TK-279).</param>
+    /// <param name="BlocksUtc">TK-279: when it goes Blocked by date (null before the trial starts).</param>
+    /// <param name="ClockBehind">TK-279: the PC's clock is behind the latest time this store saw; the license counts from that time.</param>
     public sealed record Features(LicenseStatus Status, string? Plan, DateTime? ExpiresUtc, IReadOnlyList<string> Enabled, int Registers,
-        DateTime? TrialEndsUtc, int? TrialDaysLeft, string? Warning);
+        DateTime? TrialEndsUtc, int? TrialDaysLeft, string? Warning, DateTime? BlocksUtc, bool ClockBehind);
 
     internal sealed class Endpoint : IEndpoint
     {
@@ -225,7 +371,7 @@ internal static class InstallLicense
             // The register shows or hides menus with this; the server still checks every gated action itself.
             app.MapGet("/api/settings/features", (LicenseService license) => Results.Ok(new Features(license.Status, license.Data?.Plan, license.Data?.ExpiresUtc,
                     Enum.GetValues<Feature>().Where(license.IsEnabled).Select(f => f.ToString()).ToList(), license.LimitOf(Limit.Registers),
-                    license.Data is null ? license.TrialEndsUtc : null, license.TrialDaysLeft, license.Warning)))
+                    license.Data is null ? license.TrialEndsUtc : null, license.TrialDaysLeft, license.Warning, license.BlocksUtc, license.Time.Behind)))
                 .RequireAuthorization().WithTags("Settings");
         }
     }

@@ -389,15 +389,27 @@
                      .Where(i => i.Code != "sequences" && !(i.Code == "certificate" && (certificateShown || i.Level == "warning"))) ?? [])
             _alerts.Add(new(i.Level, i.Code is "contingency" or "regularize" ? "receipt" : "alert", System.Net.WebUtility.HtmlEncode(i.Title), i.Detail,
                 "Ver comprobantes", "admin/ecf"));
-        // TK-220: the trial's last days (from day 10) and the Restricted mode, with the way out. Only for whoever can install the license.
-        if (Session.Can("settings.manage") && (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value is { Warning: { } warning } license)
-            _alerts.Add(warning == "Ended"
-                ? new("warning", "lock", "La prueba terminó: Abastalia está en modo <b>Restringido</b>",
-                    "Siguen la venta, el e-CF, los reportes y los respaldos en la PC principal y una caja. Con la licencia vuelve todo, con sus datos.",
-                    "Comprar licencia", "admin/settings?section=license")
-                : new("warning", "clock", $"La prueba gratis termina en <b>{license.TrialDaysLeft} {(license.TrialDaysLeft == 1 ? "día" : "días")}</b>",
-                    "Después Abastalia sigue vendiendo en modo Restringido. Compre la licencia y siga igual, sin reinstalar ni perder datos.",
-                    "Comprar licencia", "admin/settings?section=license"));
+        // TK-220/279: the trial's last days (from day 10), the Restricted mode and Blocked, with the way out. Only for whoever can install the license.
+        if (Session.Can("settings.manage") && (await Api.GetAsync<LicenseFeatures>("/api/settings/features")).Value is { } license)
+        {
+            var blocks = license.BlocksUtc is { } blocksUtc ? $"el {Format.StoreTime(blocksUtc).ToString("d 'de' MMMM", Es)}" : "pronto";
+            if (license.Warning is { } warning)
+                _alerts.Add(warning switch
+                {
+                    "Blocked" => new("error", "lock", "Su licencia está vencida: la venta está <b>detenida</b>",
+                        "No se pueden hacer ventas nuevas, abrir turnos ni emitir e-CF. Siguen cerrar el turno abierto, el envío a la DGII de lo ya emitido, los reportes, exportar y los respaldos. Pague su plan o escríbale a Abastalia y active la licencia: todo vuelve al momento.",
+                        "Activar licencia", "admin/settings?section=license"),
+                    "Ended" => new("warning", "lock", $"Abastalia está en modo <b>Restringido</b>: la venta se detiene {blocks}",
+                        "Por ahora siguen la venta, el e-CF, los reportes y los respaldos en la PC principal y una caja. Con la licencia vuelve todo, con sus datos.",
+                        "Comprar licencia", "admin/settings?section=license"),
+                    _ => new("warning", "clock", $"La prueba gratis termina en <b>{license.TrialDaysLeft} {(license.TrialDaysLeft == 1 ? "día" : "días")}</b>",
+                        "Después Abastalia pasa a modo Restringido y 30 días más tarde deja de vender. Compre la licencia y siga igual, sin reinstalar ni perder datos.",
+                        "Comprar licencia", "admin/settings?section=license"),
+                });
+            if (license.ClockBehind)
+                _alerts.Add(new("warning", "clock", "La hora de la PC está <b>atrasada</b>",
+                    "Corrija la fecha y la hora en Windows. La licencia sigue contando desde la hora correcta: atrasar el reloj no le da más días.", "Ver la licencia", "admin/settings?section=license"));
+        }
         // TK-196: sample products still there (they never reach the 606/607/608, but they are not the store's).
         if (Session.Can("products.manage") && (await Api.GetAsync<SampleDataStatus>("/api/inventory/sample-data")).Value is { Products: > 0 } sample)
             _alerts.Add(new("info", "package", $"Hay <b>{sample.Products}</b> productos de ejemplo",

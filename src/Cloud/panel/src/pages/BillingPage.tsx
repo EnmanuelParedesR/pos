@@ -255,9 +255,22 @@ export function PlatformBillingCard({ tenantId }: { tenantId: string }) {
   const [until, setUntil] = useState("");
   const [note, setNote] = useState("");
   const [saveError, setSaveError] = useState<ApiError | null>(null);
+  const [blockReason, setBlockReason] = useState("");
   if (error) return <LoadError error={error} />;
   if (!data) return null;
   const s = data.subscription;
+
+  // TK-279: the stores stop selling once they pull the next license (at most 4 hours); unblocking lifts it the same way.
+  async function block(blocked: boolean) {
+    try {
+      await api(`/api/platform/tenants/${tenantId}/block`, "PUT", { blocked, reason: blockReason });
+      setSaveError(null);
+      setBlockReason("");
+      reload();
+    } catch (err) {
+      setSaveError(err as ApiError);
+    }
+  }
 
   async function save(manualUntilUtc: string | null) {
     try {
@@ -315,6 +328,29 @@ export function PlatformBillingCard({ tenantId }: { tenantId: string }) {
           </button>
         )}
       </div>
+      <ul className="platform-kv" aria-label="Bloqueo" style={{ marginTop: 12 }}>
+        <li>
+          <span>Bloqueo</span>
+          <span>
+            {s.blockedUtc ? <span className="esc-pill esc-pill--error">Bloqueado desde el {day(s.blockedUtc)}</span> : "No"}
+            {s.blockNote && <span className="esc-muted"> · {s.blockNote}</span>}
+          </span>
+        </li>
+      </ul>
+      <div className="esc-row" style={{ gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+        <label className="esc-field" style={{ minWidth: 240, flex: 1 }}>
+          <span>Motivo del bloqueo o desbloqueo</span>
+          <input className="esc-input" value={blockReason} maxLength={500} placeholder="Falta de pago, acuerdo…" onChange={(e) => setBlockReason(e.target.value)} />
+        </label>
+        <button type="button" className={s.blockedUtc ? "esc-button esc-button--primary" : "esc-button esc-button--danger"} disabled={!blockReason.trim()}
+          onClick={() => block(!s.blockedUtc)}>
+          {s.blockedUtc ? "Desbloquear negocio" : "Bloquear negocio"}
+        </button>
+      </div>
+      <p className="esc-muted" style={{ marginTop: 4 }}>
+        Bloqueado, sus tiendas no venden ni abren turnos (cierran el turno abierto, reportan y respaldan). Llega con la próxima licencia (hasta 4 horas).
+        Al desbloquear sin tiempo pagado, ponga también un acuerdo: si no, la tienda sigue bloqueada.
+      </p>
       {saveError && <Notice kind="error" title={saveError.detail} />}
       {data.events.length > 0 && (
         <ul className="platform-kv" aria-label="Eventos de Paddle" style={{ marginTop: 12 }}>

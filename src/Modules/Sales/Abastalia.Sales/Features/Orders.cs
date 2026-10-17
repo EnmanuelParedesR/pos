@@ -119,7 +119,7 @@ internal static class CreateOrder
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/orders", async (Command c, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(c, ct)).ToHttp(r => Results.Created($"/api/orders/{r.OrderId}", r)))
-                .RequirePermission(Permissions.SalesCreate).WithTags("Orders");
+                .RequirePermission(Permissions.SalesCreate).RequireUsableLicense().WithTags("Orders"); // TK-279
     }
 }
 

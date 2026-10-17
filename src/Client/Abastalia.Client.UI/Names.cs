@@ -1,4 +1,5 @@
 using Abastalia.Client.UI.Api;
+using Abastalia.Escuadra;
 
 namespace Abastalia.Client.UI;
 
@@ -77,19 +78,26 @@ public static class Names
         "Active" => "Activa",
         "Grace" => "Gracia",
         "Restricted" => "Restringida",
+        "Blocked" => "Bloqueada",
         _ => status,
     };
 
-    /// <summary>TK-196/220: one calm line for the register's status bar and the license screen; null when there is nothing to say.</summary>
+    /// <summary>TK-196/220/279: one calm line for the register's status bar and the license screen; null when there is nothing to say.</summary>
     public static string? LicenseNote(Api.LicenseFeatures f) => (f.Status, f.Warning, f.TrialDaysLeft) switch
     {
         ("Trial", null, null) => "Prueba gratis: los 14 días empiezan con la primera venta",
         ("Trial", null, { } d) => $"Prueba gratis · quedan {Days(d)}",
         ("Trial", _, { } d) => $"La prueba termina en {Days(d)} · compre la licencia en Configuración → Licencia",
-        ("Restricted", _, _) => "Modo restringido: la venta sigue · compre la licencia en Configuración → Licencia",
+        ("Restricted", _, _) => f.BlocksUtc is { } blocks
+            ? $"Modo restringido: la venta se detiene el {Format.ShortDate(blocks)} · compre la licencia en Configuración → Licencia"
+            : "Modo restringido · compre la licencia en Configuración → Licencia",
+        ("Blocked", _, _) => "Licencia vencida: no se puede vender · active la licencia en Configuración → Licencia",
         ("Grace", _, _) => "La licencia venció · renuévela en Configuración → Licencia",
         _ => null,
     };
+
+    /// <summary>TK-279: the license counts from the latest time the store saw, not from the PC's clock.</summary>
+    public const string ClockBehind = "La hora de la PC está atrasada: corríjala en Windows (la licencia sigue contando desde la hora correcta)";
 
     private static string Days(int d) => d == 1 ? "1 día" : $"{d} días";
 

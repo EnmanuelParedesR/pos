@@ -277,6 +277,6 @@ internal static class RegisterSale
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/sales", async (Command c, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(c, ct)).ToHttp(r => Results.Created($"/api/sales/{r.SaleId}", r)))
-                .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
+                .RequirePermission(Permissions.SalesCreate).RequireUsableLicense().WithTags("Sales"); // TK-279
     }
 }

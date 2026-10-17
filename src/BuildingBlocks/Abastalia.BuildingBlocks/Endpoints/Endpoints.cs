@@ -30,6 +30,14 @@ public static class EndpointExtensions
     public static TBuilder RequireAnyPermission<TBuilder>(this TBuilder builder, params string[] permissions) where TBuilder : IEndpointConventionBuilder =>
         builder.RequireAuthorization(p => p.RequireAssertion(ctx => permissions.Any(x => ctx.User.HasClaim(AbastaliaClaims.Permission, x))));
 
+    /// <summary>TK-279: refused with <c>License.Blocked</c> while the license is Blocked (new sales, shifts and e-CF). The selling modules only carry
+    /// this gate; they never read the license themselves.</summary>
+    public static TBuilder RequireUsableLicense<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder =>
+        builder.AddEndpointFilter(async (context, next) =>
+            context.HttpContext.RequestServices.GetService(typeof(IFeatureService)) is IFeatureService { Status: LicenseStatus.Blocked }
+                ? Problem(Jws.Blocked)
+                : await next(context));
+
     public static IResult ToHttp<T>(this Result<T> result, Func<T, IResult> ok) =>
         result.IsSuccess ? ok(result.Value) : Problem(result.Error!);
 

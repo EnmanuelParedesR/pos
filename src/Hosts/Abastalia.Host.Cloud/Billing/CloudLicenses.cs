@@ -32,7 +32,8 @@ internal sealed class LocalLicenseSigner(ECDsa key) : ILicenseSigner
 /// <summary>The store's license from its subscription: plan, add-ons and paid-through date, signed by the cloud key. A store connected to the
 /// cloud pulls it (POST /api/nodes/license) and installs it when it is newer (TK-249). Offline issuance keeps working beside it.</summary>
 /// <remarks>Expiry = paid until (Paddle or the staff override) + <c>Billing:License:MarginDays</c> (3: the renewal webhook and the store's next
-/// pull have time to arrive), then the store's own 15 days of grace, then Restricted.</remarks>
+/// pull have time to arrive), then the store's own 15 days of grace, then Restricted, then Blocked <c>Billing:License:BlockAfterDays</c> (30, signed
+/// into the license) after it expired (TK-279).</remarks>
 internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, BillingCatalog catalog, TimeProvider clock, ILicenseSigner? signer = null)
 {
     public bool IsConfigured => signer is not null;
@@ -50,24 +51,31 @@ internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, Bi
         }
     }
 
-    /// <summary>The signed license for the node's store, or null when the business has no paid time left or no key is set up.</summary>
+    /// <summary>The signed license for the node's store, or null when the business has no paid time left or no key is set up.
+    /// TK-279: a business Abastalia blocked gets, for every store, a license that says so (it replaces any older one).</summary>
     public async Task<string?> IssueAsync(Guid tenantId, Guid storeId, CancellationToken ct)
     {
         if (signer is null) return null;
         var subscription = await db.TenantSubscriptions.AsNoTracking().SingleOrDefaultAsync(s => s.TenantId == tenantId, ct);
         var now = clock.GetUtcNow().UtcDateTime;
-        if (subscription?.PaidUntilUtc is not { } paidUntil) return null;
-        var expires = DateTime.SpecifyKind(paidUntil, DateTimeKind.Utc).AddDays(config.GetValue("Billing:License:MarginDays", 3));
-        if (expires <= now) return null; // nothing paid ahead: an expired license would only replace a valid offline one
+        if (subscription is null) return null;
+        var blocked = subscription.BlockedUtc is { } since ? DateTime.SpecifyKind(since, DateTimeKind.Utc) : (DateTime?)null;
+        var paidUntil = subscription.PaidUntilUtc is { } paid ? DateTime.SpecifyKind(paid, DateTimeKind.Utc) : (DateTime?)null;
+        var expires = blocked ?? paidUntil?.AddDays(config.GetValue("Billing:License:MarginDays", 3));
+        // Nothing paid ahead: an expired license would only replace a valid offline one.
+        if (expires is null || (blocked is null && expires <= now)) return null;
 
         var tenant = await db.Tenants.AsNoTracking().SingleAsync(t => t.Id == tenantId, ct);
         var (plan, addOns) = (string.IsNullOrEmpty(tenant.Plan) ? Quota.DefaultPlan : tenant.Plan, Quota.SplitAddOns(tenant.AddOns));
         // TK-258: the plan's stores plus one per "Sucursal adicional" get a license, the oldest first; the rest keep their own (offline or trial).
         var licensed = await db.Stores.AsNoTracking().Where(s => s.TenantId == tenantId).OrderBy(s => s.CreatedUtc).ThenBy(s => s.Id)
             .Take(Count(config, catalog, plan, addOns, nameof(AbastaliaProduct.Stores), t => t.Stores) ?? 1).Select(s => s.Id).ToListAsync(ct);
-        if (!licensed.Contains(storeId)) return null;
+        if (blocked is null && !licensed.Contains(storeId)) return null;
         var store = await db.Stores.AsNoTracking().Where(s => s.Id == storeId).Select(s => s.Name).SingleOrDefaultAsync(ct) ?? tenant.Name;
-        var data = Data(config, catalog, store, plan, addOns, Truncate(subscription.UpdatedUtc), expires) with { TenantId = tenantId };
+        var data = Data(config, catalog, store, plan, addOns, Truncate(subscription.UpdatedUtc), expires.Value) with
+        {
+            TenantId = tenantId, Blocked = blocked is not null, BlockAfterDays = config.GetValue<int?>("Billing:License:BlockAfterDays"),
+        };
         var input = Jws.SigningInput(data);
         return Jws.Compose(input, await signer.SignSha256Async(SHA256.HashData(Encoding.ASCII.GetBytes(input)), ct));
     }

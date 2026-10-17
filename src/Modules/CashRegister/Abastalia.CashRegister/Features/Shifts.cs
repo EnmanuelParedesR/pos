@@ -169,7 +169,7 @@ internal static class OpenShift
         public void Map(IEndpointRouteBuilder app) =>
             app.MapPost("/api/cash/shifts", async (Command c, ICommandHandler<Command, Response> h, CancellationToken ct) =>
                     (await h.Handle(c, ct)).ToHttp(r => Results.Created($"/api/cash/shifts/{r.ShiftId}", r)))
-                .RequireAuthorization().WithTags("CashRegister"); // register.open or a supervisor who has it: the approval pipeline checks it
+                .RequireAuthorization().RequireUsableLicense().WithTags("CashRegister"); // register.open or a supervisor who has it: the approval pipeline checks it
     }
 }
 

@@ -34,9 +34,10 @@ public sealed record RoleList(Role[] Roles, string[] AvailablePermissions);
 public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent,
     bool RequirePaymentReference = true);
 /// <param name="TrialEndsUtc">TK-196: null until the first sale starts the 14 days (and once a license is installed).</param>
-/// <param name="Warning">TK-220: null, "Soon" (trial day 10 on), "Last" (day 13 on) or "Ended" (Restricted).</param>
+/// <param name="Warning">TK-220: null, "Soon" (trial day 10 on), "Last" (day 13 on), "Ended" (Restricted) or "Blocked" (TK-279).</param>
+/// <param name="BlocksUtc">TK-279: when it goes Blocked by date. <paramref name="ClockBehind"/>: the PC clock is behind the latest time the store saw.</param>
 public sealed record LicenseFeatures(string Status, string? Plan, DateTime? ExpiresUtc, string[] Enabled, int Registers,
-    DateTime? TrialEndsUtc = null, int? TrialDaysLeft = null, string? Warning = null);
+    DateTime? TrialEndsUtc = null, int? TrialDaysLeft = null, string? Warning = null, DateTime? BlocksUtc = null, bool ClockBehind = false);
 /// <summary>TK-196: "datos de ejemplo" still showing.</summary>
 public sealed record SampleDataStatus(int Products, int Categories);
 /// <summary>One action the store may free from the supervisor's PIN (TK-210); the list comes in screen order.</summary>
