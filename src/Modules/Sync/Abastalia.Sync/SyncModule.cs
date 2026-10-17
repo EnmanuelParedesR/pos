@@ -35,6 +35,7 @@ public static class SyncModule
         services.AddScoped<CloudClient>();
         services.AddScoped<ICloudClient>(sp => sp.GetRequiredService<CloudClient>());
         services.AddScoped<CloudUploader>();
+        services.AddSingleton<LicenseSignal>();
         services.AddHostedService<CloudUploaderWorker>();
         services.AddHostedService<HeartbeatWorker>();
         services.AddScoped<CloudBackupUploader>();

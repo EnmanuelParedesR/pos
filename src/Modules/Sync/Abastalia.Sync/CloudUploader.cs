@@ -10,6 +10,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Abastalia.BuildingBlocks.Persistence;
+using Abastalia.BuildingBlocks.Security;
+using Abastalia.Settings.Contracts;
 
 namespace Abastalia.Sync;
 
@@ -21,7 +23,8 @@ internal sealed record UploadPass(int Accepted, string? Error, TimeSpan? RetryAf
 /// <summary>Uploads every outbox event not yet confirmed by the cloud (<c>UploadedUtc</c> empty), in <c>Sequence</c> order, in gzip batches of 200,
 /// and marks <c>UploadedUtc</c> only for the ids the cloud answers in <c>accepted</c>. Nothing is ever dropped: what is not accepted goes again next pass.
 /// It never touches <c>ProcessedUtc</c> (the in-process handlers), and nothing deletes outbox rows.</summary>
-internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, CloudClient cloud, TimeProvider clock, ILogger<CloudUploader> log)
+internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, CloudClient cloud, LicenseSignal licenseSignal, IStoreLicense license,
+    IFeatureService features, TimeProvider clock, ILogger<CloudUploader> log)
 {
     public const int BatchSize = 200;
     public const string IngestPath = "/ingest/v1/events";
@@ -33,6 +36,32 @@ internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, Clou
         var connection = await cloud.ConnectionAsync(ct);
         if (connection is null) return new UploadPass(0, null);
 
+        var pass = await UploadPendingAsync(connection, ct);
+        await RefreshLicenseAsync(ct);
+        return pass;
+    }
+
+    /// <summary>TK-287: pulls the license when the cloud's stamp (<c>licenseUtc</c> of the last upload) moved, and every
+    /// <see cref="LicenseSignal.WhileBlocked"/> while blocked (a blocked store sells nothing, so it uploads little). Never fails the upload.</summary>
+    private async Task RefreshLicenseAsync(CancellationToken ct)
+    {
+        var now = clock.GetUtcNow().UtcDateTime;
+        var changed = licenseSignal.Stamp != licenseSignal.Pulled;
+        var blocked = features.Status == LicenseStatus.Blocked && now - licenseSignal.PulledUtc >= LicenseSignal.WhileBlocked;
+        if (!changed && !blocked) return;
+        (licenseSignal.Pulled, licenseSignal.PulledUtc) = (licenseSignal.Stamp, now);
+        try
+        {
+            if (await PullLicense.RunAsync(cloud, license, ct)) log.LogInformation("Installed the license the cloud issued");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException && !ct.IsCancellationRequested)
+        {
+            log.LogWarning(ex, "Could not pull the license from the cloud");
+        }
+    }
+
+    private async Task<UploadPass> UploadPendingAsync(CloudConnection connection, CancellationToken ct)
+    {
         long after = 0;
         var accepted = 0;
         try
@@ -53,7 +82,9 @@ internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, Clou
                     return new UploadPass(accepted, busy, wait);
                 }
                 if (!response.IsSuccessStatusCode) throw new CloudRefused($"{RefusedPrefix}{(int)response.StatusCode} al subir los datos.");
-                var confirmed = (await response.Content.ReadFromJsonAsync<IngestResponse>(ct))?.Accepted ?? [];
+                var answer = await response.Content.ReadFromJsonAsync<IngestResponse>(ct);
+                if (answer?.LicenseUtc is { } stamp) licenseSignal.Stamp = stamp;
+                var confirmed = answer?.Accepted ?? [];
                 var ids = batch.Select(m => m.Id).Intersect(confirmed).ToList();
                 var now = clock.GetUtcNow().UtcDateTime;
                 if (ids.Count > 0)
@@ -125,9 +156,20 @@ internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, Clou
         return content;
     }
 
-    private sealed record IngestResponse(List<Guid>? Accepted);
+    private sealed record IngestResponse(List<Guid>? Accepted, DateTime? LicenseUtc);
 
     private sealed class CloudRefused(string message) : Exception(message);
+}
+
+/// <summary>TK-287: what <see cref="CloudUploader"/> remembers between passes about the cloud's license stamp. Empty at start: the startup
+/// heartbeat pulls the license anyway.</summary>
+internal sealed class LicenseSignal
+{
+    /// <summary>A blocked store asks this often: paying or an unblock from the console reaches it in minutes, at no cost while it is not blocked.</summary>
+    public static readonly TimeSpan WhileBlocked = TimeSpan.FromMinutes(5);
+    public DateTime? Stamp { get; set; }
+    public DateTime? Pulled { get; set; }
+    public DateTime PulledUtc { get; set; }
 }
 
 /// <summary>Runs <see cref="CloudUploader"/> every <c>Sync:IntervalSeconds</c> (5) unless <c>Sync:Enabled</c> is false (the in-memory test host,
