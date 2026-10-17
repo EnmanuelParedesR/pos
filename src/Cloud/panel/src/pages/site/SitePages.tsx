@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { site } from "./config";
 import { usePlanPrices } from "./livePrices";
 import { useReferralLink } from "../../referral";
+import { legalPages } from "./LegalPages";
 import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, LoopVideo, ProductArt, Section, Steps, Tbd, Trial, type IconName } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
@@ -849,4 +850,5 @@ export const sitePages: SitePage[] = [
     description: "Lo nuevo en Abastalia: facturación electrónica directa con la DGII, encargos, cotizaciones, catálogo por WhatsApp, permisos por acción y más.",
     element: <WhatsNew />,
   },
+  ...legalPages,
 ];
