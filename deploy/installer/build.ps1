@@ -18,6 +18,9 @@
     ABASTALIA_SIGN_THUMBPRINT the certificate's SHA-1 thumbprint(s), comma-separated: written into both appsettings (Updates:SignerThumbprints),
                          so installed PCs only accept setups signed by it. Without it, installed PCs install no update at all.
   -RequireSigned refuses to build a release without both (use it for every release that leaves the office).
+  -AllowUnsignedUpdates (pilot only, before the certificate exists) writes Updates:AllowUnsignedUpdates = true into both appsettings: the
+  pilot PCs then accept the feed's SHA-256 instead of a signature. It goes in the build because every update replaces the installed
+  appsettings (TK-292: set by hand on a PC, it was lost with the first update). Refused with -RequireSigned or a signer thumbprint.
 .EXAMPLE
   .\deploy\installer\build.ps1 -Version 1.0.0 -Channel pilot -FeedUrl https://abastaliareleases.blob.core.windows.net/releases -RequireSigned
 #>
@@ -27,12 +30,14 @@ param(
     [string] $FeedUrl = '',
     # Empty: the production cloud (store-settings.ps1).
     [string] $CloudUrl = '',
-    [switch] $RequireSigned
+    [switch] $RequireSigned,
+    [switch] $AllowUnsignedUpdates
 )
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "La versión tiene que ser x.y.z: $Version" }
 if ($FeedUrl -and -not $FeedUrl.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) { throw 'El feed tiene que ser https.' }
 if ($RequireSigned -and -not ($env:ABASTALIA_SIGNTOOL -and $env:ABASTALIA_SIGN_THUMBPRINT)) { throw 'Falta ABASTALIA_SIGNTOOL o ABASTALIA_SIGN_THUMBPRINT: no se arma una versión sin firma.' }
+if ($AllowUnsignedUpdates -and ($RequireSigned -or $env:ABASTALIA_SIGN_THUMBPRINT)) { throw '-AllowUnsignedUpdates es solo para el piloto sin certificado.' }
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $publish = Join-Path $root 'artifacts\publish'
 Remove-Item $publish -Recurse -Force -ErrorAction SilentlyContinue
@@ -48,7 +53,7 @@ Publish 'src\Client\Abastalia.Client.Wpf' (Join-Path $publish 'app')
 $cloud = if ($CloudUrl) { $CloudUrl } else { $ProductionCloudUrl }
 $thumbprints = @(($env:ABASTALIA_SIGN_THUMBPRINT ?? '') -split ',' | ForEach-Object { $_.Trim().ToUpperInvariant() } | Where-Object { $_ })
 Set-StoreSettings -AppSettings (Join-Path $publish 'app\appsettings.json') -ServerSettings (Join-Path $publish 'server\appsettings.json') `
-    -FeedUrl $FeedUrl -Channel $Channel -CloudUrl $cloud -SignerThumbprints $thumbprints
+    -FeedUrl $FeedUrl -Channel $Channel -CloudUrl $cloud -SignerThumbprints $thumbprints -AllowUnsignedUpdates:$AllowUnsignedUpdates
 
 if ($env:ABASTALIA_SIGNTOOL) {
     foreach ($exe in (Join-Path $publish 'app\Abastalia.exe'), (Join-Path $publish 'server\Abastalia.Host.Local.exe')) {

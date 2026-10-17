@@ -184,6 +184,56 @@ begin
   SuppressibleMsgBox('SQL Server Express no se instaló (código ' + Code + '). Llame al técnico.', mbCriticalError, MB_OK, IDOK);
 end;
 
+{ A PowerShell single-quoted literal. }
+function PsLiteral(const Value: String): String;
+begin
+  Result := Value;
+  StringChangeEx(Result, '''', '''''', True);
+  Result := '''' + Result + '''';
+end;
+
+{ TK-291: Exec has no time limit (the SSEI download once hung the setup forever). The program runs from a PowerShell script that waits at
+  most Minutes and then kills it with its child processes; Code is then 1460 (ERROR_TIMEOUT). }
+function ExecWithTimeout(const FileName, Params: String; Minutes: Integer; var Code: Integer): Boolean;
+var
+  Script: String;
+begin
+  Script := ExpandConstant('{tmp}\abastalia-run.ps1');
+  Result := SaveStringToFile(Script,
+    '$ErrorActionPreference = ''Stop''' + #13#10 +
+    '$p = Start-Process -FilePath ' + PsLiteral(FileName) + ' -ArgumentList ' + PsLiteral(Params) + ' -WindowStyle Hidden -PassThru' + #13#10 +
+    '$null = $p.Handle' + #13#10 +
+    'if (-not $p.WaitForExit(' + IntToStr(Minutes * 60000) + ')) { taskkill.exe /T /F /PID $p.Id | Out-Null; exit 1460 }' + #13#10 +
+    'exit $p.ExitCode' + #13#10, False)
+    and Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '"', '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+{ TK-291: a SQL Express step (download or extraction) with a time limit and one retry. Clean is emptied before each try; the step worked
+  when the program ends with 0 and Expected exists. What names the step in the error the store sees. }
+function RunSqlStep(const FileName, Params, Clean, Expected, What: String; Minutes: Integer): Boolean;
+var
+  Attempt, Code: Integer;
+begin
+  Result := False;
+  Code := -1;
+  for Attempt := 1 to 2 do
+  begin
+    DelTree(Clean, True, True, True);
+    Code := -1;
+    if ExecWithTimeout(FileName, Params, Minutes, Code) and (Code = 0) and FileExists(Expected) then
+    begin
+      Result := True;
+      exit;
+    end;
+    Log('SQL Express ' + What + ', attempt ' + IntToStr(Attempt) + ': code ' + IntToStr(Code));
+  end;
+  if Code = 1460 then
+    SuppressibleMsgBox('SQL Server Express no se instaló: la ' + What + ' no terminó en ' + IntToStr(Minutes) + ' minutos (se intentó dos veces).' + #13#10 +
+      'Revise la conexión a internet e intente de nuevo; si se repite, llame al técnico.', mbCriticalError, MB_OK, IDOK)
+  else
+    SqlNotInstalled(What + ' ' + IntToStr(Code) + ', se intentó dos veces');
+end;
+
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   Code, Missing: Integer;
@@ -201,6 +251,12 @@ begin
     Result := False;
     exit;
   end;
+  { TK-292 (second PC on the VM): the firewall rule opens 5443 on private networks only. Windows 11 marks a new network Public, and then a
+    register on another PC never reaches this one. A warning: a store with a single PC does not need it. }
+  if IsServerRole and (PowerShellValue('@(Get-NetConnectionProfile -ErrorAction SilentlyContinue | Where-Object NetworkCategory -eq ''Public'').Count', '0') <> '0') then
+    SuppressibleMsgBox('Windows tiene la red de esta PC como Pública, así que las cajas de otras PCs no se van a poder conectar a ella.' + #13#10 + #13#10 +
+      'Si la tienda tiene más de una caja, cambie la red a Privada: Configuración de Windows → Red e Internet → Ethernet o Wi-Fi (su red) → ' +
+      'Tipo de perfil de red → Red privada. Hágalo solo en la red de la tienda.', mbInformation, MB_OK, IDOK);
   DownloadPage.Clear;
   Missing := 0;
   if not HasWebView2 then begin DownloadPage.Add('{#WebView2Url}', 'MicrosoftEdgeWebview2Setup.exe', ''); Missing := Missing + 1; end;
@@ -236,30 +292,31 @@ begin
     if not SignedByMicrosoft(ExpandConstant('{tmp}\SQLServerExpressSetup.exe')) then begin Result := False; exit; end;
     WizardForm.StatusLabel.Caption := 'Instalando SQL Server Express (puede tardar varios minutos)...';
     { TK-160 (VM test): the 2025 SSEI bootstrapper ends with -1 on /ACTION=Install /QUIET. It only downloads the Express package (/ACTION=Download),
-      which is extracted and its setup.exe run with SQL Server's own parameters. }
+      which is extracted and its setup.exe run with SQL Server's own parameters. TK-291: both steps have a time limit and one retry. }
     Media := ExpandConstant('{tmp}\sql');
-    if not Exec(ExpandConstant('{tmp}\SQLServerExpressSetup.exe'), '/ACTION=Download /MEDIATYPE=Core /LANGUAGE=en-US /QUIET /MEDIAPATH="' + Media + '"',
-         '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) or not FileExists(Media + '\SQLEXPR_x64_ENU.exe') then
-    begin
-      SqlNotInstalled('descarga ' + IntToStr(Code));
-      Result := False;
-      exit;
-    end;
+    if not RunSqlStep(ExpandConstant('{tmp}\SQLServerExpressSetup.exe'), '/ACTION=Download /MEDIATYPE=Core /LANGUAGE=en-US /QUIET /MEDIAPATH="' + Media + '"',
+         Media, Media + '\SQLEXPR_x64_ENU.exe', 'descarga', 60) then begin Result := False; exit; end;
     if not SignedByMicrosoft(Media + '\SQLEXPR_x64_ENU.exe') then begin Result := False; exit; end;
-    if not Exec(Media + '\SQLEXPR_x64_ENU.exe', '/q /x:"' + Media + '\setup"', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    if not RunSqlStep(Media + '\SQLEXPR_x64_ENU.exe', '/q /x:"' + Media + '\setup"', Media + '\setup', Media + '\setup\setup.exe', 'extracción', 20) then
     begin
-      SqlNotInstalled('extracción ' + IntToStr(Code));
       Result := False;
       exit;
     end;
     { Express only, its own instance ABASTALIA, listening on this PC only (no TCP, no named pipes), Windows logins only,
-      sysadmin = the PC's administrators (R11 C1: never the current user, who would become SYSTEM through SQL Server). }
+      sysadmin = the PC's administrators (R11 C1: never the current user, who would become SYSTEM through SQL Server),
+      no telemetry service (TK-291: SQLTELEMETRY$ABASTALIA disabled). }
     if not Exec(Media + '\setup\setup.exe',
       '/Q /ACTION=Install /FEATURES=SQLEngine /IACCEPTSQLSERVERLICENSETERMS /ENU /UPDATEENABLED=0 /SQLSVCSTARTUPTYPE=Automatic ' +
-      '/INSTANCENAME=ABASTALIA /TCPENABLED=0 /NPENABLED=0 /ADDCURRENTUSERASSQLADMIN=False /SQLSYSADMINACCOUNTS="' + AdministratorsGroup + '"', '', SW_HIDE, ewWaitUntilTerminated, Code)
+      '/INSTANCENAME=ABASTALIA /TCPENABLED=0 /NPENABLED=0 /SQLTELSVCSTARTUPTYPE=Disabled /ADDCURRENTUSERASSQLADMIN=False /SQLSYSADMINACCOUNTS="' + AdministratorsGroup + '"', '', SW_HIDE, ewWaitUntilTerminated, Code)
       or ((Code <> 0) and (Code <> 3010)) then
     begin
-      SqlNotInstalled(IntToStr(Code));
+      { TK-292 (VM test): with a restart pending (Windows Update, another uninstall) SQL Server setup refuses to start: facility 1214,
+        error 3010 = 0x84BE0BC2. The store can fix that one itself. }
+      if Code = -2067919934 then
+        SuppressibleMsgBox('Windows pide reiniciar la PC antes de instalar SQL Server Express.' + #13#10 +
+          'Reinicie la PC y vuelva a abrir el instalador de Abastalia.', mbCriticalError, MB_OK, IDOK)
+      else
+        SqlNotInstalled(IntToStr(Code));
       Result := False;
     end;
   end;

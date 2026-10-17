@@ -88,7 +88,8 @@ internal sealed class ServerUpdateCheck(IHttpClientFactory http, IServiceScopeFa
             try
             {
                 UpdatePolicy policy;
-                using (var scope = scopes.CreateScope())
+                // TK-292 (VM test): async, the scope holds the UnitOfWork (only IAsyncDisposable): a plain using threw every minute.
+                await using (var scope = scopes.CreateAsyncScope())
                     policy = await scope.ServiceProvider.GetRequiredService<IUpdatePolicy>().GetAsync(stoppingToken);
                 if (last is { } l && clock.GetUtcNow() - l < every && policy.RequestedUtc == lastRequest) continue;
                 (last, lastRequest) = (clock.GetUtcNow(), policy.RequestedUtc);

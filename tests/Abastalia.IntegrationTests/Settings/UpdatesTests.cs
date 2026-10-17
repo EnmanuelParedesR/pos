@@ -87,4 +87,31 @@ public sealed class UpdatesTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
         await app.WithQueue(dgii, async (q, _) => { await q.SendNowAsync(id, TimeSpan.Zero, CancellationToken.None); return 0; });
         dgii.Calls.ShouldBe(["send E310000077001"]);
     }
+
+    [Fact]
+    public async Task TK292_the_server_reaches_the_feed()
+    {
+        // On the VM the check never got to the feed: reading the owner's choices disposed its scope synchronously, and the scope holds the
+        // UnitOfWork (IAsyncDisposable only), so it threw every minute. The feed here fails, so nothing is written to update.json.
+        var feed = new FailingFeed();
+        var check = new Abastalia.Host.Local.ServerUpdateCheck(feed, app.Services.GetRequiredService<IServiceScopeFactory>(),
+            Microsoft.Extensions.Options.Options.Create(new Abastalia.Host.Local.UpdateSettings { FeedUrl = "https://feed.test" }), TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Abastalia.Host.Local.ServerUpdateCheck>.Instance);
+        await check.StartAsync(CancellationToken.None);
+        try { (await Task.WhenAny(feed.Asked.Task, Task.Delay(TimeSpan.FromSeconds(20)))).ShouldBe(feed.Asked.Task); }
+        finally { await check.StopAsync(CancellationToken.None); }
+        (await feed.Asked.Task).ShouldStartWith("https://feed.test/releases."); // the channel may be the other test's
+    }
+
+    private sealed class FailingFeed : HttpMessageHandler, IHttpClientFactory
+    {
+        public TaskCompletionSource<string> Asked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public HttpClient CreateClient(string name) => new(this, disposeHandler: false);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Asked.TrySetResult(request.RequestUri!.ToString());
+            throw new HttpRequestException("no feed in tests");
+        }
+    }
 }

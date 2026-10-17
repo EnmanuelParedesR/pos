@@ -5,7 +5,8 @@ namespace Abastalia.UnitTests.Platform;
 /// <summary>TK-160 (clean VM test): two mistakes in deploy/installer/abastalia.iss that only ISCC or a silent install found.</summary>
 public sealed class InstallerScriptTests
 {
-    private static readonly string Code = File.ReadAllText(Repo(@"deploy\installer\abastalia.iss")).Split("[Code]")[1];
+    // The section header, at the start of a line (a comment in [Run] also names "[Code]": splitting on it alone tested [Run] instead).
+    private static readonly string Code = File.ReadAllText(Repo(@"deploy\installer\abastalia.iss")).ReplaceLineEndings("\n").Split("\n[Code]\n")[1];
 
     [Fact]
     public void A_brace_comment_has_no_brace_inside()
@@ -28,6 +29,17 @@ public sealed class InstallerScriptTests
         // The uninstall part asks only when not silent.
         var setup = Code.Split("function RemoveData")[0];
         setup.Replace("SuppressibleMsgBox(", "").ShouldNotContain("MsgBox(");
+    }
+
+    [Fact]
+    public void Sql_express_has_no_telemetry_and_its_download_cannot_hang()
+    {
+        // TK-291: the telemetry service off; the SSEI download and the extraction run with a time limit and one retry (a bare Exec waits forever).
+        Code.ShouldContain("/SQLTELSVCSTARTUPTYPE=Disabled");
+        Code.ShouldContain("RunSqlStep(ExpandConstant('{tmp}\\SQLServerExpressSetup.exe')");
+        Code.ShouldContain("RunSqlStep(Media + '\\SQLEXPR_x64_ENU.exe'");
+        Code.ShouldNotContain("Exec(ExpandConstant('{tmp}\\SQLServerExpressSetup.exe')");
+        Code.ShouldNotContain("Exec(Media + '\\SQLEXPR_x64_ENU.exe'");
     }
 
     private static string Repo(string relative)

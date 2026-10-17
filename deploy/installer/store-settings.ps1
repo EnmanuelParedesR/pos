@@ -29,9 +29,10 @@ function Set-JsonValues([string] $Path, [hashtable] $Values) {
 }
 
 function Set-StoreSettings([string] $AppSettings, [string] $ServerSettings, [string] $FeedUrl = '', [string] $Channel = 'stable', [string] $CloudUrl = $ProductionCloudUrl,
-    [string[]] $SignerThumbprints = @()) {
-    # R11 C3: the SYSTEM update task installs only setups signed by one of these certificates.
-    $updates = @{ 'Updates:FeedUrl' = $FeedUrl; 'Updates:Channel' = $Channel; 'Updates:SignerThumbprints' = @($SignerThumbprints | Where-Object { $_ }) }
+    [string[]] $SignerThumbprints = @(), [switch] $AllowUnsignedUpdates) {
+    # R11 C3: the SYSTEM update task installs only setups signed by one of these certificates (pilot without one: the feed's SHA-256).
+    $updates = @{ 'Updates:FeedUrl' = $FeedUrl; 'Updates:Channel' = $Channel; 'Updates:SignerThumbprints' = @($SignerThumbprints | Where-Object { $_ })
+                  'Updates:AllowUnsignedUpdates' = [bool]$AllowUnsignedUpdates }
     Set-JsonValues $AppSettings ($updates + @{ 'Api:Url' = $InstalledApiUrl })
     Set-JsonValues $ServerSettings ($updates + @{ 'Cloud:Url' = $CloudUrl })
 }

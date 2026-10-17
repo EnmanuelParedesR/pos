@@ -130,7 +130,7 @@
     {
         if (!await Session.UseServerAsync(_server)) { _error = "Escriba el nombre o la IP de la PC principal (por ejemplo CAJA-PRINCIPAL o 192.168.1.10)."; return; }
         _sending = true;
-        _error = await ReachServerAsync() ? null : $"No se encontró la PC principal en {Server.Current.Host}. Revise el nombre o la IP y que esté encendida.";
+        _error = await ReachServerAsync() ? null : $"No se encontró la PC principal en {Server.Current.Host}. Revise el nombre o la IP, que esté encendida y que en ella la red esté como Privada en Windows.";
         _sending = false;
     }
 
