@@ -34,6 +34,7 @@ html, body { background: #F6F5F2; }
 .platform-kv li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; border-top: 1px solid var(--line); }
 .platform-kv li:first-child { border-top: 0; }
 .platform-kv b { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.platform-kv label b { white-space: normal; } /* TK-354: a checkbox's title (Avisos) wraps on a 320 px phone; numbers stay on one line */
 .platform-warn { color: var(--warning); }
 .platform-subtitle { font-size: var(--t-13); font-weight: 600; color: var(--text-2); margin: 20px 0 8px; }
 .platform-cohorts td.platform-cohort { font-weight: 600; }
@@ -48,6 +49,9 @@ html, body { background: #F6F5F2; }
 .esc-admin .platform-wrap td:first-child { white-space: normal; overflow-wrap: anywhere; }
 .platform-stats--4 .esc-stat:first-child .esc-stat__value { white-space: normal; }
 .esc-admin .esc-page-head h1 { overflow-wrap: anywhere; }
+/* TK-354: the two dates share the row, and stack on a 320 px phone instead of widening the page. */
+.esc-range { flex-wrap: wrap; }
+.esc-range .esc-input { flex: 1 1 136px; min-width: 0; }
 /* Public catalog (TK-195): phone first, one column, the WhatsApp button always in reach. */
 .catalog { min-height: 100vh; display: flex; flex-direction: column; max-width: 640px; margin: 0 auto; background: var(--surface); }
 .catalog__head { padding: 24px 16px 12px; }
