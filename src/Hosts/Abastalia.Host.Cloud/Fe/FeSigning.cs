@@ -10,6 +10,7 @@ using System.Xml.Linq;
 using System.Xml.Schema;
 using Microsoft.EntityFrameworkCore;
 using Abastalia.Host.Cloud.Persistence;
+using Abastalia.Host.Cloud.Quotas;
 using Abastalia.SharedKernel;
 
 namespace Abastalia.Host.Cloud.Fe;
@@ -342,7 +343,8 @@ internal sealed class FeTrust
 /// RFCE, an ANECF, and a SemillaModel, which signed is a DGII token for the RNC) is refused here, in code, whoever asks. StoreSigned: the store signs
 /// over the node channel (<see cref="FeSignBroker"/>) and its answer is checked (<see cref="FeStoreSignature"/>); CloudCustody: the vault key.
 /// Every signature is written to <see cref="FeSignature"/> (the panel shows them). A withdrawn consent stops it at the next signature.</summary>
-internal sealed class FeSigner(CloudDbContext db, IFeCertificateVault vault, FeSignBroker broker, FeTrust trust, TimeProvider clock, ILogger<FeSigner> log)
+internal sealed class FeSigner(CloudDbContext db, IFeCertificateVault vault, FeSignBroker broker, FeTrust trust, IQuota quota, TimeProvider clock,
+    ILogger<FeSigner> log)
 {
     public static readonly IReadOnlySet<string> AllowedRoots = new HashSet<string>(StringComparer.Ordinal) { "ARECF", "ACECF" };
 
@@ -377,7 +379,24 @@ internal sealed class FeSigner(CloudDbContext db, IFeCertificateVault vault, FeS
             Sha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(signed))), XmlGzip = keepXml ? FeXml.Zip(signed) : null,
         });
         await db.SaveChangesAsync(ct); // with whatever the caller added: the received document and its acknowledgement go together
+        await MeterAsync(certificate.TenantId, ct);
         return signed;
+    }
+
+    /// <summary>TK-248: <see cref="Meter.ReceiverSignatures"/> is fair use, never a refusal: an acknowledgement the DGII expects is signed and sent
+    /// whatever the count. Past the plan's limit it is still counted and staff are warned once (at the first one over) to review the business's
+    /// plan. A metering failure never costs the acknowledgement.</summary>
+    private async Task MeterAsync(Guid tenantId, CancellationToken ct)
+    {
+        try
+        {
+            var taken = await quota.TryConsumeAsync(tenantId, Meter.ReceiverSignatures, 1, ct);
+            if (taken.Allowed) return;
+            await quota.AddAsync(tenantId, Meter.ReceiverSignatures, 1, ct);
+            if (taken.Used == taken.Limit)
+                log.LogWarning("Tenant {TenantId} passed its fair use of receiver signatures ({Limit} this month): still signing, review its plan", tenantId, taken.Limit);
+        }
+        catch (Exception e) when (e is not OperationCanceledException) { log.LogError(e, "Could not count a receiver signature of tenant {TenantId}", tenantId); }
     }
 
     /// <summary>Adds the PC's outage unless one is open (the caller saves it, with the document it keeps pending); <see cref="FeRemoteSigningEndpoints"/>

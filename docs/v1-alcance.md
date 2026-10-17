@@ -12,7 +12,6 @@ Venta, caja y cuadre ciego; inventario, compras y 606/607/608; clientes y fiado;
 | TK-277 | Cobro por cajero (`ExtraCashier`) y tope en la licencia |
 | TK-278 | Separar el panel del sitio (LCP del inicio < 2.5 s) |
 | TK-238 | Copia del respaldo a la nube (hoy solo diseñada) y el latido con el modo DGII real |
-| TK-248 | Medidor de firmas del receptor (TK-246) y la subida de facturas respetando el 429 |
 
 ## 3. V1 bloqueado por terceros o por el dueño (el código está; falta validar)
 | Ticket | Bloqueo |

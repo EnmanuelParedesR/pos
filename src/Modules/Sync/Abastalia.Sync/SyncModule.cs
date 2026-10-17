@@ -31,6 +31,7 @@ public static class SyncModule
         services.AddModuleDbContext<SyncDbContext>();
         // 60 s: reading a supplier invoice with the AI (TK-224) can take longer than an upload.
         services.AddHttpClient(CloudClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(60));
+        services.AddSingleton<CloudBackoff>();
         services.AddScoped<CloudClient>();
         services.AddScoped<ICloudClient>(sp => sp.GetRequiredService<CloudClient>());
         services.AddScoped<CloudUploader>();
@@ -84,7 +85,7 @@ internal static class SyncErrors
 }
 
 /// <summary>Calls the cloud as this node. Implements <see cref="ICloudClient"/> for other modules (the e-CF relay).</summary>
-internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDataProtectionProvider protection, TimeProvider clock) : ICloudClient
+internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDataProtectionProvider protection, CloudBackoff backoff, TimeProvider clock) : ICloudClient
 {
     public const string HttpClientName = "Abastalia.Cloud";
     public const string KeyPrefix = "ecdsa:";
@@ -103,6 +104,7 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
 
     public async Task<HttpResponseMessage> SendAsync(CloudConnection connection, string path, HttpContent content, CancellationToken ct)
     {
+        if (backoff.Remaining(path) is { } wait) return CloudBackoff.TooManyRequests(wait);
         string secret;
         try { secret = Protector.Unprotect(connection.NodeSecret); }
         catch (CryptographicException e)
@@ -122,6 +124,7 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
         request.Headers.Authorization = new AuthenticationHeaderValue("Node", Sign(connection.NodeId, Convert.FromBase64String(secret[KeyPrefix.Length..]), "POST", path, body));
         var response = await http.CreateClient(HttpClientName).SendAsync(request, ct);
         if (response.Headers.Date is { } cloudNow) _skew = cloudNow - clock.GetUtcNow();
+        backoff.Record(path, response);
         return response;
     }
 
@@ -138,6 +141,37 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
     }
 
     private static string Base64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+}
+
+/// <summary>TK-248: a 429 with <c>Retry-After</c> from the cloud, per path. Until then <see cref="CloudClient"/> does not call that path again and answers
+/// the caller a 429 itself, so no upload (outbox, e-CF archive), poll or retry hammers a cloud that asked to wait. A 429 without the header (a
+/// month quota, <c>Quota.Exceeded</c>) is the caller's to read and is not remembered.</summary>
+internal sealed class CloudBackoff(TimeProvider clock)
+{
+    /// <summary>The longest wait honored: a wrong header never parks the uploads for a day.</summary>
+    public static readonly TimeSpan Longest = TimeSpan.FromHours(1);
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _until = new(StringComparer.Ordinal);
+
+    public TimeSpan? Remaining(string path) =>
+        _until.TryGetValue(path, out var until) && until - clock.GetUtcNow() is var left && left > TimeSpan.Zero ? left : null;
+
+    public void Record(string path, HttpResponseMessage response)
+    {
+        if (response.StatusCode == HttpStatusCode.TooManyRequests && RetryAfter(response, clock.GetUtcNow()) is { } wait) _until[path] = clock.GetUtcNow() + wait;
+    }
+
+    /// <summary>The <c>Retry-After</c> of the answer (seconds or a date), at most <see cref="Longest"/>; null without one.</summary>
+    public static TimeSpan? RetryAfter(HttpResponseMessage response, DateTimeOffset now) =>
+        (response.Headers.RetryAfter?.Delta ?? response.Headers.RetryAfter?.Date - now) is { } wait
+            ? TimeSpan.FromTicks(Math.Clamp(wait.Ticks, 0, Longest.Ticks)) : null;
+
+    public static HttpResponseMessage TooManyRequests(TimeSpan wait)
+    {
+        var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new ByteArrayContent([]) };
+        response.Headers.RetryAfter = new RetryConditionHeaderValue(wait);
+        return response;
+    }
 }
 
 public sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);

@@ -61,6 +61,7 @@ public sealed class R11SecurityTests(StrictCloudApp app) : IClassFixture<StrictC
         var refused = await a.SendAsync(Events.Envelope(Sale(), Now), Events.Envelope(Sale(), Now));
         refused.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
         (await refused.ErrorCode()).ShouldBe("Ingest.Cap");
+        refused.Headers.RetryAfter!.Delta.ShouldBe(TimeSpan.FromMinutes(15)); // TK-248: the store waits instead of retrying blind
     }
 
     [Fact]

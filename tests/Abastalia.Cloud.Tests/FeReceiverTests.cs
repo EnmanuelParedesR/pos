@@ -14,6 +14,7 @@ using Abastalia.Fiscal;
 using Abastalia.Fiscal.Contracts;
 using Abastalia.Host.Cloud.Fe;
 using Abastalia.Host.Cloud.Persistence;
+using Abastalia.Host.Cloud.Quotas;
 using Abastalia.Settings.Contracts;
 using Abastalia.SharedKernel;
 
@@ -414,6 +415,30 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
             .ShouldBe(HttpStatusCode.ServiceUnavailable);
         await Should.ThrowAsync<InvalidOperationException>(() => app.Services.GetRequiredService<IFeCertificateVault>().KeyAsync(keyName, CancellationToken.None));
         (await (await owner.Client.GetAsync("/api/panel/fe")).Json()).GetProperty("status").GetProperty("active").GetBoolean().ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task TK248_each_receiver_signature_is_counted_and_past_the_fair_use_limit_the_acknowledgement_is_still_signed()
+    {
+        var (_, owner, rnc, ours) = await ReceiverAsync();
+        var supplier = await SupplierClientAsync(rnc);
+        (await AckAsync(supplier, rnc, SupplierEcf(rnc, "E310000000801"))).Estado.ShouldBe("0");
+        var (used, limit) = await SignaturesAsync();
+        (used, limit).ShouldBe((1, 3000)); // Quotas:Default:ReceiverSignatures
+
+        await app.InDbAsync(db => db.TenantUsage.Where(u => u.TenantId == owner.TenantId && u.Meter == Meter.ReceiverSignatures)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.Count, limit)));
+        var ack = await AckAsync(supplier, rnc, SupplierEcf(rnc, "E310000000802"));
+        (ack.Estado, ack.SignedBy).ShouldBe(("0", ours.Thumbprint)); // a receipt the DGII expects is never refused for a quota
+        (await AckAsync(supplier, rnc, SupplierEcf(rnc, "E310000000802"))).Reason.ShouldBe("3");
+        (await SignaturesAsync()).ShouldBe((limit + 2, limit));
+
+        async Task<(int, int)> SignaturesAsync()
+        {
+            var meter = (await owner.Client.GetFromJsonAsync<JsonElement>("/api/usage")).GetProperty("meters").EnumerateArray()
+                .Single(m => m.GetProperty("meter").GetString() == nameof(Meter.ReceiverSignatures));
+            return (meter.GetProperty("used").GetInt32(), meter.GetProperty("limit").GetInt32());
+        }
     }
 
     [Fact]

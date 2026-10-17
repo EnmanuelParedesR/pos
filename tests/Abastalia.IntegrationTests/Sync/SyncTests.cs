@@ -249,6 +249,67 @@ public sealed class CloudUploadFailureTests(AbastaliaApp app) : IClassFixture<Ab
     }
 }
 
+/// <summary>TK-248: a 429 from the cloud is honored: nothing is lost and the store waits its Retry-After. Own app: it moves the clock and the backoff is per app.</summary>
+public sealed class CloudUploadThrottleTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    private static HttpResponseMessage TooMany(int seconds)
+    {
+        var r = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+        r.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(seconds));
+        return r;
+    }
+
+    [Fact]
+    public async Task A_429_keeps_the_outbox_and_nothing_calls_that_path_again_until_its_Retry_After()
+    {
+        await app.ConnectAsync();
+        await app.UploadAsync();
+        var events = await app.AddEventsAsync(3);
+        var sent = app.Cloud.To(CloudUploader.IngestPath).Count();
+
+        app.Cloud.Respond = path => path is CloudUploader.IngestPath or EcfSubmissionQueue.ArchivePath ? TooMany(120) : null;
+        var throttled = await app.UploadAsync();
+        (throttled.Accepted, throttled.RetryAfter).ShouldBe((0, TimeSpan.FromSeconds(120)));
+        CloudUploader.ErrorCode(throttled.Error).ShouldBe("http_429");
+        (await app.PendingAsync()).ShouldBe(events, ignoreOrder: true);
+
+        // Asked again before the time: answered at the store, the cloud is not called.
+        app.Clock.Advance(TimeSpan.FromSeconds(60));
+        var again = await app.UploadAsync();
+        again.RetryAfter.ShouldBe(TimeSpan.FromSeconds(60));
+        app.Cloud.To(CloudUploader.IngestPath).Count().ShouldBe(sent + 1);
+
+        // The same for the e-CF archive (and any other call as the node): per path, the upload's wait does not hold it.
+        await app.InScopeAsync(async sp =>
+        {
+            var cloud = sp.GetRequiredService<Abastalia.Sync.Contracts.ICloudClient>();
+            for (var i = 0; i < 2; i++)
+                using (var r = await cloud.PostAsJsonAsync(EcfSubmissionQueue.ArchivePath, new { }, CancellationToken.None))
+                    r.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+            return 0;
+        });
+        app.Cloud.To(EcfSubmissionQueue.ArchivePath).Count().ShouldBe(1);
+
+        app.Clock.Advance(TimeSpan.FromSeconds(61));
+        app.Cloud.Respond = null;
+        var ok = await app.UploadAsync();
+        (ok.Accepted, ok.Error, ok.RetryAfter).ShouldBe((events.Count, null, null));
+        (await app.PendingAsync()).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Retry_After_is_read_as_seconds_or_a_date_and_never_past_an_hour()
+    {
+        var now = DateTimeOffset.UtcNow;
+        CloudBackoff.RetryAfter(TooMany(30), now).ShouldBe(TimeSpan.FromSeconds(30));
+        CloudBackoff.RetryAfter(TooMany(86_400), now).ShouldBe(CloudBackoff.Longest);
+        var dated = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+        dated.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(now.AddMinutes(5));
+        CloudBackoff.RetryAfter(dated, now)!.Value.ShouldBeInRange(TimeSpan.FromMinutes(4.9), TimeSpan.FromMinutes(5));
+        CloudBackoff.RetryAfter(new HttpResponseMessage(HttpStatusCode.TooManyRequests), now).ShouldBeNull();
+    }
+}
+
 /// <summary>TK-130: after disconnecting nothing goes up, and nothing is lost. Own app: it owns the connection.</summary>
 public sealed class CloudDisconnectTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
 {
