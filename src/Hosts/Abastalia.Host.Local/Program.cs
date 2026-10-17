@@ -100,6 +100,9 @@ builder.Services.AddSettingsModule(builder.Configuration);
 builder.Services.AddInventoryModule();
 builder.Services.AddCashRegisterModule();
 builder.Services.AddFiscalModule(builder.Configuration);
+// TK-365: the UI tests' fake DGII (Fiscal:Dgii:TestServer), only in the E2E environment: a test never reaches the real DGII.
+if (builder.Environment.IsEnvironment("E2E") && builder.Configuration["Fiscal:Dgii:TestServer"] is { Length: > 0 } testDgii)
+    builder.Services.UseTestDgii(new Uri(testDgii));
 builder.Services.AddSalesModule();
 builder.Services.AddPurchasingModule();
 builder.Services.AddCustomersModule();
