@@ -157,6 +157,14 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Hoy:** no construido; TK-258 deja el camino libre para un adicional "Cajero adicional" por cantidad.
 - **Respuesta:** (16/10/2026, TK-277) Adicional `ExtraCashier` "Cajero adicional" a **US$2 al mes** (US$20 al año) por cajero. Incluidos: Esencial **2**, Estándar **4**, Pro **8** (Varias sucursales, 12); cada caja adicional suma 2 y cada sucursal adicional suma 4. Se cuentan los **cajeros habilitados** (usuarios activos que pueden vender o abrir turno), no los que entraron en el mes; el Dueño no cuenta. El tope va en la licencia y solo impide **habilitar** a otro cajero: nunca entrar, vender ni emitir e-CF. Desactivar a alguien libera su lugar y guarda su historial.
 
+### D21 · ¿La hora de la DGII puede bajar el reloj de la licencia? (R13)
+- **Pregunta:** hoy la hora de la DGII baja el reloj si va más de un día adelantado. Un dueño con permisos de administrador podría falsificar esa hora (certificado raíz propio) y estirar una licencia vencida. ¿Mantenerlo, o que solo la hora firmada de la nube baje el reloj (una tienda sin nube que arrancó con fecha futura quedaría bloqueada hasta conectarse)?
+- **Respuesta:**
+
+### D22 · Límites por IP de la puerta de nodos (R13)
+- **Pregunta:** 8 conexiones a la vez y 300 por minuto por IP. Con operadoras móviles que comparten IP, unas 15 tiendas detrás de una IP recibirían "demasiadas solicitudes" (solo se retrasan). ¿Subirlos o vigilarlos en el piloto? (, ).
+- **Respuesta:**
+
 ---
 
 ## 2. DGII
