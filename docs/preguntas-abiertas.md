@@ -23,21 +23,21 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Por qué importa:** el sitio no se puede anunciar sin precios; el plan propuesto cuesta varias veces el Básico de Poszy.
 - **Hoy:** (TK-293) `config.ts` → `prices.monthlyUsd` con los provisionales del 16/10/2026; el sitio los muestra marcados "provisionales" mientras el cobro con Paddle esté apagado.
 - **Fuente:** TK-203, TK-197; `docs/competencia-poszy.md` §3 y "Lectura"; `src/Cloud/panel/src/pages/site/config.ts`.
-- **Respuesta:** (16/10/2026) Hacer un análisis con un consejo de analistas del mercado dominicano para identificar qué planes benefician al proyecto y a los clientes (en curso). (16/10/2026, TK-258) Aprobados como **provisionales**: Esencial US$12, Estándar US$19 y Pro US$35 al mes (anual = 10 meses), todas las funciones en todos, y adicionales con cantidad; detalle en `docs/cobro-paddle.md`. Pendiente: precio por cajero.
+- **Respuesta:** (16/10/2026) Hacer un análisis con un consejo de analistas del mercado dominicano para identificar qué planes benefician al proyecto y a los clientes (en curso). (16/10/2026, TK-258) Aprobados como **provisionales**: Esencial US$12, Estándar US$19 y Pro US$35 al mes (anual = 10 meses), todas las funciones en todos, y adicionales con cantidad; detalle en `docs/cobro-paddle.md`. Pendiente: precio por cajero. (17/10/2026, TK-313, decidido por delegación del dueño 17/10/2026) **Esencial US$15** (antes US$12), Estándar US$19 y Pro US$35 al mes; anual = 10 meses. El sitio muestra el monto en RD$ (RD$61.5 por US$1) y debajo "Se cobra US$X con tarjeta. Precio final." (`tax_mode` `internal` en Paddle). "Sucursal adicional" solo con Pro. Sin descuento de lanzamiento en el plan. Detalle en `docs/cobro-paddle.md`. Queda pendiente quitar la etiqueta "provisionales" del sitio cuando el dueño lo apruebe.
 
 ### D2 · Precio de la instalación
 - **Pregunta:** ¿Cuánto cuesta la instalación (pago único)?
 - **Por qué importa:** es uno de los precios pendientes antes de anunciar el sitio.
-- **Hoy:** `prices.installation` en `null`.
+- **Hoy:** (TK-313) `prices.installation` con el texto decidido.
 - **Fuente:** `docs/despliegue-azure.md` ("Pendiente del dueño antes de anunciar el sitio"); `config.ts`.
-- **Respuesta:** Sale del análisis de D1. La instalación debe ser fácil para el usuario; el negocio de Abastalia es la post-instalación, con horas de soporte.
+- **Respuesta:** Sale del análisis de D1. La instalación debe ser fácil para el usuario; el negocio de Abastalia es la post-instalación, con horas de soporte. (17/10/2026, TK-313, decidido por delegación del dueño 17/10/2026) Gratis por su cuenta (instalador web) y la primera instalación remota asistida (hasta 45 min). Visita a la tienda: **US$45** (Gran Santo Domingo y Santiago, hasta 2 h; otras provincias se cotizan). Sesión remota de soporte extra: US$15 por 30 min, en cualquier plan.
 
 ### D3 · Precio y condiciones del acompañamiento en la certificación (TK-236)
 - **Pregunta:** ¿Precio del servicio, cómo se cobra, cuántas reprogramaciones y reintentos incluye y qué se devuelve si la DGII rechaza la certificación de forma definitiva?
 - **Por qué importa:** el servicio (TK-219) está listo salvo esto; sin precio no se puede vender.
-- **Hoy:** `[PRECIO DEL SERVICIO]` en el documento; `prices.certificationSupport` en `null` ("Precio por confirmar" en `/certificacion`); el documento propone reprogramar una vez sin costo y reenviar la FI-GDF-016 sin costo.
+- **Hoy:** (TK-313) precio en `docs/servicio-certificacion.md` §7 y en `prices.certificationSupport`; promoción en `prices.launchPromo`.
 - **Fuente:** TK-236; `docs/servicio-certificacion.md` §6 y §7.
-- **Respuesta:** El acompañamiento debe ser válido y mínimo; la app y el asistente (bot) deben ayudar más.
+- **Respuesta:** El acompañamiento debe ser válido y mínimo; la app y el asistente (bot) deben ayudar más. (17/10/2026, TK-313, decidido por delegación del dueño 17/10/2026) **US$49**, pago único fuera de Paddle; gratis con plan anual, y con cualquier plan pagado antes del 31/12/2026 (promoción de lanzamiento). Una reprogramación sin costo; reenvíos por rechazo incluidos; si la DGII rechaza por causas del negocio no se devuelve el pago y se entrega el resumen; si el fallo es de Abastalia, se devuelve todo. Detalle en `docs/servicio-certificacion.md` §6 y §7.
 
 ### D4 · Horario y tiempo de respuesta del acompañamiento
 - **Pregunta:** ¿En qué horario se atiende el servicio y en cuánto tiempo se responde?
@@ -100,7 +100,7 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Por qué importa:** la tienda lo sugiere cuando se agotan las 20 incluidas.
 - **Hoy:** `[PRECIO]`.
 - **Fuente:** TK-248; `docs/cuotas.md` ("Servicio adicional").
-- **Respuesta:** Lo responde el análisis de D1.
+- **Respuesta:** Lo responde el análisis de D1. (17/10/2026, TK-313, decidido por delegación del dueño 17/10/2026) **US$5 al mes** (US$50 al año), antes US$7: lo mismo que el paquete del asistente.
 
 ### D13 · Cuotas mensuales por plan
 - **Pregunta:** ¿Se aprueban los límites propuestos por plan (preguntas al asistente, facturas leídas, correos, invitaciones, etc.)?
@@ -149,7 +149,7 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Por qué importa:** los referidos están construidos pero apagados hasta definir `Billing:Referrals`.
 - **Hoy:** apagado. Además falta en Paddle: permiso de la llave de API para crear descuentos y los eventos `adjustment.*` en el destino de notificaciones.
 - **Fuente:** `docs/cobro-paddle.md` (Referidos).
-- **Respuesta:** (16/10/2026, TK-276) Califican los tres planes que se venden (Esencial, Estándar y Pro). Descuento **fijo de US$12** en el próximo pago de quien recomienda, hasta **3 por mes**. Quien llega recomendado tiene **30 días de prueba** en vez de 14. Con plan anual, las recompensas se juntan en un solo descuento al renovar, con un tope del 50 % del precio del plan. Sigue apagado mientras el cobro con Paddle esté apagado. Los contadores y revendedores van por otro canal (TK-199).
+- **Respuesta:** (16/10/2026, TK-276) Califican los tres planes que se venden (Esencial, Estándar y Pro). Descuento **fijo de US$12** en el próximo pago de quien recomienda, hasta **3 por mes** (17/10/2026, TK-313, decidido por delegación del dueño 17/10/2026: sube a **US$15**, un mes gratis de Esencial; `Billing:Referrals:Amount` `1500`). Quien llega recomendado tiene **30 días de prueba** en vez de 14. Con plan anual, las recompensas se juntan en un solo descuento al renovar, con un tope del 50 % del precio del plan. Sigue apagado mientras el cobro con Paddle esté apagado. Los contadores y revendedores van por otro canal (TK-199).
 
 ### D20 · Precio por cajero
 - **Pregunta:** ¿Cuánto cuesta cada cajero adicional, cuántos incluye cada plan y cómo se cuentan (propuesta: usuarios con PIN que entraron en el mes)?

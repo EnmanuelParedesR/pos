@@ -128,9 +128,9 @@ export function CtaBand({ title, text = "Sin cupo de e-CF. Nunca queda en solo l
     <section className="band">
       <div className="wrap band__grid">
         <div>
-          <h2>{title ?? (price ? <>Desde {price}</> : <>Pruebe Abastalia 14 días gratis</>)}</h2>
+          <h2>{title ?? (price ? <>Desde {price.label}</> : <>Pruebe Abastalia 14 días gratis</>)}</h2>
           <p>{text}</p>
-          {!title && price && prices.provisional && <p className="band__note">Precios en US$, provisionales.</p>}
+          {!title && price?.charged && <p className="band__note">{price.charged}{prices.provisional && " Precios provisionales."}</p>}
         </div>
         <div className="actions">
           <Trial />

@@ -123,7 +123,7 @@ describe("TK-260: JSON-LD", () => {
     expect(org).toMatchObject({ "@type": "Organization", name: "Abastalia", url: "https://abastalia.com/", logo: "https://abastalia.com/og/logo.png" });
     expect(app).toMatchObject({ "@type": "SoftwareApplication", applicationCategory: "BusinessApplication", operatingSystem: "Windows" });
     expect(app.offers.map((o: { name: string; price: string; priceCurrency: string; url: string }) => [o.name, o.price, o.priceCurrency, o.url])).toEqual([
-      ["Esencial", "12.00", "USD", "https://abastalia.com/precios"],
+      ["Esencial", "15.00", "USD","https://abastalia.com/precios"],
       ["Estándar", "19.00", "USD", "https://abastalia.com/precios"],
       ["Pro", "35.00", "USD", "https://abastalia.com/precios"],
     ]);

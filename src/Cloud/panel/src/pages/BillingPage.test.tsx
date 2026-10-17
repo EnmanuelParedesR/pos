@@ -89,6 +89,19 @@ it("R12 #10: an annual subscriber sees the plans at their annual price", async (
   expect(screen.queryByText(/US\$25\.00 al mes/)).toBeNull();
 });
 
+it("TK-313: \"Sucursal adicional\" is offered only on Pro or more", async () => {
+  const store = { code: "ExtraStore", name: "Sucursal adicional", monthly: { priceId: "pri_store", interval: "Monthly" as const, amount: "2500", currency: "USD" }, annual: null };
+  const withStore = { ...billing, addOnOptions: [...billing.addOnOptions, store] };
+  vi.stubGlobal("fetch", vi.fn(async () => json(200, withStore)));
+  page();
+  expect(await screen.findByRole("spinbutton", { name: /Lectura de facturas/ })).toBeTruthy();
+  expect(screen.queryByRole("spinbutton", { name: /Sucursal adicional/ })).toBeNull(); // Estándar
+  cleanup();
+  vi.stubGlobal("fetch", vi.fn(async () => json(200, { ...withStore, plan: "MultiRegister" })));
+  page();
+  expect(await screen.findByRole("spinbutton", { name: /Sucursal adicional/ })).toBeTruthy();
+});
+
 it("TK-249: an overdue payment is explained and the portal button shows for a Paddle customer", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => json(200, { ...billing, status: "PastDue", canManage: true, plan: "MultiRegister", paidThroughUtc: "2026-11-15T15:00:00Z" })));
   window.Paddle = { Environment: { set: vi.fn() }, Initialize: vi.fn(), Checkout: { open: vi.fn() } };
