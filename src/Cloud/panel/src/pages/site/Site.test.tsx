@@ -220,3 +220,9 @@ it("TK-296: the home's video never loads or plays by itself, has a descriptions 
   expect(within(transcript).getByText("Pregúntele a Talia.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Ver el video (0:42)" })).toBeTruthy();
 });
+
+it.each(sitePages.map((p) => [p.path]))("TK-330: %s promises nothing the TK-279 block contradicts", (path) => {
+  renderAt(path);
+  const text = document.body.textContent ?? "";
+  for (const promise of [/solo lectura/i, /pago atrasado/i, /nunca se detiene/i]) expect(text).not.toMatch(promise);
+});

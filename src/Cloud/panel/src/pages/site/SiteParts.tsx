@@ -121,7 +121,7 @@ export function Steps({ items, round = false, accentLast = false }: { items: [st
 }
 
 /** Closing band: the entry price (TK-249; TK-293: the provisional one while billing is off) and the two calls to action. */
-export function CtaBand({ title, text = "Sin cupo de e-CF. Nunca queda en solo lectura.", pricesLink = true }: { title?: ReactNode; text?: ReactNode; pricesLink?: boolean }) {
+export function CtaBand({ title, text = "Sin cupo de e-CF. Sus datos y reportes nunca se bloquean.", pricesLink = true }: { title?: ReactNode; text?: ReactNode; pricesLink?: boolean }) {
   const prices = usePlanPrices();
   const price = prices.price("Essential"); // the cheapest plan (TK-258)
   return (

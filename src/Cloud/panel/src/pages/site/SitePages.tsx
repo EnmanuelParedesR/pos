@@ -650,8 +650,8 @@ function Pricing() {
         <IconTiles
           cols={3}
           items={[
-            ["bolt", "La venta nunca se detiene", "Ni por volumen de facturas ni por un pago atrasado."],
-            ["shield", "Nunca en solo lectura", "Si la licencia vence, sigue vendiendo, emitiendo e-CF, exportando y respaldando; solo se apagan funciones adicionales."],
+            ["bolt", "Sin cupo de facturas", "La venta no se detiene por la cantidad de e‑CF que emita."],
+            ["shield", "Avisamos antes de detener la venta", "Si un pago se atrasa: 15 días igual, 15 con lo básico y la fecha en pantalla; luego se detiene la venta. Reportes, respaldos y e‑CF emitidos nunca se bloquean."],
             ["key", "Todo es suyo", "Sus datos, su certificado y sus secuencias, también si se va."],
           ]}
         />
