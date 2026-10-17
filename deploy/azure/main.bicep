@@ -88,6 +88,7 @@ resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   properties: {
     sku: { name: 'PerGB2018' }
     retentionInDays: 30
+    workspaceCapping: { dailyQuotaGb: json('0.1') } // a log storm can't eat the monthly credit
   }
 }
 
