@@ -17,8 +17,8 @@
     "emailSender": { "value": "DoNotReply@03a51e41-8b38-4672-bdb5-8ae7432a35f7.azurecomm.net" },
     "emailResourceName": { "value": "acs-abastalia-prod" },
     "alertEmail": { "value": "" },
-    "paddleEnvironment": { "value": "" },
-    "paddleClientToken": { "value": "" },
+    "paddleEnvironment": { "value": "sandbox" },
+    "paddleClientToken": { "value": "test_d4caa0f9484c025aab1210c2bff" },
     "licenseKeyName": { "value": "" },
     "panelDomain": { "value": "abastalia.com" }
   }
