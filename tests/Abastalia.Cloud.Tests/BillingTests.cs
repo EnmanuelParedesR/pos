@@ -341,6 +341,28 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
     }
 
     [Fact]
+    public async Task TK308_the_license_carries_the_RNC_the_store_sent_and_the_cloud_signs_its_time_for_the_pull_nonce()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner, "Colmado El RNC");
+        (await app.SendAsync(Subscription(Id(), "subscription.created", owner.TenantId, "active", Now, PeriodEnd, BillingApp.Registers))).EnsureSuccessStatusCode();
+        async Task<JsonElement> PullAsync(object? body) =>
+            await (await (body is null ? node.Client.PostAsync("/api/nodes/license", null) : node.Client.PostAsJsonAsync("/api/nodes/license", body))).Json();
+        string? Rnc(JsonElement answer) => Jws.Verify(answer.GetProperty("license").GetString()!, app.LicenseKey).Value.Rnc;
+
+        var answer = await PullAsync(null); // a store before TK-308: no body, no RNC, no time
+        (Rnc(answer), answer.GetProperty("time").ValueKind).ShouldBe((null, JsonValueKind.Null));
+        answer = await PullAsync(new { rnc = "1-31-24567-8", nonce = "abc123" });
+        Rnc(answer).ShouldBe("131245678"); // digits only, as the store compares it
+        var time = Jws.Verify<ServerTime>(answer.GetProperty("time").GetString()!, Jws.TimeType, [app.LicenseKey]).Value;
+        (time.TenantId, time.Nonce, time.Utc).ShouldBe((owner.TenantId, "abc123", Now));
+        Jws.Verify(answer.GetProperty("time").GetString()!, app.LicenseKey).IsFailure.ShouldBeTrue(); // a time is no license
+        (await PullAsync(new { rnc = "13124567" })).GetProperty("time").ValueKind.ShouldBe(JsonValueKind.Null); // no nonce, no time
+        (await app.InDbAsync(db => db.Stores.Where(s => s.TenantId == owner.TenantId).Select(s => s.Rnc).SingleAsync())).ShouldBeNull(); // 8 digits: none
+        Rnc(await PullAsync(new { rnc = (string?)null })).ShouldBeNull(); // the store has no RNC yet: a license without one
+    }
+
+    [Fact]
     public async Task Checkout_hands_Paddle_js_the_prices_and_the_business_and_the_portal_opens_for_its_customer()
     {
         var owner = await app.OwnerAsync();

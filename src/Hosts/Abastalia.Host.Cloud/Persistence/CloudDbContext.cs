@@ -106,6 +106,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         {
             e.ToTable("Stores");
             e.Property(s => s.Name).HasMaxLength(100);
+            e.Property(s => s.Rnc).HasMaxLength(11);
             e.HasIndex(s => new { s.TenantId, s.Name });
         });
         builder.Entity<ConnectionCode>(e =>
@@ -405,6 +406,8 @@ public sealed class Store
     public Guid TenantId { get; set; }
     public string Name { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
+    /// <summary>TK-308: the business RNC the store's main PC sent at its last license pull (digits only; public, but masked in logs). Its license carries it.</summary>
+    public string? Rnc { get; set; }
 }
 
 /// <summary>8 digits, 30 minutes, single use: typed at the store's main PC to register it as a node.</summary>

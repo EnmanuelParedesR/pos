@@ -48,6 +48,10 @@ public sealed record LicenseData(string Store, string Plan, IReadOnlyList<string
 /// license keys under its own JWS <c>typ</c> (<see cref="Jws.TrialType"/>), so it never passes for a license nor a license for it.</summary>
 public sealed record TrialGrant(Guid TenantId, int Days, DateTime IssuedUtc);
 
+/// <summary>TK-308: the cloud's signed time at a store's license pull, for that pull's fresh <paramref name="Nonce"/> (an old answer cannot be replayed
+/// to turn the clock back). Signed with the license keys under <see cref="Jws.TimeType"/>; the store corrects its license clock with it as with the DGII's.</summary>
+public sealed record ServerTime(Guid TenantId, string Nonce, DateTime Utc);
+
 /// <summary>Compact JWS with ES256 (ECDSA P-256, SHA-256, signature r‖s). Only the vendor's private keys sign; the store has only the public keys,
 /// so there is no license generator in the client (the old system shipped one).</summary>
 public static class Jws
@@ -68,8 +72,8 @@ public static class Jws
     public static readonly Error Suspended = Error.Forbidden("License.Blocked",
         "Abastalia suspendió el servicio de este negocio: no se pueden hacer ventas nuevas. Escríbale a Abastalia para resolverlo. Sus datos, reportes y respaldos siguen disponibles.");
 
-    /// <summary>The JWS <c>typ</c> of a license and of a <see cref="TrialGrant"/>.</summary>
-    public const string LicenseType = "JWT", TrialType = "abastalia-trial";
+    /// <summary>The JWS <c>typ</c> of a license, of a <see cref="TrialGrant"/> and of a <see cref="ServerTime"/>.</summary>
+    public const string LicenseType = "JWT", TrialType = "abastalia-trial", TimeType = "abastalia-time";
 
     public static string Sign(LicenseData data, ECDsa privateKey) => Sign(data, privateKey, LicenseType);
 

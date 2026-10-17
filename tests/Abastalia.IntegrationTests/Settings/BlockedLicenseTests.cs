@@ -67,11 +67,15 @@ public sealed class BlockedLicenseTests(AbastaliaApp app) : IClassFixture<Abasta
         var reopened = (await (await admin.PostAsJsonAsync("/api/cash/shifts", new { RegisterId = register, OpeningFloat = 500m })).Json()).GetProperty("shiftId").GetGuid();
         (await admin.PostAsJsonAsync("/api/sales", Sale(reopened, 59m, 59m, Line(soda, 1)))).StatusCode.ShouldBe(HttpStatusCode.Created);
     }
+}
 
+/// <summary>TK-279. Own app (TK-308): with R12's "never an older license" it cannot share one with a test that installs licenses issued earlier.</summary>
+public sealed class CloudBlockedLicenseTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
     [Fact]
     public async Task A_license_the_cloud_marked_blocked_blocks_at_once_and_a_later_one_lifts_it()
     {
-        var admin = app.Client(await app.SignInAsync("admin", AbastaliaApp.AdminPin, (await app.AdminAsync()).Device)); // the other test moves the clock past the session
+        var admin = app.Client(await app.SignInAsync("admin", AbastaliaApp.AdminPin, (await app.AdminAsync()).Device));
         var now = app.Clock.GetUtcNow().UtcDateTime;
         LicenseData License(bool blocked, int minutes) =>
             new("Colmado de prueba", "Estándar", [], new Dictionary<string, int> { ["Registers"] = 1 }, now.AddMinutes(minutes), now.AddDays(30), Blocked: blocked);

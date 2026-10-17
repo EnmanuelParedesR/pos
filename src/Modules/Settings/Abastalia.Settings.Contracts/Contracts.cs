@@ -25,6 +25,13 @@ public interface IStoreLicense
     /// <summary>TK-276: the cloud says the trial is longer (the business came recommended). R12: <paramref name="grant"/> is a cloud-signed
     /// <c>TrialGrant</c> JWS for <paramref name="tenantId"/>. False when it was refused or changes nothing.</summary>
     Task<bool> ExtendTrialAsync(string grant, Guid tenantId, CancellationToken ct);
+
+    /// <summary>TK-308: the business RNC the cloud signs into the store's license (null while it is not set).</summary>
+    Task<string?> BusinessRncAsync(CancellationToken ct);
+
+    /// <summary>R12 #3 (TK-308): the cloud's signed <c>ServerTime</c> for <paramref name="tenantId"/> and this pull's <paramref name="nonce"/> corrects the
+    /// license clock like the DGII's time. False when it was refused.</summary>
+    bool CorrectTime(string time, Guid tenantId, string nonce);
 }
 
 /// <summary>TK-254: how this store takes updates, as the owner set it in Configuración → Actualizaciones and the cloud allows it.</summary>
