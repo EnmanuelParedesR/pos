@@ -180,6 +180,23 @@ public sealed class EscuadraComponentTests : IDisposable
     }
 
     [Fact]
+    public void ThemeToggle_starts_light_and_goes_dark_then_automatic()
+    {
+        // TK-360: light by default, as the PIN screen and the register; dark or automatic only when chosen on this PC.
+        var ctx = new BunitContext();
+        using var _ = ctx;
+        ctx.JSInterop.Setup<string?>("escuadra.getTheme").SetResult("light");
+        ctx.JSInterop.SetupVoid("escuadra.setTheme", _ => true);
+        var toggle = ctx.Render<ThemeToggle>();
+
+        toggle.WaitForAssertion(() => toggle.Find("button").GetAttribute("aria-label").ShouldBe("Tema: claro. Cambiar a oscuro"));
+        toggle.Find("button").Click();
+        toggle.Find("button").Click();
+        toggle.Find("button").GetAttribute("aria-label").ShouldBe("Tema: automático. Cambiar a claro");
+        ctx.JSInterop.Invocations.Where(i => i.Identifier == "escuadra.setTheme").Select(i => (string)i.Arguments[0]!).ShouldBe(["dark", "system"]);
+    }
+
+    [Fact]
     public async Task The_Sale_screen_shows_the_scale_fixed_while_this_PC_has_one()
     {
         var (ctx, _, hw) = await RegisterAsync(new(Scale: new("COM3", ScaleProtocol.Cas)));
@@ -210,6 +227,26 @@ public sealed class EscuadraComponentTests : IDisposable
         var keys = sale.Find("nav.esc-key-bar");
         keys.GetAttribute("aria-label").ShouldBe("Teclas");
         keys.QuerySelectorAll("button").ShouldAllBe(b => b.QuerySelector("kbd.esc-keycap") != null); // the screen teaches (principle 5)
+    }
+
+    [Fact]
+    public async Task Without_a_scale_or_printer_the_status_bar_claims_none_and_only_the_owner_gets_a_way_to_set_them()
+    {
+        // TK-361: no device status, no scale readout; whoever may change the settings gets a quiet link to Equipos de la caja.
+        var (owner, _) = await ScreenContext.CreateAsync("sales.create", "settings.manage");
+        using var _ = owner;
+        var frame = owner.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
+        frame.FindAll(".esc-status-bar__device").ShouldBeEmpty();
+        var link = frame.FindAll(".esc-status-bar button").Single(b => b.TextContent.Contains("Conectar impresora o balanza", StringComparison.Ordinal));
+        link.Click();
+        owner.Services.GetRequiredService<NavigationManager>().Uri.ShouldEndWith("admin/settings?section=hardware");
+
+        var (cashier, _) = await ScreenContext.CreateAsync("sales.create");
+        using var __ = cashier;
+        var bar = cashier.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta")))).Find(".esc-status-bar");
+        bar.TextContent.ShouldNotContain("Balanza");
+        bar.TextContent.ShouldNotContain("Impresora");
+        bar.TextContent.ShouldNotContain("Conectar impresora");
     }
 
     [Fact]

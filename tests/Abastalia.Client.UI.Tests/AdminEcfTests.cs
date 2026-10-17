@@ -37,6 +37,10 @@ public sealed class AdminEcfTests
 
         page.WaitForAssertion(() => page.Find("[aria-labelledby=rejected-title] tbody").TextContent.ShouldContain("El RNC del comprador no corresponde"));
         page.Find(".esc-page-head__actions").TextContent.ShouldContain("Pre-certificación (TesteCF)");
+        // TK-364: what to do now comes first; the one-time pieces wait in their tabs.
+        page.Find(".esc-notice--error").TextContent.ShouldContain("La DGII rechazó 1 comprobante: reemplácelos");
+        page.FindAll("[role=tab]").Select(t => t.TextContent).ShouldBe(["Comprobantes", "Anular números", "Si falla la DGII", "Certificación y ambiente"]);
+        page.Markup.ShouldNotContain("Anular números sin usar");
         var replace = page.Find("[aria-labelledby=rejected-title] tbody button");
         replace.Click();
         replace = page.Find("[aria-labelledby=rejected-title] tbody button");
@@ -57,11 +61,16 @@ public sealed class AdminEcfTests
             .Json("POST", $"/api/fiscal/sequences/{Range}/void", new { id = Guid.NewGuid(), from = "E340000000011", to = "E340000000050", count = 40L }, HttpStatusCode.Created);
         var page = ctx.Render<Ecf>();
 
-        page.WaitForAssertion(() => page.Find("[aria-labelledby=recent-title] .esc-button--danger").TextContent.ShouldBe("Anular"));
-        page.Find("[aria-labelledby=recent-title] .esc-button--danger").Click();
-        page.Find("[aria-labelledby=recent-title] .esc-button--danger").Click();
+        // TK-364: the row's buttons share one wrapping group (they used to overlap at 1366 px); red only on the second tap.
+        AngleSharp.Dom.IElement Actions() => page.FindAll("[aria-labelledby=recent-title] tbody tr").Single(r => r.TextContent.Contains("E310000000002", StringComparison.Ordinal)).QuerySelector(".ecf-actions")!;
+        page.WaitForAssertion(() => Actions().QuerySelectorAll("button").Select(b => b.TextContent).ShouldBe(["PDF", "Anular"]));
+        Actions().QuerySelector(".esc-button--danger").ShouldBeNull();
+        Actions().QuerySelectorAll("button")[1].Click();
+        Actions().QuerySelector(".esc-button--danger")!.TextContent.ShouldBe("¿Anular? Toque otra vez");
+        Actions().QuerySelector(".esc-button--danger")!.Click();
         page.WaitForAssertion(() => page.Find(".esc-notice").TextContent.ShouldContain("E310000000002 quedó anulado"));
 
+        page.FindAll("[role=tab]").Single(t => t.TextContent == "Anular números").Click();
         page.Find("p[role=status]").TextContent.ShouldBe("Se anularán 90 números: E340000000011 a E340000000100.");
         page.Find("input[inputmode=numeric]").Change("50");
         page.Find("p[role=status]").TextContent.ShouldBe("Se anularán 40 números: E340000000011 a E340000000050.");

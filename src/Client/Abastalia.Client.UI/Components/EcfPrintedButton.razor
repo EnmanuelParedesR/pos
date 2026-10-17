@@ -3,7 +3,7 @@
 @inject IJSRuntime JS
 
 @* TK-148/TK-240: downloads the DGII printed representation (RI) of one e-CF: an A4 page that prints or saves as PDF. *@
-<Button class="esc-button esc-button--small" Disabled="_busy" OnClick="DownloadAsync" title="Representación impresa: ábrala e imprímala o guárdela como PDF">@(_busy ? "…" : "RI (PDF)")</Button>
+<Button class="esc-button esc-button--small" Disabled="_busy" OnClick="DownloadAsync" title="Representación impresa (RI): ábrala e imprímala o guárdela como PDF" aria-label="PDF: representación impresa">@(_busy ? "…" : "PDF")</Button>
 @if (_error is not null) { <span class="esc-table__sub esc-error" role="alert">@_error</span> }
 
 @code {

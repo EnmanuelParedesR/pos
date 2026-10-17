@@ -1,4 +1,4 @@
-@* Admin theme (TK-183): automático (the system's) → claro → oscuro, remembered on this device by escuadra.js (localStorage). *@
+@* Admin theme (TK-183, TK-360): claro (the default, like the register) → oscuro → automático (Windows decides), remembered on this device by escuadra.js (localStorage). *@
 @inject IJSRuntime JS
 
 <button type="button" class="@Class" title="@($"Tema: {Label}. Cambiar a {NextLabel}")" aria-label="@($"Tema: {Label}. Cambiar a {NextLabel}")" @onclick="NextAsync">
@@ -10,19 +10,19 @@
     [Parameter] public bool ShowLabel { get; set; } = true;
     [Parameter] public int Size { get; set; } = 20;
 
-    private string _theme = "system";
+    private string _theme = "light";
 
     private string Label => Name(_theme);
     private string NextLabel => Name(Next(_theme));
     private string IconName => _theme switch { "light" => "sun", "dark" => "moon", _ => "monitor" };
 
-    private static string Next(string theme) => theme switch { "system" => "light", "light" => "dark", _ => "system" };
+    private static string Next(string theme) => theme switch { "light" => "dark", "dark" => "system", _ => "light" };
     private static string Name(string theme) => theme switch { "light" => "claro", "dark" => "oscuro", _ => "automático" };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        _theme = await JS.InvokeAsync<string?>("escuadra.getTheme") ?? "system";
+        _theme = await JS.InvokeAsync<string?>("escuadra.getTheme") ?? "light";
         StateHasChanged();
     }
 

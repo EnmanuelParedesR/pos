@@ -131,6 +131,7 @@ public sealed class ProductVideoTests
             ["Api__Url"] = api.Base.ToString(),
             ["Client__File"] = clientFile,
             ["Hardware__PrinterFile"] = Path.Combine(temp, "receipts.txt"),
+            ["Hardware__Simulated"] = "true",
             ["Hardware__Pounds"] = "1.25",
             ["Clock__Shift"] = ShiftSetting,
         });

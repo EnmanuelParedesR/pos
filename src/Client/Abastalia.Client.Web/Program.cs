@@ -17,11 +17,14 @@ if (builder.Environment.IsEnvironment("E2E") && builder.Configuration.GetValue<T
 builder.Services.AddAbastaliaClient(new Uri(builder.Configuration["Api:Url"] ?? "http://localhost:5000"));
 builder.Services.AddSingleton<ILocalStore>(new FileStore(
     builder.Configuration["Client:File"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Abastalia", "client-web.json")));
-// Simulated scale and printer (development): receipts go to a text file; the scale weighs Hardware:Pounds.
+// Simulated scale and printer (development): receipts go to a text file; the scale weighs Hardware:Pounds. TK-361: like a store PC, none is
+// set until someone types a port in Configuración → Equipos de la caja (any name works), or Hardware:Simulated=true (the UI tests).
 var data = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Abastalia");
 var scale = new SimulatedScale { Reading = new(builder.Configuration.GetValue("Hardware:Pounds", 2.5m), ScaleStatus.Stable) };
 builder.Services.AddAbastaliaHardware(new SimulatedDrivers(scale, builder.Configuration["Hardware:PrinterFile"] ?? Path.Combine(data, "receipts.txt")),
-    new HardwareSettings(new PrinterSettings("Simulada", 80), new ScaleSettings("Simulada", ScaleProtocol.Continuous)));
+    builder.Configuration.GetValue<bool>("Hardware:Simulated")
+        ? new HardwareSettings(new PrinterSettings("Simulada", 80), new ScaleSettings("Simulada", ScaleProtocol.Continuous))
+        : null);
 
 // TK-243: the Escuadra gallery (/dev/escuadra), for visual review while developing (and its screenshot test, Dev:Gallery); never in the store.
 if (builder.Environment.IsDevelopment() || builder.Configuration.GetValue<bool>("Dev:Gallery")) builder.Services.AddSingleton(new ExtraPages(typeof(App).Assembly));

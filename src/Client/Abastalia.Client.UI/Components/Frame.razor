@@ -56,10 +56,11 @@
                         <span class="esc-offline" role="status">@(expires < DateTime.UtcNow ? "Certificado digital vencido" : $"Certificado digital vence en {(int)(expires - DateTime.UtcNow).TotalDays} días")</span>
                     }
                 }
-                @* TK-238: amber for whoever can fix it; the sale goes on. *@
-                @if (_backup is { PassphraseProblem: not null })
+                @* TK-238: amber for whoever can fix it; the sale goes on. TK-362: checked here too, so a cashier who signs in after the owner
+                   never sees the owner's last answer (the 15-second check had not run yet); a tap opens Respaldos to set the phrase. *@
+                @if (_backup is { PassphraseProblem: not null } && Session.Can("backups.manage"))
                 {
-                    <span class="esc-offline" role="status">Respaldos sin frase: no se están haciendo</span>
+                    <span role="status"><button type="button" class="esc-offline esc-status-bar__alert" @onclick='() => Nav.NavigateTo("admin/settings?section=backups")'>Sin respaldos: ponga la frase</button></span>
                 }
                 @* TK-196/220: the trial is calm (muted) until its last days, then amber; never blocks the sale. *@
                 @if (_license is { } l && Names.LicenseNote(l) is { } note)
@@ -70,7 +71,12 @@
                 {
                     <span class="esc-offline" role="status">@Names.ClockBehind</span>
                 }
-                @* TK-243: this PC's scale and printer, when it has them; amber when one stops answering (the sale goes on). *@
+                @* TK-243: this PC's scale and printer, when it has them; amber when one stops answering (the sale goes on).
+                   TK-361: none set on this PC: nothing to report, only a quiet way to set them for whoever may (the drawer hangs off the printer). *@
+                @if (Peripherals.Scale is null && Peripherals.Printer is null && Session.Can("settings.manage") && Session.IsOpen)
+                {
+                    <button type="button" class="esc-status-bar__help" @onclick='() => Nav.NavigateTo("admin/settings?section=hardware")'><Icon Name="printer" Size="16" />Conectar impresora o balanza</button>
+                }
                 @foreach (var (icon, device, state) in new[] { ("scale", "Balanza", Peripherals.ScaleState), ("printer", "Impresora", Peripherals.PrinterState) })
                 {
                     if (state is { } st)

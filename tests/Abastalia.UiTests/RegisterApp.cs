@@ -41,6 +41,7 @@ public sealed class RegisterApp : IAsyncLifetime
             ["Api__Url"] = Api.Base.ToString(),
             ["Client__File"] = clientFile,
             ["Hardware__PrinterFile"] = Path.Combine(_folder, receipts),
+            ["Hardware__Simulated"] = "true", // TK-361: the simulated scale and printer start set
             ["Hardware__Pounds"] = "2.5",
         });
         var context = await _browser!.NewContextAsync(new() { BaseURL = web.Base.ToString(), ViewportSize = new() { Width = 1366, Height = 900 }, Locale = "es-DO" });
