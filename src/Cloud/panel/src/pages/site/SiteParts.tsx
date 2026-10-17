@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { contactHref, site } from "./config";
 import { usePlanPrices } from "./livePrices";
@@ -261,18 +261,27 @@ export function Photo({ name, alt, ratio, sizes, eager = false }: { name: string
   );
 }
 
-/** TK-281: a short silent loop (ffmpeg, design/media/README.md). It starts only when it is on screen and never with "reduce motion": then the poster stays. */
+/** TK-281: a short silent loop (ffmpeg, design/media/README.md). It starts only when it is on screen and never with "reduce motion": then the poster stays.
+ *  TK-282: a video poster is never lazy, so it is set only when the video comes near the screen; a phone no longer fetches it with the hero. */
 export function LoopVideo({ name, poster, label }: { name: string; poster: string; label: string }) {
   const ref = useRef<HTMLVideoElement>(null);
+  const [near, setNear] = useState(false);
   useEffect(() => {
     const video = ref.current;
-    if (!video || typeof IntersectionObserver === "undefined" || typeof matchMedia !== "function" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const seen = new IntersectionObserver(([e]) => (e.isIntersecting ? video.play().catch(() => {}) : video.pause()), { threshold: 0.25 });
+    if (!video) return;
+    if (typeof IntersectionObserver === "undefined") return setNear(true);
+    const soon = new IntersectionObserver(([e]) => e.isIntersecting && setNear(true), { rootMargin: "300px" });
+    soon.observe(video);
+    const moves = typeof matchMedia === "function" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const seen = new IntersectionObserver(([e]) => moves && (e.isIntersecting ? video.play().catch(() => {}) : video.pause()), { threshold: 0.25 });
     seen.observe(video);
-    return () => seen.disconnect();
+    return () => {
+      soon.disconnect();
+      seen.disconnect();
+    };
   }, []);
   return (
-    <video ref={ref} className="loop" muted loop playsInline preload="none" poster={poster} width={960} height={506} aria-label={label}>
+    <video ref={ref} className="loop" muted loop playsInline preload="none" poster={near ? poster : undefined} width={960} height={506} aria-label={label}>
       <source src={`/media/${name}.mp4`} type="video/mp4" />
       <source src={`/media/${name}.webm`} type="video/webm" />
     </video>
