@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Abastalia.Host.Cloud.Billing;
 using Abastalia.Host.Cloud.Fe;
@@ -323,8 +324,55 @@ public sealed class ReferralTests(BillingApp app) : IClassFixture<BillingApp>, I
         var old = await app.OwnerAsync();
         await app.InDbAsync(db => db.Tenants.Where(t => t.Id == old.TenantId).ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedUtc, Now.AddDays(-15))));
         (await old.Client.PostAsJsonAsync("/api/billing/referrals/claim", new { code })).EnsureSuccessStatusCode();
+        // R12 #10: nor does its checkout (the code there gives the same 30-day trial).
+        var checkout = await (await old.Client.PostAsJsonAsync("/api/billing/checkout", new { plan = "MultiRegister", interval = "Monthly", referralCode = code })).Json();
+        checkout.GetProperty("customData").TryGetProperty("referral_code", out _).ShouldBeFalse();
         (await app.InDbAsync(db => db.TenantSubscriptions.Where(s => s.TenantId == own.TenantId || s.TenantId == old.TenantId).Select(s => s.ReferredByCode).ToListAsync()))
             .ShouldAllBe(c => c == null);
+    }
+
+    [Fact]
+    public async Task R12_10_the_cloud_gives_a_referred_business_the_same_30_day_trial_for_the_paid_extras()
+    {
+        var code = await CodeAsync(await app.OwnerAsync());
+        var referred = await app.OwnerAsync();
+        (await referred.Client.PostAsJsonAsync("/api/billing/referrals/claim", new { code })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var plain = await app.OwnerAsync();
+        foreach (var who in new[] { referred, plain })
+        {
+            var node = await app.StoreWithNodeAsync(who);
+            var sale = new Abastalia.Sales.Contracts.SaleRecordedV2(Guid.CreateVersion7(), 1, Guid.NewGuid(), Guid.NewGuid(), null, "E320000000001", 100m, 0m, 0m,
+                [new Abastalia.Sales.Contracts.SaleLineV2(Guid.NewGuid(), null, "Pollo", 1, "Unit", 100m, 0m, 50m)], [new Abastalia.Sales.Contracts.SalePaymentV1("Cash", 100m)]);
+            (await node.SendAsync(Events.Envelope(sale, Now.AddDays(-20)))).EnsureSuccessStatusCode(); // first sale 20 days ago
+        }
+        await app.ApplyAsync();
+        var check = app.Services.GetRequiredService<Abastalia.Host.Cloud.Assistant.LicenseCheck>();
+        (await app.InDbAsync(db => check.AllowsPaidExtrasAsync(db, referred.TenantId, CancellationToken.None))).ShouldBeTrue();
+        (await app.InDbAsync(db => check.AllowsPaidExtrasAsync(db, plain.TenantId, CancellationToken.None))).ShouldBeFalse(); // 14 days
+    }
+
+    [Fact]
+    public async Task R12_10_reinstating_starts_clean_and_a_combined_discount_shows_its_whole_amount()
+    {
+        var referrer = await app.OwnerAsync();
+        (await SubscriptionAsync(referrer.TenantId, "active", Now, interval: "year")).EnsureSuccessStatusCode();
+        var code = await CodeAsync(referrer);
+        for (var i = 0; i < 2; i++) await PayAsync((await ReferredAsync(code)).Owner.TenantId);
+        var next = (await ReferralsAsync(referrer)).GetProperty("nextDiscount");
+        (next.GetProperty("amount").GetString(), next.GetProperty("count").GetInt32()).ShouldBe(("20", 2)); // 10 % + 10 %, as Paddle has it
+
+        // A monthly referrer's reverted reward, reinstated: a new discount, not the one taken off.
+        var monthly = await app.OwnerAsync();
+        (await SubscriptionAsync(monthly.TenantId, "active", Now)).EnsureSuccessStatusCode();
+        await PayAsync((await ReferredAsync(await CodeAsync(monthly))).Owner.TenantId);
+        var row = (await RowsAsync(monthly.TenantId)).Single();
+        var staff = await app.StaffAsync();
+        var path = $"/api/platform/tenants/{monthly.TenantId}/referrals/{row.Id}";
+        (await staff.Client.PostAsJsonAsync(path, new { action = "Revert", note = "Prueba" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await staff.Client.PostAsJsonAsync(path, new { action = "Reinstate", note = "Error nuestro" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var again = (await RowsAsync(monthly.TenantId)).Single();
+        again.Status.ShouldBe(ReferralStatus.Applied);
+        again.PaddleDiscountId.ShouldNotBe(row.PaddleDiscountId);
     }
 
     [Fact]

@@ -116,7 +116,7 @@ internal static class BillingEndpoints
 
         // A business without a live subscription buys one with Paddle.js (overlay checkout); one that has it changes its items instead.
         owner.MapPost("/checkout", async (CheckoutRequest r, ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, BillingCatalog catalog, PlanLimits limits,
-            PaddleApi api, ReferralRewards referrals, CancellationToken ct) =>
+            PaddleApi api, ReferralRewards referrals, TimeProvider clock, CancellationToken ct) =>
         {
             if (!paddle.IsConfigured) return EndpointExtensions.Problem(Off);
             var tenantId = user.GetTenantId();
@@ -139,7 +139,7 @@ internal static class BillingEndpoints
                     ? Results.Ok(new BillingChangeResponse(true))
                     : EndpointExtensions.Problem(Error.Conflict("Billing.PaddleFailed", "Paddle no aceptó el cambio. Intente de nuevo en un momento."));
             return Results.Ok(new CheckoutResponse(paddle.Environment, paddle.ClientToken, items,
-                user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, await ReferralEndpoints.CheckoutDataAsync(db, referrals, tenantId, r.ReferralCode, ct)));
+                user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name, await ReferralEndpoints.CheckoutDataAsync(db, referrals, tenantId, r.ReferralCode, clock.GetUtcNow().UtcDateTime, ct)));
         });
 
         owner.MapPost("/portal", async (ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, PaddleApi api, CancellationToken ct) =>

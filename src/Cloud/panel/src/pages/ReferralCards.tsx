@@ -54,7 +54,7 @@ export function ReferralCard() {
             {!next
               ? "—"
               : next.fromUtc
-                ? `${(next.count ?? 1) > 1 ? `${next.count} × ${rewardLabel(next)}` : rewardLabel(next)} en su pago del ${day(next.fromUtc)}`
+                ? `${rewardLabel(next)}${(next.count ?? 1) > 1 ? ` (${next.count} recomendaciones juntas)` : ""} en su pago del ${day(next.fromUtc)}`
                 : `${rewardLabel(next)} en espera: se aplica en su próximo cobro`}
           </span>
         </li>
