@@ -62,6 +62,7 @@ public sealed class LiteBrowserSigningTests
     [Fact]
     public async Task A_wrong_password_is_refused()
     {
+        Poc(); // skips before the throw assertion would swallow the skip
         using var rsa = RSA.Create(2048);
         using var certificate = new CertificateRequest("CN=Firmante de Prueba", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
             .CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
@@ -71,10 +72,7 @@ public sealed class LiteBrowserSigningTests
 
     private static async Task<JsonDocument> NodeSignAsync(byte[] pfx, string password, string[] documents)
     {
-        var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (!File.Exists(Path.Combine(root.FullName, "Abastalia.slnx"))) root = root.Parent!;
-        var poc = Path.Combine(root.FullName, "src", "Cloud", "lite-poc");
-        if (!Directory.Exists(Path.Combine(poc, "node_modules"))) Assert.Skip("Run npm ci in src/Cloud/lite-poc (CI does).");
+        var poc = Poc();
 
         var start = new ProcessStartInfo("node", "sign-cli.mjs")
         {
@@ -93,5 +91,14 @@ public sealed class LiteBrowserSigningTests
             if (node.ExitCode != 0) throw new InvalidOperationException($"node sign-cli.mjs failed: {error}");
             return JsonDocument.Parse(await output);
         }
+    }
+
+    private static string Poc()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (!File.Exists(Path.Combine(root.FullName, "Abastalia.slnx"))) root = root.Parent!;
+        var poc = Path.Combine(root.FullName, "src", "Cloud", "lite-poc");
+        if (!Directory.Exists(Path.Combine(poc, "node_modules"))) Assert.Skip("Run npm ci in src/Cloud/lite-poc (CI does).");
+        return poc;
     }
 }
