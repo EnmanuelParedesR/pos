@@ -1,5 +1,6 @@
 using System.Net;
 using Bunit;
+using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Abastalia.Client.UI.Pages.Admin;
 
@@ -53,6 +54,34 @@ public sealed class TrialLicenseTests
         frame.Find("main").TextContent.ShouldContain("Plan y facturación");
         frame.FindAll("main button").ShouldContain(b => b.TextContent == "Activar licencia");
         frame.Find(".esc-status-bar").TextContent.ShouldContain("La hora de la PC está atrasada");
+    }
+
+    [Fact]
+    public void TK287_the_blocked_screen_signs_out_and_asks_first_about_a_sale_on_the_screen()
+    {
+        var (ctx, api) = ScreenContext.Create("sales.create");
+        using var _ = ctx;
+        api.Json("GET", "/api/settings/features", new
+            {
+                status = "Blocked", plan = "Estándar", expiresUtc = DateTime.UtcNow.AddDays(-40), enabled = Array.Empty<string>(), registers = 1, warning = "Blocked",
+            })
+           .Respond("DELETE", "/api/identity/sessions/current", _ => new HttpResponseMessage(HttpStatusCode.NoContent));
+        var cart = ctx.Services.GetRequiredService<Abastalia.Client.UI.State.Cart>();
+        cart.Add(new Abastalia.Client.UI.Api.ProductByCode(Guid.NewGuid(), null, "Refresco", "Unit", "Exempt", 59m, null, 1m, null, null, [], null), null);
+        var frame = ctx.Render<Abastalia.Client.UI.Components.Frame>(p => p.Add(x => x.Body,
+            (Microsoft.AspNetCore.Components.RenderFragment)(b => b.AddContent(0, "PANTALLA DE VENTA"))));
+
+        frame.WaitForAssertion(() => frame.Find("main [role=alert] h1").TextContent.ShouldBe("Su licencia está vencida"));
+        frame.FindAll("main button").ShouldNotContain(b => b.TextContent == "Activar licencia"); // a cashier: the owner signs in to do it
+        frame.FindAll("main button").Single(b => b.TextContent.Contains("Cerrar sesión")).Click();
+        frame.WaitForAssertion(() => frame.Find("[role=dialog]").TextContent.ShouldContain("Hay una venta sin cobrar."));
+        api.Requests.ShouldNotContain(r => r.Method == "DELETE");
+
+        frame.FindAll("[role=dialog] button").Single(b => b.TextContent.Contains("Anularla y salir")).Click();
+        frame.WaitForAssertion(() => api.Requests.ShouldContain(r => r.Method == "DELETE" && r.Route == "/api/identity/sessions/current"));
+        ctx.Services.GetRequiredService<Abastalia.Client.UI.State.Session>().IsOpen.ShouldBeFalse();
+        ctx.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().Uri.ShouldEndWith("/sign-in");
+        frame.Markup.ShouldNotContain("Su licencia está vencida"); // the sign-in screen, not the block, for the next user
     }
 
     [Fact]

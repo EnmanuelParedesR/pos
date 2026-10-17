@@ -393,7 +393,7 @@ internal sealed class FeSigner(CloudDbContext db, IFeCertificateVault vault, FeS
             var taken = await quota.TryConsumeAsync(tenantId, Meter.ReceiverSignatures, 1, ct);
             if (taken.Allowed) return;
             await quota.AddAsync(tenantId, Meter.ReceiverSignatures, 1, ct);
-            if (taken.Used == taken.Limit)
+            if (taken.Used == taken.Limit) // TK-286: the alert-*-fair-use Azure alert matches this text
                 log.LogWarning("Tenant {TenantId} passed its fair use of receiver signatures ({Limit} this month): still signing, review its plan", tenantId, taken.Limit);
         }
         catch (Exception e) when (e is not OperationCanceledException) { log.LogError(e, "Could not count a receiver signature of tenant {TenantId}", tenantId); }

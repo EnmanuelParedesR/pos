@@ -11,7 +11,9 @@ namespace Abastalia.Host.Cloud.Ingest;
 /// <param name="Payload">The event JSON as stored in the node outbox: a JSON object, or that JSON as a string.</param>
 public sealed record IngestEvent(Guid Id, string? Type, Guid AggregateId, DateTime OccurredUtc, JsonElement Payload);
 public sealed record IngestRequest(IReadOnlyList<IngestEvent>? Events);
-public sealed record IngestResponse(IReadOnlyList<Guid> Accepted);
+/// <param name="LicenseUtc">TK-287: when the business's subscription last changed (a payment, a staff override, a block). The store pulls its
+/// license when this moves, so a block or an unblock from the console reaches it with its next upload instead of its next 4-hour heartbeat.</param>
+public sealed record IngestResponse(IReadOnlyList<Guid> Accepted, DateTime? LicenseUtc = null);
 
 /// <remarks>R11 B-Med3: a compromised store PC cannot fill the database. Per PC, <c>Ingest:BatchesPerMinutePerNode</c> (60) batches; per event,
 /// <see cref="MaxPayloadBytes"/>; a type Abastalia does not know yet waits only up to <c>Ingest:MaxUnknownPending</c> (1000) per business; and per
@@ -58,7 +60,8 @@ internal static class IngestEndpoint
             await db.SaveChangesAsync(ct);
 
             signal.Notify();
-            return Results.Ok(new IngestResponse(batch.Select(e => e.Id).ToList()));
+            var license = await db.TenantSubscriptions.AsNoTracking().Where(s => s.TenantId == node.TenantId).Select(s => (DateTime?)s.UpdatedUtc).FirstOrDefaultAsync(ct);
+            return Results.Ok(new IngestResponse(batch.Select(e => e.Id).ToList(), license is { } l ? DateTime.SpecifyKind(l, DateTimeKind.Utc) : null));
         }).RequireAuthorization(CloudAuth.NodePolicy).RequireRateLimiting(NodeRateLimit);
 
     private static string Payload(IngestEvent e) => e.Payload.ValueKind == JsonValueKind.String ? e.Payload.GetString()! : e.Payload.GetRawText();

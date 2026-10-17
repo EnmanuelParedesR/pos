@@ -105,7 +105,7 @@
             </div>
         }
         <main style="flex:1 1 auto;display:flex;flex-direction:column;min-height:0">
-            @if (_license is { Status: "Blocked" } && !IsBackOffice && Route != "close-register")
+            @if (_license is { Status: "Blocked" } && Session.IsOpen && !IsBackOffice && Route != "close-register")
             {
                 @* TK-279: no new sale or shift; closing the open shift, the back office (reports, exports, backups) and installing the license go on. *@
                 <div class="esc-page" style="align-items:center;justify-content:center" role="alert">
@@ -124,7 +124,13 @@
                             {
                                 <Button OnClick="@(() => Nav.NavigateTo("close-register"))">Cerrar el turno</Button>
                             }
+                            @* TK-287: the next user (the owner, to activate the license) signs in here. *@
+                            <Button Variant="Button.Variants.Ghost" OnClick="SignOutAsync"><Icon Name="sign-out" />Cerrar sesión</Button>
                         </div>
+                        @if (_leaving)
+                        {
+                            <Dialog Title="Cerrar sesión" OnClose="() => _leaving = false"><UnpaidSaleChoice OnCleared="SignOutAsync" /></Dialog>
+                        }
                     </section>
                 </div>
             }
@@ -158,6 +164,20 @@
     private string Route => Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
     private bool _ready;
     private bool _help;
+    private bool _leaving;
+
+    private async Task SignOutAsync()
+    {
+        if (!Cart.IsEmpty)
+        {
+            _leaving = true; // the next user must not inherit the sale (R7 #26)
+            return;
+        }
+        _leaving = false;
+        await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
+        Session.Close();
+        Nav.NavigateTo("sign-in");
+    }
 
     /// <summary>The back office's "Ayuda" button opens the same panel (Admin gets this Frame as a cascading value).</summary>
     public void ShowHelp()

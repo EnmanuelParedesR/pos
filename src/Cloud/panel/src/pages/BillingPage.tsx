@@ -256,14 +256,18 @@ export function PlatformBillingCard({ tenantId }: { tenantId: string }) {
   const [note, setNote] = useState("");
   const [saveError, setSaveError] = useState<ApiError | null>(null);
   const [blockReason, setBlockReason] = useState("");
+  const [unblockedUnpaid, setUnblockedUnpaid] = useState(false);
   if (error) return <LoadError error={error} />;
   if (!data) return null;
   const s = data.subscription;
+  // TK-287: without paid time the cloud issues no license, so an unblocked store keeps its blocked one until staff set an agreement.
+  const paid = [s.paidThroughUtc, s.manualUntilUtc].some((d) => d && Date.parse(d) > Date.now());
 
-  // TK-279: the stores stop selling once they pull the next license (at most 4 hours); unblocking lifts it the same way.
+  // TK-279/TK-287: the stores stop selling once they pull the next license (with their next upload; a blocked one asks every 5 minutes).
   async function block(blocked: boolean) {
     try {
       await api(`/api/platform/tenants/${tenantId}/block`, "PUT", { blocked, reason: blockReason });
+      setUnblockedUnpaid(!blocked && !paid);
       setSaveError(null);
       setBlockReason("");
       reload();
@@ -337,6 +341,13 @@ export function PlatformBillingCard({ tenantId }: { tenantId: string }) {
           </span>
         </li>
       </ul>
+      {!paid && (s.blockedUtc || unblockedUnpaid) && (
+        <Notice kind="warning" title={s.blockedUtc ? "Este negocio no tiene tiempo pagado." : "Desbloqueado, pero sus tiendas siguen bloqueadas."}>
+          {s.blockedUtc
+            ? "Desbloquearlo no basta: sus tiendas siguen bloqueadas hasta que ponga un acuerdo en «Pagado hasta (acuerdo)»."
+            : "No tiene tiempo pagado: ponga un acuerdo en «Pagado hasta (acuerdo)» para que vuelvan a vender."}
+        </Notice>
+      )}
       <div className="esc-row" style={{ gap: 12, flexWrap: "wrap", marginTop: 12 }}>
         <label className="esc-field" style={{ minWidth: 240, flex: 1 }}>
           <span>Motivo del bloqueo o desbloqueo</span>
@@ -348,8 +359,7 @@ export function PlatformBillingCard({ tenantId }: { tenantId: string }) {
         </button>
       </div>
       <p className="esc-muted" style={{ marginTop: 4 }}>
-        Bloqueado, sus tiendas no venden ni abren turnos (cierran el turno abierto, reportan y respaldan). Llega con la próxima licencia (hasta 4 horas).
-        Al desbloquear sin tiempo pagado, ponga también un acuerdo: si no, la tienda sigue bloqueada.
+        Bloqueado, sus tiendas no venden ni abren turnos (cierran el turno abierto, reportan y respaldan). Llega a las tiendas conectadas en minutos.
       </p>
       {saveError && <Notice kind="error" title={saveError.detail} />}
       {data.events.length > 0 && (

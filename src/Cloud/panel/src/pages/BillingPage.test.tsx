@@ -139,7 +139,32 @@ it("TK-279: staff block a business with its reason, and unblock it", async () =>
   expect(url).toMatch(/\/api\/platform\/tenants\/t1\/block$/);
   expect(JSON.parse(String(init!.body))).toEqual({ blocked: true, reason: "Sin pago" });
 
+  // TK-287: no paid time, so unblocking alone leaves the stores blocked: the console says so before and after.
+  expect(screen.getByText("Este negocio no tiene tiempo pagado.")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Motivo del bloqueo o desbloqueo"), { target: { value: "Pagó por transferencia" } });
   fireEvent.click(screen.getByRole("button", { name: "Desbloquear negocio" }));
   await screen.findByRole("button", { name: "Bloquear negocio" });
+  expect(screen.getByText("Desbloqueado, pero sus tiendas siguen bloqueadas.")).toBeTruthy();
+});
+
+it("TK-287: unblocking a business with paid time shows no warning", async () => {
+  let blocked: string | null = "2026-10-16T00:00:00Z";
+  const view = (): PlatformBilling => ({
+    subscription: {
+      status: "Active", interval: null, paddleSubscriptionId: null, paddleCustomerId: null, paidThroughUtc: "2999-01-01T00:00:00Z", nextBilledUtc: null,
+      pastDueSinceUtc: null, manualUntilUtc: null, manualNote: null, updatedUtc: null, blockedUtc: blocked, blockNote: null,
+    },
+    events: [],
+  });
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+    if (init?.method !== "PUT") return json(200, view());
+    blocked = null;
+    return json(204);
+  }));
+  render(<PlatformBillingCard tenantId="t1" />);
+
+  fireEvent.change(await screen.findByLabelText("Motivo del bloqueo o desbloqueo"), { target: { value: "Pagó" } });
+  fireEvent.click(screen.getByRole("button", { name: "Desbloquear negocio" }));
+  await screen.findByRole("button", { name: "Bloquear negocio" });
+  expect(screen.queryByText(/tiempo pagado|siguen bloqueadas/)).toBeNull();
 });

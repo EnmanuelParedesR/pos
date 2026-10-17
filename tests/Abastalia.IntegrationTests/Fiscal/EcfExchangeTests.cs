@@ -381,3 +381,52 @@ public sealed class RemoteSigningTests(ExchangeAbastaliaApp app) : IClassFixture
 
     private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
 }
+/// <summary>TK-283: the TK-156 clock rule covers what the store signs as receiver. With the clock off no ARECF is signed for the cloud (the poll stops,
+/// so the cloud answers the supplier 503 + Retry-After and acknowledges later) and the owner's ACECF refuses with the same message as the e-CF.</summary>
+public sealed class ReceiverClockTests(ExchangeAbastaliaApp app) : IClassFixture<ExchangeAbastaliaApp>
+{
+    [Fact]
+    public async Task With_the_clock_off_the_store_signs_no_acknowledgement_nor_approval_until_it_is_fixed()
+    {
+        var admin = await app.SetUpAsync();
+        await app.ConnectAsync();
+        app.Dgii.Directory["101672919"] = FakeBuyerReceiver.Url;
+        var item = new
+        {
+            id = 21L, environment = "testecf", issuerRnc = "101672919", issuerName = "Distribuidora del Cibao SRL", eNcf = "E310000000021", type = 31,
+            issuedOn = "2026-10-15", total = 1180m, itbis = 180m, receivedUtc = DateTime.UtcNow, xmlGzip = Convert.ToBase64String(EcfSubmissionQueue.Zip("<ECF/>")),
+        };
+        app.Cloud.Respond = path => path switch
+        {
+            ReceivedDocumentsPuller.PullPath => Json(new { items = app.Cloud.Requests.Last().Body.GetProperty("after").GetInt64() < 21 ? new[] { item } : [] }),
+            RemoteSigning.NextPath => new HttpResponseMessage(HttpStatusCode.NoContent),
+            _ => null,
+        };
+        (await app.InScopeAsync(sp => sp.GetRequiredService<ReceivedDocumentsPuller>().PullAsync(CancellationToken.None))).ShouldBe(1);
+        var id = (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/received"))[0].GetProperty("id").GetGuid();
+        async Task MeasureAsync(int minutesAhead)
+        {
+            app.Dgii.AppAheadBy = TimeSpan.FromMinutes(minutesAhead);
+            (await admin.PostAsync("/api/fiscal/dgii-status", null)).EnsureSuccessStatusCode(); // the seed's Date header measures the clock
+        }
+
+        await MeasureAsync(3);
+        (await PollAsync()).ShouldBe(RemoteSigning.Idle);
+        app.Cloud.To(RemoteSigning.NextPath).ShouldBeEmpty();
+        var refused = await (await admin.PostAsJsonAsync($"/api/fiscal/received/{id}/approval", new { approve = true })).Json();
+        refused.GetProperty("code").GetString().ShouldBe("Fiscal.ClockOff");
+        refused.GetProperty("detail").GetString()!.ShouldStartWith("La hora de la PC principal está adelantada 3 minutos");
+        app.Buyer.Requests.ShouldNotContain(r => r.Path == "/fe/aprobacioncomercial/api/ecf");
+        app.Dgii.To("/aprobacioncomercial/api/aprobacioncomercial").ShouldBeEmpty();
+
+        await MeasureAsync(0);
+        (await PollAsync()).ShouldBe(TimeSpan.Zero);
+        app.Cloud.To(RemoteSigning.NextPath).ShouldHaveSingleItem();
+        (await admin.PostAsJsonAsync($"/api/fiscal/received/{id}/approval", new { approve = true })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        app.Dgii.To("/aprobacioncomercial/api/aprobacioncomercial").ShouldHaveSingleItem();
+    }
+
+    private Task<TimeSpan> PollAsync() => app.InScopeAsync(sp => sp.GetRequiredService<RemoteSigning>().PollOnceAsync(CancellationToken.None));
+
+    private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = JsonContent.Create(value) };
+}

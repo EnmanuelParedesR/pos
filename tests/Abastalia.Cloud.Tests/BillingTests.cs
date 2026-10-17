@@ -439,6 +439,10 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
         var unblocked = await LicenseAsync();
         (unblocked!.Blocked, unblocked.ExpiresUtc).ShouldBe((false, PeriodEnd.AddDays(3)));
         unblocked.IssuedUtc.ShouldBeGreaterThan(blocked.IssuedUtc);
+
+        // TK-287: every upload says when the license last changed, so the store asks for it then instead of at its next heartbeat.
+        var upload = await (await node.SendAsync(new { id = Guid.NewGuid(), type = "Abastalia.Test.Ping", aggregateId = Guid.NewGuid(), occurredUtc = DateTime.UtcNow, payload = new { } })).Json();
+        upload.GetProperty("licenseUtc").GetDateTime().ShouldBe(unblocked.IssuedUtc, TimeSpan.FromSeconds(1));
     }
 }
 

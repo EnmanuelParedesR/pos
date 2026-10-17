@@ -113,3 +113,55 @@ public sealed class ReferredTrialTests(AbastaliaApp app) : IClassFixture<Abastal
         (await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.Select(b => b.TrialDays).SingleAsync())).ShouldBe(30); // kept for restarts
     }
 }
+
+/// <summary>TK-287: a block or an unblock from the console reaches the store with its next upload (the cloud's <c>licenseUtc</c> moved), not at its
+/// next 4-hour heartbeat; a blocked store, which uploads little, asks every few minutes. Own app: it installs licenses and moves the clock.</summary>
+public sealed class LicenseSignalTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    [Fact]
+    public async Task The_store_pulls_its_license_when_the_cloud_stamp_moves_and_every_few_minutes_while_blocked()
+    {
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        LicenseData License(int minutes, DateTime expires) =>
+            new("Carnicería La Esquina", "Varias cajas", [], new Dictionary<string, int> { ["Registers"] = 3 }, now.AddMinutes(minutes), expires);
+        await app.ConnectAsync();
+        var (stamp, license) = ((DateTime?)null, Jws.Sign(License(1, now.AddMinutes(1)) with { Blocked = true }, app.CloudLicenseKey));
+        app.Cloud.Respond = path => path switch
+        {
+            CloudUploader.IngestPath => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new
+            {
+                accepted = app.Cloud.Requests.Last().Body.GetProperty("events").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToList(), licenseUtc = stamp,
+            }) },
+            PullLicense.Path => new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { license }) },
+            _ => null,
+        };
+        var pulls = () => app.Cloud.To(PullLicense.Path).Count();
+        Task Heartbeat() => app.InScopeAsync(sp => sp.GetRequiredService<Abastalia.BuildingBlocks.Messaging.ICommandHandler<SendHeartbeat.Command, Abastalia.BuildingBlocks.Messaging.Ok>>()
+            .Handle(new SendHeartbeat.Command(), CancellationToken.None));
+        Task Upload() => app.InScopeAsync(sp => sp.GetRequiredService<CloudUploader>().UploadAsync(CancellationToken.None));
+        string Status() => app.Services.GetRequiredService<IFeatureService>().Status.ToString();
+
+        await Heartbeat();
+        await Upload();
+        pulls().ShouldBe(0); // no stamp (an older cloud, or no subscription): nothing to ask
+
+        stamp = now; // the console blocked the business
+        await Heartbeat();
+        await Upload();
+        (pulls(), Status()).ShouldBe((1, "Blocked"));
+        await Heartbeat();
+        await Upload();
+        pulls().ShouldBe(1); // the same stamp: asked once
+
+        // Blocked: it asks again every few minutes, uploading or not; the unblock lands then.
+        license = Jws.Sign(License(2, now.AddDays(30)), app.CloudLicenseKey);
+        await Upload();
+        pulls().ShouldBe(1);
+        app.Clock.Advance(LicenseSignal.WhileBlocked);
+        await Upload();
+        (pulls(), Status()).ShouldBe((2, "Active"));
+        app.Clock.Advance(LicenseSignal.WhileBlocked);
+        await Upload();
+        pulls().ShouldBe(2); // not blocked: no more asking
+    }
+}

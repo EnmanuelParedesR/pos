@@ -100,7 +100,7 @@ internal static class OperationsErrors
         $"No se puede firmar el comprobante electrónico ({why}). Quien maneje los comprobantes puede activar la contingencia (serie B) en Comprobantes electrónicos.");
     /// <summary>TK-156: only the owner's signing actions refuse; a sale goes on and its e-CF waits for the clock.</summary>
     public static Error ClockOff(string problem) => Error.Conflict("Fiscal.ClockOff",
-        $"{problem}. La DGII rechaza lo firmado con otra hora: corríjala y vuelva a intentar en un minuto.");
+        $"{problem}. La DGII rechaza lo firmado con otra hora: vuelva a intentarlo un minuto después de corregirla.");
     public static Error NoPaperSequence(EcfType type) => Error.Conflict("Fiscal.NoPaperSequence",
         $"Contingencia activa y no quedan comprobantes serie B para {FiscalErrors.Name(type).Replace(" Electrónica", "", StringComparison.Ordinal)}. Cargue un rango B.");
     public static readonly Error CanStillSign = Error.Conflict("Fiscal.CanStillSign",
