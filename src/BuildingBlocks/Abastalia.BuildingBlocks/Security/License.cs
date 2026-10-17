@@ -42,8 +42,10 @@ public interface IFeatureService
 /// <param name="Blocked">TK-279: Abastalia blocked the business (platform console): the store is Blocked while this is its installed license.</param>
 /// <param name="BlockAfterDays">TK-279: days after <paramref name="ExpiresUtc"/> until Blocked; null = 30. Only a signed value sets it, never a local setting.</param>
 /// <param name="Rnc">R12: the business's RNC; the store refuses a license for another RNC. Null (older licenses): accepted until they expire.</param>
+/// <param name="ReplacesRnc">TK-368: support changed the business's RNC (platform console, with a reason): the store whose RNC is this one takes
+/// <paramref name="Rnc"/> as its new RNC when it installs the license. The only way the RNC changes once a license names it.</param>
 public sealed record LicenseData(string Store, string Plan, IReadOnlyList<string> Features, IReadOnlyDictionary<string, int> Limits, DateTime IssuedUtc, DateTime ExpiresUtc,
-    Guid? TenantId = null, bool Blocked = false, int? BlockAfterDays = null, string? Rnc = null);
+    Guid? TenantId = null, bool Blocked = false, int? BlockAfterDays = null, string? Rnc = null, string? ReplacesRnc = null);
 
 /// <summary>R12 (security B3): the cloud's signed word that a business's store trial lasts <paramref name="Days"/> (TK-276, a referral). Signed with the
 /// license keys under its own JWS <c>typ</c> (<see cref="Jws.TrialType"/>), so it never passes for a license nor a license for it.</summary>

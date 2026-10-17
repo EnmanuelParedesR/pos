@@ -82,7 +82,8 @@ internal sealed class LicenseService : IFeatureService
                 return key;
             })];
         FilePath = config["License:File"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Abastalia", "license.jws");
-        if (File.Exists(FilePath) && Jws.Verify(File.ReadAllText(FilePath), _keys) is { IsSuccess: true } saved) (_data, _current) = (saved.Value, File.ReadAllText(FilePath).Trim());
+        if (File.Exists(FilePath) && Jws.Verify(File.ReadAllText(FilePath), _keys) is { IsSuccess: true } saved)
+            (_data, _current, _installedRnc) = (saved.Value, File.ReadAllText(FilePath).Trim(), Rnc.Normalize(saved.Value.Rnc));
     }
 
     public static readonly Error Older = Error.Conflict("License.Older", "Esta licencia es más antigua que la última instalada. Pídale a Abastalia la licencia vigente.");
@@ -92,6 +93,11 @@ internal sealed class LicenseService : IFeatureService
     private LicenseData? _data;
     private string? _current;
     private volatile bool _rncChecked;
+    private volatile string? _installedRnc;
+
+    /// <summary>TK-368: the RNC (digits) the license installed on this PC names, also when that license is ignored because the business RNC is
+    /// another one; null without a license or for one issued before R12. The business RNC cannot move away from it, and no e-CF is issued for another.</summary>
+    public string? LicensedRnc => _installedRnc;
 
     /// <summary>The installed license as signed (JWS), or null.</summary>
     public string? Current => Data is null ? null : _current;
@@ -333,18 +339,26 @@ internal sealed class LicenseService : IFeatureService
 
     public Result<ServerTime> VerifyTime(string jws) => Jws.Verify<ServerTime>(jws, Jws.TimeType, _keys);
 
-    public Result<LicenseData> Install(string jws)
+    /// <param name="newRnc">TK-368: the RNC the business moves to (support changed it); the caller saves it in its own transaction.</param>
+    public Result<LicenseData> Install(string jws, out string? newRnc)
     {
+        newRnc = null;
         var verified = Verify(jws);
         if (verified.IsFailure) return verified.Error!;
         var v = verified.Value;
-        if (v.Rnc is { } rnc && !SameRnc(rnc, BusinessRnc())) return OtherBusiness;
+        var business = BusinessRnc();
+        // TK-368: a license for another RNC only fits when support moved this business's RNC to it (ReplacesRnc = the RNC it has now).
+        var moves = v.Rnc is { } rnc && !SameRnc(rnc, business);
+        if (moves && !(v.ReplacesRnc is { } old && SameRnc(old, business))) return OtherBusiness;
         if (Newest is { } newest && v.IssuedUtc < newest.IssuedUtc) return Older; // R12 (security M2): never undoes a newer one, e.g. a block
+        // shortcut: if the caller's transaction then fails, the file names the new RNC and the database the old one: the license is ignored at the
+        // next start until it is installed again (it still fits: it replaces the RNC the business has).
+        if (moves) newRnc = Rnc.Normalize(v.Rnc);
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         File.WriteAllText(FilePath, jws.Trim());
         WriteSealed(IssuedFile, $"{v.IssuedUtc.Ticks}|{(v.Blocked ? 1 : 0)}");
         lock (_gate) (_newest, _newestLoaded) = ((v.IssuedUtc, v.Blocked), true);
-        (_data, _current, _rncChecked) = (v, jws.Trim(), true);
+        (_data, _current, _rncChecked, _installedRnc) = (v, jws.Trim(), true, Rnc.Normalize(v.Rnc));
         Time.Observe(v.IssuedUtc);
         return v;
     }
@@ -518,14 +532,15 @@ internal static class InstallLicense
         public Validator() => RuleFor(c => c.License).NotEmpty().MaximumLength(10_000);
     }
 
-    internal sealed class Handler(LicenseService license, IAuditLog audit) : ICommandHandler<Command, Ok>
+    internal sealed class Handler(LicenseService license, IAuditLog audit, SettingsDbContext db) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
-            var installed = license.Install(c.License);
+            var installed = license.Install(c.License, out var newRnc);
             if (installed.IsFailure) return installed.Error!;
+            if (newRnc is not null) await db.Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.Rnc, newRnc), ct); // TK-368: support moved the RNC
             await audit.RecordAsync("settings.license", "License", Guid.Empty,
-                new { installed.Value.Plan, installed.Value.ExpiresUtc, installed.Value.Features, installed.Value.Limits }, ct);
+                new { installed.Value.Plan, installed.Value.ExpiresUtc, installed.Value.Features, installed.Value.Limits, installed.Value.Rnc, installed.Value.ReplacesRnc }, ct);
             return Ok.Value;
         }
     }

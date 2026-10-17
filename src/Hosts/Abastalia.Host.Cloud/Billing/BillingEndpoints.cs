@@ -53,6 +53,9 @@ public sealed record BillingOverrideRequest(DateTime? ManualUntilUtc, string? No
 /// <summary>TK-279: block (or unblock) the business; the reason is required either way.</summary>
 public sealed record BlockRequest(bool Blocked, string? Reason);
 
+/// <summary>TK-368: support changes a store's RNC (a typo, a new company); the reason is required.</summary>
+public sealed record StoreRncRequest(string? Rnc, string? Reason);
+
 public sealed record PlatformBillingResponse(TenantSubscriptionView Subscription, IReadOnlyList<BillingEventView> Events);
 public sealed record TenantSubscriptionView(SubscriptionStatus Status, BillingInterval? Interval, string? PaddleSubscriptionId, string? PaddleCustomerId,
     DateTime? PaidThroughUtc, DateTime? NextBilledUtc, DateTime? PastDueSinceUtc, DateTime? ManualUntilUtc, string? ManualNote, DateTime? UpdatedUtc,
@@ -98,10 +101,15 @@ internal static class BillingEndpoints
             if (request.HasJsonContentType())
                 try { r = await request.ReadFromJsonAsync<NodeLicenseRequest>(ct); }
                 catch (JsonException) { return Results.BadRequest(); }
-            if (r is not null)
+            // TK-368: the first RNC sent binds the store; another one later is only reported (an alert in the console), never signed.
+            if (r is not null && CloudLicenses.Rnc(r.Rnc) is { } rnc)
             {
-                var rnc = CloudLicenses.Rnc(r.Rnc);
-                await db.Stores.Where(s => s.Id == node.StoreId && s.TenantId == node.TenantId && s.Rnc != rnc).ExecuteUpdateAsync(s => s.SetProperty(x => x.Rnc, rnc), ct);
+                var store = db.Stores.Where(s => s.Id == node.StoreId && s.TenantId == node.TenantId);
+                var saved = await store.AsNoTracking().Select(s => new { s.Rnc, s.ReportedRnc, s.PreviousRnc }).SingleOrDefaultAsync(ct);
+                // The RNC support just replaced is no alert: the store sends it until it installs the license with the new one.
+                var reported = saved?.Rnc is null || saved.Rnc == rnc || saved.PreviousRnc == rnc ? null : rnc;
+                if (saved is not null && (saved.Rnc is null || saved.ReportedRnc != reported))
+                    await store.ExecuteUpdateAsync(s => s.SetProperty(x => x.Rnc, saved.Rnc ?? rnc).SetProperty(x => x.ReportedRnc, reported), ct);
             }
             var referred = ReferralEndpoints.On(paddle, referrals)
                 && await db.TenantSubscriptions.AnyAsync(s => s.TenantId == node.TenantId && s.ReferredByCode != null, ct);
@@ -199,6 +207,26 @@ internal static class BillingEndpoints
             var now = clock.GetUtcNow().UtcDateTime;
             if (r.Blocked != (s.BlockedUtc is not null)) (s.BlockedUtc, s.UpdatedUtc) = (r.Blocked ? now : null, now);
             s.BlockNote = reason;
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        });
+
+        // TK-368: the only way a store's RNC changes once its license names it. The next license says replacesRnc (the old one), so the store
+        // with the old RNC takes the new one; UpdatedUtc moves so the stores install it as newer.
+        platform.MapPut("/tenants/{tenantId:guid}/stores/{storeId:guid}/rnc", async (Guid tenantId, Guid storeId, StoreRncRequest r, CloudDbContext db,
+            TimeProvider clock, CancellationToken ct) =>
+        {
+            var store = await db.Stores.SingleOrDefaultAsync(s => s.Id == storeId && s.TenantId == tenantId, ct);
+            if (store is null) return EndpointExtensions.Problem(Error.NotFound("Platform.StoreNotFound", "No encontramos esa tienda."));
+            if (CloudLicenses.Rnc(r.Rnc) is not { } rnc)
+                return EndpointExtensions.Problem(Error.Validation("Platform.InvalidRnc", "El RNC tiene 9 números (o 11 si es una cédula)."));
+            var reason = r.Reason?.Trim() ?? "";
+            if (reason.Length is 0 or > 500)
+                return EndpointExtensions.Problem(Error.Validation("Billing.ReasonRequired", "Escriba por qué, en 500 letras o menos."));
+            if (rnc != store.Rnc) (store.PreviousRnc, store.Rnc) = (store.Rnc, rnc);
+            (store.RncNote, store.ReportedRnc) = (reason, store.ReportedRnc == rnc ? null : store.ReportedRnc);
+            var now = clock.GetUtcNow().UtcDateTime;
+            await db.TenantSubscriptions.Where(s => s.TenantId == tenantId).ExecuteUpdateAsync(s => s.SetProperty(x => x.UpdatedUtc, now), ct);
             await db.SaveChangesAsync(ct);
             return Results.NoContent();
         });

@@ -109,6 +109,9 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.ToTable("Stores");
             e.Property(s => s.Name).HasMaxLength(100);
             e.Property(s => s.Rnc).HasMaxLength(11);
+            e.Property(s => s.ReportedRnc).HasMaxLength(11);
+            e.Property(s => s.PreviousRnc).HasMaxLength(11);
+            e.Property(s => s.RncNote).HasMaxLength(500);
             e.HasIndex(s => new { s.TenantId, s.Name });
         });
         builder.Entity<ConnectionCode>(e =>
@@ -410,8 +413,15 @@ public sealed class Store
     public Guid TenantId { get; set; }
     public string Name { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
-    /// <summary>TK-308: the business RNC the store's main PC sent at its last license pull (digits only; public, but masked in logs). Its license carries it.</summary>
+    /// <summary>TK-308: the business RNC the store's main PC sent at its first license pull (digits only; public, but masked in logs). Its license carries it.
+    /// TK-368: once set, only support changes it (platform console, with a reason); what the store sends later never does.</summary>
     public string? Rnc { get; set; }
+    /// <summary>TK-368: the store sent this RNC, not <see cref="Rnc"/>: an alert in the console (one license used for another business?). Null when they match.</summary>
+    public string? ReportedRnc { get; set; }
+    /// <summary>TK-368: the RNC support replaced; the license says so (<c>replacesRnc</c>), so the store with it takes the new one.</summary>
+    public string? PreviousRnc { get; set; }
+    /// <summary>TK-368: why support changed the RNC (the call itself is in PlatformAudit).</summary>
+    public string? RncNote { get; set; }
 }
 
 /// <summary>8 digits, 30 minutes, single use: typed at the store's main PC to register it as a node.</summary>

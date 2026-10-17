@@ -672,6 +672,8 @@ export function PlatformStorePage() {
             </Card>
           )}
 
+          <StoreRnc store={s} onChange={reload} />
+
           <Card title="Cajas (PC principal)" className="esc-span-12">
             <Nodes nodes={s.nodes} onChange={reload} />
           </Card>
@@ -712,6 +714,55 @@ export function PlatformStorePage() {
         </div>
       )}
     </>
+  );
+}
+
+/** TK-368: the RNC the store's license names. Once set, only support changes it here (with a reason): the next license carries the new RNC and
+ * the old one it replaces, and the store takes it when it installs that license. */
+function StoreRnc({ store: s, onChange }: { store: PlatformStoreDetail; onChange: () => void }) {
+  const [rnc, setRnc] = useState("");
+  const [reason, setReason] = useState("");
+  const digits = rnc.replace(/\D/g, "");
+
+  // The server checks the RNC (9 or 11 digits) and the reason; ConfirmButton shows its answer.
+  const save = () =>
+    api(`/api/platform/tenants/${s.tenantId}/stores/${s.id}/rnc`, "PUT", { rnc: digits, reason }).then(() => {
+      setRnc("");
+      setReason("");
+      onChange();
+    });
+
+  return (
+    <Card title="RNC de la licencia" className="esc-span-12">
+      <ul className="platform-kv">
+        <Kv label="RNC firmado en la licencia" value={s.rnc ?? "Todavía no lo envió"} />
+        {s.reportedRnc && <Kv label="La tienda envió otro RNC" value={s.reportedRnc} warn />}
+        {s.previousRnc && <Kv label="Último cambio" value={`Antes ${s.previousRnc}${s.rncNote ? ` · ${s.rncNote}` : ""}`} />}
+      </ul>
+      {s.reportedRnc && (
+        <Notice kind="warning" title="La tienda usa un RNC distinto al de su licencia.">
+          Puede ser una licencia usada en otro negocio. Si el cambio es legítimo, verifíquelo con el dueño y cámbielo aquí.
+        </Notice>
+      )}
+      <div className="esc-row" style={{ gap: 12, flexWrap: "wrap", marginTop: 12 }}>
+        <label className="esc-field" style={{ minWidth: 160 }}>
+          <span>RNC nuevo</span>
+          <input className="esc-input" inputMode="numeric" maxLength={13} value={rnc} onChange={(e) => setRnc(e.target.value)} />
+        </label>
+        <label className="esc-field" style={{ minWidth: 240, flex: 1 }}>
+          <span>Motivo del cambio</span>
+          <input className="esc-input" value={reason} maxLength={500} placeholder="Error al escribirlo, empresa nueva…" onChange={(e) => setReason(e.target.value)} />
+        </label>
+        <ConfirmButton
+          label="Cambiar RNC"
+          confirm={`¿Verificó con el dueño que el RNC del negocio es ${digits || "el escrito"}? La próxima licencia de la tienda lo lleva.`}
+          onConfirm={save}
+        />
+      </div>
+      <p className="esc-muted" style={{ marginTop: 4 }}>
+        La tienda no deja cambiar el RNC en Configuración → Negocio una vez que su licencia lo nombra. El cambio llega con su próxima licencia.
+      </p>
+    </Card>
   );
 }
 
@@ -1239,6 +1290,27 @@ export function PlatformWatchPage() {
                   (s.queueHours ?? 0) > 72 ? ["error", "Pasó las 72 h"] : (s.queueHours ?? 0) > w.thresholds.queueStaleHours ? ["warning", "Atrasada"] : ["success", "Al día"]
                 }
               />
+            </Card>
+
+            {/* TK-368: a license used for another business, or several companies on one account. */}
+            <Card title="RNC por revisar" aside="El de la licencia contra el que usa la tienda" className="esc-span-12">
+              {(w.rncs ?? []).length === 0 ? (
+                <p className="esc-muted">Todas las tiendas usan el RNC de su licencia.</p>
+              ) : (
+                <ul className="platform-kv">
+                  {(w.rncs ?? []).map((r) => (
+                    <li key={r.storeId}>
+                      <span>
+                        <Link to={`/app/platform/stores/${r.storeId}`}>{r.storeName}</Link>
+                        <span className="esc-table__sub">
+                          {r.tenantName} · {r.reportedRnc ? `licencia ${r.rnc}, la tienda usa ${r.reportedRnc}` : `RNC ${r.rnc}; el cliente tiene tiendas con otro RNC`}
+                        </span>
+                      </span>
+                      <span className={`esc-pill esc-pill--${r.reportedRnc ? "error" : "warning"}`}>{r.reportedRnc ? "Otro RNC" : "Varias empresas"}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </Card>
           </div>
         </>

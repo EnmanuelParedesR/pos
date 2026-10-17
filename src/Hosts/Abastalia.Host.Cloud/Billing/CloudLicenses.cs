@@ -71,11 +71,12 @@ internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, Bi
         var licensed = await db.Stores.AsNoTracking().Where(s => s.TenantId == tenantId).OrderBy(s => s.CreatedUtc).ThenBy(s => s.Id)
             .Take(Count(config, catalog, plan, addOns, nameof(AbastaliaProduct.Stores), t => t.Stores) ?? 1).Select(s => s.Id).ToListAsync(ct);
         if (blocked is null && !licensed.Contains(storeId)) return null;
-        var store = await db.Stores.AsNoTracking().Where(s => s.Id == storeId).Select(s => new { s.Name, s.Rnc }).SingleOrDefaultAsync(ct);
+        var store = await db.Stores.AsNoTracking().Where(s => s.Id == storeId).Select(s => new { s.Name, s.Rnc, s.PreviousRnc }).SingleOrDefaultAsync(ct);
         // TK-308: the store refuses a license for another RNC; one that has not sent its RNC yet gets none (accepted until it expires).
         var data = Data(config, catalog, store?.Name ?? tenant.Name, plan, addOns, Truncate(subscription.UpdatedUtc), expires.Value) with
         {
             TenantId = tenantId, Blocked = blocked is not null, BlockAfterDays = config.GetValue<int?>("Billing:License:BlockAfterDays"), Rnc = store?.Rnc,
+            ReplacesRnc = store?.PreviousRnc, // TK-368: support moved the RNC; the store with the old one takes the new one
         };
         return await SignAsync(data, Jws.LicenseType, ct);
     }

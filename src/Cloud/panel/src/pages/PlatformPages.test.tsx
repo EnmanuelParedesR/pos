@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router";
 import { App } from "../App";
 import "../Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
-import type { Me, MetricsOverview, PlatformAccompaniment, PlatformWatch } from "../api";
+import type { Me, MetricsOverview, PlatformAccompaniment, PlatformStoreDetail, PlatformWatch } from "../api";
 import { json } from "../testing";
 import { fromStoreInput, toStoreInput } from "./PlatformPages";
 
@@ -159,6 +159,10 @@ it("TK-311: staff see the platform health with thresholds highlighted, for 24 h 
     quotas: [{ tenantId: "t2", tenantName: "colmado@example.com", meter: "ReceiverSignatures", used: 3100, limit: 3000 }],
     silentStores: [{ tenantId: "t2", tenantName: "colmado@example.com", storeId: "s2", storeName: "Colmado Callado", lastHeartbeatUtc: "2026-10-15T07:00:00Z", queueHours: null }],
     ecfQueues: [{ tenantId: "t3", tenantName: "cola@example.com", storeId: "s3", storeName: "Colmado con Cola", lastHeartbeatUtc: "2026-10-15T14:50:00Z", queueHours: 80 }],
+    rncs: [
+      { tenantId: "t4", tenantName: "prestada@example.com", storeId: "s4", storeName: "Colmado Prestado", rnc: "131245678", reportedRnc: "101672919" },
+      { tenantId: "t5", tenantName: "dos@example.com", storeId: "s5", storeName: "Sucursal Norte", rnc: "130000001", reportedRnc: null },
+    ],
   };
   const fetch = vi.fn(async (url: string) =>
     url.endsWith("/api/me") ? json(200, { ...owner, email: "staff@abastalia.example", isPlatformAdmin: true }) : url.includes("/api/platform/watch") ? json(200, watch) : json(200, []),
@@ -180,7 +184,44 @@ it("TK-311: staff see the platform health with thresholds highlighted, for 24 h 
   expect(within(screen.getByText("colmado@example.com", { selector: "a" }).closest("tr")!).getByText("Pasó el uso justo")).toBeTruthy();
   expect(screen.getByText("Colmado Callado")).toBeTruthy();
   expect(within(screen.getByText("Colmado con Cola").closest("li")!).getByText("Pasó las 72 h")).toBeTruthy();
+  // TK-368: a store using another RNC than its license's, and a business with stores of different RNCs.
+  const borrowed = screen.getByText("Colmado Prestado").closest("li")!;
+  expect(within(borrowed).getByText("Otro RNC")).toBeTruthy();
+  expect(within(borrowed).getByText(/licencia 131245678, la tienda usa 101672919/)).toBeTruthy();
+  expect(within(screen.getByText("Sucursal Norte").closest("li")!).getByText("Varias empresas")).toBeTruthy();
 
   fireEvent.click(screen.getByRole("button", { name: "Últimos 7 días" }));
   await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).includes("/api/platform/watch?days=7"))).toBe(true));
+});
+
+it("TK-368: staff see a store using another RNC and change its RNC with a reason", async () => {
+  localStorage.setItem("abastalia.refreshToken", "saved");
+  const store: PlatformStoreDetail = {
+    id: "s4", tenantId: "t4", tenantName: "prestada@example.com", name: "Colmado Prestado", createdUtc: "2026-10-01T12:00:00Z",
+    checklist: { connected: true, heartbeatReceived: true, businessNameSet: true, rncSet: true, sequencesLoaded: true, activeProducts: 3, firstSaleDay: null, fiscalProvider: null },
+    features: null, nodes: [], days: [], certification: null, rnc: "131245678", reportedRnc: "101672919", previousRnc: null, rncNote: null,
+  };
+  const fetch = vi.fn(async (url: string, init?: RequestInit) =>
+    url.endsWith("/api/me")
+      ? json(200, { ...owner, email: "staff@abastalia.example", isPlatformAdmin: true })
+      : url.includes("/rnc") && init?.method === "PUT"
+        ? new Response(null, { status: 204 })
+        : url.includes("/api/platform/stores/s4") ? json(200, store) : json(200, []),
+  );
+  vi.stubGlobal("fetch", fetch);
+  render(
+    <MemoryRouter initialEntries={["/app/platform/stores/s4"]}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("La tienda usa un RNC distinto al de su licencia.")).toBeTruthy();
+  expect(screen.getByText("131245678")).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("RNC nuevo"), { target: { value: "1-01-67291-9" } });
+  fireEvent.change(screen.getByLabelText("Motivo del cambio"), { target: { value: "Se escribió mal" } });
+  fireEvent.click(screen.getByRole("button", { name: "Cambiar RNC" }));
+  fireEvent.click(screen.getByRole("button", { name: "Sí, cambiar rnc" }));
+  await waitFor(() => expect(fetch.mock.calls.some(([url, init]) => String(url).endsWith("/api/platform/tenants/t4/stores/s4/rnc") && init?.method === "PUT")).toBe(true));
+  const [, init] = fetch.mock.calls.find(([url]) => String(url).endsWith("/rnc"))!;
+  expect(JSON.parse(String(init!.body))).toEqual({ rnc: "101672919", reason: "Se escribió mal" });
 });

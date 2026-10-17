@@ -28,8 +28,9 @@
                         <Field Label="Nombre del negocio" Wide="true" Error="@Err("name")">
                             <input class="esc-input" maxlength="150" @bind="_business.Name" @bind:after='() => Clear("name")' aria-invalid="@Invalid("name")" />
                         </Field>
-                        <Field Label="RNC" Error="@Err("rnc")" Hint="@(_registryName is { } dgii ? $"En el padrón de la DGII: {dgii}" : "9 u 11 números, con o sin guiones.")">
-                            <input class="esc-input" inputmode="numeric" maxlength="13" @bind="_business.Rnc" @bind:after="RncChangedAsync" aria-invalid="@Invalid("rnc")" />
+                        <Field Label="RNC" Error="@Err("rnc")" Hint="@(_rncLocked ? "Atado a su licencia. Para cambiarlo, escríbale a soporte de Abastalia." : _registryName is { } dgii ? $"En el padrón de la DGII: {dgii}" : "9 u 11 números, con o sin guiones.")">
+                            @* TK-368: once the license names the RNC, only support changes it (with a new license). *@
+                            <input class="esc-input" inputmode="numeric" maxlength="13" readonly="@_rncLocked" @bind="_business.Rnc" @bind:after="RncChangedAsync" aria-invalid="@Invalid("rnc")" />
                         </Field>
                         <Field Label="Teléfono">
                             <input class="esc-input" maxlength="30" @bind="_business.Phone" />
@@ -532,6 +533,7 @@
     private enum Section { None, Business, Registers, FiscalSequences, Devices, Hardware, ScaleLabels, Users, Roles, Backups, Cloud, License, Health, Updates }
     private sealed record SyncStatus(bool Connected, Guid? TenantId, Guid? StoreId, string? CloudUrl, DateTime? LastUploadUtc, int PendingEvents, string? LastError);
     private sealed class BusinessForm { public string Name = ""; public string? Rnc, Address, Phone, ReceiptFooter, DiscountCap; public bool RequireReference = true; }
+    private bool _rncLocked;
 
     /// <summary>Opens a section from a link (the Resumen's "Cargar secuencia" → ?section=fiscal).</summary>
     [SupplyParameterFromQuery(Name = "section")] public string? Requested { get; set; }
@@ -624,6 +626,7 @@
             case Section.Business:
                 var b = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value;
                 _business = b is null ? new() : new() { Name = b.Name, Rnc = b.Rnc, Address = b.Address, Phone = b.Phone, ReceiptFooter = b.ReceiptFooter, DiscountCap = b.DiscountCapPercent.ToString("0.##"), RequireReference = b.RequirePaymentReference };
+                _rncLocked = b?.LicensedRnc is { } licensed && licensed == b.Rnc;
                 _approvals = (await Api.GetAsync<List<ApprovalRule>>("/api/settings/approvals")).Value ?? [];
                 (_logoUrl, _logoRaster) = (await Logo.DataUrlAsync(b?.LogoVersion), await Logo.RasterAsync(b?.LogoVersion, 80));
                 break;

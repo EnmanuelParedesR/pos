@@ -31,8 +31,11 @@ public sealed record StoreFeatures(bool OnAccount, bool? ScaleConfigured, bool? 
 /// <param name="Sales">Completed sales in the replica.</param>
 /// <param name="ReportedSales">What the store's heartbeat counted for that day (null without heartbeat).</param>
 public sealed record PlatformStoreDay(DateOnly Day, int Sales, decimal Amount, int? ReportedSales, int? ActiveCashiers, int? Voids);
+/// <param name="Rnc">TK-368: the RNC its license names; <paramref name="ReportedRnc"/>: another one the store sent (an alert); <paramref name="PreviousRnc"/>
+/// and <paramref name="RncNote"/>: the last change by support.</param>
 public sealed record PlatformStoreDetail(Guid Id, Guid TenantId, string TenantName, string Name, DateTime CreatedUtc, SetupChecklist Checklist, StoreFeatures? Features,
-    IReadOnlyList<PlatformNode> Nodes, IReadOnlyList<PlatformStoreDay> Days, CertificationProgress? Certification);
+    IReadOnlyList<PlatformNode> Nodes, IReadOnlyList<PlatformStoreDay> Days, CertificationProgress? Certification, string? Rnc = null, string? ReportedRnc = null,
+    string? PreviousRnc = null, string? RncNote = null);
 
 /// <summary>Cross-tenant reads for Abastalia staff (TK-189). Read-only; every call is audited by the endpoint filter.</summary>
 public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeProvider clock)
@@ -113,7 +116,7 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
                 heartbeat.ActiveRegisters, heartbeat.OpenShifts, heartbeat.LicenseStatus, heartbeat.LicenseEndsUtc),
                         nodes, days, await db.Certifications.AsNoTracking().SingleOrDefaultAsync(c => c.TenantId == store.TenantId && c.StoreId == storeId, ct) is { } cert
                 ? CertificationProgress.Of(cert, tenant.Name, store.Name, clock.GetUtcNow().UtcDateTime)
-                : null);
+                : null, store.Rnc, store.ReportedRnc, store.PreviousRnc, store.RncNote);
 
     }
 

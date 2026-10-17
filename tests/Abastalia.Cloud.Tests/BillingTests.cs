@@ -358,8 +358,45 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
         (time.TenantId, time.Nonce, time.Utc).ShouldBe((owner.TenantId, "abc123", Now));
         Jws.Verify(answer.GetProperty("time").GetString()!, app.LicenseKey).IsFailure.ShouldBeTrue(); // a time is no license
         (await PullAsync(new { rnc = "13124567" })).GetProperty("time").ValueKind.ShouldBe(JsonValueKind.Null); // no nonce, no time
-        (await app.InDbAsync(db => db.Stores.Where(s => s.TenantId == owner.TenantId).Select(s => s.Rnc).SingleAsync())).ShouldBeNull(); // 8 digits: none
-        Rnc(await PullAsync(new { rnc = (string?)null })).ShouldBeNull(); // the store has no RNC yet: a license without one
+        // TK-368: once set, neither a bad RNC (8 digits) nor none changes it.
+        (await app.InDbAsync(db => db.Stores.Where(s => s.TenantId == owner.TenantId).Select(s => s.Rnc).SingleAsync())).ShouldBe("131245678");
+        Rnc(await PullAsync(new { rnc = (string?)null })).ShouldBe("131245678");
+    }
+
+    [Fact]
+    public async Task TK368_the_first_RNC_binds_the_store_another_one_is_an_alert_and_only_staff_change_it_with_a_reason()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner, "Colmado Atado");
+        var storeId = await app.InDbAsync(db => db.Stores.Where(s => s.TenantId == owner.TenantId).Select(s => s.Id).SingleAsync());
+        (await app.SendAsync(Subscription(Id(), "subscription.created", owner.TenantId, "active", Now, PeriodEnd, BillingApp.Registers))).EnsureSuccessStatusCode();
+        async Task<LicenseData> PullAsync(string? rnc) =>
+            Jws.Verify((await (await node.Client.PostAsJsonAsync("/api/nodes/license", new { rnc })).Json()).GetProperty("license").GetString()!, app.LicenseKey).Value;
+
+        (await PullAsync("131245678")).Rnc.ShouldBe("131245678");
+        var other = await PullAsync("101672919"); // the store now says another RNC: never signed, only reported
+        (other.Rnc, other.ReplacesRnc).ShouldBe(("131245678", null));
+        var staff = await app.StaffAsync();
+        var store = await staff.Client.GetFromJsonAsync<JsonElement>($"/api/platform/stores/{storeId}");
+        (store.GetProperty("rnc").GetString(), store.GetProperty("reportedRnc").GetString()).ShouldBe(("131245678", "101672919"));
+        var watch = (await staff.Client.GetFromJsonAsync<JsonElement>("/api/platform/watch")).GetProperty("rncs").EnumerateArray()
+            .Single(r => r.GetProperty("storeId").GetGuid() == storeId);
+        watch.GetProperty("reportedRnc").GetString().ShouldBe("101672919");
+
+        // Only Abastalia staff, with a reason; the next license is newer and says which RNC it replaces.
+        var url = $"/api/platform/tenants/{owner.TenantId}/stores/{storeId}/rnc";
+        (await owner.Client.PutAsJsonAsync(url, new { rnc = "101672919", reason = "x" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await (await staff.Client.PutAsJsonAsync(url, new { rnc = "101672919" })).ErrorCode()).ShouldBe("Billing.ReasonRequired");
+        (await (await staff.Client.PutAsJsonAsync(url, new { rnc = "1234", reason = "x" })).ErrorCode()).ShouldBe("Platform.InvalidRnc");
+        app.Clock.Advance(TimeSpan.FromSeconds(2));
+        (await staff.Client.PutAsJsonAsync(url, new { rnc = "1-01-67291-9", reason = "Se escribió mal al instalar" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var moved = await PullAsync("131245678");
+        (moved.Rnc, moved.ReplacesRnc).ShouldBe(("101672919", "131245678"));
+        moved.IssuedUtc.ShouldBeGreaterThan(other.IssuedUtc);
+        store = await staff.Client.GetFromJsonAsync<JsonElement>($"/api/platform/stores/{storeId}");
+        (store.GetProperty("reportedRnc").ValueKind, store.GetProperty("previousRnc").GetString(), store.GetProperty("rncNote").GetString())
+            .ShouldBe((JsonValueKind.Null, "131245678", "Se escribió mal al instalar"));
+        (await app.InDbAsync(db => db.PlatformAudit.AnyAsync(a => a.TenantId == owner.TenantId && a.Method == "PUT" && a.Path.EndsWith("/rnc")))).ShouldBeTrue();
     }
 
     [Fact]

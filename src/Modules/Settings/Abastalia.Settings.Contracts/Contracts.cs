@@ -4,8 +4,10 @@ namespace Abastalia.Settings.Contracts;
 /// <param name="DiscountCapPercent">Largest discount (percent of each line, after the global discount) a cashier may give without a supervisor.</param>
 /// <param name="RequirePaymentReference">R11 A16: card and transfer payments at the register need their authorization or transfer number.</param>
 /// <param name="LogoVersion">TK-280: changes with each logo upload (a cache key); null when the business has no logo.</param>
+/// <param name="LicensedRnc">TK-368: the RNC the installed license names (digits), or null. The business RNC cannot move away from it and no e-CF
+/// is issued while <paramref name="Rnc"/> is another one.</param>
 public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent,
-    bool RequirePaymentReference = true, string? LogoVersion = null);
+    bool RequirePaymentReference = true, string? LogoVersion = null, string? LicensedRnc = null);
 
 public interface ISettingsQueries
 {

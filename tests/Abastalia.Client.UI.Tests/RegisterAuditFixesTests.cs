@@ -203,6 +203,18 @@ public sealed class RegisterAuditFixesTests
     }
 
     [Fact]
+    public async Task TK368_the_RNC_the_license_names_is_read_only_and_says_who_changes_it()
+    {
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage");
+        using var _ = ctx;
+        api.Json("GET", "/api/settings/business", new { name = "Carnicería La Esquina", rnc = "101012345", discountCapPercent = 10m, licensedRnc = "101012345" });
+        var page = ctx.Render<Settings>();
+
+        page.WaitForAssertion(() => page.Find("input[inputmode=numeric][maxlength='13']").HasAttribute("readonly").ShouldBeTrue());
+        page.Markup.ShouldContain("Atado a su licencia. Para cambiarlo, escríbale a soporte de Abastalia.");
+    }
+
+    [Fact]
     public async Task The_summary_shows_each_top_product_in_its_own_unit_without_loading_the_catalog()
     {
         var (ctx, api) = await ScreenContext.CreateAsync("reports.view");
