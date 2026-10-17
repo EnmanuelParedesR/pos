@@ -235,17 +235,6 @@ internal static class MemberEndpoints
         }).RequireAuthorization();
     }
 
-    /// <summary>TK-217 migration: tenants from before memberships have none; their account becomes the Owner. Runs at every start and only ever
-    /// touches tenants with no member at all, which cannot happen otherwise (removing a member never takes the last Owner).</summary>
-    public static async Task BackfillOwnersAsync(CloudDbContext db, CancellationToken ct)
-    {
-        var orphans = await db.Users.Where(u => !db.TenantMembers.Any(m => m.TenantId == u.TenantId))
-            .Join(db.Tenants, u => u.TenantId, t => t.Id, (u, t) => new { u.Id, u.TenantId, t.CreatedUtc }).ToListAsync(ct);
-        if (orphans.Count == 0) return;
-        db.TenantMembers.AddRange(orphans.Select(o => new TenantMember { TenantId = o.TenantId, UserId = o.Id, Role = MemberRole.Owner, JoinedUtc = o.CreatedUtc }));
-        await db.SaveChangesAsync(ct);
-    }
-
     private static IQueryable<TenantInvite> PendingInvites(CloudDbContext db, Guid tenantId, DateTime now) =>
         db.TenantInvites.AsNoTracking().Where(i => i.TenantId == tenantId && i.AcceptedUtc == null && i.RevokedUtc == null && i.ExpiresUtc > now);
 

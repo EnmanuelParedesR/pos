@@ -56,13 +56,6 @@ public sealed class SentAlert
     public int Recipients { get; set; }
 }
 
-/// <summary>WhatsApp alerts, a paid add-on later.</summary>
-/// <remarks>shortcut: interface only. Wire a provider (Meta Cloud API or Twilio), a phone per member and a preference flag when the add-on sells.</remarks>
-public interface IWhatsAppSender
-{
-    Task SendAsync(string phone, string text, CancellationToken ct);
-}
-
 public sealed record AlertPreferences(string? Email, bool DgiiRejected, bool CertificateExpiring, bool QueueStale, bool CertificationProgress, bool Unsubscribed,
     bool EmailDelivers);
 public sealed record AlertPreferencesRequest(bool DgiiRejected, bool CertificateExpiring, bool QueueStale, bool CertificationProgress);

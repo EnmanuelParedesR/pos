@@ -304,7 +304,7 @@ conexión de `AZURE_COMMUNICATION_CONNECTION_STRING`, que se toma con `az commun
 `Succeeded`. El dominio administrado de Azure tiene un límite bajo de envíos por hora; para volumen real se conecta un dominio propio.
 
 Costo: unos 0.00025 USD por correo; sin tráfico, nada.
-WhatsApp queda como complemento pagado futuro (solo la interfaz `IWhatsAppSender`).
+WhatsApp queda como complemento pagado futuro (sin código todavía).
 
 ### Alertas (TK-241)
 
