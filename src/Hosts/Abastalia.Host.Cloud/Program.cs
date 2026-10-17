@@ -122,6 +122,7 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = authPerMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(QuotaRateLimits.PanelUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.PanelPerMinute, panelPerUserMinute));
     o.AddPolicy(QuotaRateLimits.AssistantUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.AssistantPerMinute, assistantPerUserMinute));
+    o.AddPolicy(StoreAssistantEndpoints.NodeRateLimit, http => QuotaRateLimits.PerPlan(http, "node:" + http.User.FindFirst(TenantClaims.NodeId)?.Value, PlanLimits.AssistantPerMinute, assistantPerUserMinute));
     o.AddPolicy(AssistantActionEndpoints.RateLimit, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = confirmationsPerUserMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(AccountSecurityEndpoints.ManageRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
@@ -244,6 +245,7 @@ app.MapIngest();
 app.MapPanel();
 app.MapAssistant();
 app.MapAssistantActions();
+app.MapStoreAssistant(); // TK-342
 app.MapPublicAssistant();
 app.MapSupplierInvoiceReader();
 app.MapEcfArchive();

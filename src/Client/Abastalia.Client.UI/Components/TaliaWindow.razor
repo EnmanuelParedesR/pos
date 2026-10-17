@@ -1,0 +1,144 @@
+@* TK-342: Talia in Administración, the panel's chat in the store app (src/Cloud/panel/src/pages/AssistantPage.tsx): plain text, only the store's own
+   screens become links, and "Abrir …" is a button the person clicks: Talia never moves the screen herself. Only in the back office's shell (Admin.razor),
+   so she never covers the sale or the charge. The question goes to the cloud through the store server; without internet she says so. *@
+@using Abastalia.Client.UI.Talia
+@using Microsoft.JSInterop
+@inject AbastaliaApi Api
+@inject Session Session
+@inject BackOffice BackOffice
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="talia-drawer" @onkeydown="KeyDown">
+    <div class="talia-drawer__backdrop" @onclick="OnClose"></div>
+    <section @ref="_box" class="talia-drawer__box" role="dialog" aria-modal="true" aria-labelledby="talia-title" tabindex="-1">
+        <header class="talia-drawer__head">
+            <TaliaAvatar Size="36" />
+            <div>
+                <h2 id="talia-title">Talia</h2>
+                <span>Le explica Abastalia y le abre la pantalla</span>
+            </div>
+            <button type="button" class="esc-button esc-button--ghost talia-drawer__close" aria-label="Cerrar Talia" title="Cerrar (Esc)" @onclick="OnClose"><Icon Name="x" /></button>
+        </header>
+
+        <div class="talia-drawer__chat" aria-live="polite">
+            @if (History.Count == 0 && !_busy)
+            {
+                <div class="talia-drawer__empty">
+                    <TaliaAvatar Size="56" />
+                    <p>¿En qué le ayudo?</p>
+                    <div class="talia-drawer__chips">
+                        @foreach (var s in Suggestions)
+                        {
+                            <button type="button" class="esc-chip" @onclick="() => AskAsync(s)">@s</button>
+                        }
+                    </div>
+                </div>
+            }
+            @foreach (var (turn, screen) in History)
+            {
+                <div class="esc-bubble-row esc-bubble-row--@turn.Role">
+                    @if (turn.Role == "assistant")
+                    {
+                        <TaliaAvatar />
+                    }
+                    <div class="talia-drawer__answer">
+                        @* Plain text: Blazor escapes it. Only routes of storeScreens.json become links, named as the menu names them. *@
+                        <p class="esc-bubble esc-bubble--@turn.Role">
+                            @if (turn.Role == "assistant")
+                            {
+                                @foreach (var (text, route) in StoreScreens.Parts(turn.Content))
+                                {
+                                    if (route is null)
+                                    {
+                                        @text
+                                    }
+                                    else
+                                    {
+                                        <a href="@route.TrimStart('/')" @onclick="OnClose">@StoreScreens.Label(route)</a>
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                @turn.Content
+                            }
+                        </p>
+                        @if (StoreScreens.Label(screen) is { } label)
+                        {
+                            <button type="button" class="esc-button talia-drawer__go" @onclick="() => Open(screen!)">Abrir @label <Icon Name="chevron-right" Size="18" /></button>
+                        }
+                    </div>
+                </div>
+            }
+            @if (_busy)
+            {
+                <div class="esc-bubble-row">
+                    <TaliaAvatar Thinking="true" />
+                    <p class="esc-bubble esc-bubble--assistant esc-muted">Buscando la respuesta…</p>
+                </div>
+            }
+        </div>
+
+        @if (_problem is not null)
+        {
+            @* No internet or no cloud is not the person's fault: amber, like being offline. *@
+            <Notice Kind="@(Amber(_problem) ? Notice.Kinds.Warning : Notice.Kinds.Error)" Title="@_problem.Message" />
+        }
+
+        <form class="esc-composer talia-drawer__composer" @onsubmit="() => AskAsync(_question)">
+            <label class="esc-visually-hidden" for="talia-question">Su pregunta</label>
+            <input id="talia-question" maxlength="1000" placeholder="Escriba su pregunta" autocomplete="off" @bind="_question" @bind:event="oninput" />
+            <button type="submit" class="esc-button esc-button--primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_question))"><Icon Name="send" Size="18" /> Preguntar</button>
+        </form>
+        <p class="talia-drawer__note">Talia puede equivocarse: revise lo importante. Necesita internet; la app sigue funcionando sin ella.</p>
+    </section>
+</div>
+
+@code {
+    private static readonly string[] Suggestions = ["¿Dónde cambio un precio?", "¿Cómo hago un conteo físico?", "¿Qué pasa si se va el internet?"];
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ElementReference _box;
+    private string _question = "";
+    private bool _busy;
+    private Problem? _problem;
+
+    private List<(TaliaTurn Turn, string? Screen)> History => BackOffice.Talia(Session.UserId);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("escuadra.focusFirst", _box);
+    }
+
+    private async Task AskAsync(string text)
+    {
+        var question = text.Trim();
+        if (question.Length == 0 || _busy) return;
+        (_busy, _problem, _question) = (true, null, "");
+        var history = History.Select(h => h.Turn).ToList();
+        History.Add((new TaliaTurn("user", question), null));
+        // The cloud may think for a while (the model's rounds): longer than a local call.
+        var r = await Api.PostAsync<TaliaAnswer>("/api/assistant/ask", new { question, history }, TimeSpan.FromSeconds(70));
+        if (r.Ok && r.Value is { } answer) History.Add((new TaliaTurn("assistant", answer.Answer), answer.Screen));
+        else
+        {
+            History.RemoveAt(History.Count - 1);
+            (_problem, _question) = (r.Problem, question); // the question stays to send again
+        }
+        _busy = false;
+    }
+
+    /// <summary>The person chose to go: the window closes and the screen opens.</summary>
+    private async Task Open(string route)
+    {
+        await OnClose.InvokeAsync();
+        Nav.NavigateTo(route.TrimStart('/'));
+    }
+
+    /// <summary>Only a question too long is the person's to fix: no connection, a busy or spent Talia are amber.</summary>
+    private static bool Amber(Problem p) => p.Code == Problem.NoServer || (p.Code.StartsWith("Talia.", StringComparison.Ordinal) && p.Code != "Talia.InvalidQuestion");
+
+    private Task KeyDown(KeyboardEventArgs e) => e.Key == "Escape" ? OnClose.InvokeAsync() : Task.CompletedTask;
+}

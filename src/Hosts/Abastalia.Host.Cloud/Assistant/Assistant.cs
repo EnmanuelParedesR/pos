@@ -182,6 +182,7 @@ public static class PanelRoutes
 /// <param name="propose">TK-338: stores a proposal the schema accepted and returns its card (or why not, which the model reads).</param>
 public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool showCosts = true, bool isOwner = true, ChatTuning? tuning = null,
     TaliaKnowledge? knowledge = null, IReadOnlyList<AssistantActionType>? actions = null, Func<AssistantActionType, JsonObject, Task<Result<ProposalCard>>>? propose = null)
+    : ITalia
 {
     public const int MaxDays = 92;
     public const int MaxRounds = 5;
@@ -266,14 +267,8 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
     public async Task<string> ConverseAsync(string systemPrompt, string question, IReadOnlyList<AssistantTurn> history,
         Func<ChatToolCall, Task<string>> runTool, CancellationToken ct)
     {
-        // TK-348: the rules first and the same for everyone, so Azure caches them (a cached token costs a tenth); the day and the stores after.
-        List<ChatMessage> messages = systemPrompt.StartsWith(Rules, StringComparison.Ordinal)
-            ? [new("system", Rules), new("system", systemPrompt[Rules.Length..].Trim())]
-            : [new("system", systemPrompt)];
-        messages.AddRange(TaliaTools.History(history, MaxHistory, 2000));
-        messages.Add(new("user", question));
-
-        LastReply = await TaliaLoop.RunAsync(model, tuning ?? new ChatTuning(), messages, Offered, runTool, MaxRounds, ct, spent => TokensUsed += spent.Total);
+        LastReply = await TaliaLoop.RunAsync(model, tuning ?? new ChatTuning(), TaliaTools.Conversation(Rules, systemPrompt, history, MaxHistory, question),
+            Offered, runTool, MaxRounds, ct, spent => TokensUsed += spent.Total);
         return LastReply.Answer;
     }
 
