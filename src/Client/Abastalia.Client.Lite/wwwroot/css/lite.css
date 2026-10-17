@@ -5,7 +5,7 @@
 /* The e-CF bar (LiteBar.razor): above the register's own status bar. */
 .lite-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; padding-top: max(8px, env(safe-area-inset-top));
   background: var(--surface-2); color: var(--text); border-bottom: 1px solid var(--card-border); font-size: var(--t-15, 15px); }
-.lite-bar--warn { background: var(--warning-tint, #FEF0C7); color: var(--warning-text, #7A2E0E); border-bottom-color: currentColor; }
+.lite-bar--warn { background: var(--warning-bg); color: var(--warning); border-bottom-color: currentColor; }
 .lite-bar__text { flex: 1 1 220px; min-width: 0; }
 .lite-bar__action { min-height: var(--touch, 44px); padding: 0 14px; border: 1px solid currentColor; border-radius: var(--r-control, 6px); background: transparent;
   color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
@@ -34,12 +34,17 @@
   /* The total and Cobrar stay on screen while the cashier scrolls the products. */
   .sale__totals { position: sticky; bottom: 0; z-index: 2; padding: 12px; gap: 8px; box-shadow: 0 -4px 12px rgba(20, 24, 29, .12); }
   .sale__lines { min-height: 0; max-height: 40vh; }
+  .sale__scan-frame { min-width: 0; }
   .sale__scanner { font-size: var(--t-17, 17px); height: 48px; }
   .sale__tiles { grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)); max-height: 45vh; }
   /* The register's key bar scrolls sideways instead of wrapping into three rows. */
   .esc-key-bar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .esc-key-bar button { flex: 0 0 auto; }
-  .esc-dialog { width: 100%; max-height: 100%; overflow: auto; }
+  /* A tall dialog (the receipt) scrolls its body; its buttons stay in view at the bottom. */
+  .esc-dialog { width: 100%; max-height: calc(100dvh - 16px); overflow: hidden; display: flex; flex-direction: column; }
+  .esc-dialog__body { flex: 1 1 auto; min-height: 0; overflow: auto; }
+  .esc-dialog__footer { flex: none; padding: 12px; }
+  .esc-dialog__footer > * { flex: 1 1 auto; justify-content: center; }
   .esc-overlay { padding: 8px; align-items: flex-end; }
 }
 

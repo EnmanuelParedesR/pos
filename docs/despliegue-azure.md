@@ -384,10 +384,12 @@ de ADR-0008); mientras haya una sola instancia, no cambia nada.
 
 **Encenderlo** (cuando empiece el piloto del Ligero):
 
-1. `az deployment group create … -p deployLite=true`. Las salidas `liteName` y `liteUrl` dan la Web App.
-2. En la base `sqldb-abastalia-lite`, como el administrador de Entra: `CREATE USER [<liteName>] FROM EXTERNAL PROVIDER; ALTER ROLE db_owner ADD MEMBER [<liteName>];`. `db_owner` porque al arrancar migra y vuelve a crear la política de Row-Level Security (`rls.TenantPolicy`).
-3. La clave de alta, a mano y nunca en el repositorio (32 caracteres o más): `az webapp config appsettings set -g rg-abastalia-prod -n <liteName> --settings Lite__ProvisioningKey=<clave>`. Sin ella la ruta de alta no existe (404). La misma clave, como secreto `Lite--ProvisioningKey` en el Key Vault: la API la lee (con `Lite__Url`, que el Bicep ya pone) para unir y revocar el dispositivo de venta desde el panel (TK-321). Sin el secreto el panel no muestra esa tarjeta.
+1. La clave de alta, nunca en el repositorio (32 caracteres o más), como secreto `Lite--ProvisioningKey` en el Key Vault (hace falta el rol "Key Vault Secrets Officer" en el vault). `Host.Lite` y la API la leen como referencia de Key Vault (TK-324: el Bicep da a las dos el rol "Key Vault Secrets User" y un redespliegue ya no la borra). Sin el secreto no hay alta ni tarjeta del dispositivo en el panel.
+2. `az deployment group create … -p deployLite=true` (más `liteDomain=venta.abastalia.com` cuando el CNAME exista). Las salidas dan la Web App (`liteName`, `liteUrl`) y el sitio de la app de venta (`liteSiteName`, `liteSiteUrl`).
+3. En la base `sqldb-abastalia-lite`, como el administrador de Entra: `CREATE USER [<liteName>] FROM EXTERNAL PROVIDER; ALTER ROLE db_owner ADD MEMBER [<liteName>];`. `db_owner` porque al arrancar migra y vuelve a crear la política de Row-Level Security (`rls.TenantPolicy`).
 4. Publicar como la API: `dotnet publish src/Hosts/Abastalia.Host.Lite -c Release -o publish/lite`, comprimir y `az webapp deploy … -n <liteName>`.
+5. La app de venta (TK-324): `dotnet publish src/Client/Abastalia.Client.Lite -c Release -o publish/venta -p:LiteApiUrl=<liteUrl>` (necesita Node: `seal.mjs` pone SRI en `index.html` y completa la CSP de `staticwebapp.config.json` con el hash del import map y el origen de `Host.Lite`). Después, con el token del sitio (`az staticwebapp secrets list -n <liteSiteName>`), `npx @azure/static-web-apps-cli deploy publish/venta/wwwroot --env production`. Un despliegue de la app de venta lo aprueba el dueño (ADR-0013, seguridad).
+6. Dominio propio: en Cloudflare, `venta` CNAME a la dirección de `liteSiteUrl` (sin proxy, nube gris, para que Azure emita el certificado) y repetir el paso 2 con `liteDomain`. El Bicep agrega ese origen al CORS de `Host.Lite`.
 
 **Cómo funciona:**
 

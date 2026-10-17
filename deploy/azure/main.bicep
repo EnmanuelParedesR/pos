@@ -104,6 +104,9 @@ param panelDomain string = ''
 @description('TK-320 (ADR-0013): the Lite plan\'s server (Abastalia.Host.Lite): a second Web App on the same B1 plan (no extra cost) and its own Basic database sqldb-abastalia-lite (~US$5/month). Off until the Lite pilot.')
 param deployLite bool = false
 
+@description('TK-324: the Lite selling app\'s own domain (e.g. venta.abastalia.com), once its CNAME points at the app\'s Static Web App. Empty: only the default address.')
+param liteDomain string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var name = 'abastalia-${env}'
 var tags = { app: 'abastalia', env: env }
@@ -427,8 +430,8 @@ resource apiSignsLicenses 'Microsoft.Authorization/roleAssignments@2022-04-01' =
   }
 }
 
-// TK-249, R11 B-Low7: Key Vault Secrets User only while Paddle is on (its two secrets are Key Vault references); nothing else reads secrets.
-resource apiReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(paddleEnvironment)) {
+// TK-249, R11 B-Low7: Key Vault Secrets User only while Paddle or Lite is on (their secrets are Key Vault references); nothing else reads secrets.
+resource apiReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(paddleEnvironment) || deployLite) {
   name: guid(vault.id, api.id, '4633458b-17de-408a-b874-0445c86b69e6')
   scope: vault
   properties: {
@@ -546,11 +549,38 @@ resource liteNoFtpBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolic
   properties: { allow: false }
 }
 
-// Lite__ProvisioningKey is set by hand after the deploy (docs/despliegue-azure.md), never here: without it provisioning does not exist.
+// TK-324: the provisioning key is the vault's Lite--ProvisioningKey (made by hand, never in the repository): a Key Vault reference, so a
+// redeploy keeps it. Without the secret the reference fails and provisioning does not exist.
+resource liteReadsSecrets 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (deployLite) {
+  name: guid(vault.id, 'lite', '4633458b-17de-408a-b874-0445c86b69e6')
+  scope: vault
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
+    principalId: liteApp!.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// TK-324 (ADR-0013 decision 3): the selling app (Abastalia.Client.Lite) on its own origin, Free like the panel.
+resource liteSite 'Microsoft.Web/staticSites@2023-12-01' = if (deployLite) {
+  name: 'stapp-${name}-venta'
+  location: staticWebAppLocation
+  tags: tags
+  sku: { name: 'Free', tier: 'Free' }
+  properties: {}
+}
+
+resource liteSiteDomain 'Microsoft.Web/staticSites/customDomains@2023-12-01' = if (deployLite && !empty(liteDomain)) {
+  parent: liteSite
+  name: empty(liteDomain) ? 'none' : liteDomain
+  properties: {}
+}
+
 resource liteSettings 'Microsoft.Web/sites/config@2023-12-01' = if (deployLite) {
   parent: liteApp
   name: 'appsettings'
-  properties: {
+  dependsOn: [liteReadsSecrets]
+  properties: union({
     ASPNETCORE_ENVIRONMENT: 'Production'
     ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
     APPLICATIONINSIGHTS_CONNECTION_STRING: insights.properties.ConnectionString
@@ -562,7 +592,12 @@ resource liteSettings 'Microsoft.Web/sites/config@2023-12-01' = if (deployLite) 
     // /home survives restarts and redeploys: the Data Protection key ring (each business's node key) and the licenses live there.
     Abastalia__KeysFolder: '/home/abastalia/keys'
     License__File: '/home/abastalia/license.jws'
-  }
+    Lite__ProvisioningKey: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Lite--ProvisioningKey)'
+    // CORS: the selling app's origins (its default address and, once set, its own domain).
+    Lite__AppOrigins__0: deployLite ? 'https://${liteSite!.properties.defaultHostname}' : ''
+  }, empty(liteDomain) ? {} : {
+    Lite__AppOrigins__1: 'https://${liteDomain}'
+  })
 }
 
 // TK-241: the API e-mails through ACS with its managed identity.
@@ -795,3 +830,5 @@ output keyVault string = vault.name
 output archiveStorage string = archive.name
 output liteName string = deployLite ? liteApp.name : ''
 output liteUrl string = deployLite ? 'https://${liteApp!.properties.defaultHostName}' : ''
+output liteSiteName string = deployLite ? liteSite.name : ''
+output liteSiteUrl string = deployLite ? 'https://${liteSite!.properties.defaultHostname}' : ''
