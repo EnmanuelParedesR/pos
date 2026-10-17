@@ -49,11 +49,16 @@ internal static class ImportCertificate
         public Validator() => RuleFor(c => c.File).NotEmpty().MaximumLength(200_000).WithMessage("Elija el archivo .p12 o .pfx del certificado.");
     }
 
-    internal sealed class Handler(EcfCertificate certificate, IEcfSigner signer, ISettingsQueries settings, IAuditLog audit, TimeProvider clock)
+    internal sealed class Handler(EcfCertificate certificate, IEcfSigner signer, ISettingsQueries settings, IAuditLog audit, TimeProvider clock, DeviceSigning device)
         : ICommandHandler<Command, CertificateStatus.Response>
     {
+        public static readonly Error OnTheDevice = Error.Conflict("Fiscal.CertificateOnDevice",
+            "En el plan Ligero el certificado se importa en el equipo de venta, nunca en el servidor.");
+
         public async Task<Result<CertificateStatus.Response>> Handle(Command c, CancellationToken ct)
         {
+            // TK-323: the Lite host's certificate store is one for every business, and ADR-0011 keeps certificates off the cloud.
+            if (device.Enabled) return OnTheDevice;
             byte[] pfx;
             try { pfx = Convert.FromBase64String(c.File); }
             catch (FormatException) { return FiscalErrors.CertificateUnreadable; }

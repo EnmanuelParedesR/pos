@@ -25,6 +25,7 @@ internal static class VoidSequence
     {
         public async Task<Result<Response>> Handle(Command c, CancellationToken ct)
         {
+            if (documents.DeviceSigns) return FiscalErrors.VoidOnDevice;
             var env = documents.Environment;
             var s = await db.Sequences.AsNoTracking().SingleOrDefaultAsync(x => x.Id == c.SequenceId && x.Environment == env, ct);
             if (s is null) return FiscalErrors.SequenceNotFound;
@@ -83,6 +84,7 @@ internal static class VoidDocument
         {
             var d = await db.Documents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == c.DocumentId, ct);
             if (d is null) return FiscalErrors.NotFound;
+            if (documents.DeviceSigns) return FiscalErrors.VoidOnDevice;
             if (d.Status != SubmissionStatus.Simulated && documents.ClockProblem is { } clockOff) return OperationsErrors.ClockOff(clockOff);
             if (d.Status is not (SubmissionStatus.Pending or SubmissionStatus.Simulated) || d.SentUtc is not null || d.TrackId is not null) return FiscalErrors.AlreadySent;
             if (await db.Documents.AnyAsync(x => x.Environment == d.Environment && x.ModifiedENcf == d.ENcf && x.Status != SubmissionStatus.Voided, ct)) return FiscalErrors.HasNotes;

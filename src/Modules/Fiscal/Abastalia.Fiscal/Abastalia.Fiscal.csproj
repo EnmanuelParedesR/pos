@@ -16,5 +16,7 @@
     <InternalsVisibleTo Include="Abastalia.IntegrationTests" />
     <!-- TK-152: the cloud receiver is tested with e-CF built and signed exactly as a store does -->
     <InternalsVisibleTo Include="Abastalia.Cloud.Tests" />
+    <!-- TK-323: the Lite host's device signature is tested with e-CF signed as the browser does (byte for byte the store's signer) -->
+    <InternalsVisibleTo Include="Abastalia.Lite.Tests" />
   </ItemGroup>
 </Project>
