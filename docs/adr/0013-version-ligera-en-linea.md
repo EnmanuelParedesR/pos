@@ -64,7 +64,7 @@ En el piloto (≤ 20 negocios) la suscripción entera queda en **~US$26–30 al 
 - Los índices únicos llevan `TenantId` primero: código de barras, secuencias e-NCF, usuarios y demás (hoy hay 15 `IsUnique` en los módulos).
 - RLS sobre `SESSION_CONTEXT(N'TenantId')`, fijado de solo lectura cada vez que se abre una conexión. Cubre también el SQL a mano: la reserva de e-NCF con `UPDLOCK`, `TaxpayerRegistry` y `Backups`.
 - Una prueba de CI con dos negocios falla si alguna ruta o consulta devuelve filas del otro, **también con los filtros de EF apagados**.
-- En la tienda la columna existe con un valor fijo y el filtro no se registra (una base, un negocio). Las migraciones siguen siendo las mismas (ADR-0005).
+- En la tienda la columna existe con un valor fijo (`Guid.Empty`) y el filtro es trivialmente cierto (una base, un negocio). TK-319 lo deja registrado también ahí: así las consultas llevan `TenantId` y siguen usando las claves e índices que lo tienen primero, y el modelo es uno solo. Las migraciones siguen siendo las mismas (ADR-0005).
 
 ## Decisión 2: firma en el navegador, sin custodia en la nube
 

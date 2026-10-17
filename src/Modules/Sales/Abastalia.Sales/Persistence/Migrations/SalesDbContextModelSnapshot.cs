@@ -29,6 +29,9 @@ namespace Abastalia.Sales.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("ProductId");
 
                     b.ToTable("CatalogItems", "sales");
@@ -36,6 +39,9 @@ namespace Abastalia.Sales.Persistence.Migrations
 
             modelBuilder.Entity("Abastalia.Sales.Domain.CatalogSettings", b =>
                 {
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("Id")
                         .HasColumnType("int");
 
@@ -43,7 +49,7 @@ namespace Abastalia.Sales.Persistence.Migrations
                         .HasMaxLength(15)
                         .HasColumnType("nvarchar(15)");
 
-                    b.HasKey("Id");
+                    b.HasKey("TenantId", "Id");
 
                     b.ToTable("CatalogSettings", "sales");
                 });
@@ -68,6 +74,9 @@ namespace Abastalia.Sales.Persistence.Migrations
                         .HasColumnType("nvarchar(200)");
 
                     b.Property<Guid>("ShiftId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Total")
@@ -146,6 +155,9 @@ namespace Abastalia.Sales.Persistence.Migrations
                         .HasMaxLength(12)
                         .HasColumnType("nvarchar(12)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<decimal>("Total")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
@@ -184,6 +196,9 @@ namespace Abastalia.Sales.Persistence.Migrations
 
                     b.Property<bool>("Restocked")
                         .HasColumnType("bit");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Total")
                         .HasPrecision(19, 4)
@@ -302,6 +317,9 @@ namespace Abastalia.Sales.Persistence.Migrations
                     b.Property<Guid?>("SupervisorId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<decimal>("Total")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
@@ -406,6 +424,9 @@ namespace Abastalia.Sales.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<decimal>("Total")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
@@ -456,6 +477,9 @@ namespace Abastalia.Sales.Persistence.Migrations
                     b.Property<Guid>("SaleId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.HasIndex("SaleId");
@@ -498,6 +522,9 @@ namespace Abastalia.Sales.Persistence.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("SupervisorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("Total")

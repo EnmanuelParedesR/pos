@@ -49,7 +49,8 @@ public static class SyncModule
 internal sealed class CloudConnection
 {
     public int Id { get; set; } = 1;
-    public Guid TenantId { get; set; }
+    /// <summary>The cloud tenant the store is connected to. TK-319 renamed it: <c>TenantId</c> is now the business that owns each row.</summary>
+    public Guid CloudTenantId { get; set; }
     public Guid StoreId { get; set; }
     public Guid NodeId { get; set; }
     /// <summary>The node's credential, protected for this machine with ASP.NET Core Data Protection (the key ring Settings sets up): its private key
@@ -212,7 +213,7 @@ internal static class GetSyncStatus
     {
         var c = await db.Connections.AsNoTracking().SingleOrDefaultAsync(ct);
         var pending = await infra.Outbox.CountAsync(m => m.UploadedUtc == null, ct);
-        return new SyncStatus(c is not null, c?.TenantId, c?.StoreId, c?.CloudUrl, c?.LastUploadUtc, pending, c?.LastError);
+        return new SyncStatus(c is not null, c?.CloudTenantId, c?.StoreId, c?.CloudUrl, c?.LastUploadUtc, pending, c?.LastError);
     }
 
     internal sealed class Endpoint : IEndpoint
@@ -278,7 +279,7 @@ internal static class ConnectToCloud
             var r = c.Registration;
             db.Connections.Add(new CloudConnection
             {
-                TenantId = r.TenantId, StoreId = r.StoreId, NodeId = r.NodeId, NodeSecret = cloud.Protect(c.Credential), CloudUrl = c.CloudUrl,
+                CloudTenantId = r.TenantId, StoreId = r.StoreId, NodeId = r.NodeId, NodeSecret = cloud.Protect(c.Credential), CloudUrl = c.CloudUrl,
                 ConnectedUtc = clock.GetUtcNow().UtcDateTime,
             });
             foreach (var snapshot in snapshots) await snapshot.EnqueueAsync(ct);
@@ -322,7 +323,7 @@ internal static class DisconnectFromCloud
             var connection = await db.Connections.SingleOrDefaultAsync(ct);
             if (connection is null) return Ok.Value;
             db.Connections.Remove(connection);
-            await audit.RecordAsync("sync.disconnect", "CloudConnection", connection.NodeId, new { connection.TenantId, connection.StoreId, connection.NodeId }, ct);
+            await audit.RecordAsync("sync.disconnect", "CloudConnection", connection.NodeId, new { TenantId = connection.CloudTenantId, connection.StoreId, connection.NodeId }, ct);
             return Ok.Value;
         }
     }

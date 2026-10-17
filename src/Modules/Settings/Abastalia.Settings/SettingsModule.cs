@@ -50,6 +50,8 @@ public static class SettingsModule
 internal sealed class Business
 {
     public int Id { get; set; } = 1;
+    /// <summary>TK-319: a property, not a shadow one, because EF seeds skip shadow properties; set on save.</summary>
+    public Guid TenantId { get; set; }
     public string Name { get; set; } = "Mi tienda";
     public string? Rnc { get; set; }
     public string? Address { get; set; }
