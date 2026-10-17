@@ -473,7 +473,7 @@ export interface TenantMetrics {
   lastSaleDay: string | null;
 }
 /** TK-248: this store month's use of each metered service against the plan's limit (docs/cuotas.md). */
-export type Meter = "AssistantQuestions" | "AssistantTokens" | "SupplierInvoices" | "Emails" | "ArchiveRetrievals" | "AccompanimentRequests" | "Invites" | "CloudBackups";
+export type Meter = "AssistantQuestions" | "AssistantTokens" | "SupplierInvoices" | "Emails" | "ArchiveRetrievals" | "AccompanimentRequests" | "Invites" | "CloudBackups" | "ReceiverSignatures";
 export interface Usage { plan: string; addOns: string[]; resetsOn: string; meters: { meter: Meter; used: number; limit: number }[] }
 export interface PlatformUsage { usage: Usage; plans: string[]; addOns: string[] }
 /** TK-249: Paddle Billing. `enabled` false = not set up yet (the page shows the plan and how to ask Abastalia). */

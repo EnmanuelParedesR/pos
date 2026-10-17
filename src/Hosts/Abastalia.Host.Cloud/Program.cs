@@ -93,6 +93,13 @@ var backupsPerNodeHour = config.GetValue("CloudBackup:UploadsPerHourPerNode", 4)
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    // TK-248: say when the window reopens, so the store's uploads wait that long instead of retrying blind.
+    o.OnRejected = (rejected, _) =>
+    {
+        if (rejected.Lease.TryGetMetadata(MetadataName.RetryAfter, out var after))
+            rejected.HttpContext.Response.Headers.RetryAfter = ((int)Math.Ceiling(after.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return ValueTask.CompletedTask;
+    };
     // TK-249: the node's, the panel's and the assistant's per-minute limits follow the business's plan (Paddle custom_data > Quotas:<Plan>:RateLimits > the setting).
     o.AddPolicy(SupplierInvoiceEndpoint.NodeRateLimit, http =>
         QuotaRateLimits.PerPlan(http, http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "", PlanLimits.SupplierInvoicesPerMinute, invoicesPerNodeMinute));

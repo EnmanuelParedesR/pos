@@ -188,7 +188,9 @@ public sealed class QuotaTests(QuotaApp app) : IClassFixture<QuotaApp>
         var token = (await (await client.PostAsJsonAsync("/api/auth/login", new { email, password = CloudApp.Password })).Json()).GetProperty("accessToken").GetString();
         client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
         for (var i = 0; i < 2; i++) (await client.GetAsync("/api/panel/sync-status")).StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await client.GetAsync("/api/panel/sync-status")).StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+        var limited = await client.GetAsync("/api/panel/sync-status");
+        limited.StatusCode.ShouldBe(HttpStatusCode.TooManyRequests);
+        limited.Headers.RetryAfter!.Delta!.Value.ShouldBeInRange(TimeSpan.FromSeconds(1), TimeSpan.FromMinutes(1)); // TK-248: when the window reopens
     }
 
     private static (int Used, int Limit) Used(JsonElement usage, string meter) =>

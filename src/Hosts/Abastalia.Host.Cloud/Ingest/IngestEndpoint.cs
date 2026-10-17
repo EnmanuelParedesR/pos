@@ -22,10 +22,12 @@ internal static class IngestEndpoint
     public const int MaxBatch = 200;
     public const int MaxPayloadBytes = 64 * 1024;
     public const string NodeRateLimit = "ingest-node";
+    /// <summary>A day or backlog cap does not clear in a minute: the store asks again in 15.</summary>
+    public const string CapRetryAfterSeconds = "900";
 
     public static void MapIngest(this IEndpointRouteBuilder app) =>
         app.MapPost("/ingest/v1/events", async (IngestRequest request, ClaimsPrincipal user, CloudDbContext db, InboxSignal signal, TimeProvider clock,
-            IConfiguration config, ILogger<InboxApplier> log, CancellationToken ct) =>
+            IConfiguration config, ILogger<InboxApplier> log, HttpResponse response, CancellationToken ct) =>
         {
             var events = request.Events ?? [];
             if (events.Count is 0 or > MaxBatch)
@@ -42,6 +44,7 @@ internal static class IngestEndpoint
             if (await CapReachedAsync(db, node, batch, now, config, ct) is { } cap)
             {
                 log.LogWarning("Ingest cap reached for tenant {TenantId} (node {NodeId}): {Cap}", node.TenantId, node.NodeId, cap);
+                response.Headers.RetryAfter = CapRetryAfterSeconds; // TK-248: the store keeps its outbox and asks again then
                 return Results.Problem(detail: "La nube no acepta más datos de esta tienda por ahora. Se enviarán más tarde.", statusCode: StatusCodes.Status429TooManyRequests,
                     title: "Ingest.Cap", extensions: new Dictionary<string, object?> { ["code"] = "Ingest.Cap" });
             }

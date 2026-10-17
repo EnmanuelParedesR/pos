@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
@@ -14,7 +15,8 @@ namespace Abastalia.Sync;
 
 /// <param name="Accepted">Events the cloud confirmed in this pass.</param>
 /// <param name="Error">Why the pass stopped early, or null.</param>
-internal sealed record UploadPass(int Accepted, string? Error);
+/// <param name="RetryAfter">TK-248: the cloud answered 429 and asked to wait this long (its <c>Retry-After</c>, or a minute without one).</param>
+internal sealed record UploadPass(int Accepted, string? Error, TimeSpan? RetryAfter = null);
 
 /// <summary>Uploads every outbox event not yet confirmed by the cloud (<c>UploadedUtc</c> empty), in <c>Sequence</c> order, in gzip batches of 200,
 /// and marks <c>UploadedUtc</c> only for the ids the cloud answers in <c>accepted</c>. Nothing is ever dropped: what is not accepted goes again next pass.
@@ -42,6 +44,14 @@ internal sealed class CloudUploader(SyncDbContext db, InfraDbContext infra, Clou
                 if (batch.Count == 0) break;
 
                 using var response = await cloud.SendAsync(connection, IngestPath, Gzip(batch), ct);
+                if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    // Not a failure to log each time: the batch stays in the outbox and the worker waits what the cloud asked.
+                    var wait = CloudBackoff.RetryAfter(response, clock.GetUtcNow()) ?? TimeSpan.FromMinutes(1);
+                    var busy = $"{RefusedPrefix}429 al subir los datos: pidió esperar {Math.Ceiling(wait.TotalSeconds):0} s.";
+                    await db.Connections.ExecuteUpdateAsync(s => s.SetProperty(c => c.LastError, busy), ct);
+                    return new UploadPass(accepted, busy, wait);
+                }
                 if (!response.IsSuccessStatusCode) throw new CloudRefused($"{RefusedPrefix}{(int)response.StatusCode} al subir los datos.");
                 var confirmed = (await response.Content.ReadFromJsonAsync<IngestResponse>(ct))?.Accepted ?? [];
                 var ids = batch.Select(m => m.Id).Intersect(confirmed).ToList();
@@ -129,20 +139,27 @@ internal sealed class CloudUploaderWorker(IServiceScopeFactory scopes, IConfigur
         if (!config.GetValue("Sync:Enabled", true)) return;
         var interval = TimeSpan.FromSeconds(config.GetValue("Sync:IntervalSeconds", 5));
         var failures = 0;
+        var throttled = false;
         while (!stoppingToken.IsCancellationRequested)
         {
+            TimeSpan? retryAfter = null;
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
                 var pass = await scope.ServiceProvider.GetRequiredService<CloudUploader>().UploadAsync(stoppingToken);
                 failures = pass.Error is null ? 0 : failures + 1;
+                retryAfter = pass.RetryAfter;
+                // TK-248: logged once per run of 429s, not on every pass while the cloud keeps asking to wait.
+                if (retryAfter is { } wait && !throttled)
+                    log.LogWarning("The cloud asked to wait {Seconds:0} s before more uploads (429); the outbox keeps every event", wait.TotalSeconds);
+                throttled = retryAfter is not null;
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 failures++;
                 log.LogError(ex, "The cloud uploader failed");
             }
-            await Task.Delay(failures == 0 ? interval : CloudUploader.RetryDelay(failures), clock, stoppingToken);
+            await Task.Delay(retryAfter ?? (failures == 0 ? interval : CloudUploader.RetryDelay(failures)), clock, stoppingToken);
         }
     }
 }
