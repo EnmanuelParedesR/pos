@@ -2246,6 +2246,53 @@ namespace Abastalia.Host.Cloud.Persistence.Migrations
                     b.ToTable("AppReleases", "cloud");
                 });
 
+            modelBuilder.Entity("Abastalia.Host.Cloud.Platform.LimitRejection", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Count")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("IpKey")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<DateTime>("MinuteUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Network")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("RetryAfter")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Stores")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MinuteUtc");
+
+                    b.ToTable("LimitRejections", "cloud");
+                });
+
             modelBuilder.Entity("Abastalia.Host.Cloud.Quotas.TenantUsage", b =>
                 {
                     b.Property<Guid>("TenantId")

@@ -13,7 +13,7 @@ import { ShiftReportPage } from "./pages/ShiftReportPage";
 import { StoresPage } from "./pages/StoresPage";
 import { AssistantChat, AssistantPage, type PendingQuestion } from "./pages/AssistantPage";
 import { BillingPage } from "./pages/BillingPage";
-import { PlatformAccompanimentPage, PlatformDelegationsPage, PlatformMetricsPage, PlatformReleasesPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
+import { PlatformAccompanimentPage, PlatformDelegationsPage, PlatformMetricsPage, PlatformReleasesPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage, PlatformWatchPage } from "./pages/PlatformPages";
 import { SecurityPage } from "./pages/SecurityPage";
 import { MembersPage } from "./pages/MembersPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -63,6 +63,7 @@ export function Panel() {
             <Route path="platform/accompaniment" element={<PlatformAccompanimentPage />} />
             <Route path="platform/releases" element={<PlatformReleasesPage />} />
             <Route path="platform/delegations" element={<PlatformDelegationsPage />} />
+            <Route path="platform/health" element={<PlatformWatchPage />} />
           </>
         )}
         <Route path="*" element={<SummaryPage />} />

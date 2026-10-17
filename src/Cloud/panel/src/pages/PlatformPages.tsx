@@ -16,13 +16,15 @@ import {
   type PlatformStoreDetail,
   type PlatformTenant,
   type PlatformTenantDetail,
+  type PlatformWatch,
   type ReleaseChannel,
   type ReleasesResponse,
   type RetentionCohort,
+  type WatchStore,
 } from "../api";
 import { ago, dateTime, dayName, isStale, money } from "../format";
-import { BarChart, BarList, Card, ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton, SkeletonRows, Stat } from "../ui";
-import { PlatformUsageCard } from "./UsageCard";
+import { BarChart, BarList, Card, ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Segmented, Skeleton, SkeletonRows, Stat } from "../ui";
+import { meterNames, PlatformUsageCard } from "./UsageCard";
 import { PlatformBillingCard } from "./BillingPage";
 import { PlatformReferralsCard } from "./ReferralCards";
 
@@ -85,17 +87,21 @@ function PlatformTabs() {
     ["/app/platform/accompaniment", "Acompañamiento"],
     ["/app/platform/delegations", "Firmantes"],
     ["/app/platform/releases", "Versiones"],
+    ["/app/platform/health", "Salud"],
   ];
   const current =
     pathname === "/app/platform" ? "/app/platform"
     : pathname.startsWith("/app/platform/accompaniment") ? "/app/platform/accompaniment"
     : pathname.startsWith("/app/platform/delegations") ? "/app/platform/delegations"
     : pathname.startsWith("/app/platform/releases") ? "/app/platform/releases"
+    : pathname.startsWith("/app/platform/health") ? "/app/platform/health"
     : "/app/platform/tenants";
   return (
     <div className="esc-tabs" role="tablist" aria-label="Plataforma">
       {tabs.map(([to, label]) => (
-        <button key={to} type="button" role="tab" aria-selected={to === current} onClick={() => navigate(to)}>
+        // TK-311: on a phone the strip scrolls; the open tab is brought into view.
+        <button key={to} type="button" role="tab" aria-selected={to === current} onClick={() => navigate(to)}
+          ref={to === current ? (b) => b?.scrollIntoView?.({ block: "nearest", inline: "nearest" }) : undefined}>
           {label}
         </button>
       ))}
@@ -1068,5 +1074,237 @@ export function PlatformDelegationsPage() {
         )}
       </section>
     </>
+  );
+}
+
+const reasonNames: Record<string, string> = {
+  "Gate.PerIpRate": "429 · muchas por minuto desde una IP",
+  "Gate.PerIpConcurrency": "429 · muchas a la vez desde una IP",
+  "Gate.LengthRequired": "411 · envío sin su tamaño",
+  "Gate.TooLarge": "413 · envío más pesado que el límite",
+  "Gate.Compressed": "415 · respaldo comprimido",
+  "Node.Unknown": "Caja desconocida",
+  "Node.Revoked": "Caja revocada",
+  "Node.BadSignature": "Firma de caja inválida",
+  RateLimit: "429 · límite por plan o ruta",
+  Http5xx: "Error del servidor (5xx)",
+};
+
+const policyNames: Record<string, string> = {
+  "panel-user": "Panel, por usuario",
+  "assistant-user": "Asistente, por usuario",
+  auth: "Entrada y registro, por IP",
+  "register-node": "Conectar caja, por IP",
+  global: "Receptor de e-CF",
+};
+
+const reasonName = (reason: string) => reasonNames[reason] ?? reason;
+const sum = (rows: { count: number }[]) => rows.reduce((total, r) => total + r.count, 0);
+
+/** TK-311 (D22): the limits watched in the pilot (per-IP gate, plan and route limits, quotas, 5xx, silent stores, e-CF queue). Thresholds come
+ * from the API, the same numbers the Azure alerts use. */
+export function PlatformWatchPage() {
+  const [days, setDays] = useState<"1" | "7">("1");
+  const { data: w, error, loading } = useApi<PlatformWatch>(`/api/platform/watch?days=${days}`);
+  const period = days === "1" ? "24 h" : "7 días";
+  const perIp = w?.reasons.filter((r) => r.reason.startsWith("Gate.PerIp")) ?? [];
+  const gate = w?.reasons.filter((r) => r.reason.startsWith("Gate.") && !r.reason.startsWith("Gate.PerIp")) ?? [];
+  const nodes = w?.reasons.filter((r) => r.reason.startsWith("Node.")) ?? [];
+  const limits = w?.reasons.filter((r) => r.reason === "RateLimit") ?? [];
+  const errors = w?.reasons.filter((r) => r.reason === "Http5xx") ?? [];
+  const refused = w?.reasons.filter((r) => r.reason !== "Http5xx") ?? [];
+
+  return (
+    <>
+      <PageHead title="Plataforma" subtitle={staffNote}>
+        <Segmented label="Periodo" options={[["1", "Últimas 24 h"], ["7", "Últimos 7 días"]]} value={days} onChange={setDays} />
+      </PageHead>
+      <PlatformTabs />
+      <PlatformError error={error} />
+      {!w && loading && <Skeleton height={120} />}
+      {w && (
+        <>
+          <section className="esc-card" aria-label="Indicadores de salud">
+            <div className="esc-stats platform-stats">
+              <Stat icon="alert" label="429 por IP" value={count(sum(perIp))} note={`${count(perIp.reduce((t, r) => t + r.retryAfter, 0))} con Retry-After`} />
+              <Stat icon="cloud" label="Envíos rechazados" value={count(sum(gate))} note="411, 413 y 415" />
+              <Stat icon="shield" label="Cajas rechazadas" value={count(sum(nodes))} note="Desconocidas, revocadas o mal firmadas" />
+              <Stat icon="users" label="Límites por plan o ruta" value={count(sum(limits))} note="Respuestas 429" />
+              <Stat icon="x" label="Errores 5xx" value={count(sum(errors))} note={`En ${period}`} />
+              <Stat icon="store" label="Tiendas sin latido" value={count(w.silentStores.length)} note={`Más de ${w.thresholds.silentStoreHours} h`} />
+            </div>
+          </section>
+
+          <div className="esc-grid">
+            <Card title="IPs con más rechazos" aside={`Alerta: más de ${w.thresholds.perIpRejections15Min} en 15 min o ${w.thresholds.storesBehindIp} tiendas detrás`} className="esc-span-12">
+              {w.ips.length === 0 ? (
+                <EmptyState icon="check" title="Ninguna IP rechazada">
+                  Aquí aparece cada IP (como su red /24 y una clave, nunca la dirección) que alguno de los límites rechazó en {period}.
+                </EmptyState>
+              ) : (
+                <div className="esc-table-wrap">
+                  <table className="esc-table">
+                    <thead>
+                      <tr>
+                        <th>Red</th>
+                        <th className="esc-num">Rechazos</th>
+                        <th className="esc-num">Pico de 429 en 15 min</th>
+                        <th className="esc-num">Tiendas detrás</th>
+                        <th className="esc-hide-sm">Motivos</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {w.ips.map((ip) => (
+                        <tr key={ip.network + ip.ipKey}>
+                          <td>
+                            {ip.network}
+                            <span className="esc-table__sub">clave {ip.ipKey.slice(0, 8)}</span>
+                          </td>
+                          <td className="esc-num">{count(ip.count)}</td>
+                          <td className="esc-num">
+                            <Over value={ip.peak15Min} over={ip.peak15Min > w.thresholds.perIpRejections15Min} />
+                          </td>
+                          <td className="esc-num">
+                            <Over value={ip.stores} over={ip.stores >= w.thresholds.storesBehindIp && ip.peak15Min > 0} />
+                          </td>
+                          <td className="esc-hide-sm platform-wrap">{ip.reasons.map(reasonName).join(" · ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
+            <Card title="Rechazos por motivo" aside={period} className="esc-span-6">
+              <ReasonTable rows={refused} empty="Ningún límite rechazó nada en este periodo." />
+            </Card>
+
+            <Card title="Errores 5xx por ruta" aside={period} className="esc-span-6">
+              <ReasonTable routes rows={errors} empty="La nube no respondió ningún error 5xx en este periodo." />
+            </Card>
+
+            <Card title="Cuotas del mes cerca del límite" aside={`Desde ${w.thresholds.quotaNearPercent} %`} className="esc-span-12">
+              {w.quotas.length === 0 ? (
+                <EmptyState icon="check" title="Ningún negocio cerca de su límite">
+                  Aparecen los negocios que usaron {w.thresholds.quotaNearPercent} % o más de algún servicio del mes.
+                </EmptyState>
+              ) : (
+                <div className="esc-table-wrap">
+                  <table className="esc-table">
+                    <thead>
+                      <tr>
+                        <th>Cliente</th>
+                        <th>Servicio</th>
+                        <th className="esc-num">Usado</th>
+                        <th>Estado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {w.quotas.map((q) => (
+                        <tr key={q.tenantId + q.meter}>
+                          <td>
+                            <Link to={`/app/platform/tenants/${q.tenantId}`}>{q.tenantName}</Link>
+                          </td>
+                          <td>{meterNames[q.meter] ?? q.meter}</td>
+                          <td className="esc-num">
+                            {count(q.used)} de {count(q.limit)}
+                          </td>
+                          <td>
+                            <span className={`esc-pill esc-pill--${q.used >= q.limit ? "error" : "warning"}`}>{quotaLabel(q)}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
+            <Card title="Tiendas sin latido" aside={`Más de ${w.thresholds.silentStoreHours} h`} className="esc-span-6">
+              <StoreList
+                rows={w.silentStores}
+                empty="Todas las tiendas conectadas enviaron su latido a tiempo."
+                detail={(s) => `último latido ${ago(s.lastHeartbeatUtc)}`}
+                pill={() => ["warning", "Sin latido"]}
+              />
+            </Card>
+
+            <Card title="Cola de e-CF" aside={`Alerta al dueño después de ${w.thresholds.queueStaleHours} h`} className="esc-span-6">
+              <StoreList
+                rows={w.ecfQueues}
+                empty="Ninguna tienda tiene comprobantes esperando a la DGII."
+                detail={(s) => `el más viejo espera ${hours(s.queueHours ?? 0)} · latido ${ago(s.lastHeartbeatUtc)}`}
+                pill={(s) =>
+                  (s.queueHours ?? 0) > 72 ? ["error", "Pasó las 72 h"] : (s.queueHours ?? 0) > w.thresholds.queueStaleHours ? ["warning", "Atrasada"] : ["success", "Al día"]
+                }
+              />
+            </Card>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+const hours = (h: number) => (h < 1 ? "menos de 1 h" : `${Math.round(h).toLocaleString("en-US")} h`);
+
+const quotaLabel = (q: PlatformWatch["quotas"][number]) =>
+  q.used > q.limit ? (q.meter === "ReceiverSignatures" ? "Pasó el uso justo" : "Pasó el límite") : q.used === q.limit ? "En el límite" : "Cerca";
+
+/** A number past its alert threshold: in the warning color with a word, never color alone. */
+function Over({ value, over }: { value: number; over: boolean }) {
+  return over ? <b className="platform-warn">{count(value)} · alerta</b> : <>{count(value)}</>;
+}
+
+/** `routes`: the 5xx, by route (no Retry-After there). */
+function ReasonTable({ rows, empty, routes = false }: { rows: PlatformWatch["reasons"]; empty: string; routes?: boolean }) {
+  if (rows.length === 0) return <p className="esc-muted">{empty}</p>;
+  return (
+    <div className="esc-table-wrap">
+      <table className="esc-table">
+        <thead>
+          <tr>
+            <th>{routes ? "Ruta" : "Motivo"}</th>
+            <th className="esc-num">Veces</th>
+            {!routes && <th className="esc-num esc-hide-sm">Con Retry-After</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.reason + r.detail}>
+              <td className="platform-wrap">
+                {routes ? r.detail : reasonName(r.reason)}
+                {r.reason === "RateLimit" && <span className="esc-table__sub">{policyNames[r.detail] ?? r.detail}</span>}
+              </td>
+              <td className="esc-num">{count(r.count)}</td>
+              {!routes && <td className="esc-num esc-hide-sm">{r.reason.startsWith("Gate.PerIp") || r.reason === "RateLimit" ? count(r.retryAfter) : "—"}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function StoreList({ rows, empty, detail, pill }: { rows: WatchStore[]; empty: string; detail: (s: WatchStore) => string; pill: (s: WatchStore) => [string, string] }) {
+  if (rows.length === 0) return <p className="esc-muted">{empty}</p>;
+  return (
+    <ul className="platform-kv">
+      {rows.map((s) => {
+        const [kind, label] = pill(s);
+        return (
+          <li key={s.storeId}>
+            <span>
+              <Link to={`/app/platform/stores/${s.storeId}`}>{s.storeName}</Link>
+              <span className="esc-table__sub">
+                {s.tenantName} · {detail(s)}
+              </span>
+            </span>
+            <span className={`esc-pill esc-pill--${kind}`}>{label}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

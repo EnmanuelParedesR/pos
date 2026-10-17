@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter } from "react-router";
 import { App } from "../App";
 import "../Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
-import type { Me, MetricsOverview, PlatformAccompaniment } from "../api";
+import type { Me, MetricsOverview, PlatformAccompaniment, PlatformWatch } from "../api";
 import { json } from "../testing";
 import { fromStoreInput, toStoreInput } from "./PlatformPages";
 
@@ -142,4 +142,45 @@ it("TK-234: store time in the date box round-trips to UTC", () => {
   expect(fromStoreInput("2026-10-20T10:00")).toBe("2026-10-20T14:00:00.000Z");
   expect(toStoreInput("2026-10-20T14:00:00Z")).toBe("2026-10-20T10:00");
   expect(fromStoreInput("")).toBeNull();
+});
+
+it("TK-311: staff see the platform health with thresholds highlighted, for 24 h or 7 days", async () => {
+  localStorage.setItem("abastalia.refreshToken", "saved");
+  const watch: PlatformWatch = {
+    days: 1,
+    sinceUtc: "2026-10-14T15:00:00Z",
+    thresholds: { perIpRejections15Min: 20, storesBehindIp: 3, silentStoreHours: 6, queueStaleHours: 24, quotaNearPercent: 80 },
+    reasons: [
+      { reason: "Gate.PerIpRate", detail: "-", count: 42, retryAfter: 42 },
+      { reason: "RateLimit", detail: "panel-user", count: 3, retryAfter: 3 },
+      { reason: "Http5xx", detail: "/api/panel/summary", count: 2, retryAfter: 0 },
+    ],
+    ips: [{ network: "190.80.12.0/24", ipKey: "a1b2c3d4e5f60718", count: 42, peak15Min: 30, stores: 4, reasons: ["Gate.PerIpRate"] }],
+    quotas: [{ tenantId: "t2", tenantName: "colmado@example.com", meter: "ReceiverSignatures", used: 3100, limit: 3000 }],
+    silentStores: [{ tenantId: "t2", tenantName: "colmado@example.com", storeId: "s2", storeName: "Colmado Callado", lastHeartbeatUtc: "2026-10-15T07:00:00Z", queueHours: null }],
+    ecfQueues: [{ tenantId: "t3", tenantName: "cola@example.com", storeId: "s3", storeName: "Colmado con Cola", lastHeartbeatUtc: "2026-10-15T14:50:00Z", queueHours: 80 }],
+  };
+  const fetch = vi.fn(async (url: string) =>
+    url.endsWith("/api/me") ? json(200, { ...owner, email: "staff@abastalia.example", isPlatformAdmin: true }) : url.includes("/api/platform/watch") ? json(200, watch) : json(200, []),
+  );
+  vi.stubGlobal("fetch", fetch);
+  render(
+    <MemoryRouter initialEntries={["/app/platform/health"]}>
+      <App />
+    </MemoryRouter>,
+  );
+
+  const ip = (await screen.findByText("190.80.12.0/24")).closest("tr")!;
+  expect(within(ip).getByText("30 · alerta")).toBeTruthy(); // over 20 in 15 minutes
+  expect(within(ip).getByText("4 · alerta")).toBeTruthy(); // 3 or more stores behind it
+  expect(within(ip).queryByText(/a1b2c3d4e5f60718/)).toBeNull(); // only the start of the key
+  expect(screen.getByRole("tab", { name: "Salud" }).getAttribute("aria-selected")).toBe("true");
+  expect(screen.getByText("Panel, por usuario")).toBeTruthy();
+  expect(screen.getByText("/api/panel/summary")).toBeTruthy();
+  expect(within(screen.getByText("colmado@example.com", { selector: "a" }).closest("tr")!).getByText("Pasó el uso justo")).toBeTruthy();
+  expect(screen.getByText("Colmado Callado")).toBeTruthy();
+  expect(within(screen.getByText("Colmado con Cola").closest("li")!).getByText("Pasó las 72 h")).toBeTruthy();
+
+  fireEvent.click(screen.getByRole("button", { name: "Últimos 7 días" }));
+  await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).includes("/api/platform/watch?days=7"))).toBe(true));
 });

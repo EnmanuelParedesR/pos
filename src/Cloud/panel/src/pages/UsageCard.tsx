@@ -5,7 +5,7 @@ import { Card, LoadError, Notice } from "../ui";
 
 const count = (n: number) => n.toLocaleString("en-US");
 
-const meterNames: Record<Meter, string> = {
+export const meterNames: Record<Meter, string> = {
   AssistantQuestions: "Preguntas al asistente",
   AssistantTokens: "Uso del asistente (tokens)",
   SupplierInvoices: "Facturas leídas con IA",

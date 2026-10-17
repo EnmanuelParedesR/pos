@@ -308,19 +308,45 @@ WhatsApp queda como complemento pagado futuro (sin código todavía).
 
 ### Alertas (TK-241)
 
-El Bicep crea cuatro alertas de Azure Monitor; con `alertEmail` también un grupo de acción `ag-abastalia-prod` que avisa por correo (vacío = las alertas
+El Bicep crea siete alertas de Azure Monitor; con `alertEmail` también un grupo de acción `ag-abastalia-prod` que avisa por correo (vacío = las alertas
 existen, se ven en el portal y no avisan a nadie):
 
 | Alerta | Señal |
 |---|---|
-| `alert-abastalia-prod-5xx` | Métrica `Http5xx` de la Web App: más de 5 en 15 minutos. |
+| `alert-abastalia-prod-5xx` | Métrica `Http5xx` de la Web App: más de `alert5xxPer15Min` (5) en 15 minutos. |
 | `alert-abastalia-prod-health` | Métrica `HealthCheckStatus` (el chequeo de `/health` de App Service) por debajo de 100 en 5 minutos. |
 | `alert-abastalia-prod-inbox` | Registro: un evento de una tienda que el inbox no pudo aplicar (`could not be applied`) o una corrida fallida del aplicador. |
 | `alert-abastalia-prod-fair-use` | Registro (TK-286): un negocio pasó el uso justo de firmas del receptor del mes (`passed its fair use of receiver signatures`; sigue firmando). Se escribe una vez por negocio y mes; el id del negocio está en la línea del registro: revisar su plan. Cada hora. |
+| `alert-abastalia-prod-per-ip-429`, `-shared-ip-429`, `-silent-stores` | Registro (TK-311): límites por IP de las cajas y tiendas calladas. Ver "Salud de la plataforma y alertas de límites" abajo. |
 
 A Application Insights solo llegan las solicitudes (Serilog escribe en la consola), así que el Bicep manda los registros de consola de la Web App
 (`AppServiceConsoleLogs`) al área de trabajo `log-abastalia-prod` y la alerta del inbox los consulta. Validado con `az bicep build`; se aplica con el
 próximo `az deployment group create`.
+
+### Salud de la plataforma y alertas de límites (TK-311, D22)
+
+El dueño decidió vigilar en el piloto los límites por IP del paso previo de las cajas (`Nodes:ConcurrentPerIp` = 8 a la vez,
+`Nodes:RequestsPerMinutePerIp` = 300 por minuto) antes de cambiarlos. La nube cuenta en memoria lo que rechazan el paso previo (429 por IP a la vez o
+por minuto, 411, 413, 415), la revisión de la caja (desconocida, revocada, firma inválida), los límites por plan o ruta (429 de cada política) y los 5xx
+por ruta. Cada minuto escribe una línea por motivo e IP en el registro (`Limit watch <motivo> <detalle> net <a.b.c.0/24> ip <clave>: <n> rejections,
+<n> with Retry-After, <n> stores`) y guarda las filas en la tabla `cloud.LimitRejections` solo cuando la base ya está despierta (corrida del inbox,
+página de la consola): un ataque de noche no despierta la base serverless. La IP nunca se guarda: solo su /24 (o /48 en IPv6) y un hash con sal del
+proceso (la clave cambia al reiniciar). Las filas viven 8 días.
+
+La consola (Plataforma → **Salud**, con las mismas reglas de 2FA y registro de cada consulta) muestra, para 24 h o 7 días: los rechazos por motivo,
+las IPs con más rechazos (pico de 429 en 15 minutos y tiendas detrás, resaltados cuando pasan el umbral), los 5xx por ruta, las cuotas del mes al
+80 % o más (TK-248) y las firmas del receptor pasadas del uso justo (TK-286), las tiendas sin latido y la cola de e-CF de cada tienda (su latido).
+
+| Alerta | Qué significa | Qué hacer |
+|---|---|---|
+| `alert-abastalia-prod-per-ip-429` (cada 15 min, sev. 2) | Una IP recibió más de `alertPerIpRejections` (20) 429 por IP del paso previo en 15 minutos. | Abrir **Salud**, buscar la red. Con una sola tienda detrás y su caja al día suele ser una caja reintentando sin respetar `Retry-After` (versión vieja: actualizarla). Sin tiendas detrás y con cajas desconocidas, es tráfico ajeno: no hacer nada mientras no haya 5xx. |
+| `alert-abastalia-prod-shared-ip-429` (cada 15 min, sev. 2) | `alertStoresBehindIp` (3) tiendas o más detrás de una misma IP recibieron el 429 por IP: una conexión compartida o el NAT del proveedor. | Es la señal de que los límites por IP se quedan cortos. Subir `Nodes__RequestsPerMinutePerIp` (y si hace falta `Nodes__ConcurrentPerIp`) en la configuración de la Web App y anotarlo en D22. |
+| `alert-abastalia-prod-silent-stores` (cada 30 min, sev. 3) | Una tienda conectada lleva más de `alertSilentStoreHours` (6) horas sin latido, solo entre `alertBusinessHourStart` + 6 y `alertBusinessHourEnd` (14:00–20:00 hora de la tienda): estuvo callada casi todo el día abierto. El id de la tienda está en la línea `Store silent`. | Ver la tienda en la consola; llamar al dueño (PC apagada, sin internet, servicio detenido). La línea se escribe cuando otra tienda envía datos (la base despierta), así que si todas callan avisan las alertas de salud y 5xx. Tiendas calladas más de 7 días no alertan (cerradas). |
+| `alert-abastalia-prod-5xx` | Más de `alert5xxPer15Min` (5) errores 5xx en 15 minutos. | En **Salud**, "Errores 5xx por ruta" dice dónde; el detalle está en los registros de la Web App. |
+
+Los umbrales son parámetros del Bicep; los de IP y tiendas calladas llegan también a la Web App (`Watch__PerIpRejectionsPer15Minutes`,
+`Watch__StoresBehindIp`, `Watch__SilentStoreHours`) para que la consola resalte con los mismos números. Costo: tres reglas de consulta más (unos
+US$ 0.50–1.50 al mes en total), líneas de registro solo cuando algo se rechaza, y ninguna escritura que despierte la base.
 
 ### Certificados e-CF en Key Vault: prueba real (TK-151, 2026-10-16)
 
