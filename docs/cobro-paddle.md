@@ -33,11 +33,12 @@ Un producto es de Abastalia solo si su `custom_data` tiene la clave `abastalia` 
 
 | Clave | Qué es |
 |---|---|
-| `plan` **o** `addOn` | El código: `Essential`, `Default`, `MultiRegister`, `MultiStore`; o `SupplierInvoiceReading`, `AssistantPack`, `ExtraRegister`, `ExtraStore`, `ExtraUsers` |
+| `plan` **o** `addOn` | El código: `Essential`, `Default`, `MultiRegister`, `MultiStore`; o `SupplierInvoiceReading`, `AssistantPack`, `ExtraRegister`, `ExtraStore`, `ExtraUsers`, `ExtraCashier` |
 | `quotas` | Límites del mes por medidor (`AssistantQuestions`, `AssistantTokens`, `SupplierInvoices`, `Emails`, `ArchiveRetrievals`, `AccompanimentRequests`, `Invites`). En un adicional **se suman** al plan, una vez por unidad comprada (TK-258) |
 | `rateLimits` | Por minuto: `panelPerMinute` (API del panel, por usuario), `assistantPerMinute` (preguntas al asistente, por usuario), `supplierInvoicesPerMinute` (facturas leídas, por caja). En un adicional también se sumarían: por eso los adicionales no los ponen |
 | `registers` | Cajas además de la PC principal que pone la licencia. En un adicional (`ExtraRegister`), se suman por unidad |
 | `stores` | Tiendas del negocio que reciben licencia de la nube (1 si nadie lo dice). En un adicional (`ExtraStore`), se suman por unidad |
+| `cashiers` | TK-277: cajeros que la tienda puede tener habilitados (el Dueño no cuenta). En un adicional se suman por unidad: `ExtraCashier` 1 (Paddle); `ExtraRegister` 2 y `ExtraStore` 4 salen de `Billing:AddOns` |
 | `features` | Funciones de la licencia (`ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant`, `SupplierInvoiceReading`). Todos los planes llevan todas |
 
 **Orden:** `custom_data` de Paddle &gt; appsettings (`Quotas:<Plan>`, `Quotas:<Plan>:RateLimits`, `Billing:Plans:<Plan>`, `Quotas:AddOns:<Adicional>`, `Billing:AddOns:<Adicional>`) &gt; lo de `Default` (Paddle, luego appsettings) &gt; el valor global (`Panel:RequestsPerMinutePerUser`, `Ai:AssistantQuestionsPerMinutePerUser`, `Ai:SupplierInvoicesPerMinutePerNode`). Lo que falte en Paddle sale de appsettings: se puede empezar solo con `plan` y completar después. Los nombres de las claves no distinguen mayúsculas. Un cambio en Paddle aplica en la siguiente lectura del catálogo (o al instante con el webhook); los límites por minuto de un negocio siguen a su plan en menos de un minuto.
@@ -48,15 +49,16 @@ Los planes son **tamaños**, no tipos de negocio: **todos tienen todas las funci
 
 | Código | Nombre | Qué incluye | Mensual | Anual |
 |---|---|---|---|---|
-| `Essential` | Esencial | Solo la PC principal (`registers` 0), 2 usuarios del panel (`Invites`), 100 preguntas al asistente, 20 facturas leídas | US$12 | US$120 |
-| `Default` | Estándar | PC principal + 1 caja, 3 usuarios, 300 preguntas, 20 facturas | US$19 | US$190 |
-| `MultiRegister` | Pro | PC principal + 3 cajas, 5 usuarios, 600 preguntas, 20 facturas, soporte más rápido | US$35 | US$350 |
-| `MultiStore` | Varias sucursales | **Ya no se vende** (sus precios están archivados en Paddle). Sigue funcionando para quien lo tenga y en la consola: 3 cajas, 2 tiendas, 10 usuarios, 1,500 preguntas | — | — |
+| `Essential` | Esencial | Solo la PC principal (`registers` 0), **2 cajeros**, 2 usuarios del panel (`Invites`), 100 preguntas al asistente, 20 facturas leídas | US$12 | US$120 |
+| `Default` | Estándar | PC principal + 1 caja, **4 cajeros**, 3 usuarios, 300 preguntas, 20 facturas | US$19 | US$190 |
+| `MultiRegister` | Pro | PC principal + 3 cajas, **8 cajeros**, 5 usuarios, 600 preguntas, 20 facturas, soporte más rápido | US$35 | US$350 |
+| `MultiStore` | Varias sucursales | **Ya no se vende** (sus precios están archivados en Paddle). Sigue funcionando para quien lo tenga y en la consola: 3 cajas, 2 tiendas, 12 cajeros, 10 usuarios, 1,500 preguntas | — | — |
 
 | Adicional (con cantidad) | Nombre | Qué suma por unidad | Mensual | Anual |
 |---|---|---|---|---|
-| `ExtraRegister` | Caja adicional | 1 caja en la licencia (`Billing:AddOns:ExtraRegister:Registers`) | US$6 | US$60 |
-| `ExtraStore` | Sucursal adicional | 1 tienda más con licencia de la nube, con las cajas del plan (`Billing:AddOns:ExtraStore:Stores`) | US$25 | US$250 |
+| `ExtraRegister` | Caja adicional | 1 caja y 2 cajeros en la licencia (`Billing:AddOns:ExtraRegister:Registers` / `:Cashiers`) | US$6 | US$60 |
+| `ExtraCashier` | Cajero adicional | 1 cajero en la licencia (`custom_data.abastalia.cashiers`, o `Billing:AddOns:ExtraCashier:Cashiers`) | US$2 | US$20 |
+| `ExtraStore` | Sucursal adicional | 1 tienda más con licencia de la nube, con las cajas del plan, y 4 cajeros (`Billing:AddOns:ExtraStore:Stores` / `:Cashiers`) | US$25 | US$250 |
 | `SupplierInvoiceReading` | Lectura de facturas | 300 facturas al mes (`Quotas:AddOns`) y la función `SupplierInvoiceReading` en la licencia | US$7 | US$70 |
 | `AssistantPack` | Asistente +1,000 preguntas | 1,000 preguntas y 10,000,000 tokens al mes | US$5 | US$50 |
 | `ExtraUsers` | Usuarios del panel +5 | 5 invitaciones al mes (`Invites`) | US$3 | US$30 |
@@ -66,7 +68,8 @@ Los planes son **tamaños**, no tipos de negocio: **todos tienen todas las funci
 - **Tiendas:** la nube emite licencia solo a las tiendas más antiguas del negocio que cubre su plan (1, o 2 con `MultiStore`) más una por `ExtraStore`. Las demás no reciben licencia de la nube (siguen con su prueba o una licencia fuera de línea). Crear tiendas en el panel no tiene límite.
 - **Usuarios del panel:** se limitan con la cuota mensual de invitaciones (`Invites`), no con un tope de miembros.
 - **No construido (solo anotado):** el acompañamiento a la certificación como pago único (US$79 provisional) sigue en "Pagos únicos" de /precios (`site.prices.certificationSupport`), sin producto en Paddle.
-- **Pendiente: precio por cajero.** El dueño quiere cobrar **por usuario cajero** (cada empleado con su usuario y PIN, por trazabilidad). No se construye todavía. Encaja en lo que hay: un adicional con cantidad `ExtraCashier` ("Cajero adicional") que cuente los usuarios cajeros **activos con PIN en el mes**; la tienda tendría que reportar ese número en el latido y la licencia llevar un límite `Cashiers` (como `Registers`). Falta decidir el precio, cuántos cajeros incluye cada plan y qué pasa al pasarse (la venta nunca se detiene).
+- **Cajeros (TK-277, D20):** la licencia lleva `Cashiers` = los del plan + 1 por `ExtraCashier` + 2 por `ExtraRegister` + 4 por `ExtraStore`. Un cajero es un usuario **activo** cuyo rol puede **vender o abrir turno** (`sales.create` o `register.open`); el Administrador (el Dueño) no cuenta, ni quien no vende (Contador, Inventario). La tienda solo frena **habilitar** a uno más: crear un usuario, activarlo, darle un rol que vende o hacer que un rol venda (`Identity.CashierLimitReached`, con cómo agregar más). **Nunca** frena entrar, vender, cuadrar ni el e-CF. Desactivar a alguien (Configuración → Usuarios) libera su lugar y guarda su historial. Sin licencia (prueba): sin tope. Restringido: 2 (el Esencial). Una licencia sin `Cashiers` (emitida antes) no limita. Se cobra por cantidad adelantada, no por "los que entraron en el mes".
+- **Señal de PIN compartido (TK-277):** el mismo usuario trabajando en dos cajas a la vez (entró en una mientras seguía usando la otra; un cajero no puede tener dos turnos abiertos, así que se miran las sesiones). El Resumen de la administración lo avisa (últimos 7 días) y Salud queda "Degradado" (`shared-pin`, último día; llega a la nube con el resumen de salud). No bloquea nada.
 - **Mensual o anual:** el dueño elige al pagar (el panel muestra "Mensual / Anual" solo si hay algún precio anual). Una suscripción existente conserva su forma de pago; cambiar de plan, agregar un adicional o cambiar su cantidad se **prorratea al momento** (`proration_billing_mode: prorated_immediately`).
 - Un plan o adicional sin precio activo en Paddle no se vende de esa forma (el panel no lo muestra; /precios dice "Precio por confirmar").
 
@@ -85,12 +88,15 @@ Cuenta **sandbox** solamente (la cuenta en vivo no se tocó). Los nombres ya no 
 | Caja adicional (`ExtraRegister`) | `pro_01m53241a7he8pdafkha0f5bf5` | `pri_01m53241dzbemwa2cqm1q6pjqr` | `pri_01m53241hvz9m9bq9vrgc43w3m` |
 | Sucursal adicional (`ExtraStore`) | `pro_01m53241pvk1e98w36hfn4vm2w` | `pri_01m53241t4d2ttqc7sbd4xxjn8` | `pri_01m53241y6rpq9garjwdtgxmdt` |
 | Usuarios del panel +5 (`ExtraUsers`) | `pro_01m532423p3mm7nqxskg3ypgah` | `pri_01m532427ffcj1t2070763nzzc` | `pri_01m53242b3g7nyrfx038gg2c60` |
+| Cajero adicional (`ExtraCashier`, TK-277) | `pro_01m53czk4tsmp3jekgrjqgrb5w` | `pri_01m53czkd29gwfrj0mxw2wmr73` | `pri_01m53czkk7275mxgd5k7b1zn4v` |
+
+El de cajero se creó por API el 16/10/2026 con `custom_data` `{"abastalia":{"addOn":"ExtraCashier","cashiers":1}}`, US$2 / US$20, cantidad 1 a 50, `tax_mode` `location`. **Falta en vivo:** crear el mismo producto y precios en la cuenta en vivo.
 
 Archivados (los de US$1): `pri_01m52qst9fkm4a8q7gxapvsky5`, `pri_01m52qsv39f4v4zb47dq40pbtm`, `pri_01m52qsvtt6fkzgkd5v02xazw9`, `pri_01m52qswns3mx99nfsb6nqn2we`.
 
 ## Prueba de 14 días
 
-La prueba de Abastalia **no** es de Paddle: la tienda empieza sus 14 días con la **primera venta** real (TK-196) y no pide tarjeta. Por eso los precios de Paddle se crean **sin** `trial_period`. Si algún día se quiere cobrar con prueba en Paddle (`trial_period` con `requires_payment_method`, [crear precio](https://developer.paddle.com/api-reference/prices/create-price.md)), la nube ya entiende el estado `trialing`: la licencia cubre hasta el fin de la prueba.
+La prueba de Abastalia **no** es de Paddle: la tienda empieza sus 14 días con la **primera venta** real (TK-196) y no pide tarjeta. Si el negocio llegó recomendado, son **30 días** (TK-276, ver Recomendaciones). Por eso los precios de Paddle se crean **sin** `trial_period`. Si algún día se quiere cobrar con prueba en Paddle (`trial_period` con `requires_payment_method`, [crear precio](https://developer.paddle.com/api-reference/prices/create-price.md)), la nube ya entiende el estado `trialing`: la licencia cubre hasta el fin de la prueba.
 
 ## Impuestos, facturas y reembolsos
 
@@ -138,7 +144,12 @@ En el cliente: tarjeta **Suscripción** con estado, ids de Paddle, pagado hasta,
 
 ## Recomendaciones: "Recomiende Abastalia" (TK-255)
 
-**Regla del dueño:** recomendar da un **descuento en el próximo pago de quien recomienda**, y solo cuando el negocio recomendado **paga** un plan que califica (crear la cuenta no da nada). Apagado mientras `Billing:Referrals:Amount` esté vacío; los valores los decide el dueño.
+**Regla del dueño:** recomendar da un **descuento en el próximo pago de quien recomienda**, y solo cuando el negocio recomendado **paga** un plan que califica (crear la cuenta no da nada). Apagado mientras `Billing:Referrals:Amount` esté vacío o el cobro con Paddle esté apagado.
+
+**Valores aprobados (D19, 16/10/2026, TK-276):** califican `Essential`, `Default` y `MultiRegister`; descuento fijo de **US$12** (`flat`, `1200`, `USD`); hasta **3 por mes** por negocio. Quien llega recomendado tiene **30 días** de prueba (`ReferredTrialDays`). Con plan anual, las recompensas se juntan al renovar, hasta el **50 %** del plan (`AnnualCapPercent`). Están en `appsettings.json`; en producción siguen apagadas mientras `Billing:Paddle` no esté configurado.
+
+- **Prueba de 30 días (TK-276):** al entrar al panel, el navegador envía el código guardado de `/precios?ref=` (`POST /api/billing/referrals/claim`, Dueños) y la nube lo guarda en el negocio, solo en sus primeros 14 días y con las mismas reglas que el checkout (nunca el propio, nunca después del primer pago, nunca otro). La tienda conectada lo sabe por el canal de su licencia: `POST /api/nodes/license` responde también `trialDays: 30`, y la tienda guarda ese largo (`settings.Business.TrialDays`) y alarga su prueba; nunca la acorta. Una tienda sin conexión a la nube se queda con 14.
+- **Plan anual de quien recomienda (TK-276):** el siguiente pago es la renovación, así que en vez de una recompensa por ciclo se **juntan**: cada recompensa nueva reemplaza el descuento ya puesto para la renovación por uno solo con todas (`Abastalia: N recomendaciones`), hasta el 50 % del precio del plan (o del por ciento, si el tipo es `percentage`); las que no caben esperan a la siguiente renovación. Si se revierte una, el descuento se quita y las demás se vuelven a juntar sin ella.
 
 - **Código y enlace:** cada negocio tiene un código de 8 letras y números (sin 0/O, 1/I/L), creado la primera vez que el Dueño abre "Plan y facturación". Enlace: `https://<sitio>/precios?ref=CÓDIGO`. /precios comprueba el código (`GET /api/public/referrals/{código}`, sin cuenta, `Billing:Referrals:LookupsPerMinute` por IP contra quien adivina códigos) y lo guarda en el navegador; el primer checkout lo envía (`referralCode`) y la nube lo **guarda en el negocio** (`TenantSubscriptions.ReferredByCode`; nunca su propio código). El checkout lo pasa a Paddle en `customData`: `{ tenantId, referral_code, referrer_tenant_id }`.
 - **Cuándo cuenta:** en `transaction.completed`, solo el **primer pago con monto** del negocio (`details.totals.grand_total` > 0; el checkout de una prueba en 0 no cuenta), y solo si algún precio comprado es de un plan que califica: su código o su `pri_…` en `Billing:Referrals:QualifyingPlans`, o el producto con `custom_data.abastalia.referral: true`. Si ese primer pago no califica, ese negocio ya no da recompensa. **Una recompensa por negocio recomendado, para siempre** (índice único) y cada evento una sola vez (`event_id`).
@@ -156,7 +167,7 @@ Hasta ahora las licencias se firman fuera de línea con la llave del dueño (`do
 - Una llave **EC P-256 en Azure Key Vault, no exportable**: la API firma con ella por Key Vault ("Key Vault Crypto User", ya asignado en `deploy/azure/main.bicep`) y la parte privada nunca sale de la bóveda.
 - La tienda acepta licencias firmadas por **cualquiera de las dos** llaves públicas: la de siempre y la de la nube (`AbastaliaCloudPublicKey` en `src/Modules/Settings/Abastalia.Settings/License.cs`, vacía hasta crear la llave).
 - La tienda conectada pide su licencia por el canal del nodo (`POST /api/nodes/license`, firmado con la llave de la caja) en cada latido (al iniciar y cada 4 horas) y la **instala sola** si es válida y **más nueva** (fecha de emisión) que la instalada. La fecha de emisión es la del último cambio de la suscripción, así que la misma licencia no se reinstala en cada consulta.
-- Contenido: tienda, nombre del plan, funciones y cajas de `Billing:Plans:<Plan>` (si un plan no lo define, toma lo de `Default`), más una caja por cada `ExtraRegister` y la función del adicional `SupplierInvoiceReading`. Solo la reciben las tiendas que cubre el plan más las `ExtraStore` (las más antiguas primero; TK-258). **Vence** en "pagado hasta" (Paddle o acuerdo manual) + 3 días; luego la gracia de 15 días de la tienda.
+- Contenido: tienda, nombre del plan, funciones, cajas y cajeros de `Billing:Plans:<Plan>` (si un plan no lo define, toma lo de `Default`), más una caja por cada `ExtraRegister`, los cajeros de cada adicional (TK-277) y la función del adicional `SupplierInvoiceReading`. Solo la reciben las tiendas que cubre el plan más las `ExtraStore` (las más antiguas primero; TK-258). **Vence** en "pagado hasta" (Paddle o acuerdo manual) + 3 días; luego la gracia de 15 días de la tienda.
 - Sin tiempo pagado la nube no entrega licencia (una vencida reemplazaría una válida emitida fuera de línea).
 - **Emisión fuera de línea:** sigue igual (tiendas sin internet, acuerdos especiales). Gana la licencia emitida más tarde, la firme quien la firme.
 
@@ -187,9 +198,12 @@ Luego desplegar con `licenseKeyName = abastalia-license` (pone `Billing__License
 | `Billing:License:KeyId` | URI de la llave de licencias en Key Vault; vacío = la nube no emite licencias |
 | `Billing:License:MarginDays` | Días de margen tras "pagado hasta" (3) |
 | `Billing:Plans:<Plan>:Name` / `:Registers` / `:Features` | Lo que la licencia dice de cada plan |
-| `Billing:Referrals:QualifyingPlans` | TK-255: códigos de plan o `pri_…` cuyo primer pago da la recompensa (además de `custom_data.abastalia.referral: true`). **[POR DECIDIR]** |
-| `Billing:Referrals:DiscountType` / `:Amount` / `:Currency` | `percentage` (`Amount` = por ciento) o `flat` (`Amount` en la unidad mínima, `500` = US$5.00, con `Currency`). `Amount` vacío = recomendaciones apagadas. **[POR DECIDIR]** |
-| `Billing:Referrals:MonthlyLimitPerReferrer` | Recompensas por negocio por mes (5) |
+| `Billing:Referrals:QualifyingPlans` | TK-255: códigos de plan o `pri_…` cuyo primer pago da la recompensa (además de `custom_data.abastalia.referral: true`). D19: `Essential`, `Default`, `MultiRegister` |
+| `Billing:Referrals:DiscountType` / `:Amount` / `:Currency` | `percentage` (`Amount` = por ciento) o `flat` (`Amount` en la unidad mínima, `500` = US$5.00, con `Currency`). `Amount` vacío = recomendaciones apagadas. D19: `flat`, `1200`, `USD` |
+| `Billing:Referrals:MonthlyLimitPerReferrer` | Recompensas por negocio por mes (D19: 3) |
+| `Billing:Referrals:ReferredTrialDays` | TK-276: días de prueba de la tienda de un negocio recomendado (30) |
+| `Billing:Referrals:AnnualCapPercent` | TK-276: tope del descuento junto de un plan anual, en % del precio del plan (50) |
+| `Billing:Plans:<Plan>:Cashiers` / `Billing:AddOns:<Adicional>:Cashiers` | TK-277: cajeros del plan (2 / 4 / 8 / 12) y por unidad de adicional (`ExtraCashier` 1, `ExtraRegister` 2, `ExtraStore` 4) |
 | `Billing:Referrals:LookupsPerMinute` | Consultas públicas de código por IP por minuto (20) |
 
 Sandbox y en vivo son **cuentas separadas** con sus propias llaves, tokens e ids de precio ([sandbox](https://developer.paddle.com/build/tools/sandbox)); las llaves de una no sirven en la otra.

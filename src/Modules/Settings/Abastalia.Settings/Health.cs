@@ -19,6 +19,8 @@ internal static class StoreHealth
         ["backup"] = ("Respaldos", "Los respaldos no están al día.", "Revise la frase y la carpeta de copia en Configuración → Respaldos, y haga uno con \"Respaldar ahora\"."),
         ["store-ca"] = ("Cajas unidas", "Hay cajas que deben volver a unirse.", "En Configuración → Equipos revoque esas cajas y únalas otra vez con un código nuevo."),
         ["pin-failures"] = ("PIN incorrectos", "Alguien escribió varios PIN incorrectos.", "Revise en Auditoría quién lo intentó y desde qué caja; si no fue la persona, cámbiele el PIN."),
+        ["shared-pin"] = ("PIN compartido", "El mismo usuario trabajó en dos cajas a la vez.",
+            "Dé a cada persona su propio usuario y PIN, y cambie el PIN de ese usuario en Configuración → Usuarios."),
         ["outbox"] = ("Tareas internas", "Hay tareas internas esperando más de 10 minutos.", "Reinicie la PC principal. Si sigue igual, llame al soporte de Abastalia."),
         ["clock"] = ("Hora de la PC", "La hora de la PC principal está atrasada: las facturas y los turnos saldrían con fechas que retroceden.",
             "Corrija la fecha y la hora de Windows en la PC principal (sincronizar ahora)."),

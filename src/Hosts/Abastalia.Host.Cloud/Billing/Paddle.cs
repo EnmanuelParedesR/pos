@@ -109,6 +109,7 @@ internal sealed class PaddleWebhook(CloudDbContext db, PaddleOptions paddle, Bil
             await referrals.TryApplyAsync(changed, ct); // TK-255: its queued rewards, now that it may be active or billed again
         }
         if (referral is { Status: ReferralStatus.Pending }) await referrals.TryApplyAsync(referral.ReferrerTenantId, ct);
+        if (referrals.Requeued is { } requeued) await referrals.TryApplyAsync(requeued, ct); // TK-276: the rest of a combined annual discount
         return Results.Ok();
     }
 

@@ -15,9 +15,12 @@ public sealed record ReferralReward(string Type, string Amount, string Currency)
 /// <summary>"Recomiende Abastalia" (Owners). <paramref name="NextDiscount"/>: the reward on the next payment (<c>FromUtc</c> = that billing) or queued
 /// (<c>FromUtc</c> null: waiting for an active subscription or the next cycle); null when none is due.</summary>
 public sealed record ReferralsResponse(bool Enabled, string? Code, int Pending, int Applied, ReferralReward? Reward, ReferralDiscountView? NextDiscount);
-public sealed record ReferralDiscountView(string Type, string Amount, string Currency, DateTime? FromUtc);
+/// <param name="Count">TK-276: rewards joined in that discount (an annual referrer's renewal); the amount shown is one reward's.</param>
+public sealed record ReferralDiscountView(string Type, string Amount, string Currency, DateTime? FromUtc, int Count = 1);
 
 public sealed record ReferralLookupResponse(bool Valid);
+
+public sealed record ReferralClaimRequest(string? Code);
 
 public sealed record ReferralView(Guid Id, Guid ReferrerTenantId, string ReferrerName, Guid ReferredTenantId, string ReferredName, ReferralStatus Status, string? Reason,
     string DiscountType, string DiscountAmount, string Currency, DateTime CreatedUtc, DateTime? AppliedUtc, DateTime? DiscountFromUtc, DateTime? RevertedUtc, string? Note);
@@ -39,18 +42,28 @@ internal static class ReferralEndpoints
             http.Connection.RemoteIpAddress?.ToString() ?? "", _ => new FixedWindowRateLimiterOptions { PermitLimit = options.LookupsPerMinute, Window = TimeSpan.FromMinutes(1) })));
     }
 
-    private static bool On(PaddleOptions paddle, ReferralOptions options) => paddle.IsConfigured && options.IsOn;
+    public static bool On(PaddleOptions paddle, ReferralOptions options) => paddle.IsConfigured && options.IsOn;
 
-    /// <summary>The code from <c>/precios?ref=</c>, kept at the business's first checkout (never its own); the checkout's custom_data carries it to Paddle.</summary>
-    public static async Task<Dictionary<string, string>> CheckoutDataAsync(CloudDbContext db, ReferralRewards rewards, Guid tenantId, string? code, CancellationToken ct)
+    /// <summary>TK-276: a business claims the code it came with this many days after signing up at most (its store trial is still young).</summary>
+    public const int ClaimDays = 14;
+
+    /// <summary>Keeps the code a business came with (never its own, never after its first payment, never a second one).</summary>
+    private static async Task<TenantSubscription> KeepAsync(CloudDbContext db, ReferralRewards rewards, Guid tenantId, string? code, CancellationToken ct)
     {
-        var data = new Dictionary<string, string> { ["tenantId"] = tenantId.ToString() };
         var s = await BillingModel.SubscriptionAsync(db, tenantId, ct);
         if (s.ReferredByCode is null && s.FirstPaidUtc is null && await rewards.ReferrerOfAsync(code, ct) is { } referrer && referrer != tenantId)
         {
             s.ReferredByCode = ReferralModel.Normalize(code);
             await db.SaveChangesAsync(ct);
         }
+        return s;
+    }
+
+    /// <summary>The code from <c>/precios?ref=</c>, kept at sign-in (TK-276) or at the business's first checkout; the checkout's custom_data carries it to Paddle.</summary>
+    public static async Task<Dictionary<string, string>> CheckoutDataAsync(CloudDbContext db, ReferralRewards rewards, Guid tenantId, string? code, CancellationToken ct)
+    {
+        var data = new Dictionary<string, string> { ["tenantId"] = tenantId.ToString() };
+        var s = await KeepAsync(db, rewards, tenantId, code, ct);
         if (s.ReferredByCode is { } kept && await rewards.ReferrerOfAsync(kept, ct) is { } by)
             (data["referral_code"], data["referrer_tenant_id"]) = (kept, by.ToString());
         return data;
@@ -62,6 +75,17 @@ internal static class ReferralEndpoints
         app.MapGet("/api/public/referrals/{code}", async (string code, PaddleOptions paddle, ReferralOptions options, ReferralRewards rewards, CancellationToken ct) =>
             On(paddle, options) && await rewards.ReferrerOfAsync(code, ct) is not null ? Results.Ok(new ReferralLookupResponse(true)) : Results.NotFound())
             .AllowAnonymous().RequireRateLimiting(LookupRateLimit);
+
+        // TK-276: the panel sends the code kept from /precios?ref= when the owner signs in, so the store's trial is 30 days (the node's license
+        // channel tells it) before any checkout. Only in the business's first days; 204 whether it was kept or not.
+        owner.MapPost("/referrals/claim", async (ReferralClaimRequest r, ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, ReferralOptions options,
+            ReferralRewards rewards, TimeProvider clock, CancellationToken ct) =>
+        {
+            var tenantId = user.GetTenantId();
+            if (On(paddle, options) && await db.Tenants.AnyAsync(t => t.Id == tenantId && t.CreatedUtc > clock.GetUtcNow().UtcDateTime.AddDays(-ClaimDays), ct))
+                await KeepAsync(db, rewards, tenantId, r.Code, ct);
+            return Results.NoContent();
+        });
 
         owner.MapGet("/referrals", async (ClaimsPrincipal user, CloudDbContext db, PaddleOptions paddle, ReferralOptions options, ReferralRewards rewards,
             TimeProvider clock, CancellationToken ct) =>
@@ -76,7 +100,8 @@ internal static class ReferralEndpoints
                        ?? mine.Where(r => r.Status == ReferralStatus.Pending).OrderBy(r => r.CreatedUtc).FirstOrDefault();
             return Results.Ok(new ReferralsResponse(true, code, mine.Count(r => r.Status == ReferralStatus.Pending), mine.Count(r => r.Status == ReferralStatus.Applied),
                 new ReferralReward(options.DiscountType, options.Amount, options.Currency),
-                next is null ? null : new ReferralDiscountView(next.DiscountType, next.DiscountAmount, next.Currency, next.Status == ReferralStatus.Applied ? next.DiscountFromUtc : null)));
+                next is null ? null : new ReferralDiscountView(next.DiscountType, next.DiscountAmount, next.Currency, next.Status == ReferralStatus.Applied ? next.DiscountFromUtc : null,
+                    next.Status == ReferralStatus.Applied ? mine.Count(r => r.Status == ReferralStatus.Applied && r.PaddleDiscountId == next.PaddleDiscountId) : 1)));
         });
     }
 
@@ -120,7 +145,7 @@ internal static class ReferralEndpoints
                     return EndpointExtensions.Problem(Error.Validation("Referral.InvalidAction", "Esa acción no aplica a esta recomendación."));
             }
             await db.SaveChangesAsync(ct);
-            if (referral.Status == ReferralStatus.Pending) await rewards.TryApplyAsync(referral.ReferrerTenantId, ct);
+            if (referral.Status == ReferralStatus.Pending || rewards.Requeued is not null) await rewards.TryApplyAsync(referral.ReferrerTenantId, ct);
             return Results.NoContent();
         });
     }

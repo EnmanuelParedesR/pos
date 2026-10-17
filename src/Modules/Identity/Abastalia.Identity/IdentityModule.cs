@@ -34,7 +34,8 @@ public static class IdentityModule
     {
         services.AddModuleDbContext<IdentityDbContext>();
         services.AddSingleton<StoreCertificateAuthority>();
-        services.AddHealthChecks().AddCheck<StoreCaHealthCheck>("store-ca").AddCheck<PinFailuresHealthCheck>("pin-failures");
+        services.AddHealthChecks().AddCheck<StoreCaHealthCheck>("store-ca").AddCheck<PinFailuresHealthCheck>("pin-failures")
+            .AddCheck<SharedPinHealthCheck>("shared-pin");
         services.AddSingleton<PinPepper>();
         services.AddSingleton<AttemptLimiter>();
         services.AddScoped<IRestoreGuard, IdentityRestoreGuard>();
@@ -129,12 +130,10 @@ internal sealed class SessionAuthenticationHandler(
 
         // R11 A4: whoever can authorize (or manage users) is signed out after a few idle minutes, so nobody approves from a register left open.
         // The register's own polling (AbastaliaApi.PollAsync) does not count as activity.
-        if (permissions.Any(IdleLock.Applies))
-        {
-            if (data.Seen + IdleLock.Timeout(config) <= now) return AuthenticateResult.Fail("Session idle.");
-            if (Request.Headers[IdleLock.BackgroundHeader].Count == 0 && data.Seen + IdleLock.WriteEvery <= now)
-                await db.Sessions.Where(s => s.Id == data.SessionId).ExecuteUpdateAsync(s => s.SetProperty(x => x.LastSeenUtc, now), Context.RequestAborted);
-        }
+        if (permissions.Any(IdleLock.Applies) && data.Seen + IdleLock.Timeout(config) <= now) return AuthenticateResult.Fail("Session idle.");
+        // TK-277: written for everyone (at most once a minute): the same person working at two registers at once is the shared-PIN signal.
+        if (Request.Headers[IdleLock.BackgroundHeader].Count == 0 && data.Seen + IdleLock.WriteEvery <= now)
+            await db.Sessions.Where(s => s.Id == data.SessionId).ExecuteUpdateAsync(s => s.SetProperty(x => x.LastSeenUtc, now), Context.RequestAborted);
 
         List<Claim> claims =
         [
@@ -180,6 +179,35 @@ internal sealed class PinFailuresHealthCheck(IdentityDbContext db, TimeProvider 
             .OrderBy(u => u.Name).Select(u => u.Name).ToListAsync(cancellationToken);
         return names.Count == 0 ? HealthCheckResult.Healthy() : HealthCheckResult.Degraded(
             $"Varios PIN incorrectos en la última hora para: {string.Join(", ", names)}. Revise quién lo intentó en Auditoría.");
+    }
+}
+
+/// <summary>TK-277: a user who worked at one register after signing in at another (both sessions in use at once): a PIN that may be shared.
+/// A cashier cannot hold two open shifts, so the sessions are the signal. Only a warning; nothing is blocked. The Administrador is left out.</summary>
+internal static class SharedPins
+{
+    public sealed record Item(Guid UserId, string Name, int Times, DateTime LastUtc);
+
+    public static async Task<List<Item>> SinceAsync(IdentityDbContext db, DateTime since, CancellationToken ct)
+    {
+        var rows = await (from b in db.Sessions
+                          where b.CreatedUtc >= since
+                          join u in db.Users on b.UserId equals u.Id
+                          where u.RoleId != Role.AdministratorId
+                          where db.Sessions.Any(a => a.UserId == b.UserId && a.DeviceId != b.DeviceId && a.CreatedUtc <= b.CreatedUtc && a.LastSeenUtc > b.CreatedUtc)
+                          select new { u.Id, u.Name, b.CreatedUtc }).AsNoTracking().ToListAsync(ct);
+        return [.. rows.GroupBy(r => (r.Id, r.Name)).Select(g => new Item(g.Key.Id, g.Key.Name, g.Count(), g.Max(r => r.CreatedUtc))).OrderByDescending(i => i.LastUtc)];
+    }
+}
+
+/// <summary>TK-277: degraded while someone used one PIN at two registers at once in the last day (the cloud sees it with the health summary).</summary>
+internal sealed class SharedPinHealthCheck(IdentityDbContext db, TimeProvider clock) : IHealthCheck
+{
+    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    {
+        var names = (await SharedPins.SinceAsync(db, clock.GetUtcNow().UtcDateTime.AddDays(-1), cancellationToken)).Select(i => i.Name).ToList();
+        return names.Count == 0 ? HealthCheckResult.Healthy() : HealthCheckResult.Degraded(
+            $"El mismo usuario trabajó en dos cajas a la vez: {string.Join(", ", names)}. Puede que compartan el PIN; cada persona debe tener el suyo.");
     }
 }
 

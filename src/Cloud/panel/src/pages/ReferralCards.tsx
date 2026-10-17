@@ -30,7 +30,8 @@ export function ReferralCard() {
   return (
     <Card title="Recomiende Abastalia" aside={`${rewardLabel(data.reward)} en su próximo pago`}>
       <p className="esc-muted" style={{ marginTop: 0 }}>
-        Comparta su enlace. Cuando un negocio que usted recomendó pague su plan, le descontamos {rewardLabel(data.reward)} en su próximo pago.
+        Comparta su enlace. Quien llega con él prueba Abastalia gratis 30 días. Cuando pague su plan, le descontamos {rewardLabel(data.reward)} en su próximo
+        pago. Con pago anual, los descuentos se juntan al renovar, hasta la mitad del precio de su plan.
       </p>
       <div className="esc-row" style={{ gap: 12, flexWrap: "wrap" }}>
         <input className="esc-input" readOnly value={link} aria-label="Su enlace" style={{ flex: 1, minWidth: 240 }} onFocus={(e) => e.target.select()} />
@@ -50,7 +51,11 @@ export function ReferralCard() {
         <li>
           <span>Próximo descuento</span>
           <span>
-            {!next ? "—" : next.fromUtc ? `${rewardLabel(next)} en su pago del ${day(next.fromUtc)}` : `${rewardLabel(next)} en espera: se aplica en su próximo cobro`}
+            {!next
+              ? "—"
+              : next.fromUtc
+                ? `${(next.count ?? 1) > 1 ? `${next.count} × ${rewardLabel(next)}` : rewardLabel(next)} en su pago del ${day(next.fromUtc)}`
+                : `${rewardLabel(next)} en espera: se aplica en su próximo cobro`}
           </span>
         </li>
       </ul>

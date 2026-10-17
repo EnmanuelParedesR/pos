@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Abastalia.BuildingBlocks.Security;
@@ -73,5 +74,34 @@ public sealed class CloudLicenseTests(AbastaliaApp app) : IClassFixture<Abastali
         (await PullAsync()).ShouldBeTrue();
         (await FeaturesAsync()).GetProperty("status").GetString().ShouldBe("Active");
         app.Cloud.To(PullLicense.Path).ShouldAllBe(r => app.Cloud.SignedByNode(r)); // asked as this node, signed with its key
+    }
+}
+
+/// <summary>TK-276: a business that came with a referral code gets a 30-day store trial; the cloud says so on the license channel. Own app.</summary>
+public sealed class ReferredTrialTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    [Fact]
+    public async Task The_cloud_lengthens_the_trial_to_30_days_and_never_shortens_it()
+    {
+        await app.ConnectAsync();
+        var trialDays = 30;
+        app.Cloud.Respond = path => path == PullLicense.Path ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { license = (string?)null, trialDays }) } : null;
+        Task<bool> PullAsync() => app.InScopeAsync(sp => PullLicense.RunAsync(sp.GetRequiredService<CloudClient>(), sp.GetRequiredService<IStoreLicense>(), CancellationToken.None));
+
+        var cashier = await app.CashierWithShiftAsync();
+        var admin = app.Client(await app.AdminAsync());
+        var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco", 59m, stock: 10);
+        (await cashier.SellAsync(Store.Sale(cashier.ShiftId, 59m, 59m, Store.Line(soda, 1)))).EnsureSuccessStatusCode();
+        await app.InScopeAsync(sp => sp.GetRequiredService<Abastalia.BuildingBlocks.Messaging.OutboxProcessor>().ProcessAsync(CancellationToken.None));
+        async Task<int> DaysLeftAsync() => (await admin.GetFromJsonAsync<JsonElement>("/api/settings/features")).GetProperty("trialDaysLeft").GetInt32();
+        (await DaysLeftAsync()).ShouldBe(14);
+
+        await PullAsync();
+        (await DaysLeftAsync()).ShouldBe(30);
+        (await app.InScopeAsync(sp => sp.GetRequiredService<IStoreLicense>().ExtendTrialAsync(30, CancellationToken.None))).ShouldBeFalse(); // nothing new
+        trialDays = 14;
+        await PullAsync();
+        (await DaysLeftAsync()).ShouldBe(30); // never shorter
+        (await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.Select(b => b.TrialDays).SingleAsync())).ShouldBe(30); // kept for restarts
     }
 }

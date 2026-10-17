@@ -27,8 +27,9 @@ public sealed record CatalogPrice(string PriceId, BillingInterval? Interval, str
 /// <param name="Registers">Registers besides the main PC on the license; on an add-on, added per unit (TK-258).</param>
 /// <param name="Stores">Stores of the business that get a cloud license (TK-258); on an add-on, added per unit.</param>
 /// <param name="Referral">TK-255: the first payment of this plan earns the referrer's reward (as <c>Billing:Referrals:QualifyingPlans</c>).</param>
+/// <param name="Cashiers">TK-277: cashiers the store may have enabled (the owner is not counted); on an add-on, added per unit.</param>
 public sealed record AbastaliaProduct(string? Plan, string? AddOn, IReadOnlyDictionary<string, int>? Quotas, IReadOnlyDictionary<string, int>? RateLimits,
-    int? Registers, IReadOnlyList<string>? Features, int? Stores = null, bool? Referral = null)
+    int? Registers, IReadOnlyList<string>? Features, int? Stores = null, bool? Referral = null, int? Cashiers = null)
 {
     public string? Code => Plan ?? AddOn;
 }

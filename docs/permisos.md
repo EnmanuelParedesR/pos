@@ -64,6 +64,14 @@ Pedido del dueño (15 de octubre de 2026): el dueño maneja sus propios usuarios
 - Un rol en uso no se borra; siempre queda al menos un Administrador activo.
 - Cada cambio de rol o de usuario queda en la auditoría con el antes y el después.
 
+### Cajeros de la licencia (TK-277)
+
+- **Quién cuenta como cajero:** un usuario **activo** cuyo rol tiene `sales.create` o `register.open` (puede vender o abrir turno en una caja con su PIN). El Administrador (el Dueño) **no** cuenta, ni los roles que no venden (Contador, Inventario).
+- **Tope:** `limits.Cashiers` de la licencia (`docs/licencias.md`). Solo se rechaza **habilitar** a uno más: crear un usuario con un rol que vende, activar a uno inactivo, cambiarle el rol a uno que vende o agregar `sales.create`/`register.open` a un rol con usuarios activos (`Identity.CashierLimitReached`, con cómo agregar más). Entrar, vender, cuadrar y el e-CF **nunca** se frenan, aunque haya más cajeros que el tope (por ejemplo, tras pasar a un plan más chico).
+- **Desactivar** (Configuración → Usuarios → **Desactivar**) libera el lugar al instante y guarda todo su historial; nadie se desactiva a sí mismo.
+- Prueba: sin tope. Restringido: 2.
+- **PIN compartido:** si el mismo usuario trabaja en dos cajas a la vez, el Resumen lo avisa y Salud queda "Degradado" (`shared-pin`); no bloquea. Cada persona debe tener su propio usuario y PIN.
+
 ### Roles de partida (TK-216)
 
 Plantillas que el dueño puede usar tal cual o copiar y ajustar:

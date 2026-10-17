@@ -149,13 +149,13 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Por qué importa:** los referidos están construidos pero apagados hasta definir `Billing:Referrals`.
 - **Hoy:** apagado. Además falta en Paddle: permiso de la llave de API para crear descuentos y los eventos `adjustment.*` en el destino de notificaciones.
 - **Fuente:** `docs/cobro-paddle.md` (Referidos).
-- **Respuesta:**
+- **Respuesta:** (16/10/2026, TK-276) Califican los tres planes que se venden (Esencial, Estándar y Pro). Descuento **fijo de US$12** en el próximo pago de quien recomienda, hasta **3 por mes**. Quien llega recomendado tiene **30 días de prueba** en vez de 14. Con plan anual, las recompensas se juntan en un solo descuento al renovar, con un tope del 50 % del precio del plan. Sigue apagado mientras el cobro con Paddle esté apagado. Los contadores y revendedores van por otro canal (TK-199).
 
 ### D20 · Precio por cajero
 - **Pregunta:** ¿Cuánto cuesta cada cajero adicional, cuántos incluye cada plan y cómo se cuentan (propuesta: usuarios con PIN que entraron en el mes)?
 - **Por qué importa:** el dueño quiere cobrar por cajero (trazabilidad de quién hizo qué); sin estas cifras no se carga en Paddle.
 - **Hoy:** no construido; TK-258 deja el camino libre para un adicional "Cajero adicional" por cantidad.
-- **Respuesta:**
+- **Respuesta:** (16/10/2026, TK-277) Adicional `ExtraCashier` "Cajero adicional" a **US$2 al mes** (US$20 al año) por cajero. Incluidos: Esencial **2**, Estándar **4**, Pro **8** (Varias sucursales, 12); cada caja adicional suma 2 y cada sucursal adicional suma 4. Se cuentan los **cajeros habilitados** (usuarios activos que pueden vender o abrir turno), no los que entraron en el mes; el Dueño no cuenta. El tope va en la licencia y solo impide **habilitar** a otro cajero: nunca entrar, vender ni emitir e-CF. Desactivar a alguien libera su lugar y guarda su historial.
 
 ---
 
