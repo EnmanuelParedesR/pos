@@ -242,34 +242,39 @@ internal static class StoreEndpoints
         });
 
         api.MapPost("/stores", async (CreateStoreRequest request, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
-        {
-            var name = request.Name?.Trim() ?? "";
-            if (name.Length is 0 or > 100)
-                return EndpointExtensions.Problem(Error.Validation("Stores.InvalidName", "Escribe el nombre de la tienda (hasta 100 letras)."));
-            var store = new Store { Id = Guid.CreateVersion7(), TenantId = user.GetTenantId(), Name = name, CreatedUtc = clock.GetUtcNow().UtcDateTime };
-            db.Stores.Add(store);
-            await db.SaveChangesAsync(ct);
-            return Results.Created($"/api/stores/{store.Id}", new StoreResponse(store.Id, store.Name, store.CreatedUtc, null, null, 0));
-        }).RequireAuthorization(CloudAuth.OwnerPolicy);
+            (await CreateAsync(db, user.GetTenantId(), request.Name, clock.GetUtcNow().UtcDateTime, ct)).ToHttp(s => Results.Created($"/api/stores/{s.Id}", s)))
+            .RequireAuthorization(CloudAuth.OwnerPolicy);
 
         api.MapPost("/stores/{id:guid}/connection-codes", async (Guid id, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
-        {
-            var tenantId = user.GetTenantId();
-            if (!await db.Stores.AnyAsync(s => s.Id == id && s.TenantId == tenantId, ct))
-                return EndpointExtensions.Problem(Error.NotFound("Stores.NotFound", "No encontramos esa tienda."));
-            var now = clock.GetUtcNow().UtcDateTime;
-            // R11 B-Low5: few live codes per business, so guessing one stays hopeless.
-            if (await db.ConnectionCodes.CountAsync(c => c.TenantId == tenantId && c.UsedUtc == null && c.ExpiresUtc > now, ct) >= MaxLiveCodes)
-                return EndpointExtensions.Problem(Error.Conflict("Stores.TooManyCodes",
-                    $"Ya hay {MaxLiveCodes} códigos de conexión sin usar. Use uno de ellos o espere a que venzan (30 minutos)."));
-            string code;
-            // Two live codes must never be equal: the code alone picks the store.
-            do code = RandomNumberGenerator.GetInt32(0, 100_000_000).ToString("00000000", System.Globalization.CultureInfo.InvariantCulture);
-            while (await db.ConnectionCodes.AnyAsync(c => c.Code == code && c.UsedUtc == null && c.ExpiresUtc > now, ct));
-            var connection = new ConnectionCode { Id = Guid.CreateVersion7(), TenantId = tenantId, StoreId = id, Code = code, ExpiresUtc = now + CodeLifetime };
-            db.ConnectionCodes.Add(connection);
-            await db.SaveChangesAsync(ct);
-            return Results.Ok(new ConnectionCodeResponse(code, connection.ExpiresUtc));
-        }).RequireAuthorization(CloudAuth.OwnerPolicy);
+            (await NewCodeAsync(db, user.GetTenantId(), id, clock.GetUtcNow().UtcDateTime, ct)).ToHttp())
+            .RequireAuthorization(CloudAuth.OwnerPolicy);
+    }
+
+    /// <summary>POST /api/stores and Talia's create_store (TK-341).</summary>
+    internal static async Task<Result<StoreResponse>> CreateAsync(CloudDbContext db, Guid tenantId, string? requestedName, DateTime now, CancellationToken ct)
+    {
+        var name = requestedName?.Trim() ?? "";
+        if (name.Length is 0 or > 100) return Error.Validation("Stores.InvalidName", "Escribe el nombre de la tienda (hasta 100 letras).");
+        var store = new Store { Id = Guid.CreateVersion7(), TenantId = tenantId, Name = name, CreatedUtc = now };
+        db.Stores.Add(store);
+        await db.SaveChangesAsync(ct);
+        return new StoreResponse(store.Id, store.Name, store.CreatedUtc, null, null, 0);
+    }
+
+    /// <summary>POST /api/stores/{id}/connection-codes and Talia's connection_code (TK-341).</summary>
+    internal static async Task<Result<ConnectionCodeResponse>> NewCodeAsync(CloudDbContext db, Guid tenantId, Guid id, DateTime now, CancellationToken ct)
+    {
+        if (!await db.Stores.AnyAsync(s => s.Id == id && s.TenantId == tenantId, ct)) return Error.NotFound("Stores.NotFound", "No encontramos esa tienda.");
+        // R11 B-Low5: few live codes per business, so guessing one stays hopeless.
+        if (await db.ConnectionCodes.CountAsync(c => c.TenantId == tenantId && c.UsedUtc == null && c.ExpiresUtc > now, ct) >= MaxLiveCodes)
+            return Error.Conflict("Stores.TooManyCodes", $"Ya hay {MaxLiveCodes} códigos de conexión sin usar. Use uno de ellos o espere a que venzan (30 minutos).");
+        string code;
+        // Two live codes must never be equal: the code alone picks the store.
+        do code = RandomNumberGenerator.GetInt32(0, 100_000_000).ToString("00000000", System.Globalization.CultureInfo.InvariantCulture);
+        while (await db.ConnectionCodes.AnyAsync(c => c.Code == code && c.UsedUtc == null && c.ExpiresUtc > now, ct));
+        var connection = new ConnectionCode { Id = Guid.CreateVersion7(), TenantId = tenantId, StoreId = id, Code = code, ExpiresUtc = now + CodeLifetime };
+        db.ConnectionCodes.Add(connection);
+        await db.SaveChangesAsync(ct);
+        return new ConnectionCodeResponse(code, connection.ExpiresUtc);
     }
 }

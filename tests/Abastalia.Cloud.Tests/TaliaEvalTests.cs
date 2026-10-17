@@ -112,6 +112,7 @@ public sealed class TaliaEvalTests
     {
         var readOnly = TaliaEval.For(null!, new EvalCase("ro", "?", new EvalExpect(), Context: new EvalContext(Role: "readonly"))).Offered;
         readOnly.ShouldContain(t => t.Name == "propose_alert_preference"); // any member chooses their own alerts, as PUT /api/notifications
+        readOnly.Where(t => t.Name.StartsWith("propose_", StringComparison.Ordinal)).Select(t => t.Name).ShouldBe(["propose_alert_preference"]); // TK-341's are Owner only
         readOnly.Single(t => t.Name == "navigate").Parameters["properties"]!["route"]!["enum"]!.AsArray().Select(n => n!.GetValue<string>())
             .ShouldNotContain("/app/members");
     }

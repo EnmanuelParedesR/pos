@@ -22,7 +22,9 @@ public static class PanelHelp
             new("Cuadres (turnos)", "Cada cierre de turno con el efectivo esperado, el contado y la diferencia; toque uno para ver e imprimir su Z.", "/app/shifts", "Todos"),
             new("Tiendas", "Sus tiendas y sus cajas conectadas. El Dueño crea tiendas, pide el código para conectar una caja y ve el Consumo del mes " +
                 "(preguntas al asistente, facturas leídas con IA, correos, invitaciones, respaldos en la nube, usado contra el límite del plan).", "/app/stores", "Todos"),
-            new("Asistente", "Talia: preguntas sobre ventas, cuadres, fiado, la certificación y cómo usar Abastalia.", "/app/assistant", "Todos"),
+            new("Asistente", "Talia: preguntas sobre ventas, cuadres, fiado, la certificación y cómo usar Abastalia. Con una tarjeta que usted confirma, " +
+                "enciende o apaga sus avisos y, para el Dueño, invita o cancela invitaciones, cambia el rol o «Ver costos» de otro miembro, crea tiendas, " +
+                "saca el código de conexión y acepta o rechaza comprobantes recibidos.", "/app/assistant", "Todos"),
             new("Recibidos", "Comprobantes electrónicos que le enviaron sus suplidores y su acuse.", "/app/received", "Todos"),
             new("Avisos", "Qué correos de aviso quiere recibir (e-CF rechazados o sin enviar, certificado por vencer, avance de la certificación).", "/app/notifications", "Todos"),
             new("Seguridad", "Verificación en dos pasos (código del teléfono al entrar) y sus códigos de respaldo.", "/app/security", "Todos"),

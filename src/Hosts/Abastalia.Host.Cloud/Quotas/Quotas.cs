@@ -123,6 +123,9 @@ internal sealed class Quota(CloudDbContext db, PlanLimits limits, TimeProvider c
         string.Join(',', addOns.GroupBy(a => a).OrderBy(g => g.Key, StringComparer.Ordinal)
             .Select(g => g.Count() == 1 ? g.Key : $"{g.Key}:{Math.Min(g.Count(), MaxAddOnQuantity).ToString(CultureInfo.InvariantCulture)}"));
 
+    /// <summary>TK-341: the refusal as an <see cref="SharedKernel.Error"/>, for Talia's card (the endpoints answer 429 with <see cref="QuotaResult.Problem"/>).</summary>
+    public static Error Refusal(QuotaResult r) => Error.Conflict(ExceededCode, Message(r.Meter, r.Limit, r.ResetsOn));
+
     public static string Message(Meter meter, int limit, DateOnly resetsOn)
     {
         var text = $"Este mes ya se usó todo lo incluido en su plan de {Names[meter]} ({limit.ToString("N0", CultureInfo.InvariantCulture)}). " +
