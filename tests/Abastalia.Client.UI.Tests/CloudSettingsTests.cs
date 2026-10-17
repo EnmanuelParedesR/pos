@@ -12,9 +12,9 @@ public sealed class CloudSettingsTests
         new { connected, tenantId = connected ? Guid.NewGuid() : (Guid?)null, storeId = (Guid?)null, cloudUrl = "https://abastalia.test", lastUploadUtc = (DateTime?)null, pendingEvents = 3, lastError = (string?)null };
 
     [Fact]
-    public void The_code_connects_the_store_and_the_status_shows_connected()
+    public async Task The_code_connects_the_store_and_the_status_shows_connected()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business", new { name = "Mi tienda", rnc = (string?)null, address = (string?)null, phone = (string?)null, receiptFooter = (string?)null, discountCapPercent = 10m })
            .Json("GET", "/api/sync/status", Status(false))
@@ -35,9 +35,9 @@ public sealed class CloudSettingsTests
     }
 
     [Fact]
-    public void An_invalid_code_is_explained_in_Spanish()
+    public async Task An_invalid_code_is_explained_in_Spanish()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business", new { name = "Mi tienda", discountCapPercent = 10m })
            .Json("GET", "/api/sync/status", Status(false))

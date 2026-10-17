@@ -22,9 +22,9 @@ public sealed class RegisterAuditFixesTests
     private static object CategoryJson(Guid id, string name) => new { id, name, color = "blue", notes = Array.Empty<string>(), isActive = true };
 
     [Fact]
-    public void A_product_without_a_barcode_is_found_by_name_and_Enter_adds_the_only_match()
+    public async Task A_product_without_a_barcode_is_found_by_name_and_Enter_adds_the_only_match()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Respond("GET", "/api/inventory/products/by-code/jamon", _ => FakeApi.Problem(HttpStatusCode.NotFound, "Inventory.CodeNotFound", "No existe."))
@@ -44,9 +44,9 @@ public sealed class RegisterAuditFixesTests
     }
 
     [Fact]
-    public void A_scanned_code_that_is_not_found_never_searches_by_name()
+    public async Task A_scanned_code_that_is_not_found_never_searches_by_name()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Respond("GET", "/api/inventory/products/by-code/7460000000099", _ => FakeApi.Problem(HttpStatusCode.NotFound, "Inventory.CodeNotFound", "No existe."));
@@ -60,9 +60,9 @@ public sealed class RegisterAuditFixesTests
     }
 
     [Fact]
-    public void A_category_with_more_than_50_products_shows_the_rest_with_Ver_mas()
+    public async Task A_category_with_more_than_50_products_shows_the_rest_with_Ver_mas()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var meats = Guid.NewGuid();
         api.Json("GET", "/api/inventory/categories", new[] { CategoryJson(meats, "Carnes") })
@@ -77,9 +77,9 @@ public sealed class RegisterAuditFixesTests
     }
 
     [Fact]
-    public void A_slow_answer_for_an_earlier_category_never_replaces_the_one_tapped_last()
+    public async Task A_slow_answer_for_an_earlier_category_never_replaces_the_one_tapped_last()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var (meats, drinks) = (Guid.NewGuid(), Guid.NewGuid());
         var slow = new TaskCompletionSource<HttpResponseMessage>();
@@ -137,9 +137,9 @@ public sealed class RegisterAuditFixesTests
     }
 
     [Fact]
-    public void The_next_cashier_is_told_whose_sale_was_set_aside()
+    public async Task The_next_cashier_is_told_whose_sale_was_set_aside()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>());
         var cart = ctx.Services.GetRequiredService<Cart>();
@@ -155,9 +155,9 @@ public sealed class RegisterAuditFixesTests
     }
 
     [Fact]
-    public void Signing_in_as_another_cashier_sets_the_previous_ones_sale_aside()
+    public async Task Signing_in_as_another_cashier_sets_the_previous_ones_sale_aside()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.HandOver(Guid.NewGuid(), "Ana");
@@ -188,9 +188,9 @@ public sealed class RegisterAuditFixesTests
     }
 
     [Fact]
-    public void The_business_RNC_is_saved_without_its_dashes()
+    public async Task The_business_RNC_is_saved_without_its_dashes()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business", new { name = "Carnicería La Esquina", discountCapPercent = 10m })
            .Respond("PUT", "/api/settings/business", _ => new HttpResponseMessage(HttpStatusCode.NoContent));
@@ -203,9 +203,9 @@ public sealed class RegisterAuditFixesTests
     }
 
     [Fact]
-    public void The_summary_shows_each_top_product_in_its_own_unit_without_loading_the_catalog()
+    public async Task The_summary_shows_each_top_product_in_its_own_unit_without_loading_the_catalog()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view");
         using var _ = ctx;
         api.Json("GET", "/api/reports/sales/by-product", new[]
         {
@@ -231,10 +231,10 @@ public sealed class RegisterAuditFixesTests
     [InlineData("sale", false, true)]
     [InlineData("sale", true, false)] // a dialog is open (a payment, a count)
     [InlineData("admin/products", false, false)] // a form may be half typed
-    public void The_register_closes_to_update_only_with_nothing_in_progress(string route, bool dialogOpen, bool closes)
+    public async Task The_register_closes_to_update_only_with_nothing_in_progress(string route, bool dialogOpen, bool closes)
     {
         var updater = new FakeUpdater();
-        var (ctx, api) = ScreenContext.Create(s => s.AddSingleton<IAppUpdater>(updater), "sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync(s => s.AddSingleton<IAppUpdater>(updater), "sales.create");
         using var _ = ctx;
         ctx.JSInterop.Setup<bool>("escuadra.hasDialog").SetResult(dialogOpen);
         api.Json("PUT", "/api/settings/updates/register", new { channel = "stable", allowedVersion = (string?)null, pendingVersion = "1.5.0", restartRequested = true });

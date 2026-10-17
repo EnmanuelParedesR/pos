@@ -18,9 +18,9 @@ public sealed class AdminAuditGapsTests
     };
 
     [Fact]
-    public void Products_page_by_50_with_Ver_mas_and_the_search_stays_on_the_server()
+    public async Task Products_page_by_50_with_Ver_mas_and_the_search_stays_on_the_server()
     {
-        var (ctx, api) = ScreenContext.Create("products.manage", "inventory.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("products.manage", "inventory.view");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/categories", new[] { new { id = Drinks, name = "Bebidas", color = "#0B5CAD", notes = Array.Empty<string>(), isActive = true } })
            .Respond("GET", "/api/inventory/products", _ => FakeApi.Response(HttpStatusCode.OK, Enumerable.Range(1, 50).Select(i => Product($"Producto {i:00}"))))
@@ -35,9 +35,9 @@ public sealed class AdminAuditGapsTests
     }
 
     [Fact]
-    public void A_presentation_is_added_with_units_price_and_barcode_then_deactivated()
+    public async Task A_presentation_is_added_with_units_price_and_barcode_then_deactivated()
     {
-        var (ctx, api) = ScreenContext.Create("products.manage", "inventory.view", "prices.change");
+        var (ctx, api) = await ScreenContext.CreateAsync("products.manage", "inventory.view", "prices.change");
         using var _ = ctx;
         var withBox = false;
         object Detail() => new
@@ -78,9 +78,9 @@ public sealed class AdminAuditGapsTests
     }
 
     [Fact]
-    public void Label_formats_are_edited_and_a_sample_label_is_read_like_the_register()
+    public async Task Label_formats_are_edited_and_a_sample_label_is_read_like_the_register()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage", "products.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage", "products.manage");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/label-formats", new[] { new { prefix = "20", pluLength = 5, isPrice = false, decimals = 3 }, new { prefix = "22", pluLength = 4, isPrice = true, decimals = 2 } })
            .Respond("PUT", "/api/inventory/label-formats", _ => new HttpResponseMessage(HttpStatusCode.NoContent));
@@ -102,9 +102,9 @@ public sealed class AdminAuditGapsTests
     }
 
     [Fact]
-    public void A_typed_RNC_fills_the_name_from_the_registry_and_says_when_it_is_not_loaded()
+    public async Task A_typed_RNC_fills_the_name_from_the_registry_and_says_when_it_is_not_loaded()
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("purchasing.manage");
         using var _ = ctx;
         api.Json("GET", "/api/purchasing/suppliers", Array.Empty<object>())
            .Json("GET", "/api/fiscal/taxpayers/131245678", new { rnc = "131245678", name = "COLMADO EL SOL SRL", tradeName = (string?)null, isActive = true })
@@ -122,9 +122,9 @@ public sealed class AdminAuditGapsTests
     }
 
     [Fact]
-    public void The_register_fills_a_new_customers_name_from_the_registry()
+    public async Task The_register_fills_a_new_customers_name_from_the_registry()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "customers.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "customers.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/taxpayers/00112345678", new { rnc = "00112345678", name = "JUAN PÉREZ", tradeName = (string?)null, isActive = false });
         var dialog = ctx.Render<CustomerDialog>();

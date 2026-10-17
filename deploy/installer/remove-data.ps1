@@ -12,7 +12,7 @@
   profile; a certificate imported into a Windows store, by the thumbprint in keys\ecf-certificate.json), the self-signed "CN=Abastalia Nodo"
   certificate of stores installed before TK-091, and the service's SQL Server login. R11 C13: a link planted in C:\ProgramData\Abastalia stops it.
 #>
-param([string] $Server = '', [string] $Database = 'Abastalia',
+param([string] $Server = '', [string] $Database = '',
     [string] $BackupTo = [Environment]::GetFolderPath('Desktop'), [switch] $NoFinalBackup,
     [string] $ServerDir = (Join-Path $PSScriptRoot '..\server'), [string] $Service = 'Abastalia')
 $ErrorActionPreference = 'Continue'
@@ -34,9 +34,10 @@ function Get-Setting([string] $Section, [string] $Key, [string] $Default) {
     $value
 }
 function Get-BackupFolder { Get-Setting 'Backup' 'Folder' (Join-Path $data 'backups') }
-if (-not $Server) {
-    $Server = try { (New-Object System.Data.SqlClient.SqlConnectionStringBuilder (Get-Setting 'Database' 'ConnectionString' 'Server=.\ABASTALIA')).DataSource } catch { '.\ABASTALIA' }
-}
+# The server and (TK-305) the database the installed service really uses, from its connection string.
+$connection = try { New-Object System.Data.SqlClient.SqlConnectionStringBuilder (Get-Setting 'Database' 'ConnectionString' '') } catch { $null }
+if (-not $Server) { $Server = if ($connection.DataSource) { $connection.DataSource } else { '.\ABASTALIA' } }
+if (-not $Database) { $Database = if ($connection.InitialCatalog) { $connection.InitialCatalog } else { 'Abastalia' } }
 
 if (-not $NoFinalBackup) {
     $latest = Get-ChildItem -LiteralPath (Get-BackupFolder) -Filter '*.abastalia-backup' -File -ErrorAction SilentlyContinue |

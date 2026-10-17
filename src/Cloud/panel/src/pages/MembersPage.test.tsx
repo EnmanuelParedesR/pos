@@ -1,10 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
-import { App } from "../App";
-import "../Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { Panel } from "../Panel";
 import type { Me, Members } from "../api";
-import { json } from "../testing";
+import { json, renderPage } from "../testing";
+import { MembersPage } from "./MembersPage";
 
 afterEach(() => {
   cleanup();
@@ -30,9 +29,21 @@ const members: Members = {
 
 const summary = { date: "2026-10-15", salesTotal: 0, salesCount: 0, averageTicket: 0, discountTotal: 0, itbisTotal: 0, returnsTotal: 0, netTotal: 0, voidedCount: 0, byHour: [], paymentMix: [], issues: [], lastEventUtc: null };
 
-/** The whole app signed in as `me`, at `path`; returns the fetch mock. */
+/** The signed-in panel as `me`, at `path` (under /app), or only the Equipo page; returns the fetch mock. */
 function renderApp(me: Me, path: string) {
+  const fetch = stubFetch(me);
   localStorage.setItem("abastalia.refreshToken", "saved");
+  renderPage(<Panel />, { path, route: "app/*" });
+  return fetch;
+}
+
+function renderMembers(me: Me) {
+  const fetch = stubFetch(me);
+  renderPage(<MembersPage me={me} />);
+  return fetch;
+}
+
+function stubFetch(me: Me) {
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     if (url.endsWith("/api/me")) return json(200, me);
@@ -44,19 +55,14 @@ function renderApp(me: Me, path: string) {
     return json(200, []);
   });
   vi.stubGlobal("fetch", fetch);
-  render(
-    <MemoryRouter initialEntries={[path]}>
-      <App />
-    </MemoryRouter>,
-  );
   return fetch;
 }
 
-const calls = (fetch: ReturnType<typeof renderApp>, method: string) =>
+const calls = (fetch: ReturnType<typeof stubFetch>, method: string) =>
   fetch.mock.calls.filter(([, init]) => init?.method === method).map(([url, init]) => [String(url).replace(/^https?:\/\/[^/]+/, ""), init?.body]);
 
 it("TK-217: an owner sees the team, invites someone and gets the link to copy", async () => {
-  const fetch = renderApp(owner, "/members");
+  const fetch = renderMembers(owner);
 
   expect(await screen.findByText("contable@example.com")).toBeTruthy();
   expect(screen.getByText("dueno@example.com (usted)")).toBeTruthy();
@@ -72,7 +78,7 @@ it("TK-217: an owner sees the team, invites someone and gets the link to copy", 
 });
 
 it("TK-217: an owner changes a role and removes a member after confirming", async () => {
-  const fetch = renderApp(owner, "/members");
+  const fetch = renderMembers(owner);
 
   fireEvent.change(await screen.findByLabelText("Rol de contable@example.com"), { target: { value: "Owner" } });
   const row = screen.getByText("contable@example.com").closest("li")!;
@@ -85,7 +91,7 @@ it("TK-217: an owner changes a role and removes a member after confirming", asyn
 });
 
 it("TK-217: a read-only member has no Equipo section, not even by its address", async () => {
-  const fetch = renderApp({ ...owner, email: "contable@example.com", role: "ReadOnly", tenants: [{ tenantId: "t0", name: "Carnicería La Esquina", role: "ReadOnly" }] }, "/members");
+  const fetch = renderApp({ ...owner, email: "contable@example.com", role: "ReadOnly", tenants: [{ tenantId: "t0", name: "Carnicería La Esquina", role: "ReadOnly" }] }, "/app/members");
 
   expect(await screen.findByText("Vendido hoy")).toBeTruthy(); // the summary instead
   expect(screen.queryByRole("link", { name: /Equipo/ })).toBeNull();
@@ -101,7 +107,7 @@ it("TK-217: a member of two businesses can switch between them", async () => {
 });
 
 it("TK-201: an owner lets a read-only member see cost and profit", async () => {
-  const fetch = renderApp(owner, "/members");
+  const fetch = renderMembers(owner);
 
   const row = (await screen.findByText("contable@example.com")).closest("li")!;
   fireEvent.click(within(row).getByLabelText("Ve costos y ganancias"));

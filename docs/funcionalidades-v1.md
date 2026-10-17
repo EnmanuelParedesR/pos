@@ -86,7 +86,7 @@ Leyenda: **V1** = va en la primera versión · **V1-R** = va en V1 pero rediseñ
 | Nota de crédito e-CF 34 | V1-R | |
 | Nota de débito e-CF 33 | V2 | |
 | Búsqueda de razón social por RNC (padrón DGII) | V1 | Sin inventar datos al crear el cliente. |
-| Reportes 606 / 607 | V1 | planes.md los incluye en todos los planes (corregidos). |
+| Reportes 606 / 607 | V1 | *planes* (doc. privado) los incluye en todos los planes (corregidos). |
 | Impresora fiscal | Descartar | El e-CF la reemplaza. |
 
 ### Inventario
@@ -104,7 +104,7 @@ Leyenda: **V1** = va en la primera versión · **V1-R** = va en V1 pero rediseñ
 | Valor de inventario | V1 | Con costo promedio. |
 | Etiqueta EAN-13 de pesado | V1-R | La del viejo era Code 128 genérico. |
 | Combos / paquetes | V2 | "Combo parrillero"; el viejo también descontaba el combo. |
-| Lotes y vencimiento | Módulo | Add-on ya previsto en planes.md. |
+| Lotes y vencimiento | Módulo | Add-on ya previsto en *planes* (doc. privado). |
 | Transferencias entre sucursales | V2 | Plan Multisucursal. |
 | Rendimiento de cortes y merma (despiece) | NUEVO, Módulo Carnicería | No existe en el viejo. |
 
@@ -217,7 +217,7 @@ Es factible conservarlos todos: con Vertical Slices cada módulo es independient
 **Advertencias**
 - **Préstamos** es otro negocio: la ley de protección de datos (Ley 172-13) y el manejo de información de crédito exigen otro nivel de cuidado (el viejo guardaba PIN de tarjetas y una copia del padrón). Recomiendo tratarlo como producto separado, si alguna vez se hace.
 - **Restaurante y gimnasios** cambian el cliente objetivo; cada uno pide su propio diseño de pantallas.
-- Los precios son una propuesta para validar con la tabla de `planes.md` (add-ons actuales: caja adicional RD$690, sucursal RD$3,490, celular RD$990, IA RD$990).
+- Los precios son una propuesta para validar con la tabla de *planes* (doc. privado) (add-ons actuales: caja adicional RD$690, sucursal RD$3,490, celular RD$990, IA RD$990).
 
 ---
 

@@ -1,6 +1,6 @@
 # Arquitectura V1: local, en la nube o híbrida
 
-> Estado: **análisis para decidir**, 14 oct 2026. Complementa `read-v1.md` (contexto, e-CF, seguridad) y `docs/planes.md` (planes "Local" / "En línea", decisiones abiertas en la sección 5).
+> Estado: **análisis para decidir**, 14 oct 2026. Complementa `read-v1.md` (contexto, e-CF, seguridad) y *planes* (doc. privado) (planes "Local" / "En línea", decisiones abiertas en la sección 5).
 > Los datos de Microsoft y de Anthropic se verificaron en la web o en la referencia oficial en esta fecha. Lo que no se pudo verificar lleva la marca **(sin verificar)**.
 
 ---
@@ -18,7 +18,7 @@
 | Dónde vive la verdad | PC principal de la tienda | Azure SQL | PC principal para la operación; Azure para la vista consolidada, IA y multisucursal |
 | Qué hace la nube | Licencia y respaldos | Todo; cada caja guarda una caché | Ingesta de eventos, réplica, panel, IA, relevo e-CF, licencias, respaldos |
 | Las cajas hablan con | API local por LAN | API en Azure, o la caché SQLite cuando no hay internet | API local por LAN. En la fase 2 "En línea", con la API en Azure y caché SQLite |
-| Es igual a la opción de `planes.md` | "Local" sin copia en la nube | "En línea" | "Local" (V1) y luego "En línea" (fase 2) con el mismo código |
+| Es igual a la opción de *planes* (doc. privado) | "Local" sin copia en la nube | "En línea" | "Local" (V1) y luego "En línea" (fase 2) con el mismo código |
 
 ### Matriz de decisión
 
@@ -37,7 +37,7 @@ Escala: ●●● fuerte · ●● aceptable · ● débil.
 
 **Lectura:** B solo gana en soporte y en IA, pero pierde lo que nos diferencia (varias cajas sin internet) y complica el e-CF offline. A sale antes, pero deja al dueño sin celular ni IA y nos deja sin datos para dar soporte. C conserva la ventaja de A y añade la nube de forma incremental.
 
-**Hallazgo clave para 5.1 de `planes.md`:** un modo "En línea" que emita e-CF válido sin internet necesita un equipo en la tienda con el certificado, la secuencia de e-NCF y una BD local. Eso es, en la práctica, un **nodo local**. Por eso conviene construir un solo producto, el nodo local, que se pueda instalar en dos topologías:
+**Hallazgo clave para 5.1 de *planes* (doc. privado):** un modo "En línea" que emita e-CF válido sin internet necesita un equipo en la tienda con el certificado, la secuencia de e-NCF y una BD local. Eso es, en la práctica, un **nodo local**. Por eso conviene construir un solo producto, el nodo local, que se pueda instalar en dos topologías:
 
 1. **PC principal** con varias cajas (V1).
 2. **Caja única que también es nodo**, para el colmado de una caja (también V1: es el caso de 1 caja con la misma instalación).
@@ -119,7 +119,7 @@ La "versión ligera" que el fundador no recordaba es casi seguro **SQL Server Ex
 - **Reglas de conflicto:**
   1. **Datos maestros** (productos, precios, impuestos): en V1 local, **la tienda es la autoridad**; la nube solo recibe. Cuando se permita cambiar precios desde el celular (Multisucursal), el cambio baja como un **evento con fecha de vigencia**. Si coincide con una edición local, gana el último por marca de tiempo del servidor y queda en la auditoría.
   2. **Transacciones** (ventas, movimientos, turnos, e-CF): **solo se añaden; nunca se editan.** Las correcciones se hacen con eventos compensatorios (anulación, devolución, ajuste). No hay conflictos posibles.
-  3. **El stock y el efectivo se calculan** como la suma de movimientos y nunca se sobrescriben. En la caché por caja de la fase 2, el stock offline es una estimación: al sincronizar se recalcula y, si queda negativo, se marca para conteo (ya previsto en `planes.md`).
+  3. **El stock y el efectivo se calculan** como la suma de movimientos y nunca se sobrescriben. En la caché por caja de la fase 2, el stock offline es una estimación: al sincronizar se recalcula y, si queda negativo, se marca para conteo (ya previsto en *planes* (doc. privado)).
   4. **Secuencias e-NCF:** las asigna solo el nodo fiscal, nunca la nube mientras la tienda está offline.
 
 ---
@@ -180,7 +180,7 @@ El add-on "Asistente IA" cuesta RD$990, ~US$14 sin ITBIS. **Cabe con margen si H
 
 ### 5.5 Privacidad
 
-- La réplica en Azure (región en EE. UU.; no hay región de Azure en RD) y el envío de agregados a Anthropic deben figurar en la **promesa de datos** de `planes.md` §6.
+- La réplica en Azure (región en EE. UU.; no hay región de Azure en RD) y el envío de agregados a Anthropic deben figurar en la **promesa de datos** de *planes* (doc. privado) §6.
 - Revisar los términos comerciales de la API de Anthropic sobre retención y uso de datos antes de publicar **(sin verificar en esta revisión)**.
 - Las tiendas en "Local" sin copia en la nube (Esencial) **no tienen IA**: sus datos no salen de la tienda, y eso puede venderse como una ventaja.
 
@@ -196,9 +196,9 @@ El add-on "Asistente IA" cuesta RD$990, ~US$14 sin ITBIS. **Cabe con margen si H
 | Referencia Azure SQL | — | Pool elástico Standard de 50–200 eDTU: ~US$110–440 al mes, **según una encuesta de terceros de ene 2026 (sin verificar en la calculadora oficial)**. Entre 50–100 tenants sale a ~US$2–5 por tenant solo en BD | La réplica tiene menos carga (escritura en lotes y lectura del panel): ~US$1–2 por tenant con 100 tenants **(estimado)** |
 | Opción serverless | — | General Purpose serverless: mínimo 0.5 vCore, auto-pausa desde 15 min, cobro por segundo. Sirve para desarrollo y pruebas, no para la BD primaria de cajas | Útil en desarrollo y pruebas |
 | API, ingesta, blob | — | App Service o Container Apps, más ancho de banda | Ingesta liviana; respaldos en blob a centavos por GB |
-| **Total nube por tienda** | ~US$0–1 | ~US$5–10 (coincide con `planes.md`) | ~US$1–4 |
+| **Total nube por tienda** | ~US$0–1 | ~US$5–10 (coincide con *planes* (doc. privado)) | ~US$1–4 |
 
-El modelo híbrido mantiene los costos de `planes.md` §8 ("Cloud ~US$1" en Esencial y "~US$8" en Negocio, que queda holgado). El costo que más mueve el precio sigue siendo el **e-CF** (5.2).
+El modelo híbrido mantiene los costos de *planes* (doc. privado) §8 ("Cloud ~US$1" en Esencial y "~US$8" en Negocio, que queda holgado). El costo que más mueve el precio sigue siendo el **e-CF** (5.2).
 
 ### 6.2 Instalación y soporte
 
@@ -284,7 +284,7 @@ flowchart LR
 **Fase 2 ("En línea" y Multisucursal):** la misma capa de aplicación (los mismos casos de uso y el mismo contrato OpenAPI) se despliega en Azure sobre Azure SQL. Hay dos topologías:
 
 - **Caja con nodo local de una sola máquina**, que conserva el e-CF offline.
-- **Nube pura con caché SQLite por caja**, con firma en Key Vault y sin e-CF offline, opción 5.1-A o 5.1-C de `planes.md`.
+- **Nube pura con caché SQLite por caja**, con firma en Key Vault y sin e-CF offline, opción 5.1-A o 5.1-C de *planes* (doc. privado).
 
 La multisucursal recibe los eventos de cada nodo en la nube, que ya existe, y baja el catálogo común.
 
@@ -344,13 +344,13 @@ La multisucursal recibe los eventos de cada nodo en la nube, que ya existe, y ba
 
 **Preguntas abiertas**
 
-- ¿El proveedor e-CF acepta XML firmado por nosotros, y cuenta las RFCE de consumo? (5.2 en `planes.md`).
+- ¿El proveedor e-CF acepta XML firmado por nosotros, y cuenta las RFCE de consumo? (5.2 en *planes* (doc. privado)).
 - ¿Express 2025 o 2022 en el nodo? 2025 da 50 GB e incluye LocalDB en el mismo instalador. Confirmar los requisitos de SO de 2025 y los términos de redistribución vigentes.
 - ¿Se permite firmar en un "modo isla" de caja sin el nodo (V2)? Validarlo con el proveedor.
 - ¿Una BD multi-tenant única o un pool elástico con una BD por tenant cuando haya más de 200 tiendas? Empezar con una BD y TenantId; la migración a *shards* es posible con TenantId en todas partes.
 - ¿Qué región de Azure usar (latencia desde RD: East US 2 o South Central US)? ¿Hay requisitos de residencia de datos?
 - ¿Cuánto cuesta realmente WhatsApp Business (plantillas de "utility") al mes por tienda?
-- 5.4 de `planes.md` (Multisucursal solo En línea): con este diseño, la **multisucursal Local** se reduce a varios nodos que suben eventos a la misma nube más un catálogo común que baja. Es más barata de lo que se pensaba, siempre que **no** se comparta stock en vivo entre sucursales.
+- 5.4 de *planes* (doc. privado) (Multisucursal solo En línea): con este diseño, la **multisucursal Local** se reduce a varios nodos que suben eventos a la misma nube más un catálogo común que baja. Es más barata de lo que se pensaba, siempre que **no** se comparta stock en vivo entre sucursales.
 
 ---
 
@@ -369,4 +369,4 @@ La multisucursal recibe los eventos de cada nodo en la nube, que ya existe, y ba
 - Instalación silenciosa de Express (terceros): https://silentinstallhq.com/microsoft-sql-server-2022-express-silent-install-how-to-guide/ · https://wingetly.io/apps/microsoft/sqlserver-2025-express/silent-install
 - Redistribución de SQL Express (histórico): https://learn.microsoft.com/en-us/archive/blogs/sqlexpress/faq-can-i-redistribute-sql-express · https://www.microsoft.com/en-us/download/details.aspx?id=29693
 - Modelos y precios de Claude: referencia oficial de la API de Anthropic (skill `claude-api`, caché del 6 oct 2026); página pública: https://www.anthropic.com/pricing
-- Contexto propio: `read-v1.md` (e-CF, contingencia, seguridad) y `docs/planes.md`.
+- Contexto propio: `read-v1.md` (e-CF, contingencia, seguridad) y *planes* (doc. privado).

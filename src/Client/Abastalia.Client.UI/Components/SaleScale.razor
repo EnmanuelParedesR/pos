@@ -2,6 +2,7 @@
    (twice a second, and only when the reading changed), so the cart and the tiles never redraw for it. *@
 @implements IDisposable
 @inject Peripherals Peripherals
+@inject TimeProvider Clock
 
 @if (Peripherals.Scale is not null)
 {
@@ -18,7 +19,7 @@
     {
         try
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500));
+            using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(500), Clock);
             do
             {
                 if (Peripherals.Scale is null) continue;

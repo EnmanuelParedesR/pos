@@ -115,6 +115,20 @@ begin
   Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL', 'ABASTALIA', Instance);
 end;
 
+{ TK-305: SQL Server's usage and error reports off too, not only its telemetry service: CustomerFeedback and EnableErrorReporting = 0 under
+  the instance's CPE key (MSSQL17.ABASTALIA, from Instance Names) and its version's shared key (170). Every install, so older ones get it. }
+procedure SqlTelemetryOff;
+var
+  Id, Key, Shared: String;
+begin
+  if not RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL', 'ABASTALIA', Id) then exit;
+  Key := 'SOFTWARE\Microsoft\Microsoft SQL Server\' + Id + '\CPE';
+  Shared := 'SOFTWARE\Microsoft\Microsoft SQL Server\' + Copy(Id, 6, Pos('.', Id) - 6) + '0';
+  if not (RegWriteDWordValue(HKLM, Key, 'CustomerFeedback', 0) and RegWriteDWordValue(HKLM, Key, 'EnableErrorReporting', 0) and
+          RegWriteDWordValue(HKLM, Shared, 'CustomerFeedback', 0) and RegWriteDWordValue(HKLM, Shared, 'EnableErrorReporting', 0)) then
+    Log('SQL Server telemetry: could not write ' + Key + ' or ' + Shared);
+end;
+
 { Output of a PowerShell expression (one line), or Fallback when it fails. }
 function PowerShellValue(const Expression, Fallback: String): String;
 var
@@ -304,10 +318,10 @@ begin
     end;
     { Express only, its own instance ABASTALIA, listening on this PC only (no TCP, no named pipes), Windows logins only,
       sysadmin = the PC's administrators (R11 C1: never the current user, who would become SYSTEM through SQL Server),
-      no telemetry service (TK-291: SQLTELEMETRY$ABASTALIA disabled). }
-    if not Exec(Media + '\setup\setup.exe',
+      no telemetry service (TK-291: SQLTELEMETRY$ABASTALIA disabled). TK-305: with a time limit too (a slow PC takes 10-20 minutes). }
+    if not ExecWithTimeout(Media + '\setup\setup.exe',
       '/Q /ACTION=Install /FEATURES=SQLEngine /IACCEPTSQLSERVERLICENSETERMS /ENU /UPDATEENABLED=0 /SQLSVCSTARTUPTYPE=Automatic ' +
-      '/INSTANCENAME=ABASTALIA /TCPENABLED=0 /NPENABLED=0 /SQLTELSVCSTARTUPTYPE=Disabled /ADDCURRENTUSERASSQLADMIN=False /SQLSYSADMINACCOUNTS="' + AdministratorsGroup + '"', '', SW_HIDE, ewWaitUntilTerminated, Code)
+      '/INSTANCENAME=ABASTALIA /TCPENABLED=0 /NPENABLED=0 /SQLTELSVCSTARTUPTYPE=Disabled /ADDCURRENTUSERASSQLADMIN=False /SQLSYSADMINACCOUNTS="' + AdministratorsGroup + '"', 60, Code)
       or ((Code <> 0) and (Code <> 3010)) then
     begin
       { TK-292 (VM test): with a restart pending (Windows Update, another uninstall) SQL Server setup refuses to start: facility 1214,
@@ -315,6 +329,9 @@ begin
       if Code = -2067919934 then
         SuppressibleMsgBox('Windows pide reiniciar la PC antes de instalar SQL Server Express.' + #13#10 +
           'Reinicie la PC y vuelva a abrir el instalador de Abastalia.', mbCriticalError, MB_OK, IDOK)
+      else if Code = 1460 then
+        SuppressibleMsgBox('SQL Server Express no se instaló: la instalación no terminó en 60 minutos.' + #13#10 +
+          'Reinicie la PC y vuelva a abrir el instalador de Abastalia; si se repite, llame al técnico.', mbCriticalError, MB_OK, IDOK)
       else
         SqlNotInstalled(IntToStr(Code));
       Result := False;
@@ -338,6 +355,7 @@ var
   Code: Integer;
 begin
   if (CurStep <> ssPostInstall) or not IsServerRole then exit;
+  SqlTelemetryOff;
   WizardForm.StatusLabel.Caption := 'Instalando el servicio de Abastalia...';
   if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\scripts\install.ps1') + '" -Source "' +
        ExpandConstant('{app}\server') + '" -Destination "' + ExpandConstant('{app}\server') + '"', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then

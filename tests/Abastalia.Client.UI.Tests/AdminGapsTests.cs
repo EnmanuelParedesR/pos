@@ -14,9 +14,9 @@ public sealed class AdminGapsTests
     private static readonly Guid Farm = Guid.NewGuid(), Ribs = Guid.NewGuid(), Salt = Guid.NewGuid(), Beer = Guid.NewGuid(), Box = Guid.NewGuid();
 
     [Fact]
-    public void The_suggested_order_groups_by_last_supplier_and_creates_a_draft_without_NCF()
+    public async Task The_suggested_order_groups_by_last_supplier_and_creates_a_draft_without_NCF()
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("purchasing.manage");
         using var _ = ctx;
         api.Json("GET", "/api/purchasing/suggested-order", new object[]
             {
@@ -61,9 +61,9 @@ public sealed class AdminGapsTests
     }
 
     [Fact]
-    public void Without_costs_view_the_inventory_shows_no_cost_or_value()
+    public async Task Without_costs_view_the_inventory_shows_no_cost_or_value()
     {
-        var (ctx, api) = ScreenContext.Create("inventory.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("inventory.view");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/warehouses", new[] { new { id = Guid.NewGuid(), name = "Tienda", isActive = true, isMain = true } })
            .Json("GET", "/api/inventory/stock", new[]
@@ -80,9 +80,9 @@ public sealed class AdminGapsTests
     }
 
     [Fact]
-    public void The_Z_downloads_as_a_page_to_print_with_the_business_and_the_difference()
+    public async Task The_Z_downloads_as_a_page_to_print_with_the_business_and_the_difference()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view");
         using var _ = ctx;
         var shift = Guid.NewGuid();
         var supervisor = Guid.NewGuid();

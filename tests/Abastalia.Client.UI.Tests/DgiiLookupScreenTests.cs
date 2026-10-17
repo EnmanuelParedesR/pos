@@ -12,9 +12,9 @@ public sealed class DgiiLookupScreenTests
     private static readonly Guid Farm = Guid.NewGuid();
 
     [Fact]
-    public void A_typed_RNC_shows_its_DGII_status_as_a_badge()
+    public async Task A_typed_RNC_shows_its_DGII_status_as_a_badge()
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("purchasing.manage");
         using var _ = ctx;
         api.Json("GET", "/api/purchasing/suppliers", Array.Empty<object>())
            .Json("GET", "/api/fiscal/taxpayers/131245678", new
@@ -38,9 +38,9 @@ public sealed class DgiiLookupScreenTests
     }
 
     [Fact]
-    public void An_NCF_the_DGII_refuses_asks_for_a_reason_and_is_sent_again_with_it()
+    public async Task An_NCF_the_DGII_refuses_asks_for_a_reason_and_is_sent_again_with_it()
     {
-        var (ctx, api) = ScreenContext.Create("payables.pay");
+        var (ctx, api) = await ScreenContext.CreateAsync("payables.pay");
         using var _ = ctx;
         api.Json("GET", "/api/purchasing/expenses", Array.Empty<object>())
            .Json("GET", "/api/purchasing/suppliers", new[]

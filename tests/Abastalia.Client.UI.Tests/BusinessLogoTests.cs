@@ -18,9 +18,9 @@ public sealed class BusinessLogoTests
     private static object Business(string? logo) => new { name = "Colmado El Sol", discountCapPercent = 10m, requirePaymentReference = true, logoVersion = logo };
 
     [Fact]
-    public void The_owner_uploads_the_logo_sees_how_it_prints_and_removes_it()
+    public async Task The_owner_uploads_the_logo_sees_how_it_prints_and_removes_it()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business", Business(null))
            .Json("GET", "/api/settings/approvals", Array.Empty<object>())
@@ -55,9 +55,9 @@ public sealed class BusinessLogoTests
     }
 
     [Fact]
-    public void A_file_the_server_refuses_is_explained_on_the_field()
+    public async Task A_file_the_server_refuses_is_explained_on_the_field()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business", Business(null))
            .Json("GET", "/api/settings/approvals", Array.Empty<object>())
@@ -74,7 +74,7 @@ public sealed class BusinessLogoTests
     [Fact]
     public async Task The_receipt_shows_the_logo_as_printed_and_the_printer_gets_it_fetched_once()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         await ctx.Services.GetRequiredService<Peripherals>().SaveAsync(new(Printer: new("EPSON TM-T20", Width: 58)));
         api.Json("GET", "/api/settings/business/logo/receipt", Raster);
@@ -92,7 +92,7 @@ public sealed class BusinessLogoTests
     [Fact]
     public async Task Without_a_logo_or_when_the_server_does_not_answer_the_receipt_prints_as_always()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         await ctx.Services.GetRequiredService<Peripherals>().SaveAsync(new(Printer: new("EPSON TM-T20")));
         api.Respond("GET", "/api/settings/business/logo/receipt", _ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
@@ -114,7 +114,7 @@ public sealed class BusinessLogoTests
     [Fact]
     public async Task R12_a_new_logo_version_that_cannot_be_fetched_shows_no_logo_not_the_old_one()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business/logo", new { png = new byte[] { 1, 2, 3 }, version = "1" });
         var logo = ctx.Services.GetRequiredService<BusinessLogo>();
@@ -126,9 +126,9 @@ public sealed class BusinessLogoTests
     }
 
     [Fact]
-    public void TK288_the_Z_downloaded_from_Turnos_carries_the_business_logo()
+    public async Task TK288_the_Z_downloaded_from_Turnos_carries_the_business_logo()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view");
         using var _ = ctx;
         var shift = Guid.NewGuid();
         api.Json("GET", "/api/reports/shifts", new[] { new { shiftId = shift, register = "Caja 1", cashier = "Ana", openedUtc = DateTime.UtcNow.AddHours(-8), closedUtc = (DateTime?)DateTime.UtcNow, zNumber = (long?)7, openingFloat = 0m, expectedCash = (decimal?)0m, countedCash = (decimal?)0m, difference = (decimal?)0m } })

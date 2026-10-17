@@ -2,13 +2,13 @@ using Abastalia.Hardware.EscPos;
 
 namespace Abastalia.Hardware.Simulated;
 
-/// <summary>A scale that answers whatever weight and status it is told (development, the web host, the screen tests).</summary>
+/// <summary>A scale that answers whatever reading it is told (development, the web host, the screen tests).</summary>
 public sealed class SimulatedScale : IScale
 {
-    public decimal Pounds { get; set; } = 2.5m;
-    public ScaleStatus Status { get; set; } = ScaleStatus.Stable;
+    /// <summary>Weight and status together, set in one assignment: a poll never sees a new weight with the old status.</summary>
+    public ScaleReading Reading { get; set; } = new(2.5m, ScaleStatus.Stable);
 
-    public Task<ScaleReading> ReadAsync(CancellationToken ct) => Task.FromResult(new ScaleReading(Pounds, Status));
+    public Task<ScaleReading> ReadAsync(CancellationToken ct) => Task.FromResult(Reading);
 }
 
 /// <summary>A printer that appends the receipt, laid out as the thermal printer would print it, to a text file.</summary>

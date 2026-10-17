@@ -1,7 +1,7 @@
 # Arquitectura de código V1: Vertical Slices + monolito modular
 
 > Estado: **propuesta de diseño**, 14 oct 2026. No hay código todavía.
-> Se construye **sobre** `docs/arquitectura-v1.md` (modelo híbrido local-first, ya decidido) y usa `read-v1.md` y `docs/planes.md` como contexto. Aquí no se vuelve a decidir el despliegue: se decide **cómo se organiza el código**.
+> Se construye **sobre** `docs/arquitectura-v1.md` (modelo híbrido local-first, ya decidido) y usa `read-v1.md` y *planes* (doc. privado) como contexto. Aquí no se vuelve a decidir el despliegue: se decide **cómo se organiza el código**.
 > El producto se llama **Abastalia** (decidido el 14 de octubre de 2026); se usa como prefijo de los proyectos.
 > Las licencias y versiones de paquetes se verificaron en la web en esta fecha. Lo que no se pudo verificar lleva **(verificar)**.
 
@@ -656,7 +656,7 @@ public interface IEcfProvider          // envío y consulta de estado; misma int
   - El formato (`E` + tipo de 2 dígitos + secuencial de 10) y las validaciones de rango y vencimiento están en un *value object* `ENcf` con pruebas unitarias.
   - Alertas al llegar al 80 % del rango autorizado y 30 días antes de su vencimiento. Asistente para cargar un rango nuevo.
   - Los sobrantes de un rango vencido se **anulan** (ANECF) mediante `IEcfProvider.AnularRangoAsync`.
-- **Almacenamiento:** el XML firmado se guarda **comprimido** (`varbinary`, GZip) en `fiscal.Documentos`, junto con el código de seguridad, la fecha de firma, el `TrackId` y el estado. **Nunca se borra** (`planes.md` §6: la historia fiscal es del cliente).
+- **Almacenamiento:** el XML firmado se guarda **comprimido** (`varbinary`, GZip) en `fiscal.Documentos`, junto con el código de seguridad, la fecha de firma, el `TrackId` y el estado. **Nunca se borra** (*planes* (doc. privado) §6: la historia fiscal es del cliente).
 - **Consumo menor al umbral (RFCE):** el adaptador decide si se envía el e-CF completo o el resumen, según las reglas vigentes de la DGII y del proveedor. El dominio de Fiscal no depende de eso.
 
 ### 7.3 Cola de contingencia con plazo de 72 h
@@ -680,7 +680,7 @@ fiscal.ColaEnvio
 
 - **Rechazado:** no se reintenta. Pasa a una **bandeja de rechazos** para una persona, con la acción sugerida (corregir y emitir nota de crédito). Nunca se edita el e-CF original.
 - **Envío idempotente:** si se duda de si un envío llegó (por *timeout*), primero se consulta el estado por e-NCF o `TrackId` antes de reenviar.
-- Según `planes.md` §6, **la cola nunca se bloquea por falta de pago ni por la licencia**.
+- Según *planes* (doc. privado) §6, **la cola nunca se bloquea por falta de pago ni por la licencia**.
 - Se valida contra el **reloj**: un health check compara la hora local con la de la nube, porque una PC con la fecha mal pone en riesgo la fecha de firma y el plazo.
 
 ---
@@ -771,10 +771,10 @@ public interface IFeatureService
 }
 ```
 
-- **Fuente:** una **licencia firmada** (JWS con ECDSA P-256) que emite la nube y baja por Sync. Se verifica con la clave pública embebida en la app y se guarda en `C:\ProgramData\Abastalia\licencia.jws`. Tiene **15 días de gracia** sin conexión (`read-v1.md` §12). La licencia trae plan, módulos verticales, add-ons, límites y el estado de pago (tabla de `planes.md` §6).
+- **Fuente:** una **licencia firmada** (JWS con ECDSA P-256) que emite la nube y baja por Sync. Se verifica con la clave pública embebida en la app y se guarda en `C:\ProgramData\Abastalia\licencia.jws`. Tiene **15 días de gracia** sin conexión (`read-v1.md` §12). La licencia trae plan, módulos verticales, add-ons, límites y el estado de pago (tabla de *planes* (doc. privado) §6).
 - **Uso en el servidor:** un filtro de endpoint `.RequiereFuncion(Funcion.ModuloCarniceria)` devuelve 403 con un `ProblemDetails` claro. Los límites se aplican en el slice que corresponde (emparejar una caja revisa `Limite.Cajas`).
 - **Uso en la UI:** `GET /api/configuracion/funciones` al iniciar sesión; los menús se ocultan o muestran "disponible en Negocio". La UI **nunca** es la única barrera.
-- **Lo que nunca pasa por un flag**, según `planes.md` §6: vender (también offline), emitir e-CF y enviar la cola de 72 h, la historia fiscal, exportar, respaldar y restaurar. Una prueba de arquitectura verifica que los slices de Ventas, Fiscal y Respaldo **no** usan `IFeatureService`.
+- **Lo que nunca pasa por un flag**, según *planes* (doc. privado) §6: vender (también offline), emitir e-CF y enviar la cola de 72 h, la historia fiscal, exportar, respaldar y restaurar. Una prueba de arquitectura verifica que los slices de Ventas, Fiscal y Respaldo **no** usan `IFeatureService`.
 - Implementación propia (unas pocas clases). `Microsoft.FeatureManagement` (MIT) sirve si más adelante se quieren lanzamientos graduales o pruebas A/B; no hace falta en V1.
 
 ---
@@ -888,7 +888,7 @@ Política: `Directory.Packages.props` con versiones fijas, revisión mensual de 
 
 ## 13. Qué NO hacer (los antipatrones del sistema viejo)
 
-Los documentos de ingeniería inversa del sistema viejo (`docs/legacy/`) todavía no existen. Esta lista sale de lo que ya se sabe (WinForms/VB.NET en 3 capas, más de 800 SP y más de 100 triggers) y de lo típico en sistemas así. **Hay que contrastarla con `docs/legacy/` cuando llegue.**
+Los documentos de ingeniería inversa del sistema viejo son privados (fuera del repositorio público). Esta lista sale de lo que ya se sabe (WinForms/VB.NET en 3 capas, más de 800 SP y más de 100 triggers) y de lo típico en sistemas así. **Hay que contrastarla con esos documentos privados.**
 
 1. **Lógica de negocio en procedimientos almacenados.** Las reglas (precios, ITBIS, descuentos, crédito, cierre) van en C#, en el dominio, con pruebas. La BD guarda datos.
 2. **Triggers con efectos ocultos** (descontar stock, recalcular saldos, asignar NCF). Todo efecto es una llamada explícita en el handler o un evento visible.
@@ -928,7 +928,7 @@ Los documentos de ingeniería inversa del sistema viejo (`docs/legacy/`) todaví
 | 5 | `Caja/CerrarTurno` (conteo a ciegas, diferencia, reporte Z) + `Caja/RegistrarRetiro` | Cierra el ciclo diario del cajero |
 | 6 | `Ventas/AnularVenta` con autorización de supervisor | Ejercita el decorador de autorización y la auditoría con un caso real |
 | 7 | `Compras/RegistrarCompra` (entrada de mercancía, costo promedio ponderado) + `Inventario/AjustarInventario` (merma, conteo) | El stock deja de ser solo una resta |
-| 8 | `Fiscal`: firma real con certificado de prueba, secuencias, `ColaEnvio`/`EnvioEcf` contra el proveedor de prueba, más `Sync/SubirEventos` con la ingesta mínima en la nube | Depende de la respuesta del proveedor sobre XML prefirmado (`planes.md` §5.2). El esqueleto del outbox ya existe, así que la subida es corta |
+| 8 | `Fiscal`: firma real con certificado de prueba, secuencias, `ColaEnvio`/`EnvioEcf` contra el proveedor de prueba, más `Sync/SubirEventos` con la ingesta mínima en la nube | Depende de la respuesta del proveedor sobre XML prefirmado (*planes* (doc. privado) §5.2). El esqueleto del outbox ya existe, así que la subida es corta |
 
 Luego: pagos mixtos y USD, devoluciones y notas de crédito, balanza integrada y etiquetas de peso, clientes y fiado, reportes básicos, respaldo cifrado a blob, instalador y asistente. Así se llega al piloto (`arquitectura-v1.md` §7.2, paso 5).
 
@@ -973,4 +973,4 @@ Luego: pagos mixtos y USD, devoluciones y notas de crédito, balanza integrada y
 - Por qué UUIDv7 no reduce la fragmentación en SQL Server: https://www.dbi-services.com/blog/why-uuidv7-does-not-reduce-fragmentation-in-sql-server/
 
 **Contexto propio**
-- `read-v1.md`, `docs/arquitectura-v1.md`, `docs/planes.md`.
+- `read-v1.md`, `docs/arquitectura-v1.md`, *planes* (doc. privado).

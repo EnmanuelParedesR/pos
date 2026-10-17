@@ -37,9 +37,9 @@ public sealed class TrialLicenseTests
     }
 
     [Fact]
-    public void TK279_a_blocked_register_shows_the_full_screen_message_instead_of_the_sale()
+    public async Task TK279_a_blocked_register_shows_the_full_screen_message_instead_of_the_sale()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "settings.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "settings.manage");
         using var _ = ctx;
         api.Json("GET", "/api/settings/features", new
         {
@@ -57,9 +57,9 @@ public sealed class TrialLicenseTests
     }
 
     [Fact]
-    public void TK287_the_blocked_screen_signs_out_and_asks_first_about_a_sale_on_the_screen()
+    public async Task TK287_the_blocked_screen_signs_out_and_asks_first_about_a_sale_on_the_screen()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         api.Json("GET", "/api/settings/features", new
             {
@@ -88,9 +88,9 @@ public sealed class TrialLicenseTests
     [InlineData("Trial", "Terminó la prueba gratis", "Compre su plan")]
     [InlineData("Suspended", "Abastalia suspendió el servicio de su negocio", "para resolverlo")]
     [InlineData("Expired", "Su licencia está vencida", "Pague su plan")]
-    public void R12_the_block_screen_says_why(string reason, string title, string wayOut)
+    public async Task R12_the_block_screen_says_why(string reason, string title, string wayOut)
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         api.Json("GET", "/api/settings/features", new
         {
@@ -107,9 +107,9 @@ public sealed class TrialLicenseTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void R12_an_uncertain_checkout_is_resolved_from_the_block_screen(bool saved)
+    public async Task R12_an_uncertain_checkout_is_resolved_from_the_block_screen(bool saved)
     {
-        var (ctx, api) = ScreenContext.Create("sales.create");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Abastalia.Client.UI.State.Cart>();
         cart.Add(new Abastalia.Client.UI.Api.ProductByCode(Guid.NewGuid(), null, "Refresco", "Unit", "Exempt", 59m, null, 1m, null, null, [], null), null);
@@ -140,9 +140,9 @@ public sealed class TrialLicenseTests
     }
 
     [Fact]
-    public void A_pasted_license_code_is_installed_and_sample_data_removed_with_one_click()
+    public async Task A_pasted_license_code_is_installed_and_sample_data_removed_with_one_click()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage", "products.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage", "products.manage");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business", new { name = "Mi tienda", discountCapPercent = 10m })
            .Json("GET", "/api/settings/features", Features("Restricted", null, "Ended"))

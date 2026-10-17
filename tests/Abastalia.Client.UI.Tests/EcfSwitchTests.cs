@@ -43,9 +43,9 @@ public sealed class EcfSwitchTests
     }
 
     [Fact]
-    public void The_rest_of_the_sequence_is_loaded_for_production_from_the_next_free_number()
+    public async Task The_rest_of_the_sequence_is_loaded_for_production_from_the_next_free_number()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/receiver", new
             {

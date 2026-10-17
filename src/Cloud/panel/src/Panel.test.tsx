@@ -1,10 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { App } from "./App";
-import "./Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
+import { Panel } from "./Panel";
 import type { Me } from "./api";
-import { json } from "./testing";
+import { json, renderPage } from "./testing";
 import { withLinks } from "./pages/AssistantPage";
 
 afterEach(() => {
@@ -23,11 +22,7 @@ function renderApp(path: string) {
     return json(200, []);
   });
   vi.stubGlobal("fetch", fetch);
-  render(
-    <MemoryRouter initialEntries={[path]}>
-      <App />
-    </MemoryRouter>,
-  );
+  renderPage(<Panel />, { path, route: "app/*" });
   return fetch;
 }
 

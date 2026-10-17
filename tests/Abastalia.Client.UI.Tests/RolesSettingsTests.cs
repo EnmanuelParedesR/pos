@@ -27,9 +27,9 @@ public sealed class RolesSettingsTests
     });
 
     [Fact]
-    public void The_segmented_permissions_show_in_their_groups_with_the_owners_words()
+    public async Task The_segmented_permissions_show_in_their_groups_with_the_owners_words()
     {
-        var (ctx, api) = ScreenContext.Create("users.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("users.manage");
         using var _ = ctx;
         Roles(api);
         var page = ctx.Render<RolesSettings>();
@@ -49,9 +49,9 @@ public sealed class RolesSettingsTests
     }
 
     [Fact]
-    public void A_role_in_use_is_not_deleted_and_the_server_says_why()
+    public async Task A_role_in_use_is_not_deleted_and_the_server_says_why()
     {
-        var (ctx, api) = ScreenContext.Create("users.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("users.manage");
         using var _ = ctx;
         Roles(api)
             .Respond("DELETE", $"/api/identity/roles/{Cashier}", _ => FakeApi.Problem(HttpStatusCode.Conflict, "Identity.RoleInUse", "Ese rol tiene usuarios. Cámbieles el rol antes de borrarlo."))
@@ -70,9 +70,9 @@ public sealed class RolesSettingsTests
     }
 
     [Fact]
-    public void Turnos_y_cuadres_and_the_DGII_reports_follow_their_own_permissions()
+    public async Task Turnos_y_cuadres_and_the_DGII_reports_follow_their_own_permissions()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.reports");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.reports");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business", new { name = "Mi tienda", discountCapPercent = 10m });
         var page = ctx.Render<Reports>();

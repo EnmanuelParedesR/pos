@@ -215,13 +215,15 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
 /** TK-299: the phone's bottom bar fits five tabs; past that the fifth is "Más", a sheet with the rest (like Escuadra's Admin.razor). */
 function TabBar({ nav }: { nav: { to: string; label: string; icon: IconName }[] }) {
   const { pathname } = useLocation();
-  const [open, setOpen] = useState(false);
+  // Open only on the address where it was opened, so moving to a section closes it (TK-305: no closing effect racing the first tap).
+  const [openAt, setOpenAt] = useState<string | null>(null);
+  const open = openAt === pathname;
+  const setOpen = (value: boolean) => setOpenAt(value ? pathname : null);
   const bar = useRef<HTMLElement>(null);
   const tabs = nav.length > 5 ? nav.slice(0, 4) : nav;
   const rest = nav.slice(tabs.length);
   const inRest = rest.some((s) => pathname.startsWith(s.to));
 
-  useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
     if (!open) return;
     const outside = (e: PointerEvent) => bar.current?.contains(e.target as Node) || setOpen(false);

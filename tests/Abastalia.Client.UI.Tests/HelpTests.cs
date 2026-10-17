@@ -13,9 +13,9 @@ namespace Abastalia.Client.UI.Tests;
 public sealed class HelpTests
 {
     [Fact]
-    public void F1_at_the_register_shows_the_sale_help_with_its_shortcuts_and_Esc_closes_it()
+    public async Task F1_at_the_register_shows_the_sale_help_with_its_shortcuts_and_Esc_closes_it()
     {
-        var (ctx, _) = ScreenContext.Create("sales.create");
+        var (ctx, _) = await ScreenContext.CreateAsync("sales.create");
         using var __ = ctx;
         ctx.Services.GetRequiredService<NavigationManager>().NavigateTo("sale");
         var frame = ctx.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
@@ -41,9 +41,9 @@ public sealed class HelpTests
         HelpContent.For(route).Title.ShouldBe(title);
 
     [Fact]
-    public void The_first_day_guide_lists_the_steps_in_order_and_Resumen_links_to_it()
+    public async Task The_first_day_guide_lists_the_steps_in_order_and_Resumen_links_to_it()
     {
-        var (ctx, _) = ScreenContext.Create("reports.view");
+        var (ctx, _) = await ScreenContext.CreateAsync("reports.view");
         using var __ = ctx;
 
         var guide = ctx.Render<FirstDay>();

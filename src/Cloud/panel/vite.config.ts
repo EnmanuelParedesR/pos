@@ -17,7 +17,7 @@ export default defineConfig(async () => {
     plugins: [react()],
     // escuadra.css and escuadra-admin.css come from the register's design system so both share one set of tokens.
     server: { fs: { allow: [".", "../../Client/Abastalia.Escuadra/wwwroot"] } },
-    // Two workers: jsdom suites under full parallelism time out their findBy waits on a loaded PC or CI runner.
-    test: { environment: "jsdom", maxWorkers: 2 },
+    // A test outlasts its waits: findBy may take up to 5 s on a loaded PC or CI runner (src/test-setup.ts), so a test gets 15 s, not 5.
+    test: { environment: "jsdom", setupFiles: ["src/test-setup.ts"], testTimeout: 15_000 },
   };
 });

@@ -19,9 +19,9 @@ public sealed class AdminEcfOperationsTests
     };
 
     [Fact]
-    public void The_health_card_lists_what_needs_the_owner_and_asks_the_DGII_on_demand()
+    public async Task The_health_card_lists_what_needs_the_owner_and_asks_the_DGII_on_demand()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/health", new
         {
@@ -38,9 +38,9 @@ public sealed class AdminEcfOperationsTests
     }
 
     [Fact]
-    public void The_contingency_starts_with_a_reason_and_a_second_tap_and_B_receipts_are_regularized_after()
+    public async Task The_contingency_starts_with_a_reason_and_a_second_tap_and_B_receipts_are_regularized_after()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/contingency", Contingency(active: false, canSign: false))
             .Json("POST", "/api/fiscal/contingency/start", Contingency(active: true, canSign: false));
@@ -69,9 +69,9 @@ public sealed class AdminEcfOperationsTests
     }
 
     [Fact]
-    public void The_certification_assistant_ticks_steps_and_sends_the_test_set()
+    public async Task The_certification_assistant_ticks_steps_and_sends_the_test_set()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         var state = new
         {
@@ -100,9 +100,9 @@ public sealed class AdminEcfOperationsTests
     }
 
     [Fact]
-    public void Accompaniment_is_asked_with_the_contact_and_then_shows_as_sent_with_its_status()
+    public async Task Accompaniment_is_asked_with_the_contact_and_then_shows_as_sent_with_its_status()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         var request = new { id = Guid.NewGuid(), status = "New", contactName = "Ana Pérez", phone = "809-555-1234", preferredTimes = "Mañanas",
             session1Utc = (DateTime?)null, session2Utc = (DateTime?)null, createdUtc = DateTime.UtcNow };
@@ -126,9 +126,9 @@ public sealed class AdminEcfOperationsTests
     }
 
     [Fact]
-    public void Accompaniment_without_the_cloud_says_to_connect_and_offers_no_form()
+    public async Task Accompaniment_without_the_cloud_says_to_connect_and_offers_no_form()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/accompaniment", new { connected = false, request = (object?)null, suggestedName = (string?)null, suggestedPhone = (string?)null });
         var panel = ctx.Render<EcfAccompanimentPanel>();
@@ -139,9 +139,9 @@ public sealed class AdminEcfOperationsTests
     }
 
     [Fact]
-    public void The_summary_lists_the_contingency_from_the_health_check()
+    public async Task The_summary_lists_the_contingency_from_the_health_check()
     {
-        var (ctx, api) = ScreenContext.Create("reports.view", "fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("reports.view", "fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/health", new
         {

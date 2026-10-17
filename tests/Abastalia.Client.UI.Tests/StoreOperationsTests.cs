@@ -21,9 +21,9 @@ public sealed class StoreOperationsTests
     };
 
     [Fact]
-    public void The_environment_shows_what_is_missing_and_changes_only_after_an_explicit_confirmation()
+    public async Task The_environment_shows_what_is_missing_and_changes_only_after_an_explicit_confirmation()
     {
-        var (ctx, api) = ScreenContext.Create("fiscal.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("fiscal.manage");
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/mode", Mode(("Simulated", []), ("TesteCF", []), ("CerteCF", []), ("eCF", ["Importe el certificado digital."])))
            .Respond("PUT", "/api/fiscal/mode", _ => FakeApi.Response(HttpStatusCode.NoContent, new { }));
@@ -42,9 +42,9 @@ public sealed class StoreOperationsTests
     }
 
     [Fact]
-    public void The_backup_card_warns_without_a_passphrase_and_saves_the_schedule()
+    public async Task The_backup_card_warns_without_a_passphrase_and_saves_the_schedule()
     {
-        var (ctx, api) = ScreenContext.Create("backups.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("backups.manage");
         using var _ = ctx;
         api.Json("GET", "/api/backups/settings", new
             {
@@ -66,9 +66,9 @@ public sealed class StoreOperationsTests
     }
 
     [Fact]
-    public void The_health_screen_puts_what_needs_attention_with_what_to_do()
+    public async Task The_health_screen_puts_what_needs_attention_with_what_to_do()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage");
         using var _ = ctx;
         api.Json("GET", "/api/settings/health", new[]
         {

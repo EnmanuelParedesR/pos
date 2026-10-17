@@ -5,7 +5,7 @@
 .DESCRIPTION
   Server: first it writes disk-encryption.json for the service's health check (R11 C2). The service (ServerUpdateCheck, only with Updates:FeedUrl set) writes C:\ProgramData\Abastalia\update.json when the feed has a newer
   version, with canApplyNow = no shift open or outside business hours. update.json is only a hint (R10 #1).
-  Register: the script reads releases.<channel>.json from the feed itself and updates only while the register app is closed.
+  Register: the script reads releases.<channel>.json from the feed itself. Both roles update only while the register app is closed.
   Both: the setup comes from the https FeedUrl of the INSTALLED appsettings.json (only administrators can change it), the version is plain
   x.y.z and newer than the installed one (R11 C13), and (R11 C3) the file must carry a valid Authenticode signature by a certificate listed
   in Updates:SignerThumbprints. Without thumbprints nothing is installed, unless Updates:AllowUnsignedUpdates is true (pilot only: then the
@@ -21,13 +21,16 @@
   Register only (TK-254): update-policy.json, written by the register app with the store's channel (pilot/stable, chosen in Configuración →
   Actualizaciones) and the cloud's cap (MaxVersion; "" = wait). Any local user can write it, so it only picks among the feed's releases or
   holds back: the feed, the version checks and the signature checks below do not depend on it.
+.PARAMETER AppProcess
+  Only for tests: the register app's process name (Abastalia.exe). While it runs, on either role, nothing is installed.
 #>
 param(
     [ValidateSet('server', 'register')] [string] $Role = 'server',
     [string] $DataRoot = $(if ($Role -eq 'server') { Join-Path $env:ProgramData 'Abastalia' } else { Join-Path $PSScriptRoot '..' }),
     [string] $SettingsPath = (Join-Path $PSScriptRoot "..\$(if ($Role -eq 'server') { 'server' } else { 'app' })\appsettings.json"),
     [string] $InstalledVersion = '',
-    [string] $PolicyPath = (Join-Path $env:ProgramData 'Abastalia\update-policy.json')
+    [string] $PolicyPath = (Join-Path $env:ProgramData 'Abastalia\update-policy.json'),
+    [string] $AppProcess = 'Abastalia'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'remove-tree.ps1')
@@ -72,8 +75,10 @@ try {
         if ([string]$update.SetupUrl -ne "$feed/AbastaliaSetup-$version.exe") { throw "update.json pide $($update.SetupUrl), que no es $feed/AbastaliaSetup-$version.exe." }
     } else {
         if (-not $feed) { return } # no feed configured: no updates
-        if (Get-Process -Name 'Abastalia' -ErrorAction SilentlyContinue) { return } # never in the middle of a sale: next hour
     }
+    # Never in the middle of a sale: the silent setup closes the register app (CloseApplications), also the one on the main PC (TK-305).
+    # It waits for the next hour; the owner's "cerrar y actualizar" closes the app once it is idle (TK-254).
+    if (Get-Process -Name $AppProcess -ErrorAction SilentlyContinue) { return }
     if (-not $feed.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) { throw "Updates:FeedUrl tiene que ser https." }
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     if ($Role -eq 'register') {

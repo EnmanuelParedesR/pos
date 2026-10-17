@@ -20,9 +20,9 @@ public sealed class AdminPurchasingTests
         });
 
     [Fact]
-    public void A_purchase_is_checked_next_to_each_field_then_saved_and_received_with_the_last_cost()
+    public async Task A_purchase_is_checked_next_to_each_field_then_saved_and_received_with_the_last_cost()
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("purchasing.manage");
         using var _ = ctx;
         Suppliers(api);
         api.Json("GET", "/api/purchasing/purchases", Array.Empty<object>())
@@ -71,9 +71,9 @@ public sealed class AdminPurchasingTests
     }
 
     [Fact]
-    public void A_supplier_with_a_wrong_RNC_is_not_sent()
+    public async Task A_supplier_with_a_wrong_RNC_is_not_sent()
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("purchasing.manage");
         using var _ = ctx;
         Suppliers(api);
         var page = ctx.Render<Pages.Admin.Suppliers>();
@@ -89,9 +89,9 @@ public sealed class AdminPurchasingTests
     }
 
     [Fact]
-    public void What_is_owed_shows_the_overdue_part_and_a_payment_goes_to_the_supplier_account()
+    public async Task What_is_owed_shows_the_overdue_part_and_a_payment_goes_to_the_supplier_account()
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage", "payables.pay", "reports.view");
+        var (ctx, api) = await ScreenContext.CreateAsync("purchasing.manage", "payables.pay", "reports.view");
         using var _ = ctx;
         var payment = Guid.NewGuid();
         api.Json("GET", "/api/reports/payables", new[]
@@ -120,9 +120,9 @@ public sealed class AdminPurchasingTests
     }
 
     [Fact]
-    public void TK_248_the_month_s_AI_readings_left_show_and_once_spent_the_add_on_is_offered()
+    public async Task TK_248_the_month_s_AI_readings_left_show_and_once_spent_the_add_on_is_offered()
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("purchasing.manage");
         using var _ = ctx;
         api.Json("GET", "/api/purchasing/purchases", Array.Empty<object>())
            .Json("GET", "/api/purchasing/purchases/read-invoice/quota", new { used = 5, limit = 20, resetsOn = new DateOnly(2026, 11, 1), addOn = false });
@@ -136,9 +136,9 @@ public sealed class AdminPurchasingTests
     }
 
     [Fact]
-    public void TK_224_several_invoices_become_drafts_one_by_one_and_a_spent_quota_stops_the_rest()
+    public async Task TK_224_several_invoices_become_drafts_one_by_one_and_a_spent_quota_stops_the_rest()
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("purchasing.manage");
         using var _ = ctx;
         Suppliers(api);
         var draft = Guid.NewGuid();
@@ -189,9 +189,9 @@ public sealed class AdminPurchasingTests
     [Theory]
     [InlineData("Purchasing.AiUnavailable")]
     [InlineData("Purchasing.TooManyDrafts")]
-    public void R12_the_cloud_AI_unavailable_or_too_many_drafts_stops_the_batch(string code)
+    public async Task R12_the_cloud_AI_unavailable_or_too_many_drafts_stops_the_batch(string code)
     {
-        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("purchasing.manage");
         using var _ = ctx;
         Suppliers(api);
         api.Json("GET", "/api/purchasing/purchases", Array.Empty<object>())

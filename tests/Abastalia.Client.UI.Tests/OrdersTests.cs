@@ -21,9 +21,9 @@ public sealed class OrdersTests
         [new OrderLine(RegisterTests.Salami.ProductId, null, "Salami 1 lb", "Unit", 2m, 200m, 400m, null)]);
 
     [Fact]
-    public void F10_saves_the_cart_as_an_order_for_its_customer_with_a_cash_deposit()
+    public async Task F10_saves_the_cart_as_an_order_for_its_customer_with_a_cash_deposit()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null, 2);
@@ -51,10 +51,10 @@ public sealed class OrdersTests
     }
 
     [Fact]
-    public void A_cash_deposit_with_centavos_is_not_sent()
+    public async Task A_cash_deposit_with_centavos_is_not_sent()
     {
         // R8 #6: the drawer takes whole pesos, as in a payment on credit.
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var cart = ctx.Services.GetRequiredService<Cart>();
         cart.Add(RegisterTests.Salami, null, 2);
@@ -69,9 +69,9 @@ public sealed class OrdersTests
     }
 
     [Fact]
-    public void Charging_an_order_loads_it_at_todays_price_and_the_checkout_takes_the_deposit_first()
+    public async Task Charging_an_order_loads_it_at_todays_price_and_the_checkout_takes_the_deposit_first()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         var orderId = Guid.NewGuid();
         var cart = ctx.Services.GetRequiredService<Cart>();
@@ -102,9 +102,9 @@ public sealed class OrdersTests
     }
 
     [Fact]
-    public void The_register_reminds_todays_and_tomorrows_orders()
+    public async Task The_register_reminds_todays_and_tomorrows_orders()
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         using var _ = ctx;
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Json("GET", "/api/orders", new[] { Order(Guid.NewGuid(), Format.Today), Order(Guid.NewGuid(), Format.Today.AddDays(1)), Order(Guid.NewGuid(), Format.Today) });
@@ -114,9 +114,9 @@ public sealed class OrdersTests
     }
 
     [Fact]
-    public void The_owner_picks_the_catalog_products_and_gets_the_link_and_its_QR()
+    public async Task The_owner_picks_the_catalog_products_and_gets_the_link_and_its_QR()
     {
-        var (ctx, api) = ScreenContext.Create("products.manage", "settings.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("products.manage", "settings.manage");
         using var _ = ctx;
         var (steak, salami, store) = (Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         api.Json("GET", "/api/catalog", new CatalogSettings("18095550101", [steak], "https://panel.abastalia.com"))

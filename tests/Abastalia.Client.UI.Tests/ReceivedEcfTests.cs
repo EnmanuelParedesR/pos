@@ -15,9 +15,9 @@ public sealed class ReceivedEcfTests
     };
 
     [Fact]
-    public void Only_a_production_e_CF_that_arrived_once_can_be_registered_as_a_purchase()
+    public async Task Only_a_production_e_CF_that_arrived_once_can_be_registered_as_a_purchase()
     {
-        var (ctx, api) = ScreenContext.Create();
+        var (ctx, api) = await ScreenContext.CreateAsync();
         using var _ = ctx;
         api.Json("GET", "/api/fiscal/received", new[]
         {

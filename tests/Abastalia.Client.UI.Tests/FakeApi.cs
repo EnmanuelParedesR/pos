@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Abastalia.Client.UI;
 using Abastalia.Client.UI.Api;
 using Abastalia.Hardware;
@@ -72,14 +73,18 @@ internal static class ScreenContext
     public static readonly CurrentShift Shift = new(Guid.NewGuid(), Guid.NewGuid(), "Caja 1", 500m, DateTime.UtcNow);
 
     /// <summary>A bUnit context with the register's services on a fake API, a paired device and a logged-in cashier.</summary>
-    public static (BunitContext Ctx, FakeApi Api) Create(params string[] permissions) => Create(_ => { }, permissions);
+    public static Task<(BunitContext Ctx, FakeApi Api)> CreateAsync(params string[] permissions) => CreateAsync(_ => { }, permissions);
 
-    /// <param name="services">Services a test adds before anything is resolved (an app updater).</param>
-    public static (BunitContext Ctx, FakeApi Api) Create(Action<IServiceCollection> services, params string[] permissions)
+    /// <param name="services">Services a test adds before anything is resolved (an app updater, a fake clock).</param>
+    public static async Task<(BunitContext Ctx, FakeApi Api)> CreateAsync(Action<IServiceCollection> services, params string[] permissions)
     {
         var ctx = new BunitContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
         var api = new FakeApi();
+        // TK-305: screens tick only when a test advances this clock (the scale, the registry import); the frame's first check runs at once.
+        var clock = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        ctx.Services.AddSingleton(clock);
+        ctx.Services.AddSingleton<TimeProvider>(clock);
         ctx.Services.AddAbastaliaClient(new Uri("http://abastalia.test"), api);
         ctx.Services.AddSingleton<ILocalStore>(new InMemoryStore());
         // No scale or printer until a test saves its settings (Peripherals.SaveAsync); TestDrivers lets it drive and watch them.
@@ -88,7 +93,7 @@ internal static class ScreenContext
         ctx.Services.AddAbastaliaHardware(hardware);
         services(ctx.Services);
         var session = ctx.Services.GetRequiredService<Session>();
-        session.PairAsync(null, "device").GetAwaiter().GetResult();
+        await session.PairAsync(null, "device");
         session.Open(new OpenedSession("token", Guid.NewGuid(), "Yudelka M.", DateTime.UtcNow.AddHours(12)), new Me(Guid.NewGuid(), "Yudelka M.", Guid.NewGuid(), permissions));
         session.Shift = Shift;
         return (ctx, api);

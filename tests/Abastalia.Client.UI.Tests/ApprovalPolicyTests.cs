@@ -21,9 +21,9 @@ public sealed class ApprovalPolicyTests
         b.CloseComponent();
     }));
 
-    private static (BunitContext, FakeApi, Cart) WithOneLine(bool required)
+    private static async Task<(BunitContext, FakeApi, Cart)> WithOneLineAsync(bool required)
     {
-        var (ctx, api) = ScreenContext.Create("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
+        var (ctx, api) = await ScreenContext.CreateAsync("sales.create", "register.open", "register.close", "register.cash-in", "credit.collect");
         api.Json("GET", "/api/inventory/categories", Array.Empty<object>())
            .Json("GET", "/api/settings/approvals", new[] { new ApprovalRule("sales.remove-line", required), new ApprovalRule("sales.void", true) });
         // R11 A5: the server records the removal and asks for the supervisor when its policy says so.
@@ -37,9 +37,9 @@ public sealed class ApprovalPolicyTests
     }
 
     [Fact]
-    public void With_the_policy_on_removing_a_line_asks_for_a_supervisor()
+    public async Task With_the_policy_on_removing_a_line_asks_for_a_supervisor()
     {
-        var (ctx, api, cart) = WithOneLine(required: true);
+        var (ctx, api, cart) = await WithOneLineAsync(required: true);
         using var _ = ctx;
         var approval = Guid.NewGuid();
         api.Json("GET", "/api/identity/users/active", new[] { new ActiveUser(Guid.NewGuid(), "Ramón D.", "ramon") })
@@ -60,9 +60,9 @@ public sealed class ApprovalPolicyTests
     }
 
     [Fact]
-    public void With_the_policy_off_the_line_goes_at_once()
+    public async Task With_the_policy_off_the_line_goes_at_once()
     {
-        var (ctx, api, cart) = WithOneLine(required: false);
+        var (ctx, api, cart) = await WithOneLineAsync(required: false);
         using var _ = ctx;
         var screen = Register(ctx);
 
@@ -74,9 +74,9 @@ public sealed class ApprovalPolicyTests
     }
 
     [Fact]
-    public void Configuracion_saves_one_switch_per_action()
+    public async Task Configuracion_saves_one_switch_per_action()
     {
-        var (ctx, api) = ScreenContext.Create("settings.manage");
+        var (ctx, api) = await ScreenContext.CreateAsync("settings.manage");
         using var _ = ctx;
         api.Json("GET", "/api/settings/business", new { name = "Mi tienda", discountCapPercent = 10m })
            .Json("GET", "/api/cash/registers", Array.Empty<object>())
