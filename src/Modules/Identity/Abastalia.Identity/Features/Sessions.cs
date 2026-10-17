@@ -118,13 +118,17 @@ internal static class CloseSession
 /// <summary>Who am I and what can I do. The UI shows or hides menus with this; the server still checks every call.</summary>
 internal static class Me
 {
-    public sealed record Response(Guid UserId, string Name, Guid? DeviceId, IReadOnlyList<string> Permissions);
+    /// <param name="IdleMinutes">TK-366: minutes without a key or a touch before the register locks back to the PIN (<see cref="IdleLock"/>).</param>
+    public sealed record Response(Guid UserId, string Name, Guid? DeviceId, IReadOnlyList<string> Permissions, int IdleMinutes);
 
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapGet("/api/identity/me", (ClaimsPrincipal user, IUserContext u) =>
-                    Results.Ok(new Response(u.UserId, u.Name, u.DeviceId, user.FindAll(AbastaliaClaims.Permission).Select(c => c.Value).ToList())))
+            app.MapGet("/api/identity/me", (ClaimsPrincipal user, IUserContext u, IConfiguration config) =>
+                {
+                    var permissions = user.FindAll(AbastaliaClaims.Permission).Select(c => c.Value).ToList();
+                    return Results.Ok(new Response(u.UserId, u.Name, u.DeviceId, permissions, IdleLock.Minutes(permissions, config)));
+                })
                 .RequireAuthorization().WithTags("Identity");
     }
 }

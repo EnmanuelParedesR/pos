@@ -51,6 +51,9 @@ public sealed class StoreOperationsTests(AbastaliaApp app) : IClassFixture<Abast
         Blockers(mode, "eCF").Count().ShouldBe(2);
         (await admin.PostAsJsonAsync("/api/fiscal/sequences", new { Type = "Consumer32", From = 1, To = 100, Environment = "eCF" })).EnsureSuccessStatusCode();
         (await admin.PutAsJsonAsync($"/api/fiscal/certification/steps/{FiscalModeChecks.VerifiedStep}", new { Done = true })).EnsureSuccessStatusCode();
+        // TK-363: returns and voids need the 34 too; the 31 does not block (the cashier can sell as consumer).
+        Blockers(await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/mode"), "eCF").ShouldHaveSingleItem().ShouldContain("Nota de Crédito");
+        (await admin.PostAsJsonAsync("/api/fiscal/sequences", new { Type = "CreditNote34", From = 1, To = 100, Environment = "eCF" })).EnsureSuccessStatusCode();
         Blockers(await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/mode"), "eCF").ShouldBeEmpty();
 
         // R10 #3: production with e-CF issued does not go back with one click; only with support's flag.

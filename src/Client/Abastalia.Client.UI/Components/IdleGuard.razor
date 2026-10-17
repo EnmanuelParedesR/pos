@@ -1,0 +1,82 @@
+@* TK-366: after Session.IdleMinutes without a key, a click or a touch the session locks back to the PIN, with a one-minute warning first.
+   The open sale stays on this PC for its cashier (Cart.HandOver at the next sign-in). While the person works, the server hears it (the
+   status-bar polls do not count), so its own idle lock (IdleLock, a little later) is only the backstop for a register that stopped. *@
+@using Microsoft.JSInterop
+@implements IDisposable
+@inject Session Session
+@inject AbastaliaApi Api
+@inject Cart Cart
+@inject TimeProvider Clock
+@inject IJSRuntime JS
+
+@if (_warning)
+{
+    <Dialog Title="¿Sigue ahí?" OnClose="StayAsync" OnKey="_ => StayAsync()">
+        <ChildContent>
+            <p>Por inactividad, la sesión se cierra en menos de un minuto.
+                @(Cart.IsEmpty ? "Para volver a entrar necesitará su PIN." : "La venta en curso no se pierde: la encuentra al volver a entrar con su PIN.")</p>
+        </ChildContent>
+        <Footer>
+            <Button Variant="Button.Variants.Primary" Shortcut="Enter" OnClick="StayAsync">Seguir aquí</Button>
+        </Footer>
+    </Dialog>
+}
+
+@code {
+    public static readonly TimeSpan Tick = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan Warning = TimeSpan.FromMinutes(1);
+    /// <summary>How often the server hears that the person is working (IdleLock.Grace leaves room for it).</summary>
+    public static readonly TimeSpan ReportEvery = TimeSpan.FromSeconds(15);
+
+    private ITimer? _timer;
+    private bool _warning;
+    private DateTimeOffset _reported;
+
+    protected override void OnInitialized() => _timer = Clock.CreateTimer(_ => InvokeAsync(CheckAsync), null, Tick, Tick);
+
+    private async Task CheckAsync()
+    {
+        if (!Session.IsOpen || Session.IdleMinutes <= 0)
+        {
+            Show(false);
+            return;
+        }
+        double seconds;
+        try { seconds = await JS.InvokeAsync<double>("escuadra.idleSeconds"); }
+        catch (JSException) { return; }
+        catch (JSDisconnectedException) { return; }
+        var idle = TimeSpan.FromSeconds(seconds);
+        var limit = TimeSpan.FromMinutes(Session.IdleMinutes);
+        if (idle >= limit)
+        {
+            Show(false);
+            await Api.DeleteAsync<Empty>("/api/identity/sessions/current"); // offline it still locks here; the server closes it by itself
+            if (Session.IsOpen) Session.Expire();
+            return;
+        }
+        Show(idle >= limit - Warning);
+        var now = Clock.GetUtcNow();
+        if (idle < ReportEvery && now - _reported >= ReportEvery)
+        {
+            _reported = now;
+            await Api.GetAsync<Me>("/api/identity/me");
+        }
+    }
+
+    private void Show(bool warning)
+    {
+        if (_warning == warning) return;
+        _warning = warning;
+        StateHasChanged();
+    }
+
+    /// <summary>"Seguir aquí", or any key: it already counts as activity (escuadra.js); the server hears it at once.</summary>
+    private async Task StayAsync()
+    {
+        Show(false);
+        _reported = Clock.GetUtcNow();
+        await Api.GetAsync<Me>("/api/identity/me");
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}

@@ -89,10 +89,14 @@ internal static class SequenceAlerts
     {
         var usable = await db.Sequences.Where(s => s.Environment == env && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today))
             .AsNoTracking().ToListAsync(ct);
+        // TK-363: a type never used in Simulated or TesteCF loads its own range on first use: nothing for the owner to do.
+        var selfLoading = FiscalDocuments.SelfLoads(env)
+            ? (await db.Sequences.Where(s => s.Environment == env).Select(s => s.Type).Distinct().ToListAsync(ct)) : null;
         var types = new[] { EcfType.FiscalCredit31, EcfType.Consumer32, EcfType.CreditNote34 };
         return [.. types.Select(t =>
         {
             var ranges = usable.Where(s => s.Type == t).ToList();
+            if (selfLoading is not null && !selfLoading.Contains(t)) return new Item(t, 0, null, false);
             var available = ranges.Sum(s => s.To - s.Next + 1);
             var total = ranges.Sum(s => s.Total);
             // A range without expiry (32 and 34 may have none) never expires.

@@ -10,7 +10,15 @@
             <h1 class="esc-title">¿Quién entra?</h1>
             @if (Expired || Session.Expired)
             {
-                <Notice Kind="Notice.Kinds.Warning" Title="Su sesión terminó. Entre de nuevo con su PIN." />
+                @* TK-366: after an idle lock too; the sale on the screen waits for whoever rang it up (Cart.HandOver). *@
+                @if (Cart.IsEmpty)
+                {
+                    <Notice Kind="Notice.Kinds.Warning" Title="Su sesión terminó. Entre de nuevo con su PIN." />
+                }
+                else
+                {
+                    <Notice Kind="Notice.Kinds.Warning" Title="Su sesión terminó. Entre de nuevo con su PIN.">La venta que estaba abierta sigue aquí para quien la empezó.</Notice>
+                }
             }
             @if (_users is null)
             {

@@ -126,6 +126,7 @@ public class AbastaliaApp : WebApplicationFactory<Program>
         builder.UseSetting("Backup:Automatic", "false");
         // The tests move the clock by hours and days; the idle lock (R11 A4) has its own test.
         builder.UseSetting("Identity:IdleMinutes", "10000000");
+        builder.UseSetting("Identity:RegisterIdleMinutes", "10000000");
         builder.UseSetting("Abastalia:KeysFolder", Path.Combine(Path.GetTempPath(), $"abastalia_keys_{Guid.NewGuid():N}"));
         builder.UseSetting("License:PublicKey", LicenseKey.ExportSubjectPublicKeyInfoPem());
         builder.UseSetting("License:CloudPublicKey", CloudLicenseKey.ExportSubjectPublicKeyInfoPem());

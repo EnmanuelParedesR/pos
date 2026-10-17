@@ -133,9 +133,10 @@ internal sealed class SessionAuthenticationHandler(
         if (data is null) return AuthenticateResult.Fail("Invalid or expired session.");
         var permissions = data.Role.Effective;
 
-        // R11 A4: whoever can authorize (or manage users) is signed out after a few idle minutes, so nobody approves from a register left open.
+        // R11 A4: whoever can authorize (or manage users) is signed out after a few idle minutes, so nobody approves from a register left open;
+        // TK-366: everyone else after a longer while. The register locks itself first, with a warning (IdleGuard.razor); this is the backstop.
         // The register's own polling (AbastaliaApi.PollAsync) does not count as activity.
-        if (permissions.Any(IdleLock.Applies) && data.Seen + IdleLock.Timeout(config) <= now) return AuthenticateResult.Fail("Session idle.");
+        if (data.Seen + IdleLock.Timeout(permissions, config) + IdleLock.Grace <= now) return AuthenticateResult.Fail("Session idle.");
         // TK-277: written for everyone (at most once a minute): the same person working at two registers at once is the shared-PIN signal.
         if (Request.Headers[IdleLock.BackgroundHeader].Count == 0 && data.Seen + IdleLock.WriteEvery <= now)
             await db.Sessions.Where(s => s.Id == data.SessionId).ExecuteUpdateAsync(s => s.SetProperty(x => x.LastSeenUtc, now), Context.RequestAborted);
@@ -152,18 +153,28 @@ internal sealed class SessionAuthenticationHandler(
     }
 }
 
-/// <summary>R11 A4: sessions of users who can approve close after <c>Identity:IdleMinutes</c> (5) without a request of their own.</summary>
+/// <summary>R11 A4 / TK-366: idle minutes before a session locks back to the PIN. Users who can approve: <c>Identity:IdleMinutes</c> (5);
+/// everyone else: <c>Identity:RegisterIdleMinutes</c> (15). The register counts keys and touches and locks at that time, after a one-minute
+/// warning; the server refuses the session <see cref="Grace"/> later, counting only requests of the person's own.</summary>
 internal static class IdleLock
 {
     /// <summary>Sent by the register's periodic checks (status bar): they keep the screen fresh but are not the person working.</summary>
     public const string BackgroundHeader = "X-Abastalia-Background";
     public static readonly TimeSpan WriteEvery = TimeSpan.FromMinutes(1);
 
+    /// <summary>The register reports activity at most every 15 s and LastSeenUtc is written once a minute: the server must not lock first.</summary>
+    public static readonly TimeSpan Grace = TimeSpan.FromMinutes(2);
+
     private static readonly HashSet<string> Approving =
         [Permissions.RegisterApproveClose, Permissions.SalesVoid, Permissions.SalesReturn, Permissions.RegisterWithdraw, Permissions.UsersManage];
 
     public static bool Applies(string permission) => Approving.Contains(permission);
-    public static TimeSpan Timeout(IConfiguration config) => TimeSpan.FromMinutes(config.GetValue("Identity:IdleMinutes", 5));
+
+    public static int Minutes(IEnumerable<string> permissions, IConfiguration config) => permissions.Any(Applies)
+        ? config.GetValue("Identity:IdleMinutes", 5)
+        : config.GetValue("Identity:RegisterIdleMinutes", 15);
+
+    public static TimeSpan Timeout(IEnumerable<string> permissions, IConfiguration config) => TimeSpan.FromMinutes(Minutes(permissions, config));
 }
 
 /// <summary>R11 A3: the server's PIN pepper (a <see cref="ServiceKeys"/> secret, never in the database or a backup).</summary>
