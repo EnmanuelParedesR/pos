@@ -78,7 +78,9 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
     if (creating) return run(() => register(email.trim(), password).then(() => (setSentTo(email.trim()), setPassword(""))));
     return run(async () => {
       try {
-        const second = needsCode ? code.trim() : undefined;
+        // R12 #12: "123 456" as the app shows it, or a backup code typed in lowercase (the API normalizes them too).
+        const typed = code.replace(/\s/g, "");
+        const second = needsCode ? (useBackup ? typed.toUpperCase() : typed) : undefined;
         await signIn(email.trim(), password, useBackup ? undefined : second, useBackup ? second : undefined);
       } catch (err) {
         if (err instanceof ApiError && err.code === "Auth.RequiresTwoFactor") setNeedsCode(true);

@@ -25,7 +25,8 @@ export function securityHeaders(apiUrl) {
       // TK-249: the billing page loads Paddle.js from Paddle's CDN and opens its checkout in a frame (Paddle's own CSP list).
       `script-src 'self' ${paddle.cdn}`,
       `style-src 'self' 'unsafe-inline' ${paddle.cdn}`,
-      `img-src 'self' data: ${paddle.any}`,
+      // R12 #12: the public catalog shows the store's logo, served by the API.
+      `img-src 'self' data: ${new URL(apiUrl).origin} ${paddle.any}`,
       "font-src 'self' data:",
       `connect-src 'self' ${new URL(apiUrl).origin} ${paddle.any}`,
       `frame-src ${paddle.checkout}`,

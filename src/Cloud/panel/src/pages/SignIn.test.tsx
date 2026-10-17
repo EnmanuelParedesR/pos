@@ -142,7 +142,7 @@ it("TK-298: without the phone, a backup code signs in instead of the app's code"
   fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
   fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
   fireEvent.click(await screen.findByRole("button", { name: "¿No tiene el teléfono? Use un código de respaldo" }));
-  fireEvent.change(screen.getByLabelText("Código de respaldo"), { target: { value: " ABCDE-12345 " } });
+  fireEvent.change(screen.getByLabelText("Código de respaldo"), { target: { value: " abcde-12345 " } }); // R12 #12: lowercase and spaces
   fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
   await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalled());
   const [, init] = fetch.mock.calls.filter(([url]) => String(url).endsWith("/api/auth/login"))[1] as unknown as [string, RequestInit];
@@ -158,7 +158,7 @@ it("R11: an account with two-step verification asks for the app's code and sends
   fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
   fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
 
-  fireEvent.change(await screen.findByLabelText("Código de verificación"), { target: { value: "123456" } });
+  fireEvent.change(await screen.findByLabelText("Código de verificación"), { target: { value: "123 456" } }); // R12 #12: as the app shows it
   fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
   await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalled());
   const [, init] = fetch.mock.calls.filter(([url]) => String(url).endsWith("/api/auth/login"))[1] as unknown as [string, RequestInit];

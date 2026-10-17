@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { api, ApiError } from "../api";
 import { Icon, Notice, PageHead, Talia } from "../ui";
 
@@ -9,19 +9,21 @@ interface Turn { role: "user" | "assistant"; content: string }
 export interface PendingQuestion { text: string; id: number }
 
 /** TK-301: Talia names screens as plain relative paths. Only the panel's and these public routes become links; the rest stays text (never HTML or markdown). */
-const pathPattern = /(?<=^|[\s(«"'¿¡])\/(?:app|precios|e-cf|certificacion|descargar|guia-e-cf|comparar|glosario)(?:\/[A-Za-z0-9-]+)*(?:#[A-Za-z0-9-]+)?(?![A-Za-z0-9/#-])/g;
+// R12 #12: the prefix is a captured group, not a lookbehind (Safari before 16.4 cannot even parse one, and the whole bundle would fail).
+const pathPattern = /(^|[\s(«"'¿¡])(\/(?:app|precios|e-cf|certificacion|descargar|guia-e-cf|comparar|glosario)(?:\/[A-Za-z0-9-]+)*(?:#[A-Za-z0-9-]+)?)(?![A-Za-z0-9/#-])/g;
 
 export function withLinks(text: string, onNavigate?: () => void): ReactNode[] {
   const parts: ReactNode[] = [];
   let at = 0;
   for (const m of text.matchAll(pathPattern)) {
-    parts.push(text.slice(at, m.index));
+    const start = m.index + m[1].length;
+    parts.push(text.slice(at, start));
     parts.push(
-      <Link key={m.index} to={m[0]} onClick={onNavigate}>
-        {m[0]}
+      <Link key={start} to={m[2]} onClick={onNavigate}>
+        {m[2]}
       </Link>,
     );
-    at = m.index + m[0].length;
+    at = start + m[2].length;
   }
   parts.push(text.slice(at));
   return parts;
@@ -31,17 +33,20 @@ const suggestions = ["¿Cuánto vendí hoy?", "¿Qué cajera tuvo faltante esta 
 
 /** The Asistente page. A question asked from elsewhere can arrive in router state. */
 export function AssistantPage() {
-  const { state } = useLocation() as { state: { question?: string } | null };
+  const { state, pathname } = useLocation() as { state: { question?: string } | null; pathname: string };
+  const navigate = useNavigate();
   return (
     <>
       <PageHead title="Pregúntale a Talia" subtitle="Contesto con los datos que envían sus tiendas: ventas, cuadres y productos." />
-      <AssistantChat pending={state?.question ? { text: state.question, id: 0 } : null} />
+      {/* R12 #12: asked once; coming back to this page (history) does not ask it again. */}
+      <AssistantChat pending={state?.question ? { text: state.question, id: 0 } : null} onAsked={() => navigate(pathname, { replace: true, state: null })} />
     </>
   );
 }
 
 /** The chat itself: the Asistente page and Talia's popup (TK-300) both use it, so the API, quotas and limits are the same. History lives in this component. */
-export function AssistantChat({ pending, inputId = "question", inPopup = false, onNavigate }: { pending?: PendingQuestion | null; inputId?: string; inPopup?: boolean; onNavigate?: () => void }) {
+/** `onAsked`: the pending question was sent; the caller clears it, so a remount does not ask it again (R12 #12). */
+export function AssistantChat({ pending, inputId = "question", inPopup = false, onNavigate, onAsked }: { pending?: PendingQuestion | null; inputId?: string; inPopup?: boolean; onNavigate?: () => void; onAsked?: () => void }) {
   const [history, setHistory] = useState<Turn[]>([]);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
@@ -72,6 +77,7 @@ export function AssistantChat({ pending, inputId = "question", inPopup = false, 
     if (pending && asked.current !== pending.id) {
       asked.current = pending.id;
       ask(pending.text);
+      onAsked?.();
     }
   }, [pending]);
 

@@ -110,16 +110,8 @@ it("TK-241: an Owner removes a register after confirming, and the list reloads w
   expect(calls[0]).toMatch("/api/panel/nodes/n0/revoke");
 });
 
-it("TK-238: an Owner sees the store's backups in the cloud and downloads one with the session", async () => {
-  const backup = { id: "b1", fileName: "abastalia-20261014-233000.abastalia-backup", bytes: 52_428_800, createdUtc: "2026-10-15T03:30:00Z", uploadedUtc: "2026-10-15T03:40:00Z" };
-  const fetch = vi.fn(async (url: string) =>
-    url.endsWith("/backups/b1") ? new Response(new Blob(["TOKIRSP2"]), { status: 200 }) : json(200, url.endsWith("/backups") ? [backup] : store(1)),
-  );
-  vi.stubGlobal("fetch", fetch);
-  const createObjectURL = vi.fn(() => "blob:respaldo");
-  const revokeObjectURL = vi.fn();
-  vi.stubGlobal("URL", Object.assign(Object.create(URL), { createObjectURL, revokeObjectURL }));
-  const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {}, canEdit: true };
+function renderStores(canEdit = true) {
+  const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {}, canEdit };
   render(
     <MemoryRouter>
       <Routes>
@@ -129,10 +121,32 @@ it("TK-238: an Owner sees the store's backups in the cloud and downloads one wit
       </Routes>
     </MemoryRouter>,
   );
+}
+
+it("TK-238, R12 #9: an Owner sees the store's backups and downloads one through a short-lived link, not through the page's memory", async () => {
+  const backup = { id: "b1", fileName: "abastalia-20261014-233000.abastalia-backup", bytes: 52_428_800, createdUtc: "2026-10-15T03:30:00Z", uploadedUtc: "2026-10-15T03:40:00Z" };
+  const fetch = vi.fn(async (url: string, init?: RequestInit) =>
+    url.endsWith("/backups/b1/link") && init?.method === "POST"
+      ? json(200, { url: "/api/backups/download/token" })
+      : json(200, url.endsWith("/backups") ? [backup] : store(1)),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const clicked: string[] = [];
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+    clicked.push(this.href);
+  });
+  renderStores();
 
   expect(await screen.findByText("Respaldos en la nube")).toBeTruthy();
   expect(await screen.findByText(/50 MB/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Descargar" }));
-  await vi.waitFor(() => expect(createObjectURL).toHaveBeenCalled());
-  expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/stores/s1/backups/b1"))).toBe(true);
+  await vi.waitFor(() => expect(clicked).toHaveLength(1));
+  expect(clicked[0]).toMatch(/\/api\/backups\/download\/token$/);
+  click.mockRestore();
+});
+
+it("R12 #7: the backups show for an Owner even when the store has no register left (a stolen PC was removed)", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => json(200, url.endsWith("/backups") ? [] : store(0))));
+  renderStores();
+  expect(await screen.findByText("Respaldos en la nube")).toBeTruthy();
 });

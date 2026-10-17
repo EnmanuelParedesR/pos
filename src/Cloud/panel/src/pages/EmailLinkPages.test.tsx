@@ -88,6 +88,19 @@ it("TK-297: a bad link explains what to do next", async () => {
   expect(screen.getByText("El enlace no es válido o venció.")).toBeTruthy();
 });
 
+it("R12 #12: the code leaves the address bar once read, and a busy server is not a bad link (opening it again calls the API again)", async () => {
+  window.history.replaceState(null, "", "/app/confirmar#userId=u9&code=c9");
+  let calls = 0;
+  renderAt("/app/confirmar#userId=u9&code=c9", (path) => (path === "/api/auth/confirm" ? (calls++, json(503)) : undefined));
+  expect(await screen.findByText("El servidor tuvo un problema. Abra el enlace de nuevo en un momento.")).toBeTruthy();
+  expect(window.location.hash).toBe("");
+  cleanup();
+
+  renderAt("/app/confirmar#userId=u9&code=c9", (path) => (path === "/api/auth/confirm" ? (calls++, json(200, { firstConfirmation: false })) : undefined));
+  expect(await screen.findByText("Su cuenta quedó activada")).toBeTruthy();
+  expect(calls).toBe(2);
+});
+
 it("TK-297: a link without its code calls nothing", () => {
   const fetch = renderAt("/app/confirmar", () => undefined);
   expect(screen.getByRole("heading", { name: "El enlace está incompleto" })).toBeTruthy();

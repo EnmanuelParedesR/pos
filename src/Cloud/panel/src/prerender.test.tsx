@@ -26,6 +26,47 @@ it.each(pages.map((p) => [p.path]))("TK-261: the prerendered %s hydrates without
   vi.unstubAllGlobals();
 });
 
+it("R12 #12: a theme saved on this device does not break the hydration (the toggle reads it after the first render)", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => json(404)));
+  localStorage.setItem("abastalia.theme", "dark");
+  const root = document.body.appendChild(document.createElement("div"));
+  root.innerHTML = render("/");
+  const errors: unknown[] = [];
+  await act(async () => {
+    hydrateRoot(
+      root,
+      <MemoryRouter initialEntries={["/"]}>
+        <App />
+      </MemoryRouter>,
+      { onRecoverableError: (e) => errors.push(e) },
+    );
+  });
+  expect(errors).toEqual([]);
+  expect(root.innerHTML).toContain("Tema: oscuro");
+  root.remove();
+  localStorage.removeItem("abastalia.theme");
+  vi.unstubAllGlobals();
+});
+
+it("R12 #12: a client-side 404 removes the canonical the previous page left", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => json(404)));
+  document.head.appendChild(Object.assign(document.createElement("link"), { rel: "canonical", href: "https://abastalia.com/precios" }));
+  const root = document.body.appendChild(document.createElement("div"));
+  const { createRoot } = await import("react-dom/client");
+  const app = createRoot(root);
+  await act(async () =>
+    app.render(
+      <MemoryRouter initialEntries={["/no-existe"]}>
+        <App />
+      </MemoryRouter>,
+    ),
+  );
+  expect(document.head.querySelector('link[rel="canonical"]')).toBeNull();
+  act(() => app.unmount());
+  root.remove();
+  vi.unstubAllGlobals();
+});
+
 const publicPages = pages.filter(indexed);
 const len = (s: string) => [...s].length;
 const blocksOf = (path: string) => {

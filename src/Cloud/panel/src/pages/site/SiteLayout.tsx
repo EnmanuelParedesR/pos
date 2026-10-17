@@ -16,7 +16,9 @@ function useHead(page: SitePage, pathname: string) {
       el.setAttribute(attr, value);
     };
     set('meta[name="description"]', () => Object.assign(document.createElement("meta"), { name: "description" }), "content", page.description);
+    // R12 #12: a client-side 404 drops the canonical the previous page left (a 404 must never claim an address).
     if (page !== notFound) set('link[rel="canonical"]', () => Object.assign(document.createElement("link"), { rel: "canonical" }), "href", site.url + pathname);
+    else document.head.querySelectorAll('link[rel="canonical"]').forEach((l) => l.remove());
   }, [page, pathname]);
 }
 

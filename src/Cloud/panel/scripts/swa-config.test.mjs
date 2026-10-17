@@ -40,6 +40,7 @@ describe("staticwebapp.config.json (TK-228)", () => {
     const csp = Object.fromEntries(headers["Content-Security-Policy"].split("; ").map((d) => [d.split(" ")[0], d.split(" ").slice(1).join(" ")]));
     expect(csp["script-src"]).toBe("'self' https://cdn.paddle.com");
     expect(csp["connect-src"]).toBe("'self' https://api.abastalia.example https://*.paddle.com");
+    expect(csp["img-src"]).toBe("'self' data: https://api.abastalia.example https://*.paddle.com"); // R12 #12: the catalog logo
     expect(csp["frame-src"]).toBe("https://buy.paddle.com https://sandbox-buy.paddle.com");
     expect(csp["frame-ancestors"]).toBe("'none'");
     expect(csp["default-src"]).toBe("'self'");

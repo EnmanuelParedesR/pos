@@ -139,7 +139,8 @@ function StoreCard({ store: s, canEdit, onPoll, onConnected }: { store: StoreSyn
       {/* TK-217: a ReadOnly member sees the stores but cannot connect registers. */}
       {canEdit && <ConnectRegister storeId={s.storeId} nodes={s.nodes.length} onPoll={onPoll} onConnected={onConnected} />}
       {/* TK-238: owners only; the API refuses the rest. */}
-      {canEdit && s.nodes.length > 0 && <StoreBackups storeId={s.storeId} />}
+      {/* R12 #7: also with no register left (a stolen PC was just removed): that is when the owner needs them most. */}
+      {canEdit && <StoreBackups storeId={s.storeId} />}
     </section>
   );
 }
@@ -233,7 +234,7 @@ function StoreBackups({ storeId }: { storeId: string }) {
     setError(null);
     setBusy(b.id);
     try {
-      await download(`/api/stores/${storeId}/backups/${b.id}`, b.fileName);
+      await download(`/api/stores/${storeId}/backups/${b.id}`);
     } catch (err) {
       setError(err as ApiError);
     } finally {

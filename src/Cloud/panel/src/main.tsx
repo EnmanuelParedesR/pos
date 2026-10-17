@@ -7,11 +7,13 @@ import "../../../Client/Abastalia.Escuadra/wwwroot/escuadra-admin.css";
 import "./panel.css";
 import "./pages/site/site.css";
 import { App } from "./App";
+import { reloadOnce } from "./reload";
 import { startTheme } from "./theme";
 
 startTheme();
 // TK-278: a tab opened before a deploy asks for a lazy chunk that no longer exists; reloading gets the new build.
-window.addEventListener("vite:preloadError", () => location.reload());
+// R12 #12: once per tab and 10 seconds; a chunk that keeps failing (offline, a broken deploy) would otherwise reload forever.
+window.addEventListener("vite:preloadError", () => reloadOnce(sessionStorage, Date.now(), () => location.reload()));
 
 const root = document.getElementById("root")!;
 const app = (
