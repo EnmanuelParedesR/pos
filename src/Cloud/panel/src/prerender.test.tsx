@@ -131,7 +131,7 @@ describe("TK-260: JSON-LD", () => {
   });
 
   it("subpages have a breadcrumb; FAQPage repeats the questions the page shows, as plain text", () => {
-    expect(blocksOf("/precios").map((b) => b["@type"])).toEqual(["BreadcrumbList"]);
+    expect(blocksOf("/precios").map((b) => b["@type"])).toEqual(["BreadcrumbList", "FAQPage"]); // TK-330: /precios answers "¿Qué pasa si dejo de pagar o cancelo?"
     const [crumbs, faq] = blocksOf("/e-cf");
     expect(crumbs.itemListElement.map((i: { name: string; item: string }) => [i.name, i.item])).toEqual([
       ["Inicio", "https://abastalia.com/"],
