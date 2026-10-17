@@ -73,7 +73,8 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
         {
             // R10 #2: the client of the document's own environment (a change of environment never redirects it); Simulated never leaves.
             var dgii = provider.For(d.Environment);
-            var answer = d.Status == SubmissionStatus.Sent ? await dgii.GetResultAsync(d.TrackId!, ct) : await SendAsync(dgii, d, rnc, mayHaveArrived, ct);
+            var answer = d.Status == SubmissionStatus.Sent ? await PollAsync(dgii, rnc, d.ENcf, d.SecurityCode, d.Channel, d.TrackId, ct)
+                : await SendAsync(dgii, d, rnc, mayHaveArrived, ct);
             Apply(d, answer, now);
         }
         // An HTTP timeout is a TaskCanceledException too: only our own shutdown token ends the pass.
@@ -99,9 +100,22 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
             await Task.Delay(TimeSpan.FromSeconds(1), clock, ct);
     }
 
+    /// <summary>R12 #1: a claim younger than this belongs to a pass still sending (the HTTP timeout is 30 s): another pass, or the register's
+    /// <see cref="SendNowAsync"/>, leaves it alone. Older, the pass died (R9 #7) and the document is claimed again.</summary>
+    public static readonly TimeSpan ClaimLease = TimeSpan.FromMinutes(2);
+
+    /// <summary>The answer for a document already sent. R12 #2: an RFCE has no TrackId (recepcionfc answers at once, or with nothing usable):
+    /// it is looked up by e-NCF and security code (consultarfce); not found yet is asked again later.</summary>
+    internal static async Task<DgiiAnswer> PollAsync(IEcfProvider dgii, string rnc, string encf, string securityCode, EcfChannel channel, string? trackId,
+        CancellationToken ct) =>
+        channel == EcfChannel.Rfce
+            ? await dgii.FindAsync(rnc, encf, securityCode, channel, ct) ?? new DgiiAnswer(DgiiState.NotFound)
+            : await dgii.GetResultAsync(trackId!, ct);
+
     private async Task<bool> ClaimAsync(FiscalDocument d, DateTime now, CancellationToken ct)
     {
-        if (await db.Documents.Where(x => x.Id == d.Id && x.Status == SubmissionStatus.Pending)
+        var expired = now - ClaimLease;
+        if (await db.Documents.Where(x => x.Id == d.Id && x.Status == SubmissionStatus.Pending && (x.SentUtc == null || x.SentUtc < expired))
                 .ExecuteUpdateAsync(x => x.SetProperty(q => q.SentUtc, now), ct) != 1)
         {
             db.Entry(d).State = EntityState.Detached;
@@ -170,7 +184,14 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
                 using var response = await cloud.PostAsJsonAsync(ArchivePath, new ArchiveRequest(d.ENcf, d.Environment.ToString(), d.Status.ToString(), d.TrackId,
                     d.DgiiCode, d.DgiiMessages, d.SignedUtc, Convert.ToBase64String(d.SignedXml), d.RfceXml is null ? null : Convert.ToBase64String(d.RfceXml),
                     d.ReplacesENcf, d.ReplacedByENcf), ct);
-                if (!response.IsSuccessStatusCode) return;
+                // R12 #10: a 4xx is about this document (the next ones may go); a 5xx, a 429 or the node not accepted is the cloud: next pass.
+                if ((int)response.StatusCode >= 500 || response.StatusCode is System.Net.HttpStatusCode.TooManyRequests
+                        or System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden) return;
+                if (!response.IsSuccessStatusCode)
+                {
+                    log.LogWarning("The cloud refused to archive e-CF {ENcf} ({Status})", d.ENcf, (int)response.StatusCode);
+                    continue;
+                }
                 d.ArchivedUtc = clock.GetUtcNow().UtcDateTime;
                 await db.SaveChangesAsync(ct);
             }

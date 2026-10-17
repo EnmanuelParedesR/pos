@@ -102,10 +102,13 @@ internal sealed class DgiiClient(IHttpClientFactory http, IEcfSigner signer, Dgi
         using var response = await SendAsync(() => Upload($"{urls.Ecf}/recepcion/api/facturaselectronicas", $"{issuerRnc}{encf}.xml", signedXml), ct);
         var json = await JsonAsync(response, ct);
         var trackId = Str(json, "trackId");
-        return string.IsNullOrEmpty(trackId)
-            ? new DgiiAnswer(DgiiState.Rejected, Messages: Join(Str(json, "error"), Str(json, "mensaje")) ?? $"La DGII respondió {(int)response.StatusCode} sin TrackId.")
-            : new DgiiAnswer(DgiiState.InProcess, trackId);
+        if (!string.IsNullOrEmpty(trackId)) return new DgiiAnswer(DgiiState.InProcess, trackId);
+        return Join(Str(json, "error"), Messages(json)) is { } why ? new DgiiAnswer(DgiiState.Rejected, Messages: why) : throw NotDgii(response);
     }
+
+    /// <summary>R12 #4: an answer without the DGII's JSON (a firewall page, a proxy's 404, 408 or 413) is not a refusal: the queue retries.</summary>
+    private static HttpRequestException NotDgii(HttpResponseMessage response) =>
+        new($"La DGII no dio una respuesta válida (HTTP {(int)response.StatusCode}).", null, response.StatusCode);
 
     public async Task<DgiiAnswer> GetResultAsync(string trackId, CancellationToken ct)
     {
@@ -117,7 +120,8 @@ internal sealed class DgiiClient(IHttpClientFactory http, IEcfSigner signer, Dgi
     public async Task<DgiiAnswer> SendRfceAsync(string issuerRnc, string encf, string signedRfce, CancellationToken ct)
     {
         using var response = await SendAsync(() => Upload($"{urls.Fc}/recepcionfc/api/recepcion/ecf", $"{issuerRnc}{encf}.xml", signedRfce), ct);
-        return Answer(await JsonAsync(response, ct), null);
+        var json = await JsonAsync(response, ct);
+        return json.ValueKind == JsonValueKind.Object ? Answer(json, null) : throw NotDgii(response);
     }
 
     public async Task<DgiiAnswer?> FindAsync(string issuerRnc, string encf, string securityCode, EcfChannel channel, CancellationToken ct)
@@ -144,6 +148,7 @@ internal sealed class DgiiClient(IHttpClientFactory http, IEcfSigner signer, Dgi
         var name = $"{issuerRnc}ANECF{clock.GetUtcNow():yyyyMMddHHmmss}.xml"; // (verificar) the DGII names no file for the ANECF
         using var response = await SendAsync(() => Upload($"{urls.Ecf}/anulacionrangos/api/operaciones/anularrango", name, signedAnecf), ct);
         var json = await JsonAsync(response, ct);
+        if (!response.IsSuccessStatusCode && Int(json, "codigo") is null && Join(Str(json, "error"), Messages(json)) is null) throw NotDgii(response);
         // (verificar) Response shape: like the others, a code and messages; an HTTP 200 without a code counts as accepted.
         return response.IsSuccessStatusCode && (Int(json, "codigo") is null or 1)
             ? new DgiiAnswer(DgiiState.Accepted, Messages: Messages(json))

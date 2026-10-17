@@ -204,9 +204,16 @@ internal static class EcfXml
         header.Element("IdDoc")!.Element("eNCF")!.Value = encf;
         if (header.Element("IdDoc")!.Element("FechaVencimientoSecuencia") is { } expiry) expiry.Value = Date(sequenceExpiresOn!.Value);
         header.Element("Emisor")!.Element("FechaEmision")!.Value = Date(DateOnly.FromDateTime(local));
+        // R12 #9: the new issue date may be more than 30 days after the modified e-CF: the indicator follows it, as in Build.
+        if (header.Element("IdDoc")!.Element("IndicadorNotaCredito") is { } indicator
+            && DateOnly.TryParseExact(xml.Root.Element("InformacionReferencia")?.Element("FechaNCFModificado")?.Value, "dd-MM-yyyy", Invariant, DateTimeStyles.None, out var modified))
+            indicator.Value = DateOnly.FromDateTime(local).DayNumber - modified.DayNumber > 30 ? "1" : "0";
         xml.Root.Element("FechaHoraFirma")!.Value = local.ToString("dd-MM-yyyy HH:mm:ss", Invariant);
         return xml;
     }
+
+    /// <summary>The <c>FechaEmision</c> (dd-MM-yyyy) of an e-CF, as the QR carries it.</summary>
+    public static string IssuedOn(XDocument xml) => xml.Root!.Element("Encabezado")!.Element("Emisor")!.Element("FechaEmision")!.Value;
 
     // The RFCE totals, in the XSD order (no ITBIS1/2/3 rates).
     private static readonly string[] RfceTotals =

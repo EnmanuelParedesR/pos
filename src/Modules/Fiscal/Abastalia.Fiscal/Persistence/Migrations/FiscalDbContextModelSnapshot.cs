@@ -295,7 +295,11 @@ namespace Abastalia.Fiscal.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ArchivedUtc");
+
                     b.HasIndex("ReferenceId");
+
+                    b.HasIndex("ResultUtc");
 
                     b.HasIndex("Environment", "ENcf")
                         .IsUnique();

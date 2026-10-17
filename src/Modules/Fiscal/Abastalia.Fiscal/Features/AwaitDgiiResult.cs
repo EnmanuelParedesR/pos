@@ -34,12 +34,18 @@ internal static class AwaitDgiiResult
     internal sealed class Endpoint : IEndpoint
     {
         public void Map(IEndpointRouteBuilder app) =>
-            app.MapPost("/api/fiscal/documents/{eNcf}/await-result", async (string eNcf, FiscalDbContext db, FiscalMode mode, IServiceScopeFactory scopes,
-                IHostApplicationLifetime lifetime, IConfiguration config, TimeProvider clock, ILogger<EcfSubmissionQueue> log, CancellationToken ct) =>
+            app.MapPost("/api/fiscal/documents/{eNcf}/await-result", async (string eNcf, FiscalDbContext db, FiscalDocuments documents, FiscalMode mode,
+                IServiceScopeFactory scopes, IHostApplicationLifetime lifetime, IConfiguration config, TimeProvider clock, ILogger<EcfSubmissionQueue> log,
+                CancellationToken ct) =>
                 {
                     if (eNcf.Length > 13) return Results.NotFound();
-                    var doc = await db.Documents.AsNoTracking().Where(d => d.ENcf == eNcf).OrderByDescending(d => d.SignedUtc)
-                        .Select(d => new { d.Id, d.Type, d.Status }).FirstOrDefaultAsync(ct);
+                    // R12 #5: the sale just issued it in the current environment; with it, the unique (Environment, ENcf) index finds the row.
+                    var env = documents.Environment;
+                    var doc = await db.Documents.AsNoTracking().Where(d => d.Environment == env && d.ENcf == eNcf)
+                            .Select(d => new { d.Id, d.Type, d.Status }).FirstOrDefaultAsync(ct)
+                        // The environment changed since the sale (rare): the newest of that number.
+                        ?? await db.Documents.AsNoTracking().Where(d => d.ENcf == eNcf).OrderByDescending(d => d.SignedUtc)
+                            .Select(d => new { d.Id, d.Type, d.Status }).FirstOrDefaultAsync(ct);
                     if (doc is null) return Results.NotFound();
 
                     // Only a 31 waits, and only when this store sends to the DGII on its own (not in Simulated).

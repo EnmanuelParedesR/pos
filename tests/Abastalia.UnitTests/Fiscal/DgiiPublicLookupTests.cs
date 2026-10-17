@@ -228,6 +228,41 @@ public sealed class DgiiPublicLookupTests
     }
 
     [Fact]
+    public async Task RNC_lookups_leave_a_fifth_of_the_day_for_the_NCF_checks_of_purchases()
+    {
+        var (site, fake, _) = Site(("Fiscal:DgiiPublic:PerMinute", "100"), ("Fiscal:DgiiPublic:PerDay", "5"));
+        foreach (var rnc in new[] { "101000001", "101000002", "101000003", "101000004", "101000005" }) fake.Rnc(rnc, "rnc-not-registered");
+        fake.Ncf("401506254", "B0100000001", "ncf-expired");
+
+        foreach (var rnc in new[] { "101000001", "101000002", "101000003", "101000004" })
+            (await site.RncAsync(rnc, default)).Kind.ShouldBe(DgiiAnswerKind.NotRegistered);
+        (await site.RncAsync("101000005", default)).Kind.ShouldBe(DgiiAnswerKind.Unavailable); // R12: the last fifth is the purchases'
+        (await site.NcfAsync("401506254", "B0100000001", default)).Validity.ShouldBe(NcfValidity.Expired);
+    }
+
+    [Fact]
+    public async Task A_cached_row_that_cannot_be_read_is_as_if_not_cached()
+    {
+        var database = Database();
+        using (var db = new FiscalDbContext(new DbContextOptionsBuilder<FiscalDbContext>().UseSqlite(Connection(database)).Options))
+        {
+            db.DgiiPublicAnswers.Add(new DgiiPublicAnswer { Key = "rnc:401506254", Answer = "{not json", ExpiresUtc = DateTime.MaxValue });
+            db.SaveChanges();
+        }
+        var (site, fake, _) = Site(database, new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 15, 0, 0, TimeSpan.Zero)));
+        fake.Rnc("401506254", "rnc-found");
+
+        (await site.RncAsync("401506254", default)).ShouldBe(new RncLookup(DgiiAnswerKind.Found, Dgii));
+        Posts(fake).ShouldBe(1);
+
+        // A database it cannot read at all (no table): still an answer, never an error.
+        var broken = Path.Combine(Path.GetTempPath(), $"abastalia_dgii_{Guid.NewGuid():N}.db");
+        var (other, otherFake, _) = Site(broken, new FakeTimeProvider(new DateTimeOffset(2026, 10, 16, 15, 0, 0, TimeSpan.Zero)));
+        otherFake.Rnc("401506254", "rnc-found");
+        (await other.RncAsync("401506254", default)).Kind.ShouldBe(DgiiAnswerKind.Found);
+    }
+
+    [Fact]
     public async Task Turned_off_it_never_asks()
     {
         var (off, offFake, _) = Site(("Fiscal:DgiiPublic:Enabled", "false"));

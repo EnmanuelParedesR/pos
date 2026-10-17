@@ -131,6 +131,21 @@ public sealed class EcfXmlTests
     }
 
     [Fact]
+    public void A_credit_note_reissued_past_30_days_after_the_invoice_changes_its_indicator()
+    {
+        // R12 #9: rejected 10 days after the invoice (indicator 0), replaced 25 days later: now 35 days after it, indicator 1.
+        var doc = Document(EcfType.CreditNote34, MixedLines, rnc: "131245678", name: "Colmado El Sol SRL", modified: "E310000000007",
+            code: ModificationCode.AmountCorrection);
+        var rejected = Valid(doc, modifiedOn: BusinessDay.Of(Now).AddDays(-10));
+        Value(rejected, "IndicadorNotaCredito").ShouldBe("0");
+
+        var reissued = EcfXml.Reissue(rejected.ToString(), "E340000000002", Now.AddDays(25), null);
+        Value(reissued, "IndicadorNotaCredito").ShouldBe("1");
+        EcfXml.ValidateUnsigned(reissued, EcfType.CreditNote34).ShouldBeEmpty();
+        EcfXml.Reissue(rejected.ToString(), "E340000000003", Now.AddDays(5), null).Descendants("IndicadorNotaCredito").Single().Value.ShouldBe("0");
+    }
+
+    [Fact]
     public void A_void_credit_note_34_to_an_anonymous_consumer_has_no_buyer_area()
     {
         var doc = Document(EcfType.CreditNote34, MixedLines, modified: "E320000000003", code: ModificationCode.Void);

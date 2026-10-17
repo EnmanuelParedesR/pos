@@ -130,6 +130,9 @@ internal sealed class FiscalConfiguration : IEntityTypeConfiguration<NcfSequence
         b.HasIndex(d => new { d.Environment, d.ENcf }).IsUnique();
         b.HasIndex(d => d.ReferenceId);
         b.HasIndex(d => new { d.Status, d.SubmitDeadlineUtc });
+        // R12 #5: deliveries and the health list read by result date; the archive reads what is not archived yet.
+        b.HasIndex(d => d.ResultUtc);
+        b.HasIndex(d => d.ArchivedUtc);
         b.Property(d => d.Type).HasConversion<int>();
         // R8 #2: the queue and a void never both win; the loser of a race fails instead of overwriting the other's status.
         b.Property(d => d.Status).HasConversion<string>().HasMaxLength(20).IsConcurrencyToken();
@@ -186,7 +189,9 @@ internal sealed class SimulatedEcfSigner : IEcfSigner
 /// <c>consultatimbrefc</c> with four for a 32 under RD$250,000, on the host of the environment. The security code is URL-escaped (Base64 has + / =).</summary>
 internal static class EcfQr
 {
-    public static string Url(FiscalEnvironment env, EcfChannel channel, string? issuerRnc, string? buyerRnc, string encf, decimal total, DateTime signedUtc, string code)
+    /// <param name="issuedOn">The XML's <c>FechaEmision</c> (dd-MM-yyyy). R12 #6: not the signing day, which differs for one signed after a clock fix (TK-156).</param>
+    public static string Url(FiscalEnvironment env, EcfChannel channel, string? issuerRnc, string? buyerRnc, string encf, decimal total, string issuedOn,
+        DateTime signedUtc, string code)
     {
         // A simulated receipt points to the test environment: it must never look like a production document.
         var urls = new DgiiUrls(env == FiscalEnvironment.Simulated ? FiscalEnvironment.TesteCF : env);
@@ -196,7 +201,7 @@ internal static class EcfQr
             return $"{urls.Fc}/consultatimbrefc?RncEmisor={issuerRnc}&ENCF={encf}&MontoTotal={amount}&CodigoSeguridad={Uri.EscapeDataString(code)}";
         return $"{urls.Ecf}/consultatimbre?RncEmisor={issuerRnc}"
             + (string.IsNullOrEmpty(buyerRnc) ? "" : $"&RncComprador={buyerRnc}")
-            + $"&ENCF={encf}&FechaEmision={local:dd-MM-yyyy}&MontoTotal={amount}"
+            + $"&ENCF={encf}&FechaEmision={issuedOn}&MontoTotal={amount}"
             + $"&FechaFirma={Uri.EscapeDataString(local.ToString("dd-MM-yyyy HH:mm:ss", CultureInfo.InvariantCulture))}&CodigoSeguridad={Uri.EscapeDataString(code)}";
     }
 }
@@ -286,7 +291,11 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
         };
         var issued = await SignAndStoreAsync(replacement, EcfXml.Reissue(EcfSubmissionQueue.Unzip(rejected.SignedXml), encf, now, r.ExpiresOn), business, now, ct);
         if (issued.IsFailure) return issued;
-        rejected.ReplacedByENcf = encf;
+        // R12 #3: a second "Reemplazar" that read the row before this one finds it taken (0 rows) and rolls back its e-CF and number.
+        // R12 #8: the cloud archive gets the link too (ArchivedUtc null: uploaded again).
+        if (await db.Documents.Where(d => d.Id == rejected.Id && d.ReplacedByENcf == null)
+                .ExecuteUpdateAsync(s => s.SetProperty(d => d.ReplacedByENcf, encf).SetProperty(d => d.ArchivedUtc, (DateTime?)null), ct) != 1)
+            return FiscalErrors.AlreadyReplaced;
         var i = issued.Value;
         outbox.Add(new FiscalDocumentReplacedV1(i.DocumentId, rejected.ENcf, encf, rejected.Type, rejected.ReferenceId, i.SecurityCode, i.QrUrl, i.SignedUtc,
             i.SequenceExpiresOn));
@@ -342,7 +351,7 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
         d.Status = signer.IsSimulated ? SubmissionStatus.Simulated : SubmissionStatus.Pending;
         db.Documents.Add(d);
         outbox.Add(new FiscalDocumentIssuedV1(d.Id, d.ENcf, d.Type, d.ReferenceId, d.Total, d.Itbis));
-        var qr = waiting ? "" : Qr(d, business);
+        var qr = waiting ? "" : Qr(d, business, unsigned);
         // Printed on 31 and 33 only (the 32 and 34 do not carry it).
         var expiry = d.Type is EcfType.FiscalCredit31 or EcfType.DebitNote33 ? d.SequenceExpiresOn : null;
         return new IssuedDocument(d.Id, d.ENcf, d.SecurityCode, now, qr, expiry, d.Contingency);
@@ -362,8 +371,8 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
         return null;
     }
 
-    private static string Qr(FiscalDocument d, BusinessProfile business) =>
-        EcfQr.Url(d.Environment, d.Channel, business.Rnc, d.BuyerRnc, d.ENcf, d.Total, d.SignedUtc, d.SecurityCode);
+    private static string Qr(FiscalDocument d, BusinessProfile business, XDocument xml) =>
+        EcfQr.Url(d.Environment, d.Channel, business.Rnc, d.BuyerRnc, d.ENcf, d.Total, EcfXml.IssuedOn(xml), d.SignedUtc, d.SecurityCode);
 
     /// <summary>TK-156: once the clock is right again, signs the e-CF that waited for it (<c>FechaHoraFirma</c> = now; the issue date stays the
     /// sale's) and gives the 72 hours from this signature. Each sale gets its code and QR through <see cref="FiscalDocumentSignedV1"/>.</summary>
@@ -386,7 +395,7 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
                 continue;
             }
             (d.SignedUtc, d.SubmitDeadlineUtc, d.LastError) = (now, now + SubmitDeadline, null);
-            outbox.Add(new FiscalDocumentSignedV1(d.Id, d.ENcf, d.ReferenceId, d.SecurityCode, Qr(d, business), now));
+            outbox.Add(new FiscalDocumentSignedV1(d.Id, d.ENcf, d.ReferenceId, d.SecurityCode, Qr(d, business, xml), now));
         }
         return waiting.Count(d => !d.AwaitingSignature);
     }

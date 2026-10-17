@@ -124,9 +124,13 @@ public sealed class PaperContingencyTests(NoCertificateAbastaliaApp app) : IClas
         admin = await Owner();
         (await admin.HealthAsync()).Items().ShouldContain(i => i.Code == "regularize" && i.Level == "error");
 
-        var regularized = await admin.PostAsync("/api/fiscal/contingency/regularize", null);
-        regularized.StatusCode.ShouldBe(HttpStatusCode.OK);
-        (await regularized.Json()).GetProperty("regularized").GetInt32().ShouldBe(1);
+        // R12 #3: a double tap regularizes the B receipt once (the other finds nothing left, or the receipt taken).
+        var taps = await Task.WhenAll(admin.PostAsync("/api/fiscal/contingency/regularize", null), admin.PostAsync("/api/fiscal/contingency/regularize", null));
+        var counts = new List<int>();
+        foreach (var t in taps)
+            if (t.StatusCode == HttpStatusCode.OK) counts.Add((await t.Json()).GetProperty("regularized").GetInt32());
+            else t.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        counts.Sum().ShouldBe(1);
         var replacement = await app.InScopeAsync(sp => Task.FromResult(sp.GetRequiredService<FiscalDbContext>().Documents.Single(d => d.ReplacesENcf == "B0200000001")));
         var xml = XDocument.Parse(EcfSubmissionQueue.Unzip(replacement.SignedXml));
         EcfXml.Validate(xml, EcfType.Consumer32).ShouldBeEmpty();
@@ -220,6 +224,7 @@ public sealed class EcfHealthTests(DgiiAbastaliaApp app) : IClassFixture<DgiiAba
         (await (await admin.PostAsync("/api/fiscal/dgii-status", null)).Json()).GetProperty("state").GetString().ShouldBe("Unreachable"); // no DGII host answers
 
         app.Dgii.Down = false;
+        app.Dgii.AppAheadBy = TimeSpan.Zero; // the DGII's answers carry their Date: the last contact (R12 #5) comes from them
         (await (await admin.PostAsync("/api/fiscal/dgii-status", null)).Json()).GetProperty("state").GetString().ShouldBe("Up");
         await app.DrainAsync();
         health = await admin.HealthAsync();

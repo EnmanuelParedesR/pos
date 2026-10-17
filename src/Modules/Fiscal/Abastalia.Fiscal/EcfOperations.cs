@@ -28,7 +28,7 @@ internal static class EcfOperationsModule
 /// <summary>TK-156: what an owner has to look at to keep issuing e-CF, in one list: the queue against the 72 hours, the last time the DGII
 /// answered, the certificate, the e-NCF left, and the paper contingency (TK-157) with its 15 and 30 days. The Resumen ("Para revisar"),
 /// the "Comprobantes electrónicos" screen and the <c>ecf-operations</c> health check read it.</summary>
-internal sealed class EcfOperations(FiscalDbContext db, FiscalDocuments documents, EcfCertificate certificate, TimeProvider clock)
+internal sealed class EcfOperations(FiscalDbContext db, FiscalDocuments documents, EcfCertificate certificate, DgiiClock dgiiClock, TimeProvider clock)
 {
     /// <param name="Level"><c>error</c> (red: fiscal deadline or nothing can be issued) or <c>warning</c> (amber).</param>
     /// <summary>How long an e-CF accepted with conditions stays in the list (TK-240).</summary>
@@ -56,10 +56,8 @@ internal sealed class EcfOperations(FiscalDbContext db, FiscalDocuments document
         DateTime? lastContact = null;
         if (env != FiscalEnvironment.Simulated)
         {
-            var sent = await db.Documents.MaxAsync(d => d.SentUtc, ct);
-            var result = await db.Documents.MaxAsync(d => d.ResultUtc, ct);
-            var voided = await db.Voids.MaxAsync(v => v.ResultUtc, ct);
-            lastContact = new[] { sent, result, voided }.Max();
+            // R12 #5: the last DGII answer this server saw (DgiiClock), not a scan of every document; after a restart, the next answer.
+            lastContact = dgiiClock.LastDgiiUtc;
             if (await pending.AnyAsync(d => d.Attempts > 0, ct))
                 items.Add(new("warning", "dgii", "No se ha podido hablar con la DGII",
                     (lastContact is { } l ? $"Último contacto: {Local(l)}. " : "")

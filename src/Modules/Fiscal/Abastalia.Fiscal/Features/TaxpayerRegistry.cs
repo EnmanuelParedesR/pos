@@ -212,7 +212,9 @@ internal static class TaxpayerRegistry
                         : EndpointExtensions.Problem(await db.Taxpayers.AnyAsync(ct)
                             ? Error.NotFound("Fiscal.RncNotFound", "Ese RNC o cédula no está en el padrón de la DGII.")
                             : Error.NotFound("Fiscal.RegistryNotLoaded", "El padrón de la DGII no está cargado.")))
-                .RequireAuthorization().WithTags("Fiscal");
+                // R12: only who registers a customer or a supplier, or the owner, spends the store's DGII allowance.
+                .RequireAnyPermission(Permissions.CustomersQuickAdd, Permissions.CustomersManage, Permissions.PurchasingManage, Permissions.FiscalManage)
+                .WithTags("Fiscal");
         }
     }
 }

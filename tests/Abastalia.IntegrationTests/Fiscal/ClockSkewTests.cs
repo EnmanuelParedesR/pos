@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Xml.Linq;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Abastalia.BuildingBlocks.Messaging;
@@ -36,6 +37,18 @@ public sealed class ClockSkewTests(DgiiAbastaliaApp app) : IClassFixture<DgiiAba
         var waiting = await app.DocumentAsync("E320000000001");
         (waiting.Status, waiting.AwaitingSignature).ShouldBe((SubmissionStatus.Pending, true));
         XDocument.Parse(EcfSubmissionQueue.Unzip(waiting.SignedXml)).Descendants().ShouldNotContain(e => e.Name.LocalName == "Signature");
+        // R12 #6: a 31 of an earlier day (its XML says so) keeps that day in the QR when it is signed after the fix.
+        var credit = await cashier.SellAsync(soda, 59m, "FiscalCredit31", "131313131");
+        var creditEncf = credit.GetProperty("eNcf").GetString()!;
+        await app.InScopeAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<FiscalDbContext>();
+            var d = await db.Documents.SingleAsync(x => x.ENcf == creditEncf);
+            var x = XDocument.Parse(EcfSubmissionQueue.Unzip(d.SignedXml));
+            x.Descendants("FechaEmision").Single().Value = "01-10-2026";
+            d.SignedXml = EcfSubmissionQueue.Zip(x.ToString(SaveOptions.DisableFormatting));
+            return await db.SaveChangesAsync();
+        });
 
         // Nothing unsigned leaves the store; the register and the owner see why; the owner's signing actions wait for the clock too.
         await app.DrainAsync();
@@ -55,7 +68,7 @@ public sealed class ClockSkewTests(DgiiAbastaliaApp app) : IClassFixture<DgiiAba
         app.Dgii.AppAheadBy = TimeSpan.Zero;
         (await DgiiStatusAsync()).ShouldBe("Up");
         (await admin.HealthAsync()).Items().ShouldNotContain(i => i.Code == "clock");
-        (await SignWaitingAsync()).ShouldBe(1);
+        (await SignWaitingAsync()).ShouldBe(2);
         var signed = await app.DocumentAsync("E320000000001");
         (signed.AwaitingSignature, signed.SecurityCode.Length, signed.SignedUtc).ShouldBe((false, 6, app.Clock.GetUtcNow().UtcDateTime));
         XDocument.Parse(EcfSubmissionQueue.Unzip(signed.SignedXml)).Root!.Element("FechaHoraFirma")!.Value
@@ -66,6 +79,8 @@ public sealed class ClockSkewTests(DgiiAbastaliaApp app) : IClassFixture<DgiiAba
         reprint.GetProperty("securityCode").GetString().ShouldBe(signed.SecurityCode);
         reprint.GetProperty("qrUrl").GetString()!.ShouldContain("ENCF=E320000000001");
         reprint.GetProperty("signedAt").ValueKind.ShouldBe(JsonValueKind.String);
+        var creditQr = (await admin.GetFromJsonAsync<JsonElement>($"/api/sales/{credit.GetProperty("saleId").GetGuid()}/receipt")).GetProperty("qrUrl").GetString()!;
+        creditQr.ShouldContain("FechaEmision=01-10-2026");
 
         await app.DrainAsync();
         (await app.DocumentAsync("E320000000001")).Status.ShouldBe(SubmissionStatus.Accepted);
