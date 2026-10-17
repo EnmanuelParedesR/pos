@@ -111,23 +111,34 @@ internal static class FeStoreSignature
 /// (docs/ecf-propio.md §11, question 44). The supplier's own retry, if it comes, gets it then.</summary>
 internal sealed class FeLateAcknowledger(CloudDbContext db, FeSigner signer, FeSignBroker broker, TimeProvider clock)
 {
+    /// <remarks>R12 C: only businesses that can sign now (an active receiver certificate, and for StoreSigned its PC online) are read, 50 at a
+    /// time after the last one tried, so documents that cannot be acknowledged never hold back another business's.</remarks>
     public async Task<int> RunAsync(CancellationToken ct)
     {
+        var receivers = (await db.FeCertificates.AsNoTracking().Where(c => c.RevokedUtc == null).ToListAsync(ct))
+            .GroupBy(c => c.TenantId).Select(g => g.First())
+            .Where(c => c.SigningMode != FeSigningModes.StoreSigned || broker.IsOnline(c.ConsentedByNodeId))
+            .ToDictionary(c => c.TenantId);
+        if (receivers.Count == 0) return 0;
+        var ready = receivers.Keys.ToList();
         var done = 0;
-        var due = await db.FeReceived.Where(d => d.AcknowledgedUtc == null).OrderBy(d => d.Id).Take(50).ToListAsync(ct);
-        foreach (var d in due)
+        long after = 0;
+        while (true)
         {
-            var receiver = await db.FeCertificates.AsNoTracking().FirstOrDefaultAsync(c => c.TenantId == d.TenantId && c.RevokedUtc == null, ct);
-            if (receiver is null || receiver.SigningMode == FeSigningModes.StoreSigned && !broker.IsOnline(receiver.ConsentedByNodeId)) continue;
-            d.AcknowledgedUtc = clock.GetUtcNow().UtcDateTime;
-            if (await FeReceiverEndpoints.AcknowledgeAsync(signer, receiver, d.IssuerRnc, d.BuyerRnc, d.ENcf, null, clock, ct) is not null) done++;
-            else
+            var due = await db.FeReceived.Where(d => d.AcknowledgedUtc == null && d.Id > after && ready.Contains(d.TenantId)).OrderBy(d => d.Id).Take(50).ToListAsync(ct);
+            if (due.Count == 0) return done;
+            foreach (var d in due)
             {
-                d.AcknowledgedUtc = null;
-                await db.SaveChangesAsync(ct);
+                after = d.Id;
+                d.AcknowledgedUtc = clock.GetUtcNow().UtcDateTime;
+                if (await FeReceiverEndpoints.AcknowledgeAsync(signer, receivers[d.TenantId], d.IssuerRnc, d.BuyerRnc, d.ENcf, null, clock, ct) is not null) done++;
+                else
+                {
+                    d.AcknowledgedUtc = null;
+                    await db.SaveChangesAsync(ct);
+                }
             }
         }
-        return done;
     }
 }
 

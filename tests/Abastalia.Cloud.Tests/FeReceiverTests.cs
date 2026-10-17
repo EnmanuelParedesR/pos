@@ -269,6 +269,35 @@ public sealed class FeReceiverTests(FeCloudApp app) : IClassFixture<FeCloudApp>
     }
 
     [Fact]
+    public async Task R12_C_documents_a_business_cannot_acknowledge_never_hold_back_another_business()
+    {
+        // A business whose PC is off, with 60 documents waiting, received before the other's.
+        var (_, stuck, stuckRnc, _) = await StoreSignedReceiverAsync();
+        await app.InDbAsync(async db =>
+        {
+            for (var i = 0; i < 60; i++)
+                db.FeReceived.Add(new FeReceivedDocument
+                {
+                    TenantId = stuck.TenantId, Environment = "testecf", IssuerRnc = "131000001", IssuerName = "Suplidor", BuyerRnc = stuckRnc,
+                    ENcf = $"E31{i:0000000000}", Type = 31, IssuedOn = CloudApp.Today, Sha256 = $"h{i}", ReceivedUtc = app.Clock.GetUtcNow().UtcDateTime,
+                });
+            return await db.SaveChangesAsync();
+        });
+
+        // The other business: its PC comes back after the supplier's e-CF waited.
+        var (node, owner, rnc, ours) = await StoreSignedReceiverAsync();
+        var supplier = await SupplierClientAsync(rnc);
+        (await supplier.PostAsync($"/testecf/{rnc}/fe/recepcion/api/ecf", Xml(SupplierEcf(rnc, "E310000000901")))).StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        await using var store = new FakeStoreSigner(node.Client, ours);
+        await OnlineAsync(node);
+
+        await using (var scope = app.Services.CreateAsyncScope())
+            (await scope.ServiceProvider.GetRequiredService<FeLateAcknowledger>().RunAsync(CancellationToken.None)).ShouldBe(1);
+        (await app.InDbAsync(db => db.FeReceived.SingleAsync(d => d.TenantId == owner.TenantId))).AcknowledgedUtc.ShouldNotBeNull();
+        (await app.InDbAsync(db => db.FeReceived.CountAsync(d => d.TenantId == stuck.TenantId && d.AcknowledgedUtc == null))).ShouldBe(60);
+    }
+
+    [Fact]
     public async Task TK246_a_store_that_does_not_answer_in_time_or_answers_another_signature_gives_no_acknowledgement()
     {
         var (node, owner, rnc, ours) = await StoreSignedReceiverAsync();

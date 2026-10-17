@@ -86,22 +86,29 @@ public sealed class PanelQueries(CloudDbContext db, TimeProvider clock)
         var voided = await VoidedSales(f).Select(s => s.SoldUtc).ToListAsync(ct);
         var returns = await Rows(db.Returns, f).Where(r => r.ReturnedUtc >= from && r.ReturnedUtc < to).Select(r => new { r.ReturnedUtc, r.Total }).ToListAsync(ct);
 
+        // R12 D: grouped once by day, not scanned once per day of the range.
+        var salesByDay = sales.ToLookup(s => BusinessDay.Of(s.SoldUtc));
+        var returnsByDay = returns.ToLookup(r => BusinessDay.Of(r.ReturnedUtc), r => r.Total);
+        var voidedByDay = voided.ToLookup(BusinessDay.Of);
         var days = new List<DaySales>();
         for (var day = f.From; day <= f.To; day = day.AddDays(1))
         {
-            var d = day;
-            var ofDay = sales.Where(s => BusinessDay.Of(s.SoldUtc) == d).ToList();
-            var returned = returns.Where(r => BusinessDay.Of(r.ReturnedUtc) == d).Sum(r => r.Total);
+            var ofDay = salesByDay[day].ToList();
+            var returned = returnsByDay[day].Sum();
             var total = ofDay.Sum(s => s.Total);
-            days.Add(new DaySales(d, ofDay.Count, total, ofDay.Sum(s => s.Discount), ofDay.Sum(s => s.Itbis), returned, total - returned,
-                voided.Count(v => BusinessDay.Of(v) == d)));
+            days.Add(new DaySales(day, ofDay.Count, total, ofDay.Sum(s => s.Discount), ofDay.Sum(s => s.Itbis), returned, total - returned, voidedByDay[day].Count()));
         }
         return days;
     }
 
-    /// <summary>Sold minus returned in the range (returns on the day they happened, like the store's reports).</summary>
+    /// <summary>R12 D: the most days the top products read (one row per sale line, summed in memory: Sqlite cannot sum decimals).</summary>
+    public const int TopProductsMaxDays = 92;
+
+    /// <summary>Sold minus returned in the range (returns on the day they happened, like the store's reports); at most the last
+    /// <see cref="TopProductsMaxDays"/> days of it.</summary>
     public async Task<IReadOnlyList<ProductSales>> TopProductsAsync(PanelFilter f, int limit, bool showCosts, CancellationToken ct)
     {
+        if (f.From < f.To.AddDays(1 - TopProductsMaxDays)) f = f with { From = f.To.AddDays(1 - TopProductsMaxDays) };
         var (start, end) = BusinessDay.UtcRange(f.From, f.To);
         var sold = await (from l in Rows(db.SaleLines, f)
                           join s in CompletedSales(f) on l.SaleId equals s.Id
