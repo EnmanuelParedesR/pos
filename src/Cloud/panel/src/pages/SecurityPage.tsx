@@ -68,8 +68,8 @@ export function SecurityPage() {
     <>
       <PageHead title="Seguridad" subtitle="Verificación en dos pasos: además de la contraseña, un código de su teléfono al entrar." />
       {signedOutElsewhere && !codes && (
-        <Notice kind="info" title="Cerramos sus sesiones en los demás equipos.">
-          En este equipo la sesión sigue hasta que termine aquí; luego le pediremos entrar de nuevo.{" "}
+        <Notice kind="info" title="Por seguridad cerramos sus sesiones en los demás equipos.">
+          Esta también se cerrará en unos minutos: termine aquí y vuelva a entrar.{" "}
           <button type="button" className="esc-button esc-button--small" onClick={signOut}>
             Entrar de nuevo ahora
           </button>
@@ -244,13 +244,15 @@ function Enabled({ status, busy, failure, run }: { status: TwoFactorStatus; busy
       {action ? (
         <form className="sec-steps" onSubmit={submit}>
           <h2 className="sec-title">{actions[action].label}</h2>
-          <p className="esc-muted">
-            {action === "off"
-              ? "Al entrar solo le pediremos la contraseña."
-              : action === "phone"
-                ? "La aplicación del teléfono actual deja de servir y la cuenta queda sin verificación en dos pasos hasta que escanee el código nuevo, en la pantalla que sigue. Tenga el teléfono nuevo a mano y termine el paso enseguida."
-                : "Los códigos de respaldo anteriores dejan de servir."}
-          </p>
+          {/* R12 design review: the gap without a second step is the one thing to notice here, so it is a warning, not muted text. */}
+          {action === "phone" ? (
+            <Notice kind="warning" title="Tenga el teléfono nuevo a mano.">
+              La aplicación del teléfono actual deja de servir. Hasta que escanee el código nuevo, en la pantalla que sigue, su cuenta queda sin
+              verificación en dos pasos.
+            </Notice>
+          ) : (
+            <p className="esc-muted">{action === "off" ? "Al entrar solo le pediremos la contraseña." : "Los códigos de respaldo anteriores dejan de servir."}</p>
+          )}
           <label htmlFor="sec-confirm-code">Para confirmar, escriba el código de la aplicación o un código de respaldo</label>
           <div className="sec-row">
             <input
