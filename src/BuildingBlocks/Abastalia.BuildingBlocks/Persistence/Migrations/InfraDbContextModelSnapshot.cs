@@ -158,9 +158,9 @@ namespace Abastalia.BuildingBlocks.Persistence.Migrations
                     b.HasIndex("Id")
                         .IsUnique();
 
-                    b.HasIndex("ProcessedUtc");
+                    b.HasIndex("TenantId", "ProcessedUtc");
 
-                    b.HasIndex("UploadedUtc");
+                    b.HasIndex("TenantId", "UploadedUtc");
 
                     b.ToTable("OutboxMessages", "infra");
                 });

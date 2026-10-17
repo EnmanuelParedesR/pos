@@ -93,6 +93,9 @@ param allowCloudCustody bool = false
 @description('TK-267: the site and panel\'s own domain (e.g. abastalia.com, bound to the Static Web App with its www). Empty = only the Static Web App\'s default host.')
 param panelDomain string = ''
 
+@description('TK-320 (ADR-0013): the Lite plan\'s server (Abastalia.Host.Lite): a second Web App on the same B1 plan (no extra cost) and its own Basic database sqldb-abastalia-lite (~US$5/month). Off until the Lite pilot.')
+param deployLite bool = false
+
 var suffix = uniqueString(resourceGroup().id)
 var name = 'abastalia-${env}'
 var tags = { app: 'abastalia', env: env }
@@ -457,6 +460,73 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   })
 }
 
+// TK-320 (ADR-0013): the Lite plan. Its own database on the same server, so its DTU never compete with the cloud's ingest and Row-Level
+// Security lives only there. Basic up to ~20 businesses or 1.5 GB, then S0 (move it online like the cloud's).
+resource liteDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = if (deployLite) {
+  parent: sqlServer
+  name: 'sqldb-abastalia-lite'
+  location: sqlLocation
+  tags: tags
+  sku: { name: 'Basic', tier: 'Basic' }
+  properties: {
+    maxSizeBytes: 2 * 1024 * 1024 * 1024
+    zoneRedundant: false
+    requestedBackupStorageRedundancy: 'Local'
+  }
+}
+
+// On the same plan as the API (no extra cost; the plan's one instance runs both). Each Lite business is a node of the API (ADR-0008).
+resource liteApp 'Microsoft.Web/sites@2023-12-01' = if (deployLite) {
+  name: 'app-${name}-lite-${take(suffix, 6)}'
+  location: location
+  tags: tags
+  kind: 'app,linux'
+  identity: { type: 'SystemAssigned' }
+  properties: {
+    serverFarmId: plan.id
+    httpsOnly: true
+    siteConfig: {
+      linuxFxVersion: 'DOTNETCORE|10.0'
+      alwaysOn: true
+      http20Enabled: true
+      minTlsVersion: '1.2'
+      ftpsState: 'Disabled'
+      healthCheckPath: '/health'
+    }
+  }
+}
+
+resource liteNoScmBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = if (deployLite) {
+  parent: liteApp
+  name: 'scm'
+  properties: { allow: false }
+}
+
+resource liteNoFtpBasicAuth 'Microsoft.Web/sites/basicPublishingCredentialsPolicies@2023-12-01' = if (deployLite) {
+  parent: liteApp
+  name: 'ftp'
+  properties: { allow: false }
+}
+
+// Lite__ProvisioningKey is set by hand after the deploy (docs/despliegue-azure.md), never here: without it provisioning does not exist.
+resource liteSettings 'Microsoft.Web/sites/config@2023-12-01' = if (deployLite) {
+  parent: liteApp
+  name: 'appsettings'
+  properties: {
+    ASPNETCORE_ENVIRONMENT: 'Production'
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
+    APPLICATIONINSIGHTS_CONNECTION_STRING: insights.properties.ConnectionString
+    ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
+    Database__Provider: 'SqlServer'
+    Database__ConnectionString: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Database=sqldb-abastalia-lite;Authentication=Active Directory Managed Identity;Encrypt=True;Connect Timeout=120'
+    Database__MultiTenant: 'true'
+    Cloud__Url: 'https://${api.properties.defaultHostName}'
+    // /home survives restarts and redeploys: the Data Protection key ring (each business's node key) and the licenses live there.
+    Abastalia__KeysFolder: '/home/abastalia/keys'
+    License__File: '/home/abastalia/license.jws'
+  }
+}
+
 // TK-241: the API e-mails through ACS with its managed identity.
 resource emailService 'Microsoft.Communication/communicationServices@2023-04-01' existing = if (!empty(emailResourceName)) {
   name: empty(emailResourceName) ? 'none' : emailResourceName
@@ -685,3 +755,5 @@ output panelName string = panel.name
 output sqlServer string = sqlServer.properties.fullyQualifiedDomainName
 output keyVault string = vault.name
 output archiveStorage string = archive.name
+output liteName string = deployLite ? liteApp.name : ''
+output liteUrl string = deployLite ? 'https://${liteApp!.properties.defaultHostName}' : ''

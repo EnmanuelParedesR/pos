@@ -64,7 +64,7 @@ public sealed class OutboxProcessor(InfraDbContext db, IServiceScopeFactory scop
     {
         try
         {
-            await using var scope = scopes.CreateAsyncScope();
+            await using var scope = scopes.CreateTenantScope(db.TenantId); // the handlers run as the business that raised the event
             if (types.ByName.TryGetValue(m.Type, out var type))
             {
                 var @event = JsonSerializer.Deserialize(m.Payload, type, Json.Options)!;
@@ -96,14 +96,15 @@ internal sealed class OutboxProcessorWorker(IServiceScopeFactory scopes, IConfig
         {
             try
             {
-                await using var scope = scopes.CreateAsyncScope();
-                var processor = scope.ServiceProvider.GetRequiredService<OutboxProcessor>();
-                await processor.ProcessAsync(stoppingToken);
-                if (clock.GetUtcNow() - purged >= TimeSpan.FromHours(1))
+                var purge = clock.GetUtcNow() - purged >= TimeSpan.FromHours(1);
+                if (purge) purged = clock.GetUtcNow();
+                // TK-320: the store's one business, or each Lite business in turn.
+                await scopes.ForEachTenantAsync(async sp =>
                 {
-                    purged = clock.GetUtcNow();
-                    await processor.PurgeAsync(stoppingToken); // TK-304: the table does not grow forever
-                }
+                    var processor = sp.GetRequiredService<OutboxProcessor>();
+                    await processor.ProcessAsync(stoppingToken);
+                    if (purge) await processor.PurgeAsync(stoppingToken); // TK-304: the table does not grow forever
+                }, stoppingToken);
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {

@@ -14,6 +14,7 @@ Cómo se crea y se publica la nube de Abastalia (ADR-0008): la API `Abastalia.Ho
 | Azure OpenAI (S0) + despliegue `chat` | El asistente. El modelo se elige por precio. | Solo por uso |
 | Storage Account (StorageV2, LRS, Cool) + contenedor `ecf-archive` | Archivo frío de los e-CF firmados (TK-207): 10 años, escritura única, pasa a Archive a los 180 días. Solo la identidad de la API entra. | Centavos (ver abajo) |
 | Contenedor `store-backups` (misma cuenta) | Respaldos cifrados de las tiendas (TK-238): 7 diarios + 4 semanales por tienda | Centavos (ver abajo) |
+| Solo con `deployLite=true` (TK-320): Web App `app-abastalia-prod-lite-…` en el **mismo plan B1** + base `sqldb-abastalia-lite` Basic | El servidor del plan Ligero (`Abastalia.Host.Lite`, ADR-0013). Apagado por defecto: ver "Versión Ligera". | Web App 0 (mismo plan); base ~US$4.90 |
 
 La API no consulta la base cuando no hay tiendas subiendo datos: el chequeo de salud de App Service (`/health`) no la toca y el aplicador del inbox solo trabaja cuando llega un lote. Así la base se pausa de noche. `/health/ready` sí prueba la base; desde R11 (TK-253) solo responde con el token de un administrador de la plataforma (con verificación en dos pasos): sin él, 401.
 
@@ -372,6 +373,29 @@ Los roles "Key Vault Certificates Officer" y "Key Vault Crypto User" de la API s
 Azure:** el certificado de la prueba ya está en borrado suave y el vault tiene protección contra purga. La cola de solicitudes de firma vive en memoria:
 con más de una instancia de App Service el sondeo de la tienda y la petición del suplidor pueden caer en instancias distintas (igual que los nonces
 de ADR-0008); mientras haya una sola instancia, no cambia nada.
+
+## Versión Ligera (TK-320), apagada por defecto
+
+`Abastalia.Host.Lite` corre los mismos módulos de la tienda para muchos negocios en una sola base (ADR-0013). **No se despliega mientras `deployLite` sea `false`** (el valor por defecto): el Bicep no crea nada de esto y la suscripción sigue en ~US$20 al mes. Con `true` suma ~US$4.90 (la base Basic); la Web App no cuesta más porque usa el mismo B1, pero comparte su única instancia (CPU y memoria) con la API.
+
+**Encenderlo** (cuando empiece el piloto del Ligero):
+
+1. `az deployment group create … -p deployLite=true`. Las salidas `liteName` y `liteUrl` dan la Web App.
+2. En la base `sqldb-abastalia-lite`, como el administrador de Entra: `CREATE USER [<liteName>] FROM EXTERNAL PROVIDER; ALTER ROLE db_owner ADD MEMBER [<liteName>];`. `db_owner` porque al arrancar migra y vuelve a crear la política de Row-Level Security (`rls.TenantPolicy`).
+3. La clave de alta, a mano y nunca en el repositorio (32 caracteres o más): `az webapp config appsettings set -g rg-abastalia-prod -n <liteName> --settings Lite__ProvisioningKey=<clave>`. Sin ella la ruta de alta no existe (404).
+4. Publicar como la API: `dotnet publish src/Hosts/Abastalia.Host.Lite -c Release -o publish/lite`, comprimir y `az webapp deploy … -n <liteName>`.
+
+**Cómo funciona:**
+
+- **El negocio de cada pedido** sale del equipo: el secreto del equipo (`X-Device`) se busca por su hash en `lite.TenantDevices`, la única tabla que se lee entre negocios (no tiene datos del negocio ni columna `TenantId`, así que RLS no la cubre). Después Identity valida el equipo y la sesión dentro de ese negocio, como en la tienda. Sin un equipo conocido ninguna ruta `/api` responde (401): la configuración inicial y la unión de cajas de la tienda no existen en el Ligero. TK-321 cambia el secreto por pedidos firmados.
+- **Alta de un negocio:** `POST /internal/tenants` con `X-Provisioning-Key`, el `tenantId` de la nube, el dueño (nombre, código, PIN), el nombre del equipo y, opcional, un código de conexión del panel (Tiendas). Crea las filas del negocio (las que siembran las migraciones de la tienda: negocio, roles, almacén, formatos de etiqueta, cabeza de la auditoría), el dueño y el primer equipo, y con el código registra el negocio como **su propio nodo** de la nube (su llave ECDSA, protegida con Data Protection en `/home/abastalia/keys`). Hoy la llama el equipo de Abastalia; con TK-325 la llamará la nube al elegir el plan Lite.
+- **Workers:** el outbox, la subida a la nube, el latido y la licencia recorren los negocios uno por uno, cada uno como su nodo. Los demás workers de la tienda (respaldos a carpeta, revisión nocturna de la auditoría, cola de e-CF firmada en el servidor, receptor) no corren aquí: Azure SQL guarda sus propios respaldos y el navegador firma (TK-323, TK-326).
+
+**Antes del piloto revisar:**
+
+- **Límites por IP de la puerta de nodos:** todos los negocios Ligero salen de la IP de salida de App Service, así que `Nodes:ConcurrentPerIp` y `Nodes:RequestsPerMinutePerIp` de la API los cuentan juntos. Con más de unos pocos negocios hay que subirlos o exceptuar esa IP (TK-328).
+- **Llaves en `/home` sin cifrar aparte:** en Linux no hay DPAPI, así que el anillo de Data Protection queda solo con el cifrado del almacenamiento de App Service. Protegerlo con Key Vault antes de tener clientes que pagan.
+- **DTU:** cada 5 s el outbox y la subida consultan una vez por negocio. Medir en Basic; pasar a S0 si la DTU se acerca al 80 %.
 
 ## Desarrollo local
 

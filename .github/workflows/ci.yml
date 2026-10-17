@@ -24,6 +24,9 @@ jobs:
       - run: dotnet build Abastalia.slnx -c Release
       # TK-317/TK-322: the Lite browser signer (Node is on the runner); LiteBrowserSigningTests compares it with the store's signer.
       - run: npm ci --prefix src/Client/lite-signer && npm test --prefix src/Client/lite-signer
+      # TK-320: the Azure template compiles (deployLite on and off share it); the Azure CLI is on the runner.
+      - if: matrix.db == 'sqlite'
+        run: az bicep build --file deploy/azure/main.bicep --stdout > /dev/null
       - name: Pruebas
         run: dotnet test --solution Abastalia.slnx -c Release --no-build
         env:

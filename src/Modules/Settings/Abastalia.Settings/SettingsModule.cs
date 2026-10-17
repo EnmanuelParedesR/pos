@@ -37,8 +37,9 @@ public static class SettingsModule
         services.AddSingleton<BackupStatus>();
         services.AddScoped<Backups>();
         services.AddScoped<ICloudBackups, CloudBackups>();
-        services.AddSingleton<LicenseService>();
-        services.AddSingleton<IFeatureService>(sp => sp.GetRequiredService<LicenseService>());
+        // TK-320: one license per business (a store has one; each Lite business its own file, sealed values and clock).
+        services.AddPerTenant((sp, tenant) => ActivatorUtilities.CreateInstance<LicenseService>(sp, tenant));
+        services.AddScoped<IFeatureService>(sp => sp.GetRequiredService<LicenseService>());
         services.AddScoped<IStoreLicense, StoreLicense>();
         services.AddScoped<Abastalia.Sync.Contracts.ICloudSnapshot, LogoSnapshot>();
         services.AddHostedService<NightlyBackup>();

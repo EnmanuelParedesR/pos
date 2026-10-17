@@ -43,6 +43,7 @@ public static class IdentityModule
         services.AddScoped<ICloudSnapshot, UserSnapshot>();
         services.AddScoped<IUserDirectory, UserDirectory>();
         services.AddScoped<IDevicePeripherals, DevicePeripherals>();
+        services.AddScoped<IFirstRun, Features.Setup.FirstRun>();
         services.AddAuthentication(Scheme).AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(Scheme, null);
         // Secure by default: an endpoint that forgets its authorization call still requires a session.
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());

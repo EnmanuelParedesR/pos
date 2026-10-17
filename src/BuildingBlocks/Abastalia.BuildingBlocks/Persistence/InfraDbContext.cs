@@ -69,8 +69,12 @@ internal sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outb
         b.Property(m => m.Sequence).ValueGeneratedOnAdd();
         b.HasIndex(m => m.Id).IsUnique();
         b.Property(m => m.Payload).HasMaxLength(ModuleDbContext.LongText);
-        b.HasIndex(m => m.ProcessedUtc);
-        b.HasIndex(m => m.UploadedUtc); // the cloud uploader reads WHERE UploadedUtc IS NULL every 5 s; rows go 90 days after both (TK-304)
+        // The processor and the cloud uploader read WHERE ProcessedUtc / UploadedUtc IS NULL every 5 s; rows go 90 days after both (TK-304).
+        // TK-320: TenantId first, so in the Lite database one business never walks another's pending rows (one not connected to the cloud keeps
+        // all of them pending).
+        b.Property<Guid>(ModuleDbContext.TenantColumn);
+        b.HasIndex(ModuleDbContext.TenantColumn, nameof(OutboxMessage.ProcessedUtc));
+        b.HasIndex(ModuleDbContext.TenantColumn, nameof(OutboxMessage.UploadedUtc));
     }
 }
 

@@ -1,6 +1,11 @@
+using System.Collections.Concurrent;
 using System.Data;
 using System.Data.Common;
+using System.Runtime.ExceptionServices;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Abastalia.BuildingBlocks.Persistence;
 
@@ -17,6 +22,105 @@ public sealed class StoreTenant : ITenantContext
     public static readonly Guid Id = Guid.Empty;
 
     public Guid TenantId => Id;
+}
+
+/// <summary>TK-320: the Lite host's business for one DI scope: set from the authenticated device (a request) or by
+/// <see cref="TenantScopes.CreateTenantScope"/> (a worker, provisioning). Unset it is <see cref="Guid.Empty"/>, which RLS shows nothing.</summary>
+public sealed class ScopedTenant : ITenantContext
+{
+    private Guid _id;
+
+    public Guid TenantId
+    {
+        get => _id;
+        set
+        {
+            // Once a scope has a business it keeps it: no later code path can move a request or a worker pass to another one.
+            if (_id != Guid.Empty && _id != value) throw new InvalidOperationException("This scope already belongs to another business.");
+            _id = value;
+        }
+    }
+}
+
+/// <summary>TK-320: the businesses background work runs for: the store's one, or every business of the Lite host.</summary>
+public interface ITenantDirectory
+{
+    Task<IReadOnlyList<Guid>> AllAsync(CancellationToken ct);
+}
+
+internal sealed class StoreTenants : ITenantDirectory
+{
+    public Task<IReadOnlyList<Guid>> AllAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<Guid>>([StoreTenant.Id]);
+}
+
+public static class TenantScopes
+{
+    /// <summary>A scope that reads and writes as <paramref name="tenantId"/>. In a store the tenant is fixed, so it is a plain scope.</summary>
+    public static AsyncServiceScope CreateTenantScope(this IServiceScopeFactory scopes, Guid tenantId)
+    {
+        var scope = scopes.CreateAsyncScope();
+        if (scope.ServiceProvider.GetRequiredService<ITenantContext>() is ScopedTenant tenant) tenant.TenantId = tenantId;
+        return scope;
+    }
+
+    /// <summary>Runs <paramref name="work"/> once per business, each in its own scope. One business failing does not stop the others; the failures
+    /// are thrown together at the end (a store's single one as it was).</summary>
+    public static async Task ForEachTenantAsync(this IServiceScopeFactory scopes, Func<IServiceProvider, Task> work, CancellationToken ct)
+    {
+        IReadOnlyList<Guid> tenants;
+        await using (var scope = scopes.CreateAsyncScope()) tenants = await scope.ServiceProvider.GetRequiredService<ITenantDirectory>().AllAsync(ct);
+        List<Exception>? failed = null;
+        foreach (var tenant in tenants)
+        {
+            try
+            {
+                await using var scope = scopes.CreateTenantScope(tenant);
+                await work(scope.ServiceProvider);
+            }
+            catch (Exception e) when (!ct.IsCancellationRequested)
+            {
+                (failed ??= []).Add(e);
+            }
+        }
+        if (failed is [var one]) ExceptionDispatchInfo.Throw(one);
+        if (failed is not null) throw new AggregateException(failed);
+    }
+
+    /// <summary>TK-320: state a store keeps once per process (a singleton) and the Lite host once per business, resolved for the scope's tenant.</summary>
+    public static IServiceCollection AddPerTenant<T>(this IServiceCollection services, Func<IServiceProvider, Guid, T> create) where T : class
+    {
+        services.AddSingleton(sp => new PerTenant<T>(tenant => create(sp, tenant)));
+        return services.AddScoped(sp => sp.GetRequiredService<PerTenant<T>>().For(sp.GetRequiredService<ITenantContext>().TenantId));
+    }
+}
+
+/// <summary>See <see cref="TenantScopes.AddPerTenant"/>.</summary>
+public sealed class PerTenant<T>(Func<Guid, T> create) where T : class
+{
+    private readonly ConcurrentDictionary<Guid, T> _items = new();
+
+    /// <summary>The instances made so far (a store: at most one).</summary>
+    public ICollection<T> All => _items.Values;
+
+    public T For(Guid tenant) => _items.GetOrAdd(tenant, create);
+}
+
+/// <summary>TK-320: what a store's migrations seed (the business, the roles, the main warehouse, the label formats, the audit head), added for a new
+/// Lite business. Read from each context's model, so a seed added later reaches new businesses too. The caller's transaction saves it; the
+/// tenant is stamped on save.</summary>
+public static class TenantSeed
+{
+    public static void Add(IEnumerable<ModuleDbContext> contexts)
+    {
+        foreach (var db in contexts)
+            foreach (var type in db.GetService<IDesignTimeModel>().Model.GetEntityTypes())
+                foreach (var row in type.GetSeedData())
+                {
+                    var entry = db.Entry(Activator.CreateInstance(type.ClrType, nonPublic: true)!);
+                    foreach (var (name, value) in row) entry.Property(name).CurrentValue = value;
+                    entry.State = EntityState.Added;
+                }
+    }
 }
 
 /// <summary>A table every business reads alike (public DGII data): no TenantId, no filter, no RLS.</summary>

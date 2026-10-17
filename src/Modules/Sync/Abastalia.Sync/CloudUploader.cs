@@ -187,10 +187,16 @@ internal sealed class CloudUploaderWorker(IServiceScopeFactory scopes, IConfigur
             TimeSpan? retryAfter = null;
             try
             {
-                await using var scope = scopes.CreateAsyncScope();
-                var pass = await scope.ServiceProvider.GetRequiredService<CloudUploader>().UploadAsync(stoppingToken);
-                failures = pass.Error is null ? 0 : failures + 1;
-                retryAfter = pass.RetryAfter;
+                // TK-320: each Lite business uploads as its own node.
+                // shortcut: one business failing slows the next pass for all of them; keep a backoff per business when Lite has many.
+                var failed = false;
+                await scopes.ForEachTenantAsync(async sp =>
+                {
+                    var pass = await sp.GetRequiredService<CloudUploader>().UploadAsync(stoppingToken);
+                    failed |= pass.Error is not null;
+                    retryAfter = new[] { retryAfter, pass.RetryAfter }.Max();
+                }, stoppingToken);
+                failures = failed ? failures + 1 : 0;
                 // TK-248: logged once per run of 429s, not on every pass while the cloud keeps asking to wait.
                 if (retryAfter is { } wait && !throttled)
                     log.LogWarning("The cloud asked to wait {Seconds:0} s before more uploads (429); the outbox keeps every event", wait.TotalSeconds);

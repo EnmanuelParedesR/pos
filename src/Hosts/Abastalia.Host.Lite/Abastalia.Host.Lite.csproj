@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <UserSecretsId>abastalia-host-lite</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- TK-320 (ADR-0013): the same store modules as Abastalia.Host.Local, many businesses in one database. -->
+    <ProjectReference Include="..\..\Modules\Identity\Abastalia.Identity\Abastalia.Identity.csproj" />
+    <ProjectReference Include="..\..\Modules\Settings\Abastalia.Settings\Abastalia.Settings.csproj" />
+    <ProjectReference Include="..\..\Modules\Inventory\Abastalia.Inventory\Abastalia.Inventory.csproj" />
+    <ProjectReference Include="..\..\Modules\CashRegister\Abastalia.CashRegister\Abastalia.CashRegister.csproj" />
+    <ProjectReference Include="..\..\Modules\Fiscal\Abastalia.Fiscal\Abastalia.Fiscal.csproj" />
+    <ProjectReference Include="..\..\Modules\Sales\Abastalia.Sales\Abastalia.Sales.csproj" />
+    <ProjectReference Include="..\..\Modules\Purchasing\Abastalia.Purchasing\Abastalia.Purchasing.csproj" />
+    <ProjectReference Include="..\..\Modules\Customers\Abastalia.Customers\Abastalia.Customers.csproj" />
+    <ProjectReference Include="..\..\Modules\Reports\Abastalia.Reports\Abastalia.Reports.csproj" />
+    <ProjectReference Include="..\..\Modules\Sync\Abastalia.Sync\Abastalia.Sync.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Abastalia.Lite.Tests" />
+  </ItemGroup>
+</Project>
