@@ -27,6 +27,7 @@ Cerrado en esta etapa: TK-160, TK-291, TK-292 (instalador probado en VM: PC prin
 
 ## 4. Después de V1
 TK-159 (E41 de compras), TK-247 (custodia en la nube con HSM), TK-266 (versión ligera en la nube), TK-199 (canal de contadores y revendedores), TK-222 por WhatsApp, TK-224 lote de PDF reales (se valida con el piloto), lectura de e-NCF con código de seguridad (TK-252).
+Versión Ligera en línea (plan `Lite`, US$9): arquitectura y tickets de F1 en [ADR-0013](adr/0013-version-ligera-en-linea.md) (TK-318).
 
 ## Cierre de V1
 Cuando las listas 2 y 3 estén vacías: revisión de seguridad, revisión de código y auditoría Ponytail con sus arreglos aplicados, CI en verde y la tienda piloto certificada (TK-237).
