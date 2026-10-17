@@ -203,11 +203,12 @@ export function BillingPage() {
           )}
           <ul className="platform-kv" aria-label="Planes">
             {data.plans
-              .filter((p) => (interval === "Annual" && !subscribed ? p.annual : p.monthly || subscribed))
+              // R12 #10: an annual subscriber sees the annual prices of the plans to change to (the same interval as the subscription).
+              .filter((p) => (yearly ? p.annual : p.monthly) || subscribed)
               .sort((a, b) => Number((a.monthly ?? a.annual)?.amount ?? 0) - Number((b.monthly ?? b.annual)?.amount ?? 0)) // cheapest first
               .map((p) => {
                 const current = subscribed && p.code === data.plan;
-                const price = (interval === "Annual" && !subscribed ? p.annual : p.monthly) ?? p.monthly ?? p.annual;
+                const price = (yearly ? p.annual : p.monthly) ?? p.monthly ?? p.annual;
                 return (
                   <li key={p.code}>
                     <span>

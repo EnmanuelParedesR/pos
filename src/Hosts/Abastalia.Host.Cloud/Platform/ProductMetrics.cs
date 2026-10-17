@@ -193,7 +193,8 @@ public sealed class ProductMetrics
         [
             Of("onAccount", h => h.OnAccount),
             Of("multipleRegisters", h => h.ActiveRegisters > 1),
-            Of("ecfRelay", h => h.FiscalProvider == "Relay"),
+            // R12 #9: the heartbeat says the DGII environment (Simulated, TesteCF, CerteCF, eCF; "Dgii" before TK-238); there is no relay any more.
+            Of("ecfLive", h => h.FiscalProvider is "eCF" or "Dgii"),
             Of("scale", h => h.ScaleConfigured),
             Of("printer", h => h.PrinterConfigured),
         ];

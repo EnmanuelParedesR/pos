@@ -285,24 +285,6 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
         detail.GetProperty("members").EnumerateArray().Select(m => (m.GetProperty("email").GetString(), m.GetProperty("role").GetString()))
             .ShouldBe([(owner.Email, "Owner"), (member.Email, "ReadOnly")]);
     }
-
-    [Fact]
-    public async Task Accounts_from_before_memberships_become_the_owner_of_their_tenant_once()
-    {
-        var owner = await app.OwnerAsync();
-        var member = await MemberAsync(owner);
-        await app.InDbAsync(db => db.TenantMembers.Where(m => m.TenantId == owner.TenantId).ExecuteDeleteAsync()); // as before the migration
-        (await owner.Client.GetAsync("/api/me")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-
-        await app.InDbAsync(async db => { await CreateCloudDatabaseOnStartup.PrepareAsync(db, CancellationToken.None); return 0; });
-        (await owner.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("role").GetString().ShouldBe("Owner");
-        // A member's account pointed at the tenant too: before TK-217 there was one account per tenant, so in real data it is only the owner.
-        var memberId = await UserIdAsync(owner, member.Email);
-        (await owner.Client.DeleteAsync($"/api/members/{memberId}")).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-
-        await app.InDbAsync(async db => { await CreateCloudDatabaseOnStartup.PrepareAsync(db, CancellationToken.None); return 0; });
-        (await member.Client.GetAsync("/api/me")).StatusCode.ShouldBe(HttpStatusCode.Forbidden); // a removed member is never brought back
-    }
 }
 
 /// <summary>An e-mail provider that delivers (R8 #1): tests read the invite link from the message.</summary>

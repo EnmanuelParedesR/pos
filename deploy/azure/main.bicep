@@ -38,8 +38,13 @@ param openAiApiVersion string = '2025-04-01-preview'
 @description('Deployment SKU: GlobalStandard is the cheapest pay-per-token option where available.')
 param openAiDeploymentSku string = 'GlobalStandard'
 
-@description('Thousands of tokens per minute for the deployment.')
-param openAiCapacity int = 10
+@description('R12 A: the database\'s maximum size in GB (General Purpose serverless, 1 vCore: up to 512).')
+@minValue(32)
+@maxValue(512)
+param databaseMaxGigabytes int = 250
+
+@description('Thousands of tokens per minute for the deployment. R12 F: 50K, so a few owners asking at once and the invoice reader do not hit 429s; GlobalStandard gpt-5-nano quotas are far above it (check az cognitiveservices usage list).')
+param openAiCapacity int = 50
 
 @description('TK-222, optional: the Azure Communication Services endpoint (https://<name>.communication.azure.com) the API e-mails through with its managed identity. Empty = no e-mail (the default).')
 param emailEndpoint string = ''
@@ -144,7 +149,9 @@ resource database 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   properties: {
     autoPauseDelay: 60
     minCapacity: json('0.5')
-    maxSizeBytes: 34359738368 // 32 GB
+    // R12 A: room to grow (the inbox and the e-CF XML leave SQL after 7 days, the replica stays). GP serverless with 1 vCore allows up to 512 GB;
+    // storage is billed on this maximum (about US$0.12 per GB-month: docs/despliegue-azure.md), so lower it with the parameter if the bill matters more.
+    maxSizeBytes: databaseMaxGigabytes * 1024 * 1024 * 1024
     zoneRedundant: false
     requestedBackupStorageRedundancy: 'Local'
   }
@@ -174,7 +181,7 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-1
 }
 
 
-// TK-207: cold archive of the signed e-CF (10 years, DGII). The API moves XML older than Archive:HotDays (90) out of SQL into here, as Cool.
+// TK-207: cold archive of the signed e-CF (10 years, DGII). The API moves XML older than Archive:HotDays (7) out of SQL into here, as Cool.
 // Only the API's managed identity reaches it (no account keys, no public blobs).
 resource archive 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: 'stabastalia${env}${take(suffix, 6)}'
@@ -249,7 +256,8 @@ resource archiveLifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@
           type: 'Lifecycle'
           definition: {
             filters: { blobTypes: ['blockBlob'], prefixMatch: ['store-backups/'] }
-            actions: { baseBlob: { delete: { daysAfterCreationGreaterThan: 60 } } }
+            // R12 #8: a year, not 60 days: a store that stopped uploading (a stolen PC) keeps its last backups; the API never prunes the newest.
+            actions: { baseBlob: { delete: { daysAfterCreationGreaterThan: 400 } } }
           }
         }
       ]
@@ -270,7 +278,8 @@ resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   location: location
   tags: tags
   kind: 'linux'
-  sku: { name: 'B1', tier: 'Basic' }
+  // R12 B: exactly one instance, no autoscale: several in-memory guards (docs/despliegue-azure.md "Una sola instancia") assume it.
+  sku: { name: 'B1', tier: 'Basic', capacity: 1 }
   properties: { reserved: true }
 }
 

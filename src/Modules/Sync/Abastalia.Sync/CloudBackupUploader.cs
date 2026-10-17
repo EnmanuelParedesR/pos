@@ -34,10 +34,13 @@ internal sealed class CloudBackupUploader(CloudClient cloud, ICloudBackups backu
                 await backups.UploadedAsync(file.FileName, ct);
                 return (Outcome.Uploaded, file.FileName);
             }
-            // The cloud's own message when it gives one (quota, size, license); a 5xx or a 408 is worth another try later.
+            // The cloud's own message when it gives one (quota, size, license); a 5xx, a 408 or a 429 with Retry-After (the hourly limit, not the
+            // month's quota: R12 #9) is worth another try later.
             var detail = await DetailAsync(response, ct);
             backups.Failed(detail ?? $"La nube respondió {(int)response.StatusCode} al subir el respaldo.");
-            return ((int)response.StatusCode >= 500 || response.StatusCode is HttpStatusCode.RequestTimeout ? Outcome.Retry : Outcome.Refused, file.FileName);
+            var retry = (int)response.StatusCode >= 500 || response.StatusCode is HttpStatusCode.RequestTimeout
+                        || (response.StatusCode is HttpStatusCode.TooManyRequests && response.Headers.RetryAfter is not null);
+            return (retry ? Outcome.Retry : Outcome.Refused, file.FileName);
         }
         catch (Exception e) when (e is HttpRequestException or IOException or InvalidOperationException
                                        || (e is TaskCanceledException && !ct.IsCancellationRequested))

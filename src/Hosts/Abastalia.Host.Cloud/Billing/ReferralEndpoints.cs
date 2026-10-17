@@ -15,7 +15,7 @@ public sealed record ReferralReward(string Type, string Amount, string Currency)
 /// <summary>"Recomiende Abastalia" (Owners). <paramref name="NextDiscount"/>: the reward on the next payment (<c>FromUtc</c> = that billing) or queued
 /// (<c>FromUtc</c> null: waiting for an active subscription or the next cycle); null when none is due.</summary>
 public sealed record ReferralsResponse(bool Enabled, string? Code, int Pending, int Applied, ReferralReward? Reward, ReferralDiscountView? NextDiscount);
-/// <param name="Count">TK-276: rewards joined in that discount (an annual referrer's renewal); the amount shown is one reward's.</param>
+/// <param name="Count">TK-276: rewards joined in that discount (an annual referrer's renewal). R12 #10: <paramref name="Amount"/> is the whole discount.</param>
 public sealed record ReferralDiscountView(string Type, string Amount, string Currency, DateTime? FromUtc, int Count = 1);
 
 public sealed record ReferralLookupResponse(bool Valid);
@@ -47,11 +47,14 @@ internal static class ReferralEndpoints
     /// <summary>TK-276: a business claims the code it came with this many days after signing up at most (its store trial is still young).</summary>
     public const int ClaimDays = 14;
 
-    /// <summary>Keeps the code a business came with (never its own, never after its first payment, never a second one).</summary>
-    private static async Task<TenantSubscription> KeepAsync(CloudDbContext db, ReferralRewards rewards, Guid tenantId, string? code, CancellationToken ct)
+    /// <summary>Keeps the code a business came with (never its own, never after its first payment, never a second one). R12 #10: only in its
+    /// first <see cref="ClaimDays"/> days, at sign-in or at checkout alike: a kept code gives the store the referred trial (/api/nodes/license).</summary>
+    private static async Task<TenantSubscription> KeepAsync(CloudDbContext db, ReferralRewards rewards, Guid tenantId, string? code, DateTime nowUtc, CancellationToken ct)
     {
         var s = await BillingModel.SubscriptionAsync(db, tenantId, ct);
-        if (s.ReferredByCode is null && s.FirstPaidUtc is null && await rewards.ReferrerOfAsync(code, ct) is { } referrer && referrer != tenantId)
+        if (s.ReferredByCode is null && s.FirstPaidUtc is null && !string.IsNullOrWhiteSpace(code)
+            && await db.Tenants.AnyAsync(t => t.Id == tenantId && t.CreatedUtc > nowUtc.AddDays(-ClaimDays), ct)
+            && await rewards.ReferrerOfAsync(code, ct) is { } referrer && referrer != tenantId)
         {
             s.ReferredByCode = ReferralModel.Normalize(code);
             await db.SaveChangesAsync(ct);
@@ -60,10 +63,12 @@ internal static class ReferralEndpoints
     }
 
     /// <summary>The code from <c>/precios?ref=</c>, kept at sign-in (TK-276) or at the business's first checkout; the checkout's custom_data carries it to Paddle.</summary>
-    public static async Task<Dictionary<string, string>> CheckoutDataAsync(CloudDbContext db, ReferralRewards rewards, Guid tenantId, string? code, CancellationToken ct)
+    public static async Task<Dictionary<string, string>> CheckoutDataAsync(CloudDbContext db, ReferralRewards rewards, PaddleOptions paddle, Guid tenantId, string? code, DateTime nowUtc,
+        CancellationToken ct)
     {
-        var data = new Dictionary<string, string> { ["tenantId"] = tenantId.ToString() };
-        var s = await KeepAsync(db, rewards, tenantId, code, ct);
+        // R12 I: the webhook trusts the tenant id only with its signature (PaddleWebhook.TenantSignature).
+        var data = new Dictionary<string, string> { ["tenantId"] = tenantId.ToString(), [PaddleWebhook.TenantSignatureKey] = PaddleWebhook.TenantSignature(paddle, tenantId) };
+        var s = await KeepAsync(db, rewards, tenantId, code, nowUtc, ct);
         if (s.ReferredByCode is { } kept && await rewards.ReferrerOfAsync(kept, ct) is { } by)
             (data["referral_code"], data["referrer_tenant_id"]) = (kept, by.ToString());
         return data;
@@ -82,8 +87,7 @@ internal static class ReferralEndpoints
             ReferralRewards rewards, TimeProvider clock, CancellationToken ct) =>
         {
             var tenantId = user.GetTenantId();
-            if (On(paddle, options) && await db.Tenants.AnyAsync(t => t.Id == tenantId && t.CreatedUtc > clock.GetUtcNow().UtcDateTime.AddDays(-ClaimDays), ct))
-                await KeepAsync(db, rewards, tenantId, r.Code, ct);
+            if (On(paddle, options)) await KeepAsync(db, rewards, tenantId, r.Code, clock.GetUtcNow().UtcDateTime, ct);
             return Results.NoContent();
         });
 
@@ -98,10 +102,18 @@ internal static class ReferralEndpoints
             var now = clock.GetUtcNow().UtcDateTime;
             var next = mine.Where(r => r.Status == ReferralStatus.Applied && r.DiscountFromUtc >= now).OrderBy(r => r.DiscountFromUtc).FirstOrDefault()
                        ?? mine.Where(r => r.Status == ReferralStatus.Pending).OrderBy(r => r.CreatedUtc).FirstOrDefault();
+            // R12 #10: a combined annual discount shows its real amount (the sum Paddle takes: ReferralRewards.Combine only cuts a lone reward).
+            var joined = next?.Status == ReferralStatus.Applied
+                ? mine.Where(r => r.Status == ReferralStatus.Applied && r.PaddleDiscountId == next.PaddleDiscountId).ToList()
+                : next is null ? [] : [next];
+            var amount = joined.Count > 1
+                ? joined.Sum(r => decimal.TryParse(r.DiscountAmount, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var a) ? a : 0)
+                    .ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
+                : next?.DiscountAmount;
             return Results.Ok(new ReferralsResponse(true, code, mine.Count(r => r.Status == ReferralStatus.Pending), mine.Count(r => r.Status == ReferralStatus.Applied),
                 new ReferralReward(options.DiscountType, options.Amount, options.Currency),
-                next is null ? null : new ReferralDiscountView(next.DiscountType, next.DiscountAmount, next.Currency, next.Status == ReferralStatus.Applied ? next.DiscountFromUtc : null,
-                    next.Status == ReferralStatus.Applied ? mine.Count(r => r.Status == ReferralStatus.Applied && r.PaddleDiscountId == next.PaddleDiscountId) : 1)));
+                next is null ? null : new ReferralDiscountView(next.DiscountType, amount!, next.Currency, next.Status == ReferralStatus.Applied ? next.DiscountFromUtc : null,
+                    joined.Count)));
         });
     }
 
@@ -137,7 +149,9 @@ internal static class ReferralEndpoints
                     referral.Note = note;
                     break;
                 case "Reinstate" when referral.Status is ReferralStatus.Rejected or ReferralStatus.Reverted:
+                    // R12 #10: back to a clean pending one; the old discount (reverted or never made) is never reused.
                     (referral.Status, referral.Reason, referral.RevertedUtc, referral.Note) = (ReferralStatus.Pending, null, null, note);
+                    (referral.PaddleDiscountId, referral.PaddleSubscriptionId, referral.DiscountFromUtc, referral.AppliedUtc) = (null, null, null, null);
                     break;
                 case "Retry" when referral.Status == ReferralStatus.Pending:
                     break;

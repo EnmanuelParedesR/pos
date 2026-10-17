@@ -6,7 +6,15 @@ import { AuthFrame, PasswordChecklist, PasswordField } from "./AuthFrame";
 import type { SignInArrival } from "./SignIn";
 
 /** The values after "#" of an e-mailed link: like the invite (R8 #12), the code never travels in a page address a server logs. */
-const useHashParams = () => new URLSearchParams(useLocation().hash.slice(1));
+// R12 #12: read once, then removed from the address bar (history, a screenshot or a shared screen no longer show the code).
+function useHashParams() {
+  const { hash } = useLocation();
+  const [params] = useState(() => new URLSearchParams(hash.slice(1)));
+  useEffect(() => {
+    if (window.location.hash) window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+  }, []);
+  return params;
+}
 
 const toApiError = (err: unknown) => (err instanceof ApiError ? err : new ApiError(0, "Unknown", "No se pudo completar la operación."));
 
@@ -158,9 +166,11 @@ export function ConfirmEmailPage() {
             <div className="auth-form__head">
               <h2>{error.offline ? "Sin conexión" : "No pudimos activar la cuenta"}</h2>
             </div>
-            <Notice kind={error.offline ? "warning" : "error"} title={error.detail}>
+            <Notice kind={error.offline || error.status === 429 || error.status >= 500 ? "warning" : "error"} title={error.detail}>
               {error.offline
                 ? "Vuelva a abrir el enlace cuando tenga internet."
+                : error.status === 429 || error.status >= 500
+                ? "El enlace sigue sirviendo: ábralo otra vez desde el correo."
                 : "Entre con su correo y su contraseña: si la cuenta todavía no está activada, ahí puede pedir otro enlace."}
             </Notice>
             {enter}

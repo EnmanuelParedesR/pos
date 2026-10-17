@@ -78,6 +78,17 @@ it("TK-249: choosing a plan opens Paddle's checkout in the sandbox with the pric
   );
 });
 
+it("R12 #10: an annual subscriber sees the plans at their annual price", async () => {
+  const yearly = (code: string, amount: string) => ({ priceId: `pri_${code}_y`, interval: "Annual" as const, amount, currency: "USD" });
+  vi.stubGlobal("fetch", vi.fn(async () => json(200, {
+    ...billing, status: "Active", interval: "Annual", canManage: true,
+    plans: billing.plans.map((p) => ({ ...p, annual: yearly(p.code, p.code === "Default" ? "10000" : "25000") })),
+  })));
+  page();
+  expect(await screen.findByText(/US\$250\.00 al año/)).toBeTruthy();
+  expect(screen.queryByText(/US\$25\.00 al mes/)).toBeNull();
+});
+
 it("TK-249: an overdue payment is explained and the portal button shows for a Paddle customer", async () => {
   vi.stubGlobal("fetch", vi.fn(async () => json(200, { ...billing, status: "PastDue", canManage: true, plan: "MultiRegister", paidThroughUtc: "2026-11-15T15:00:00Z" })));
   window.Paddle = { Environment: { set: vi.fn() }, Initialize: vi.fn(), Checkout: { open: vi.fn() } };

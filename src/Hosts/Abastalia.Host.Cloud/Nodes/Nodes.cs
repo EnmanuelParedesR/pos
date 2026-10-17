@@ -2,7 +2,10 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Encodings.Web;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Abastalia.BuildingBlocks.Endpoints;
@@ -98,6 +101,9 @@ public static class NodeSignature
         $"{nodeId}.{unixSeconds}.{nonce}.{method.ToUpperInvariant()} {pathAndQuery} {bodyHash}";
 
     public static string BodyHash(ReadOnlySpan<byte> body) => Base64Url(SHA256.HashData(body));
+
+    /// <summary>R12 #1: the bodyHash the node signed, sent in clear so the signature is checked before the body is read.</summary>
+    public const string BodyHashHeader = "X-Body-Sha256";
 
     /// <summary>The SubjectPublicKeyInfo of a P-256 key, or null.</summary>
     public static byte[]? PublicKey(string? base64)
@@ -215,9 +221,10 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
         if (parts.Length != 4 || !Guid.TryParse(parts[0], out var nodeId)) return AuthenticateResult.Fail("Malformed node credentials.");
 
         var node = await db.Nodes.AsNoTracking().SingleOrDefaultAsync(n => n.Id == nodeId, Context.RequestAborted);
-        if (node is null || !await SignatureMatchesAsync(node, parts)) return AuthenticateResult.Fail("Invalid node credentials.");
-        // TK-189: revoked or disabled. The node keeps its events and retries; nothing is lost.
+        // TK-189: revoked or disabled. The node keeps its events and retries; nothing is lost. R12 #1: checked before any of the body is read.
+        if (node is null) return AuthenticateResult.Fail("Invalid node credentials.");
         if (node.RevokedUtc is not null) return AuthenticateResult.Fail("Revoked node.");
+        if (!await SignatureMatchesAsync(node, parts)) return AuthenticateResult.Fail("Invalid node credentials.");
         if (await db.Tenants.AnyAsync(t => t.Id == node.TenantId && t.DisabledUtc != null, Context.RequestAborted)) return AuthenticateResult.Fail("Disabled tenant.");
 
         var identity = new ClaimsIdentity(
@@ -235,13 +242,101 @@ internal sealed class NodeAuthenticationHandler(IOptionsMonitor<AuthenticationSc
         if (node.PublicKey is null || !long.TryParse(parts[1], out var seconds) || nonce.Length is < 16 or > 64) return false;
         var now = clock.GetUtcNow();
         if ((now - DateTimeOffset.FromUnixTimeSeconds(Math.Clamp(seconds, 0, 253_402_300_799))).Duration() > NodeSignature.Window) return false;
-        // R10 #7: the body is signed too. Buffered so the endpoint still reads it.
-        Request.EnableBuffering();
-        var bodyHash = NodeSignature.Base64Url(await SHA256.HashDataAsync(Request.Body, Context.RequestAborted));
-        Request.Body.Position = 0;
-        var payload = NodeSignature.Payload(node.Id, seconds, nonce, Request.Method, $"{Request.Path}{Request.QueryString}", bodyHash);
-        return NodeSignature.Verify(node.PublicKey, payload, signature) && await nonces.TryUseAsync(db, $"{node.Id}.{nonce}", now.UtcDateTime, Context.RequestAborted);
+        var pathAndQuery = $"{Request.Path}{Request.QueryString}";
+        // R12 #1: the node says the body's hash in a header, so the signature is checked before a byte of the body is read; the body is hashed
+        // afterwards and must match. Without the header (an older store) the body is hashed first, as before, except on a large upload.
+        var claimed = Request.Headers[NodeSignature.BodyHashHeader].ToString();
+        if (claimed.Length == 0)
+        {
+            if (Context.GetEndpoint()?.Metadata.GetMetadata<LargeNodeUpload>() is not null) return false;
+            var hash = await BodyHashAsync();
+            return NodeSignature.Verify(node.PublicKey, NodeSignature.Payload(node.Id, seconds, nonce, Request.Method, pathAndQuery, hash), signature)
+                && await nonces.TryUseAsync(db, $"{node.Id}.{nonce}", now.UtcDateTime, Context.RequestAborted);
+        }
+        return claimed.Length <= 64
+            && NodeSignature.Verify(node.PublicKey, NodeSignature.Payload(node.Id, seconds, nonce, Request.Method, pathAndQuery, claimed), signature)
+            && await nonces.TryUseAsync(db, $"{node.Id}.{nonce}", now.UtcDateTime, Context.RequestAborted)
+            && await BodyHashAsync() == claimed;
     }
+
+    /// <summary>R10 #7: the body is signed too. Buffered so the endpoint still reads it.</summary>
+    private async Task<string> BodyHashAsync()
+    {
+        Request.EnableBuffering();
+        var hash = NodeSignature.Base64Url(await SHA256.HashDataAsync(Request.Body, Context.RequestAborted));
+        Request.Body.Position = 0;
+        return hash;
+    }
+}
+
+/// <summary>R12 #1: an endpoint that takes a large file from a node (a backup): the signed body-hash header is required and the body is never
+/// compressed. <paramref name="TooLarge"/>: what the store shows when the file is over the route's limit.</summary>
+public sealed record LargeNodeUpload(Error TooLarge);
+
+/// <summary>R12 #1: what stops a node call before it is authenticated (so before its body is buffered and hashed): per IP, at most
+/// <c>Nodes:ConcurrentPerIp</c> (8) at once and <c>Nodes:RequestsPerMinutePerIp</c> (300) a minute; a body needs its Content-Length, within the
+/// route's limit; a large upload is never compressed. A node call is any <c>/api/nodes/*</c> or one signed <c>Node …</c>.</summary>
+internal static class NodeGate
+{
+    public static void UseNodeGate(this WebApplication app)
+    {
+        var config = app.Configuration;
+        var concurrent = config.GetValue("Nodes:ConcurrentPerIp", 8);
+        var perMinute = config.GetValue("Nodes:RequestsPerMinutePerIp", 300);
+        var limiter = PartitionedRateLimiter.CreateChained(
+            PartitionedRateLimiter.Create<HttpContext, string>(h => RateLimitPartition.GetConcurrencyLimiter(Ip(h),
+                _ => new ConcurrencyLimiterOptions { PermitLimit = concurrent, QueueLimit = 0 })),
+            PartitionedRateLimiter.Create<HttpContext, string>(h => RateLimitPartition.GetFixedWindowLimiter(Ip(h),
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = perMinute, Window = TimeSpan.FromMinutes(1) })));
+        app.Use(async (http, next) =>
+        {
+            if (!IsNodeCall(http.Request))
+            {
+                await next(http);
+                return;
+            }
+            using var lease = await limiter.AcquireAsync(http, 1, http.RequestAborted);
+            if (!lease.IsAcquired)
+            {
+                if (lease.TryGetMetadata(MetadataName.RetryAfter, out var after))
+                    http.Response.Headers.RetryAfter = ((int)Math.Ceiling(after.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                return;
+            }
+            if (Refused(http) is { } refused)
+            {
+                await refused.ExecuteAsync(http);
+                return;
+            }
+            await next(http);
+        });
+    }
+
+    private static string Ip(HttpContext http) => http.Connection.RemoteIpAddress?.ToString() ?? "";
+
+    private static bool IsNodeCall(HttpRequest request) =>
+        request.Path.StartsWithSegments("/api/nodes") || request.Headers.Authorization.ToString().StartsWith(CloudAuth.NodeScheme + " ", StringComparison.Ordinal);
+
+    /// <summary>411 a body without its length, 413 one over the route's limit, 415 a compressed large upload.</summary>
+    private static IResult? Refused(HttpContext http)
+    {
+        var request = http.Request;
+        var endpoint = http.GetEndpoint();
+        var large = endpoint?.Metadata.GetMetadata<LargeNodeUpload>();
+        if (request.ContentLength is not { } length)
+            return http.Features.Get<IHttpRequestBodyDetectionFeature>()?.CanHaveBody == true
+                ? Problem(StatusCodes.Status411LengthRequired, "Nodes.LengthRequired", "El envío no dice cuánto pesa. Actualice Abastalia en la PC de la tienda.") : null;
+        var limit = endpoint?.Metadata.GetMetadata<IRequestSizeLimitMetadata>()?.MaxRequestBodySize
+                    ?? http.Features.Get<IHttpMaxRequestBodySizeFeature>()?.MaxRequestBodySize;
+        if (length > limit)
+            return Problem(StatusCodes.Status413PayloadTooLarge, large?.TooLarge.Code ?? "Nodes.TooLarge", large?.TooLarge.Description ?? "El envío pesa más de lo que acepta la nube.");
+        if (large is not null && request.Headers.ContentEncoding.Count > 0)
+            return Problem(StatusCodes.Status415UnsupportedMediaType, "Nodes.CompressedUpload", "Ese archivo se envía sin comprimir. Actualice Abastalia en la PC de la tienda.");
+        return null;
+    }
+
+    private static IResult Problem(int status, string code, string detail) =>
+        Results.Problem(detail: detail, statusCode: status, title: code, extensions: new Dictionary<string, object?> { ["code"] = code });
 }
 
 /// <summary>Who is calling, for node endpoints.</summary>

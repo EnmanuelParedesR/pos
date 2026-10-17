@@ -112,17 +112,14 @@ export async function api<T>(path: string, method = "GET", body?: unknown): Prom
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-/** TK-238: saves a file the API streams with the session (a store backup), as the browser's own download. */
-export async function download(path: string, fileName: string) {
-  let response = await send(path, "GET", undefined, true);
-  if (response.status === 401 && (await refresh())) response = await send(path, "GET", undefined, true);
-  if (!response.ok) throw await toError(response);
-  const url = URL.createObjectURL(await response.blob());
+/** TK-238: a store backup (up to 1 GB). R12 #9: the session asks for a link that lasts two minutes and the browser downloads it by itself,
+ * so the file never sits in the page's memory. `path` is the backup's (`/api/stores/{id}/backups/{backupId}`). */
+export async function download(path: string) {
+  const { url } = await api<{ url: string }>(`${path}/link`, "POST");
   const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
+  link.href = apiUrl + url;
+  link.rel = "noopener";
   link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /** `twoFactorCode`: the authenticator app's code, for an account with 2FA on (R11 B-Med6); without it such an account gets "Auth.RequiresTwoFactor".
@@ -201,10 +198,18 @@ export function confirmEmail(userId: string, code: string, changedEmail?: string
   const key = `${userId}|${code}|${changedEmail ?? ""}`;
   let pending = confirmations.get(key);
   if (!pending) {
-    pending = send("/api/auth/confirm", "POST", { userId, code, changedEmail }, false).then(async (response) => {
-      if (!response.ok) throw new ApiError(response.status, "Auth.ConfirmFailed", "El enlace no es válido o venció.");
-      return (await response.json()) as ConfirmedEmail;
-    });
+    pending = send("/api/auth/confirm", "POST", { userId, code, changedEmail }, false)
+      .then(async (response) => {
+        // R12 #12: a busy or failing server is not a bad link: the person opens it again later.
+        if (response.status === 429) throw new ApiError(429, "Auth.TooManyRequests", "Hubo demasiados intentos seguidos. Espere un minuto y abra el enlace de nuevo.");
+        if (response.status >= 500) throw new ApiError(response.status, "Server", "El servidor tuvo un problema. Abra el enlace de nuevo en un momento.");
+        if (!response.ok) throw new ApiError(response.status, "Auth.ConfirmFailed", "El enlace no es válido o venció.");
+        return (await response.json()) as ConfirmedEmail;
+      })
+      .catch((err) => {
+        confirmations.delete(key); // R12 #12: a failure is not kept, so trying again calls the API again
+        throw err;
+      });
     confirmations.set(key, pending);
   }
   return pending;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { renderSVG } from "uqr";
-import { ApiError, twoFactor, useApi, type Me, type TwoFactorStatus } from "../api";
+import { ApiError, signOut, twoFactor, useApi, type Me, type TwoFactorStatus } from "../api";
 import { LoadError, Notice, PageHead, Skeleton } from "../ui";
 import { contactHref, site } from "./site/config";
 
@@ -19,7 +19,8 @@ function message(error: ApiError, weakening: boolean) {
     return weakening
       ? "El código no es válido. Use el de 6 dígitos de la aplicación o un código de respaldo que no haya usado."
       : "El código no es válido. Revise que la hora del teléfono esté en automático e intente de nuevo.";
-  if (error.status === 429) return "Demasiados intentos seguidos. Espere un minuto e intente de nuevo.";
+  // R12 #2: too many wrong codes locks it for a while (the API's own words); otherwise the per-minute limit.
+  if (error.status === 429) return error.code === "Auth.TooManyCodes" ? error.detail : "Demasiados intentos seguidos. Espere un minuto e intente de nuevo.";
   return error.detail;
 }
 
@@ -32,6 +33,7 @@ export function SecurityPage() {
   const [codes, setCodes] = useState<string[] | null>(null);
   const [error, setError] = useState<{ error: ApiError; weakening: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [signedOutElsewhere, setSignedOutElsewhere] = useState(false);
 
   /** `true` when it worked. */
   const run = async (body: Body = {}) => {
@@ -42,6 +44,8 @@ export function SecurityPage() {
       const next = await twoFactor(body);
       setStatus(next);
       if (next.recoveryCodes?.length) setCodes(next.recoveryCodes);
+      // R12 #12: turning it on or off, or a new phone, closes every session (Identity's security stamp), this one too at its next renewal.
+      if (body.enable !== undefined || body.resetSharedKey) setSignedOutElsewhere(true);
       return true;
     } catch (err) {
       setError({ error: err instanceof ApiError ? err : new ApiError(0, "Unknown", "No se pudo completar la operación."), weakening });
@@ -63,6 +67,14 @@ export function SecurityPage() {
   return (
     <>
       <PageHead title="Seguridad" subtitle="Verificación en dos pasos: además de la contraseña, un código de su teléfono al entrar." />
+      {signedOutElsewhere && !codes && (
+        <Notice kind="info" title="Por seguridad cerramos sus sesiones en los demás equipos.">
+          Esta también se cerrará en unos minutos: termine aquí y vuelva a entrar.{" "}
+          <button type="button" className="esc-button esc-button--small" onClick={signOut}>
+            Entrar de nuevo ahora
+          </button>
+        </Notice>
+      )}
       {!status && !error && <Skeleton height={160} />}
       {!status && failure}
       {codes && <BackupCodes codes={codes} email={me.data?.email ?? ""} onDone={() => setCodes(null)} />}
@@ -232,13 +244,15 @@ function Enabled({ status, busy, failure, run }: { status: TwoFactorStatus; busy
       {action ? (
         <form className="sec-steps" onSubmit={submit}>
           <h2 className="sec-title">{actions[action].label}</h2>
-          <p className="esc-muted">
-            {action === "off"
-              ? "Al entrar solo le pediremos la contraseña."
-              : action === "phone"
-                ? "La aplicación del teléfono actual deja de servir. Luego agregue la cuenta en el teléfono nuevo."
-                : "Los códigos de respaldo anteriores dejan de servir."}
-          </p>
+          {/* R12 design review: the gap without a second step is the one thing to notice here, so it is a warning, not muted text. */}
+          {action === "phone" ? (
+            <Notice kind="warning" title="Tenga el teléfono nuevo a mano.">
+              La aplicación del teléfono actual deja de servir. Hasta que escanee el código nuevo, en la pantalla que sigue, su cuenta queda sin
+              verificación en dos pasos.
+            </Notice>
+          ) : (
+            <p className="esc-muted">{action === "off" ? "Al entrar solo le pediremos la contraseña." : "Los códigos de respaldo anteriores dejan de servir."}</p>
+          )}
           <label htmlFor="sec-confirm-code">Para confirmar, escriba el código de la aplicación o un código de respaldo</label>
           <div className="sec-row">
             <input

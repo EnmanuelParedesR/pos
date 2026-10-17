@@ -129,6 +129,12 @@ public sealed class FakePaddle : HttpMessageHandler
 public sealed class BillingApp : CloudApp
 {
     public const string Secret = "pdl_ntfset_01test_secret";
+
+    /// <summary>R12 I: custom_data as our checkout makes it (the tenant id and its signature).</summary>
+    public static object CustomData(Guid tenant) => new
+    {
+        tenantId = tenant.ToString(), tenantSig = Abastalia.Host.Cloud.Billing.PaddleWebhook.TenantSignature(new Abastalia.Host.Cloud.Billing.PaddleOptions { WebhookSecret = Secret }, tenant),
+    };
     public const string Basic = FakePaddle.Basic, BasicYear = FakePaddle.BasicYear, Registers = FakePaddle.Registers, Invoices = FakePaddle.Invoices,
         ExtraRegister = FakePaddle.ExtraRegister, ExtraStore = FakePaddle.ExtraStore, ExtraCashier = FakePaddle.ExtraCashier;
 
@@ -190,7 +196,7 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
             current_billing_period = new { starts_at = periodEnd.AddMonths(-1).ToString("O"), ends_at = periodEnd.ToString("O") },
             next_billed_at = status == "active" ? periodEnd.ToString("O") : null,
             billing_cycle = new { interval = "month", frequency = 1 },
-            custom_data = new { tenantId = tenant.ToString() },
+            custom_data = BillingApp.CustomData(tenant), // R12 I: signed, as our checkout makes it
         },
     };
 
@@ -218,6 +224,28 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
 
         (await app.SendAsync(payload, Now.AddMinutes(-4))).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await BillingAsync(owner)).GetProperty("status").GetString().ShouldBe("Active");
+    }
+
+    [Fact]
+    public async Task R12_I_a_tenant_id_in_custom_data_counts_only_with_its_signature()
+    {
+        var victim = await app.OwnerAsync();
+        // A buyer changed custom_data in the browser to another business's id (no signature, or another business's signature).
+        var forged = new
+        {
+            event_id = Id(), event_type = "subscription.created", occurred_at = Now.ToString("O"), notification_id = "ntf_forged",
+            data = new
+            {
+                id = "sub_forged", status = "canceled", customer_id = "ctm_forged",
+                items = new[] { new { quantity = 1, price = new { id = BillingApp.Basic } } },
+                current_billing_period = new { starts_at = PeriodEnd.AddMonths(-1).ToString("O"), ends_at = PeriodEnd.ToString("O") },
+                billing_cycle = new { interval = "month", frequency = 1 },
+                custom_data = new { tenantId = victim.TenantId.ToString(), tenantSig = PaddleWebhook.TenantSignature(new PaddleOptions { WebhookSecret = BillingApp.Secret }, Guid.NewGuid()) },
+            },
+        };
+        (await app.SendAsync(forged)).StatusCode.ShouldBe(HttpStatusCode.OK); // taken (Paddle stops retrying) but tied to no business
+        (await app.InDbAsync(db => db.TenantSubscriptions.AnyAsync(s => s.TenantId == victim.TenantId && s.PaddleSubscriptionId == "sub_forged"))).ShouldBeFalse();
+        (await BillingAsync(victim)).GetProperty("status").GetString().ShouldBe("None");
     }
 
     [Fact]
@@ -325,6 +353,7 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
         checkout.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("priceId").GetString()).ShouldBe([BillingApp.Basic, BillingApp.Invoices]);
         checkout.GetProperty("customerEmail").GetString().ShouldBe(owner.Email);
         checkout.GetProperty("customData").GetProperty("tenantId").GetString().ShouldBe(owner.TenantId.ToString());
+        checkout.GetProperty("customData").GetProperty("tenantSig").GetString().ShouldBe(PaddleWebhook.TenantSignature(new PaddleOptions { WebhookSecret = BillingApp.Secret }, owner.TenantId));
         (await owner.Client.PostAsJsonAsync("/api/billing/checkout", new { plan = "MultiStore", interval = "Monthly" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await owner.Client.PostAsJsonAsync("/api/billing/checkout", new { plan = "MultiRegister", interval = "Annual" })).StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         (await (await owner.Client.PostAsync("/api/billing/portal", null)).ErrorCode()).ShouldBe("Billing.NoCustomer");

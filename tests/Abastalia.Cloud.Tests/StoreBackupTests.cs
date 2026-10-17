@@ -44,7 +44,9 @@ public sealed class StoreBackupTests(CloudApp app) : IClassFixture<CloudApp>
         backup.GetProperty("createdUtc").GetDateTime().ShouldBe(new DateTime(2026, 10, 15, 3, 30, 0)); // store time 23:30 = 03:30 UTC
         var id = backup.GetProperty("id").GetGuid();
 
-        var download = await owner.Client.GetAsync($"/api/stores/{node.StoreId}/backups/{id}");
+        // R12 #9: a short-lived link the browser downloads by itself, without the session.
+        var link = (await (await owner.Client.PostAsync($"/api/stores/{node.StoreId}/backups/{id}/link", null)).Json()).GetProperty("url").GetString()!;
+        var download = await app.CreateClient().GetAsync(link);
         download.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await download.Content.ReadAsByteArrayAsync()).ShouldBe(Encrypted());
         download.Content.Headers.ContentDisposition!.FileName.ShouldBe(name);
@@ -53,10 +55,13 @@ public sealed class StoreBackupTests(CloudApp app) : IClassFixture<CloudApp>
         // Another business, a ReadOnly member, no session, or the node itself: nothing.
         var stranger = await app.OwnerAsync();
         (await stranger.Client.GetAsync($"/api/stores/{node.StoreId}/backups")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
-        (await stranger.Client.GetAsync($"/api/stores/{node.StoreId}/backups/{id}")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await stranger.Client.PostAsync($"/api/stores/{node.StoreId}/backups/{id}/link", null)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
         var readOnly = await ReadOnlyMemberAsync(owner);
         (await readOnly.Client.GetAsync($"/api/stores/{node.StoreId}/backups")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
-        (await readOnly.Client.GetAsync($"/api/stores/{node.StoreId}/backups/{id}")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await readOnly.Client.PostAsync($"/api/stores/{node.StoreId}/backups/{id}/link", null)).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await app.CreateClient().GetAsync("/api/backups/download/inventado")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        app.Clock.Advance(StoreBackupEndpoints.LinkLifetime + TimeSpan.FromSeconds(1));
+        (await (await app.CreateClient().GetAsync(link)).ErrorCode()).ShouldBe("Backup.LinkExpired");
         (await app.CreateClient().GetAsync($"/api/stores/{node.StoreId}/backups")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await node.Client.GetAsync($"/api/stores/{node.StoreId}/backups")).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
@@ -178,6 +183,8 @@ public sealed class StoreBackupLimitTests(StoreBackupLimitsApp app) : IClassFixt
 
         (await StoreBackupTests.UploadAsync(node, "abastalia-20261014-233000.abastalia-backup", StoreBackupTests.Encrypted())).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await StoreBackupTests.UploadAsync(node, "abastalia-20261014-233500.abastalia-backup", StoreBackupTests.Encrypted())).StatusCode
-            .ShouldBe(HttpStatusCode.TooManyRequests); // 2 an hour per PC, the refused one counted
+            .ShouldBe(HttpStatusCode.OK);
+        (await StoreBackupTests.UploadAsync(node, "abastalia-20261014-234000.abastalia-backup", StoreBackupTests.Encrypted())).StatusCode
+            .ShouldBe(HttpStatusCode.TooManyRequests); // 2 an hour per PC (R12 #1: the one too large never got that far)
     }
 }

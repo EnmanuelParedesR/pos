@@ -48,7 +48,8 @@ public sealed class FakeCloud : HttpMessageHandler
         // TK-238: a backup goes as raw bytes (Raw), not JSON.
         var body = bytes.Length == 0 || request.Content?.Headers.ContentType?.MediaType == "application/octet-stream" ? default : JsonDocument.Parse(bytes).RootElement.Clone();
         var path = request.RequestUri!.AbsolutePath;
-        lock (Requests) Requests.Add(new Received(request.RequestUri.GetLeftPart(UriPartial.Authority), path, request.Headers.Authorization?.ToString(), gzip, body, bytes));
+        lock (Requests) Requests.Add(new Received(request.RequestUri.GetLeftPart(UriPartial.Authority), path, request.Headers.Authorization?.ToString(), gzip, body, bytes,
+            request.Headers.TryGetValues("X-Body-Sha256", out var hash) ? hash.Single() : null));
 
         if (Respond?.Invoke(path) is { } custom) return custom;
         return path switch
@@ -81,9 +82,10 @@ public sealed class FakeCloud : HttpMessageHandler
         signature = signature.Replace('-', '+').Replace('_', '/');
         var bytes = Convert.FromBase64String(signature.PadRight(signature.Length + (4 - signature.Length % 4) % 4, '='));
         var bodyHash = Convert.ToBase64String(SHA256.HashData(r.Raw)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-        return key.VerifyData(Encoding.UTF8.GetBytes($"{node}.{seconds}.{nonce}.POST {r.Path} {bodyHash}"), bytes, HashAlgorithmName.SHA256);
+        return r.BodyHash == bodyHash && key.VerifyData(Encoding.UTF8.GetBytes($"{node}.{seconds}.{nonce}.POST {r.Path} {bodyHash}"), bytes, HashAlgorithmName.SHA256);
     }
 
     /// <param name="Raw">The body as the cloud reads it (inflated: it decompresses before it checks), which the node signature covers (R10 #7).</param>
-    public sealed record Received(string Origin, string Path, string? Authorization, bool Gzip, JsonElement Body, byte[] Raw);
+    /// <param name="BodyHash">R12 #1: the signed hash the node sends in clear (X-Body-Sha256).</param>
+    public sealed record Received(string Origin, string Path, string? Authorization, bool Gzip, JsonElement Body, byte[] Raw, string? BodyHash = null);
 }

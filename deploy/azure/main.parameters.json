@@ -12,7 +12,7 @@
     "openAiModelVersion": { "value": "2025-08-07" },
     "openAiApiVersion": { "value": "2025-04-01-preview" },
     "openAiDeploymentSku": { "value": "GlobalStandard" },
-    "openAiCapacity": { "value": 10 },
+    "openAiCapacity": { "value": 50 },
     "emailEndpoint": { "value": "https://acs-abastalia-prod.unitedstates.communication.azure.com" },
     "emailSender": { "value": "DoNotReply@03a51e41-8b38-4672-bdb5-8ae7432a35f7.azurecomm.net" },
     "emailResourceName": { "value": "acs-abastalia-prod" },

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ApiError, Store } from "./api";
 import { addDays, money, shortMoney, storeDay } from "./format";
 import { getTheme, nextTheme, setTheme, themeName, type ThemeChoice } from "./theme";
@@ -107,7 +107,9 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
 
 /** Theme switch (TK-183): automático → claro → oscuro, remembered on this device. */
 export function ThemeToggle({ className = "esc-side__item", showLabel = true, size = 20 }: { className?: string; showLabel?: boolean; size?: number }) {
-  const [theme, setChoice] = useState<ThemeChoice>(getTheme);
+  // R12 #12: "system" on the first render, as the prerendered HTML says; the saved choice comes after hydration (no mismatch).
+  const [theme, setChoice] = useState<ThemeChoice>("system");
+  useEffect(() => setChoice(getTheme()), []);
   const label = `Tema: ${themeName(theme)}. Cambiar a ${themeName(nextTheme(theme))}`;
   return (
     <button

@@ -44,8 +44,16 @@ internal static class PlatformCli
     /// throws the old key away and closes every session (new security stamp). The owner signs in with the password and turns it on again.</summary>
     public const string ResetTwoFactor = "reset-2fa";
 
-    public static async Task<int> RunAsync(IServiceProvider services, string command, string email)
+    /// <param name="reason">R12 #5: required by <see cref="ResetTwoFactor"/> (<c>--reason "…"</c>): who asked and how it was checked; kept in the audit.</param>
+    /// <param name="force">R12 #5: <c>--force</c>, required to reset an account of Abastalia staff (platform role).</param>
+    public static async Task<int> RunAsync(IServiceProvider services, string command, string email, string? reason = null, bool force = false)
     {
+        reason = reason?.Trim();
+        if (command == ResetTwoFactor && string.IsNullOrEmpty(reason))
+        {
+            await Console.Error.WriteLineAsync("Indique por qué y cómo se comprobó quién pide: reset-2fa <correo> --reason \"…\".");
+            return 1;
+        }
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<CloudDbContext>();
         await CreateCloudDatabaseOnStartup.PrepareAsync(db, CancellationToken.None);
@@ -59,6 +67,11 @@ internal static class PlatformCli
 
         var role = new Claim(PlatformAuth.RoleClaim, PlatformAuth.Admin);
         var has = (await users.GetClaimsAsync(user)).Any(c => c.Type == role.Type && c.Value == role.Value);
+        if (command == ResetTwoFactor && has && !force)
+        {
+            await Console.Error.WriteLineAsync($"{email} es administrador de la plataforma. Para quitarle la verificación en dos pasos agregue --force (otra persona del equipo).");
+            return 1;
+        }
         var result = command switch
         {
             Grant => has ? IdentityResult.Success : await users.AddClaimAsync(user, role),
@@ -73,9 +86,16 @@ internal static class PlatformCli
         db.PlatformAudit.Add(new PlatformAuditRecord
         {
             AtUtc = scope.ServiceProvider.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime, UserId = Environment.UserName, Email = "cli",
-            Method = "CLI", Path = $"{command} {email}", TenantId = user.TenantId,
+            Method = "CLI", Path = Fe.FeXml.Cut(command == ResetTwoFactor ? $"{command} {email}{(force ? " --force" : "")} --reason {reason}" : $"{command} {email}", 1000),
+            TenantId = user.TenantId,
         });
         await db.SaveChangesAsync();
+        // R12 #5: the account's owner hears of it at once, by the address of the account (a reset they did not ask for is a warning).
+        if (command == ResetTwoFactor && user.Email is { } to)
+            await scope.ServiceProvider.GetRequiredService<Accounts.IEmailSender>().SendAsync(to, "Se quitó la verificación en dos pasos de su cuenta de Abastalia",
+                "El equipo de Abastalia quitó la verificación en dos pasos de su cuenta, como se pidió, y cerró todas sus sesiones.\n\n" +
+                "Entre al panel con su contraseña y actívela de nuevo en Seguridad.\n\n" +
+                "Si usted no pidió esto, cambie su contraseña ahora y escríbanos respondiendo a este correo.", CancellationToken.None);
         Console.WriteLine(command switch
         {
             Grant => $"{email} ya es administrador de la plataforma. Debe volver a entrar al panel.",

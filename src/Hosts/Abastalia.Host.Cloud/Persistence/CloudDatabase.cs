@@ -23,7 +23,6 @@ internal sealed class CreateCloudDatabaseOnStartup(IServiceProvider services, IC
             await db.Database.MigrateAsync(ct);
         }
         else await db.Database.EnsureCreatedAsync(ct);
-        await Accounts.MemberEndpoints.BackfillOwnersAsync(db, ct);
     }
 
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;

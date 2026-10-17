@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -53,21 +54,77 @@ internal sealed class LoginThrottle(TimeProvider clock, IConfiguration config)
     private int MaxFailures => config.GetValue("Auth:FailuresPerIpAndAccount", 5);
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
 
-    public bool IsBlocked(string key) =>
-        _failures.TryGetValue(key, out var f) && clock.GetUtcNow().UtcDateTime - f.Since < Window && f.Failures >= MaxFailures;
+    /// <param name="max">Failures allowed in <paramref name="window"/> (default <c>Auth:FailuresPerIpAndAccount</c>, 5, in 15 minutes).</param>
+    public bool IsBlocked(string key, int? max = null, TimeSpan? window = null) =>
+        _failures.TryGetValue(key, out var f) && clock.GetUtcNow().UtcDateTime - f.Since < (window ?? Window) && f.Failures >= (max ?? MaxFailures);
 
-    public void Fail(string key)
+    public void Fail(string key, TimeSpan? window = null)
     {
         var now = clock.GetUtcNow().UtcDateTime;
+        var span = window ?? Window;
         if (_failures.Count > 10_000)
             foreach (var (k, v) in _failures)
-                if (now - v.Since >= Window) _failures.TryRemove(k, out _);
-        _failures.AddOrUpdate(key, (1, now), (_, f) => now - f.Since >= Window ? (1, now) : (f.Failures + 1, f.Since));
+                if (now - v.Since >= TimeSpan.FromDays(1)) _failures.TryRemove(k, out _);
+        _failures.AddOrUpdate(key, (1, now), (_, f) => now - f.Since >= span ? (1, now) : (f.Failures + 1, f.Since));
     }
 
     public void Succeeded(string key) => _failures.TryRemove(key, out _);
 
     public static string Key(HttpContext? http, CloudUser user) => $"{http?.Connection.RemoteIpAddress}|{user.Id}";
+}
+
+/// <summary>R12 #4: Identity's authenticator check (RFC 6238, 30 s steps, two either side of now) that also refuses a code of a step already used
+/// by this account, so a code seen over a shoulder or in a log cannot be used again inside its window. The last step is an Identity user token
+/// (no migration); saving it uses the user's concurrency stamp, so two requests with the same code cannot both pass.</summary>
+internal sealed class OneTimeAuthenticatorTokenProvider : AuthenticatorTokenProvider<CloudUser>
+{
+    internal const string Provider = "[Abastalia]";
+    internal const string LastStep = "LastTotpStep";
+
+    public override async Task<bool> ValidateAsync(string purpose, string token, UserManager<CloudUser> manager, CloudUser user)
+    {
+        if (await manager.GetAuthenticatorKeyAsync(user) is not { Length: > 0 } key || token.Length != 6 || !token.All(char.IsAsciiDigit)) return false;
+        var secret = FromBase32(key);
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30; // the real clock, as the phone's
+        _ = long.TryParse(await manager.GetAuthenticationTokenAsync(user, Provider, LastStep), out var last);
+        for (var step = now - 2; step <= now + 2; step++)
+        {
+            if (step <= last || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(Code(secret, step)), Encoding.ASCII.GetBytes(token))) continue;
+            return (await manager.SetAuthenticationTokenAsync(user, Provider, LastStep, step.ToString(System.Globalization.CultureInfo.InvariantCulture))).Succeeded;
+        }
+        return false;
+    }
+
+    internal static string Code(byte[] secret, long step)
+    {
+        var counter = BitConverter.GetBytes(step);
+        if (BitConverter.IsLittleEndian) Array.Reverse(counter);
+#pragma warning disable CA5350 // RFC 6238 is HMAC-SHA1, as every authenticator app
+        var hash = HMACSHA1.HashData(secret, counter);
+#pragma warning restore CA5350
+        var offset = hash[^1] & 0x0F;
+        var value = ((hash[offset] & 0x7F) << 24) | (hash[offset + 1] << 16) | (hash[offset + 2] << 8) | hash[offset + 3];
+        return (value % 1_000_000).ToString("000000", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static byte[] FromBase32(string key)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var bytes = new List<byte>(key.Length * 5 / 8);
+        int buffer = 0, bits = 0;
+        foreach (var c in key.ToUpperInvariant())
+        {
+            var v = alphabet.IndexOf(c, StringComparison.Ordinal);
+            if (v < 0) continue; // spaces and padding
+            buffer = (buffer << 5) | v;
+            bits += 5;
+            if (bits < 8) continue;
+            bits -= 8;
+            bytes.Add((byte)(buffer >> bits));
+            buffer &= (1 << bits) - 1;
+        }
+        return [.. bytes];
+    }
 }
 
 /// <summary>R11 B-Med2: Identity's e-mails (confirm, reset, change of address) to one address, at most <c>Auth:EmailsPerRecipientPerHour</c> (3)
@@ -138,15 +195,30 @@ internal static class AccountSecurityEndpoints
     {
         var request = context.Arguments.OfType<Microsoft.AspNetCore.Identity.Data.TwoFactorRequest>().SingleOrDefault();
         if (request is null || request is not { Enable: false } and not { ResetSharedKey: true } and not { ResetRecoveryCodes: true }) return await next(context);
-        var users = context.HttpContext.RequestServices.GetRequiredService<UserManager<CloudUser>>();
+        var services = context.HttpContext.RequestServices;
+        var users = services.GetRequiredService<UserManager<CloudUser>>();
         if (await users.GetUserAsync(context.HttpContext.User) is not { TwoFactorEnabled: true } user) return await next(context);
-        var code = request.TwoFactorCode?.Replace(" ", "", StringComparison.Ordinal).Trim() ?? "";
+        // R12 #2: wrong codes here count as at sign-in: 5 in 15 minutes per account, a daily cap (Auth:TwoFactorFailuresPerDay, 20), and
+        // Identity's own lockout, so a stolen session cannot walk the 6-digit space.
+        var throttle = services.GetRequiredService<LoginThrottle>();
+        var (key, dayKey) = ($"2fa-manage|{user.Id}", $"2fa-manage-day|{user.Id}");
+        var perDay = services.GetRequiredService<IConfiguration>().GetValue("Auth:TwoFactorFailuresPerDay", 20);
+        if (throttle.IsBlocked(key) || throttle.IsBlocked(dayKey, perDay, TimeSpan.FromDays(1)) || await users.IsLockedOutAsync(user))
+            return TypedResults.Problem(statusCode: StatusCodes.Status429TooManyRequests, title: "Auth.TooManyCodes",
+                detail: "Demasiados códigos equivocados. Espere un rato e intente de nuevo.", extensions: new Dictionary<string, object?> { ["code"] = "Auth.TooManyCodes" });
+        var code = string.Concat((request.TwoFactorCode ?? "").Where(c => !char.IsWhiteSpace(c)));
         var valid = code.Length == 6 && code.All(char.IsAsciiDigit)
             ? await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, code)
             : code.Length is > 0 and <= 20 && (await users.RedeemTwoFactorRecoveryCodeAsync(user, code.ToUpperInvariant())).Succeeded;
-        return valid
-            ? await next(context)
-            : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["InvalidTwoFactorCode"] = ["The current 2fa code or a recovery code is required."] });
+        if (!valid)
+        {
+            throttle.Fail(key);
+            throttle.Fail(dayKey, TimeSpan.FromDays(1));
+            await users.AccessFailedAsync(user);
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["InvalidTwoFactorCode"] = ["The current 2fa code or a recovery code is required."] });
+        }
+        throttle.Succeeded(key);
+        return await next(context);
     }
 
     /// <summary>R11 B-Low5: /register answers the same for an e-mail that already has an account (no enumeration); the person gets the confirmation

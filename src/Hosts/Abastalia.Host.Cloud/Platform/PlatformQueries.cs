@@ -120,18 +120,15 @@ public sealed class PlatformQueries(CloudDbContext db, PanelQueries panel, TimeP
     /// <summary>One snapshot of everything the product metrics read.</summary>
     public async Task<ProductMetrics> MetricsAsync(CancellationToken ct)
     {
-        // R8 #10: summed in SQL by store and store day (UTC−4), one row per store and day instead of one per sale.
-        var voided = db.SaleVoids.Select(v => new { v.TenantId, v.SaleId });
-        var offsetHours = BusinessDay.Offset.TotalHours;
-        var sales = await db.Sales.AsNoTracking().Where(s => !voided.Any(v => v.TenantId == s.TenantId && v.SaleId == s.Id))
-            .GroupBy(s => new { s.TenantId, s.StoreId, Day = s.SoldUtc.AddHours(offsetHours).Date })
-            .Select(g => new { g.Key.TenantId, g.Key.StoreId, g.Key.Day, Count = g.Count(), Total = g.Sum(s => s.Total) }).ToListAsync(ct);
+        // R12 G: the sales per store and day come from the heartbeats' daily usage (one small row per store and day, the store's own count), never
+        // a scan of every sale in the replica.
         var types = Projectors.ByType.Keys.ToList();
         var failed = await db.Inbox.CountAsync(i => i.AppliedUtc == null && i.Attempts >= InboxApplier.MaxAttempts && types.Contains(i.Type), ct);
+        var usage = await db.DailyUsage.AsNoTracking().ToListAsync(ct);
         return new ProductMetrics(
             await db.Tenants.AsNoTracking().ToListAsync(ct), await db.Stores.AsNoTracking().ToListAsync(ct), await db.Nodes.AsNoTracking().ToListAsync(ct),
-            [.. sales.Select(s => new SaleFact(s.TenantId, s.StoreId, DateOnly.FromDateTime(s.Day), s.Total, s.Count))],
-            await db.NodeHeartbeats.AsNoTracking().ToListAsync(ct), await db.DailyUsage.AsNoTracking().ToListAsync(ct), failed, clock.GetUtcNow().UtcDateTime,
+            [.. usage.Where(u => u.Sales > 0).Select(u => new SaleFact(u.TenantId, u.StoreId, u.Day, u.SalesAmount, u.Sales))],
+            await db.NodeHeartbeats.AsNoTracking().ToListAsync(ct), usage, failed, clock.GetUtcNow().UtcDateTime,
             await db.Certifications.AsNoTracking().ToListAsync(ct));
     }
 

@@ -50,6 +50,8 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("CloudBackup:Folder", BackupFolder);
         builder.UseSetting("CloudBackup:UploadsPerHourPerNode", "10000");
         builder.UseSetting("Nodes:RegisterPerMinute", "10000");
+        builder.UseSetting("Nodes:RequestsPerMinutePerIp", "10000");
+        builder.UseSetting("Nodes:ConcurrentPerIp", "1000");
         builder.UseSetting("Catalog:RequestsPerMinute", "10000");
         builder.UseSetting("Fe:RequestsPerMinutePerIp", "10000");
         builder.UseSetting("Fe:RequestsPerMinutePerRnc", "10000");
@@ -57,6 +59,7 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("Auth:RequestsPerMinute", "10000"); // TK-248: every test client is the same (empty) IP
         builder.UseSetting("Panel:RequestsPerMinutePerUser", "10000");
         builder.UseSetting("Ai:AssistantQuestionsPerMinutePerUser", "10000");
+        builder.UseSetting("Alerts:MinutesBetweenRuns", "0"); // R12 H: tests run the alerts on every apply
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
         builder.UseSetting("Platform:Admins:0", LegacyAdminEmail); // R8 #1: ignored now
         builder.UseSetting("Certification:StaffEmails:0", SupportEmail); // TK-233
@@ -159,6 +162,12 @@ public class CloudApp : WebApplicationFactory<Program>
         return (nodeId, factory.CreateDefaultClient(new NodeSigner(nodeId, key, clock)));
     }
 
+    /// <summary>Set on a request to sign it as an older store did: no body-hash header (R12 #1).</summary>
+    public static readonly HttpRequestOptionsKey<bool> LegacySignature = new("LegacySignature");
+
+    /// <summary>Set on a request to send another body than the one signed (R12 #1).</summary>
+    public static readonly HttpRequestOptionsKey<byte[]> SwapBodyAfterSigning = new("SwapBodyAfterSigning");
+
     private sealed class NodeSigner(Guid nodeId, ECDsa key, TimeProvider clock) : DelegatingHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -181,6 +190,9 @@ public class CloudApp : WebApplicationFactory<Program>
             var payload = NodeSignature.Payload(nodeId, seconds, nonce, request.Method.Method, request.RequestUri!.PathAndQuery, NodeSignature.BodyHash(body));
             var signature = NodeSignature.Base64Url(key.SignData(Encoding.UTF8.GetBytes(payload), HashAlgorithmName.SHA256));
             request.Headers.Authorization = new AuthenticationHeaderValue("Node", $"{nodeId}.{seconds}.{nonce}.{signature}");
+            if (!request.Options.TryGetValue(LegacySignature, out var legacy) || !legacy)
+                request.Headers.Add(NodeSignature.BodyHashHeader, NodeSignature.BodyHash(body)); // R12 #1: as the store sends it
+            if (request.Options.TryGetValue(SwapBodyAfterSigning, out var swapped)) request.Content = new ByteArrayContent(swapped);
             return await base.SendAsync(request, cancellationToken);
         }
     }
@@ -203,12 +215,25 @@ public sealed record Owner(HttpClient Client, Guid TenantId, string Email);
 /// <summary>The code an authenticator app shows (RFC 6238: HMAC-SHA1, 30 s, 6 digits) for Identity's Base32 key. Identity checks it against the real clock.</summary>
 public static class Totp
 {
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, long> Used = new();
+
+    /// <summary>R12 #4: the cloud takes each step's code once per account, so a second code inside the same 30 s is the next step's (the cloud
+    /// accepts up to two steps ahead), as an authenticator app shows after the wait.</summary>
     public static string Code(string base32Key)
+    {
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30;
+        return CodeAt(base32Key, Used.AddOrUpdate(base32Key, now, (_, last) => Math.Max(now, last + 1)));
+    }
+
+    /// <summary>The code given last for this key again (a replay).</summary>
+    public static string Again(string base32Key) => CodeAt(base32Key, Used[base32Key]);
+
+    private static string CodeAt(string base32Key, long counter)
     {
         var bits = string.Concat(base32Key.ToUpperInvariant().Where(c => c != ' ' && c != '=')
             .Select(c => Convert.ToString("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".IndexOf(c), 2).PadLeft(5, '0')));
         var key = Enumerable.Range(0, bits.Length / 8).Select(i => Convert.ToByte(bits.Substring(i * 8, 8), 2)).ToArray();
-        var step = BitConverter.GetBytes(DateTimeOffset.UtcNow.ToUnixTimeSeconds() / 30);
+        var step = BitConverter.GetBytes(counter);
         if (BitConverter.IsLittleEndian) Array.Reverse(step);
 #pragma warning disable CA5350 // RFC 6238 is HMAC-SHA1, as every authenticator app
         var hash = HMACSHA1.HashData(key, step);

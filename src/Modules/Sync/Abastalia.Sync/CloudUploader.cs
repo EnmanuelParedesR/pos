@@ -201,7 +201,8 @@ internal sealed class CloudUploaderWorker(IServiceScopeFactory scopes, IConfigur
                 failures++;
                 log.LogError(ex, "The cloud uploader failed");
             }
-            await Task.Delay(retryAfter ?? (failures == 0 ? interval : CloudUploader.RetryDelay(failures)), clock, stoppingToken);
+            // R12 #9: a Retry-After of 0 or in the past never turns this into a busy loop.
+            await Task.Delay(retryAfter is { } after ? TimeSpan.FromTicks(Math.Max(after.Ticks, interval.Ticks)) : failures == 0 ? interval : CloudUploader.RetryDelay(failures), clock, stoppingToken);
         }
     }
 }

@@ -34,6 +34,12 @@ it("TK-255: the owner sees the link to share, the referrals and the next discoun
   expect(screen.getByText(/10 % en su pago del/)).toBeTruthy();
 });
 
+it("R12 #10: a combined annual discount shows its whole amount", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => json(200, { ...referrals, nextDiscount: { ...referrals.nextDiscount!, amount: "20", count: 2 } })));
+  render(<ReferralCard />);
+  expect(await screen.findByText(/20 % \(2 recomendaciones juntas\) en su pago del/)).toBeTruthy();
+});
+
 it("TK-255: nothing shows while referrals are off", async () => {
   const fetch = vi.fn(async () => json(200, { ...referrals, enabled: false, code: null }));
   vi.stubGlobal("fetch", fetch);

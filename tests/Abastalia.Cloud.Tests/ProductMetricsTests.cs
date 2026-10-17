@@ -30,13 +30,13 @@ public sealed class ProductMetricsTests
         var sales = Enumerable.Range(0, 10).Select(i => new SaleFact(Loyal.Id, LoyalStore.Id, Today.AddDays(-i), 100m))
             .Concat([new SaleFact(Quiet.Id, QuietStore.Id, Today.AddDays(-12), 250m), new SaleFact(Quiet.Id, QuietStore.Id, Today.AddDays(-11), 50m)])
             .ToList();
-        ReplicaNodeHeartbeat Beat(Node n, string version, bool onAccount, string? error, int daysAgo = 0) => new()
+        ReplicaNodeHeartbeat Beat(Node n, string version, bool onAccount, string? error, int daysAgo = 0, string fiscal = "Simulated") => new()
         {
             TenantId = n.TenantId, NodeId = n.Id, StoreId = n.StoreId, SentUtc = Now.AddHours(-1).AddDays(-daysAgo), AppVersion = version, OnAccount = onAccount, LastErrorCode = error,
-            FiscalProvider = "Simulated", ActiveRegisters = 1,
+            FiscalProvider = fiscal, ActiveRegisters = 1,
         };
         return new ProductMetrics([Loyal, Quiet, Fresh, Lead], [LoyalStore, QuietStore, FreshStore], [LoyalPc, QuietPc, FreshPc], sales,
-            [Beat(LoyalPc, "1.4.0", true, null), Beat(FreshPc, "1.3.0", false, "unreachable"),
+            [Beat(LoyalPc, "1.4.0", true, null, fiscal: "eCF"), Beat(FreshPc, "1.3.0", false, "unreachable"),
              Beat(QuietPc, "1.2.0", false, null, daysAgo: 8)], // too old to count
             [.. usage ?? []], failedEvents: 2, Now);
     }
@@ -67,6 +67,7 @@ public sealed class ProductMetricsTests
         var fiado = o.Features.Single(f => f.Feature == "onAccount");
         (fiado.Stores, fiado.Reporting).ShouldBe((1, 2));
         o.Features.Single(f => f.Feature == "scale").Reporting.ShouldBe(0); // the register does not report it yet
+        o.Features.Single(f => f.Feature == "ecfLive").Stores.ShouldBe(1); // R12 #9: Loyal sends to the DGII in production
     }
 
     [Fact]

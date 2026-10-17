@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -25,9 +26,43 @@ public static class TenantClaims
 }
 
 /// <summary>Registering a panel user creates their tenant in the same SaveChanges (the store's), so there is never a user without one.</summary>
-internal sealed class CloudUserStore(CloudDbContext db, TimeProvider clock, IdentityErrorDescriber? describer = null)
+/// <remarks>R12 #3: the backup codes are kept as SHA-256 hashes and the authenticator key protected with Data Protection (a database copy alone
+/// gives neither). Rows from before stay readable: a plain code is accepted once (the rest are hashed then) and a plain key is read as it is
+/// until 2FA is turned on again. If the Data Protection key ring were lost, those accounts need <c>reset-2fa</c> (docs/despliegue-azure.md).</remarks>
+internal sealed class CloudUserStore(CloudDbContext db, TimeProvider clock, IDataProtectionProvider protection, IdentityErrorDescriber? describer = null)
     : UserStore<CloudUser, IdentityRole, CloudDbContext>(db, describer)
 {
+    private const string HashedPrefix = "sha256:";
+    private const string ProtectedPrefix = "dp:";
+    private IDataProtector KeyProtector => protection.CreateProtector("Abastalia.Identity.AuthenticatorKey");
+
+    internal static string HashCode(string code) =>
+        code.StartsWith(HashedPrefix, StringComparison.Ordinal) ? code : HashedPrefix + Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(code)));
+
+    /// <summary>Also called by the base <see cref="RedeemCodeAsync"/> with the codes left, already hashed: hashing is idempotent.</summary>
+    public override Task ReplaceCodesAsync(CloudUser user, IEnumerable<string> recoveryCodes, CancellationToken cancellationToken) =>
+        base.ReplaceCodesAsync(user, recoveryCodes.Select(HashCode), cancellationToken);
+
+    /// <summary>A stored hash typed as the code (a leaked copy of the table) never redeems.</summary>
+    public override async Task<bool> RedeemCodeAsync(CloudUser user, string code, CancellationToken cancellationToken) =>
+        !code.StartsWith(HashedPrefix, StringComparison.Ordinal)
+        && (await base.RedeemCodeAsync(user, HashCode(code), cancellationToken) || await base.RedeemCodeAsync(user, code, cancellationToken));
+
+    /// <summary>A new key starts its own count of used codes (R12 #4).</summary>
+    public override async Task SetAuthenticatorKeyAsync(CloudUser user, string key, CancellationToken cancellationToken)
+    {
+        await RemoveTokenAsync(user, OneTimeAuthenticatorTokenProvider.Provider, OneTimeAuthenticatorTokenProvider.LastStep, cancellationToken);
+        await base.SetAuthenticatorKeyAsync(user, ProtectedPrefix + KeyProtector.Protect(key), cancellationToken);
+    }
+
+    public override async Task<string?> GetAuthenticatorKeyAsync(CloudUser user, CancellationToken cancellationToken)
+    {
+        var stored = await base.GetAuthenticatorKeyAsync(user, cancellationToken);
+        if (stored is null || !stored.StartsWith(ProtectedPrefix, StringComparison.Ordinal)) return stored;
+        try { return KeyProtector.Unprotect(stored[ProtectedPrefix.Length..]); }
+        catch (CryptographicException) { return null; } // the key ring is gone: staff reset it
+    }
+
     public override Task<IdentityResult> CreateAsync(CloudUser user, CancellationToken cancellationToken = default)
     {
         if (user.TenantId == Guid.Empty)
@@ -77,12 +112,15 @@ internal sealed class CloudSignInManager(UserManager<CloudUser> users, IHttpCont
     }
 
     /// <summary>The same count for the authenticator code of an account with 2FA (R11 B-Med6).</summary>
+    /// <remarks>R12 #12: "123 456" as the app shows it is the same code.</remarks>
     public override Task<SignInResult> TwoFactorAuthenticatorSignInAsync(string code, bool isPersistent, bool rememberClient) =>
-        CountedAsync(() => base.TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient));
+        CountedAsync(() => base.TwoFactorAuthenticatorSignInAsync(WithoutSpaces(code), isPersistent, rememberClient));
 
-    /// <summary>TK-298: a backup code instead of the app's code (lost phone) counts the same.</summary>
+    /// <summary>TK-298: a backup code instead of the app's code (lost phone) counts the same. R12 #12: typed in lowercase or with spaces too.</summary>
     public override Task<SignInResult> TwoFactorRecoveryCodeSignInAsync(string recoveryCode) =>
-        CountedAsync(() => base.TwoFactorRecoveryCodeSignInAsync(recoveryCode));
+        CountedAsync(() => base.TwoFactorRecoveryCodeSignInAsync(WithoutSpaces(recoveryCode).ToUpperInvariant()));
+
+    private static string WithoutSpaces(string? code) => string.Concat((code ?? "").Where(c => !char.IsWhiteSpace(c)));
 
     private async Task<SignInResult> CountedAsync(Func<Task<SignInResult>> signIn)
     {

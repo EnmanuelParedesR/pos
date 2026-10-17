@@ -20,6 +20,19 @@ public sealed class PanelTests(CloudApp app) : IClassFixture<CloudApp>
             payments.Length == 0 ? [new SalePaymentV1("Cash", total)] : payments);
 
     [Fact]
+    public async Task R12_D_top_products_read_at_most_the_last_92_days_of_the_range()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        (await node.SendAsync(Events.Envelope(Sale(900, Guid.CreateVersion7(), Ground, "Carne molida"), now.AddDays(-120)),
+            Events.Envelope(Sale(500, Guid.CreateVersion7(), Steak, "Bistec de res"), now.AddDays(-10)))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        await app.ApplyAsync();
+        var year = await owner.Client.GetFromJsonAsync<JsonElement>($"/api/panel/sales/top-products?from={CloudApp.Today.AddDays(-365):yyyy-MM-dd}&to={CloudApp.Today:yyyy-MM-dd}");
+        year.EnumerateArray().ShouldHaveSingleItem().GetProperty("description").GetString().ShouldBe("Bistec de res");
+    }
+
+    [Fact]
     public async Task Sales_voids_and_shift_closings_show_in_the_summary_of_their_tenant_only()
     {
         var a = await app.OwnerAsync();

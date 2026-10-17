@@ -207,7 +207,7 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
 
       <TabBar nav={nav} />
       {/* Every panel member may use the assistant (the API's panel policy); on its own page the popup would be the same chat twice. */}
-      {!onAssistant && <TaliaPopup open={taliaOpen} onOpen={() => setTaliaOpen(true)} onClose={() => setTaliaOpen(false)} pending={pending} />}
+      {!onAssistant && <TaliaPopup open={taliaOpen} onOpen={() => setTaliaOpen(true)} onClose={() => setTaliaOpen(false)} pending={pending} onAsked={() => setPending(null)} />}
     </div>
   );
 }
@@ -265,7 +265,7 @@ function TabBar({ nav }: { nav: { to: string; label: string; icon: IconName }[] 
 }
 
 /** TK-300: Talia one tap away on every screen. The popup stays mounted while closed, so the conversation survives moving between screens. */
-function TaliaPopup({ open, onOpen, onClose, pending }: { open: boolean; onOpen: () => void; onClose: () => void; pending: PendingQuestion | null }) {
+function TaliaPopup({ open, onOpen, onClose, pending, onAsked }: { open: boolean; onOpen: () => void; onClose: () => void; pending: PendingQuestion | null; onAsked: () => void }) {
   const fab = useRef<HTMLButtonElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const wasOpen = useRef(false);
@@ -320,7 +320,7 @@ function TaliaPopup({ open, onOpen, onClose, pending }: { open: boolean; onOpen:
             </button>
           </header>
           {/* A link in an answer (TK-301): on the phone the sheet covers the screen, so it closes to show where it went. */}
-          <AssistantChat pending={pending} inputId="talia-question" inPopup onNavigate={() => window.matchMedia?.("(max-width: 760px)").matches && onClose()} />
+          <AssistantChat pending={pending} onAsked={onAsked} inputId="talia-question" inPopup onNavigate={() => window.matchMedia?.("(max-width: 760px)").matches && onClose()} />
         </div>
       </div>
     </>
