@@ -294,6 +294,13 @@ namespace Abastalia.Host.Cloud.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("BlockNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime?>("BlockedUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<DateTime?>("FirstPaidUtc")
                         .HasColumnType("datetime2");
 

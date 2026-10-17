@@ -60,7 +60,7 @@ public sealed class LicenseTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
         (await Pair()).EnsureSuccessStatusCode();
         (await (await Pair()).ErrorCode()).ShouldBe("Identity.RegisterLimitReached");
 
-        // Expired: 15 days of grace keep everything; after that, paid functions go off (selling never does).
+        // Expired: 15 days of grace keep everything; after that, paid functions go off (selling stops 30 days after expiry, TK-279).
         app.Clock.Advance(TimeSpan.FromDays(31));
         admin = app.Client(await app.SignInAsync("admin", AbastaliaApp.AdminPin, (await app.AdminAsync()).Device));
         (await Features()).GetProperty("status").GetString().ShouldBe("Grace");

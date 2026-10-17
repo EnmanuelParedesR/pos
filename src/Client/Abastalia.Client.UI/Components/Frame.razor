@@ -63,6 +63,10 @@
                 {
                     <span class="@(l.Warning is null ? "muted" : "esc-offline")" role="status">@note</span>
                 }
+                @if (_license is { ClockBehind: true })
+                {
+                    <span class="esc-offline" role="status">@Names.ClockBehind</span>
+                }
                 @* TK-243: this PC's scale and printer, when it has them; amber when one stops answering (the sale goes on). *@
                 @foreach (var (icon, device, state) in new[] { ("scale", "Balanza", Peripherals.ScaleState), ("printer", "Impresora", Peripherals.PrinterState) })
                 {
@@ -101,6 +105,31 @@
             </div>
         }
         <main style="flex:1 1 auto;display:flex;flex-direction:column;min-height:0">
+            @if (_license is { Status: "Blocked" } && !IsBackOffice && Route != "close-register")
+            {
+                @* TK-279: no new sale or shift; closing the open shift, the back office (reports, exports, backups) and installing the license go on. *@
+                <div class="esc-page" style="align-items:center;justify-content:center" role="alert">
+                    <section class="esc-card" style="max-width:560px;display:flex;flex-direction:column;gap:16px;padding:32px">
+                        <Icon Name="lock" Size="32" />
+                        <h1 style="margin:0">Su licencia está vencida</h1>
+                        <p style="margin:0">No se pueden hacer ventas nuevas ni abrir turnos hasta activar la licencia. Sus ventas, sus reportes y sus respaldos están a salvo.</p>
+                        <p style="margin:0"><b>Para seguir vendiendo:</b> pague su plan en el panel de Abastalia (Plan y facturación) o escríbale a Abastalia con el nombre y el RNC de su tienda.
+                            Si la tienda está conectada a la nube, la licencia nueva llega sola; si no, el dueño la carga en Configuración → Licencia.</p>
+                        <div class="esc-row" style="gap:8px;flex-wrap:wrap">
+                            @if (Session.Can("settings.manage"))
+                            {
+                                <Button Variant="Button.Variants.Primary" OnClick="@(() => Nav.NavigateTo("admin/settings?section=license"))">Activar licencia</Button>
+                            }
+                            @if (Session.Shift is not null)
+                            {
+                                <Button OnClick="@(() => Nav.NavigateTo("close-register"))">Cerrar el turno</Button>
+                            }
+                        </div>
+                    </section>
+                </div>
+            }
+            else
+            {
             @* A failure in one screen never freezes the register: the cart lives in a scoped service, so it survives. *@
             <ErrorBoundary @ref="_boundary">
                 <ChildContent>@Body</ChildContent>
@@ -111,6 +140,7 @@
                     </div>
                 </ErrorContent>
             </ErrorBoundary>
+            }
         </main>
     </div>
     </CascadingValue>
@@ -125,6 +155,7 @@
     private static readonly string[] Public = ["setup", "sign-in"];
 
     private bool IsBackOffice => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("admin", StringComparison.Ordinal);
+    private string Route => Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].TrimEnd('/');
     private bool _ready;
     private bool _help;
 
@@ -200,10 +231,16 @@
         if (a.RestartRequested && a.PendingVersion is not null && Cart.IsEmpty) _updater.CloseToUpdate();
     }
 
-    private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(() =>
+    private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(async () =>
     {
         _boundary?.Recover();
         Guard();
+        // TK-279: coming from the back office, the register learns at once whether the license is blocked (not at the next 15-second check).
+        if (_license is null && Session.IsOpen && !IsBackOffice)
+        {
+            _license = (await Api.PollAsync<LicenseFeatures>("/api/settings/features")).Value;
+            StateHasChanged();
+        }
     });
 
     private void Guard()

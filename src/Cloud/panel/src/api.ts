@@ -525,6 +525,9 @@ export interface PlatformBilling {
     pastDueSinceUtc: string | null;
     manualUntilUtc: string | null;
     manualNote: string | null;
+    /** TK-279: blocked from the console (its stores stop selling once they pull the license); the reason of the last block or unblock. */
+    blockedUtc?: string | null;
+    blockNote?: string | null;
     updatedUtc: string | null;
   };
   events: { id: string; type: string; occurredUtc: string; receivedUtc: string }[];

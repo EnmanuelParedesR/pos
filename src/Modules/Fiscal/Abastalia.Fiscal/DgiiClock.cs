@@ -9,8 +9,10 @@ namespace Abastalia.Fiscal;
 /// <c>Fiscal:MaxClockSkewSeconds</c> (120) either way nothing new is signed: sales go on and their e-CF wait unsigned until the clock is fixed
 /// (<see cref="FiscalDocuments.SignWaitingAsync"/>). Not measured yet (no DGII answer) never blocks.
 /// The other clock rule is R11 A18 (<c>Clock.Behind</c>): behind the newest audit record by 5 minutes nothing is saved at all.</summary>
-internal sealed class DgiiClock(IConfiguration config, TimeProvider clock)
+internal sealed class DgiiClock(IConfiguration config, TimeProvider clock) : Contracts.IDgiiTime
 {
+    public DateTime? LastDgiiUtc => _last is { } m ? (m.AtUtc - m.Skew).UtcDateTime : null;
+
     /// <summary>The worker asks the DGII (the public seed) when the last answer is older than this; every minute while the clock is off,
     /// so the warning clears soon after the owner fixes the time.</summary>
     public static readonly TimeSpan MeasureEvery = TimeSpan.FromMinutes(10), MeasureEveryWhileOff = TimeSpan.FromMinutes(1);

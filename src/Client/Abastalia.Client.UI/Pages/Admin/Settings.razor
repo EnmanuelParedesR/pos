@@ -433,18 +433,26 @@
                 <div class="esc-setting__about"><h2>Licencia</h2><p>Su plan y lo que incluye.</p></div>
                 <div class="esc-setting__body">
                     <dl class="esc-dl">
-                        <dt>Estado</dt><dd><span class="esc-pill @(f.Status == "Active" ? "esc-pill--success" : "esc-pill--warning")">@Names.LicenseStatus(f.Status)</span></dd>
-                        <dt>Plan</dt><dd>@(f.Plan ?? "Prueba")@(f.ExpiresUtc is { } v ? $" · vence el {Format.ShortDate(v)}" : "")</dd>
+                        <dt>Estado</dt><dd><span class="esc-pill @(f.Status switch { "Active" => "esc-pill--success", "Blocked" => "esc-pill--error", _ => "esc-pill--warning" })">@Names.LicenseStatus(f.Status)</span></dd>
+                        <dt>Plan</dt><dd>@(f.Plan ?? "Prueba")@(f.ExpiresUtc is { } v ? $" · {(v < DateTime.UtcNow ? "venció" : "vence")} el {Format.ShortDate(v)}" : "")</dd>
                         <dt>Cajas permitidas</dt><dd>@f.Registers</dd>
                         <dt>Funciones</dt><dd>@(f.Enabled.Length == 0 ? "Las básicas" : string.Join(", ", f.Enabled.Select(Names.Feature)))</dd>
                     </dl>
                     @if (Names.LicenseNote(f) is { } note)
                     {
-                        <Notice Kind="@(f.Warning is null ? Notice.Kinds.Info : Notice.Kinds.Warning)" Title="@note">
-                            @(f.Status == "Restricted"
-                                ? "La venta, el e-CF, los reportes y los respaldos siguen en la PC principal y una caja. Ningún dato se pierde."
-                                : "Durante la prueba todo funciona. Al terminar, Abastalia sigue vendiendo en modo Restringido: nunca se bloquea ni se pierden datos.")
+                        <Notice Kind="@(f.Status == "Blocked" ? Notice.Kinds.Error : f.Warning is null ? Notice.Kinds.Info : Notice.Kinds.Warning)" Title="@(note.Split(" · ")[0])">
+                            @(f.Status switch
+                            {
+                                "Blocked" => "No se pueden hacer ventas nuevas, abrir turnos ni emitir e-CF. Siguen cerrar el turno abierto, el envío a la DGII de lo ya emitido, los reportes, exportar y los respaldos. Ningún dato se pierde: active la licencia y todo vuelve al momento.",
+                                "Restricted" => "Por ahora la venta, el e-CF, los reportes y los respaldos siguen en la PC principal y una caja. Ningún dato se pierde.",
+                                "Grace" => $"Todo sigue igual durante 15 días. Después pasa a modo Restringido{(f.BlocksUtc is { } b ? $" y el {Format.ShortDate(b)} deja de vender" : "")}.",
+                                _ => "Durante la prueba todo funciona. Al terminar pasa a modo Restringido y, 30 días más tarde, deja de vender. Ningún dato se pierde.",
+                            })
                         </Notice>
+                    }
+                    @if (f.ClockBehind)
+                    {
+                        <Notice Kind="Notice.Kinds.Warning" Title="@Names.ClockBehind" />
                     }
                 </div>
             </section>

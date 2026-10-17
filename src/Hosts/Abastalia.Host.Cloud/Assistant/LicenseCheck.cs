@@ -6,7 +6,7 @@ namespace Abastalia.Host.Cloud.Assistant;
 
 /// <summary>R11 B-Low8: whether a business may use the paid extras (the AI invoice reader), decided here and not on the store's word. Allowed while the cloud subscription is paid (TK-249), with a
 /// license Abastalia signed (the JWS the heartbeat carries, verified with Abastalia's public key) until its expiry plus the 15-day grace, or within the trial:
-/// 14 days from the business's first sale as the cloud's replica has it (or no sale yet). A store that says it is Restricted is believed.
+/// 14 days from the business's first sale as the cloud's replica has it (or no sale yet). A store that says it is Restricted or Blocked is believed; a business blocked from the console gets none (TK-279).
 /// The signed license only counts for the business it names (<see cref="LicenseData.TenantId"/>, TK-268): another business's, or one naming none, does not.</summary>
 internal sealed class LicenseCheck
 {
@@ -33,10 +33,11 @@ internal sealed class LicenseCheck
     public async Task<bool> AllowsPaidExtrasAsync(CloudDbContext db, Guid tenantId, CancellationToken ct)
     {
         var beats = await db.NodeHeartbeats.AsNoTracking().Where(h => h.TenantId == tenantId).Select(h => new { h.SentUtc, h.LicenseStatus, h.LicenseJws }).ToListAsync(ct);
-        if (beats.MaxBy(b => b.SentUtc)?.LicenseStatus == "Restricted") return false;
+        if (beats.MaxBy(b => b.SentUtc)?.LicenseStatus is "Restricted" or "Blocked") return false;
         var now = _clock.GetUtcNow().UtcDateTime;
         // TK-249: what the business paid through the cloud (Paddle or staff override) counts as a license the cloud itself signed.
-        var paid = await db.TenantSubscriptions.AsNoTracking().Where(s => s.TenantId == tenantId).Select(s => new { s.PaidThroughUtc, s.ManualUntilUtc }).FirstOrDefaultAsync(ct);
+        var paid = await db.TenantSubscriptions.AsNoTracking().Where(s => s.TenantId == tenantId).Select(s => new { s.PaidThroughUtc, s.ManualUntilUtc, s.BlockedUtc }).FirstOrDefaultAsync(ct);
+        if (paid?.BlockedUtc is not null) return false; // TK-279: blocked from the console
         if (new[] { paid?.PaidThroughUtc, paid?.ManualUntilUtc }.Max() is { } until && now <= until + Grace) return true;
         if (beats.Any(b => b.LicenseJws is { } jws && ExpiresUtc(jws, tenantId) is { } expires && now <= expires + Grace)) return true;
         var firstSale = await db.Sales.Where(s => s.TenantId == tenantId).MinAsync(s => (DateTime?)s.SoldUtc, ct);

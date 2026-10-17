@@ -51,6 +51,7 @@ public static class FiscalModule
             signer == "Certificate" ? sp.GetRequiredService<CertificateEcfSigner>() : new SimulatedEcfSigner(), sp.GetRequiredService<CertificateEcfSigner>()));
         // TK-156: every DGII answer measures this PC's clock against the DGII's (DgiiClock); the same honest User-Agent as TK-252.
         services.AddSingleton<DgiiClock>();
+        services.AddSingleton<IDgiiTime>(sp => sp.GetRequiredService<DgiiClock>()); // TK-279: the license clock
         services.AddTransient<DgiiClockHandler>();
         services.AddHttpClient(DgiiClient.HttpClientName, c =>
             {

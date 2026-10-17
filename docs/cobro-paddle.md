@@ -103,13 +103,14 @@ La prueba de Abastalia **no** es de Paddle: la tienda empieza sus 14 días con l
 - **Impuestos:** los calcula y paga Paddle; el cliente recibe la factura de Paddle. Elegir en cada precio `tax_mode` (`account_setting` por defecto; `internal` = precio con impuesto incluido; `external` = impuesto aparte).
 - **Reembolsos:** desde el panel de Paddle (o `POST /adjustments` con `action: refund`); en vivo, Paddle los aprueba antes de devolver ([ajustes](https://developer.paddle.com/api-reference/adjustments/overview)). Abastalia no reembolsa desde su panel. Un reembolso no quita días pagados por sí solo: si corresponde, cancelar la suscripción en Paddle (la nube la verá como `canceled`).
 
-## Pagos atrasados: pendiente → gracia → restringido (nunca solo lectura)
+## Pagos atrasados: pendiente → gracia → restringido → bloqueado (TK-279)
 
 1. Paddle no logra cobrar la renovación: la suscripción pasa a `past_due` y Paddle **reintenta** (por defecto hasta 7 veces en 30 días, [cambio de 2025](https://developer.paddle.com/changelog/2025/default-dunning-payment-recovery); otra página habla de una semana, [renovación y cobro](https://developer.paddle.com/build/lifecycle/subscription-renewal-dunning): revisarlo en la cuenta).
 2. En la nube: estado **Pago pendiente**; el plan y sus cuotas **se mantienen** mientras Paddle reintenta. "Pagado hasta" **no** avanza (solo avanza con un pago o con la suscripción `active`).
-3. En la tienda: su licencia vence en "pagado hasta" + 3 días (`Billing:License:MarginDays`), luego **15 días de gracia** con todo encendido y después **Restringido**: funciones pagas apagadas y una caja además de la PC principal, pero **vender, facturar e-CF, exportar y respaldar nunca se detienen** (TK-220).
+3. En la tienda: su licencia vence en "pagado hasta" + 3 días (`Billing:License:MarginDays`), luego **15 días de gracia** con todo encendido, después **Restringido** (funciones pagas apagadas, una caja además de la PC principal; todavía vende) y, a los `Billing:License:BlockAfterDays` (30) del vencimiento, **Bloqueada**: no vende, no abre turnos ni emite e-CF nuevos, pero cierra el turno abierto, envía a la DGII lo ya emitido, exporta, reporta y respalda (`docs/licencias.md`). Esto **cambia** la regla de TK-220 ("Restringido vende para siempre"). Quedarse sin internet no sirve para seguir gratis: la licencia firmada vence sola y atrasar el reloj de la PC no la estira.
 4. Si un reintento cobra: `transaction.completed` y `subscription.updated` (activa) → la nube extiende "pagado hasta" y la tienda se levanta en su próxima consulta.
-5. Si todos fallan: Paddle cancela (`subscription.canceled`) → el negocio vuelve al plan `Default` sin adicionales en la nube, salvo que el personal tenga un acuerdo manual vigente.
+5. Si todos fallan: Paddle cancela (`subscription.canceled`) → el negocio vuelve al plan `Default` sin adicionales en la nube, salvo que el personal tenga un acuerdo manual vigente. Sin tiempo pagado la nube deja de entregar licencias, así que la tienda llega sola a Bloqueada por vencimiento.
+6. Al pagar (o con una licencia fuera de línea), la licencia nueva la desbloquea al momento, con todas sus ventas.
 
 ## Qué hace la nube
 
@@ -142,6 +143,8 @@ La página pública **/precios** lleva a "Crear su cuenta y elegir plan" (`/app/
 
 En el cliente: tarjeta **Suscripción** con estado, ids de Paddle, pagado hasta, próximo cobro, pendiente desde y los últimos eventos; y el **acuerdo manual**: "pagado hasta" con motivo obligatorio (ofertas, pagos por transferencia). Cada cambio queda en `PlatformAudit` como toda llamada de la plataforma. El plan y los adicionales del acuerdo se ponen en "Plan y consumo" (TK-248).
 
+**Bloquear negocio (TK-279):** en la misma tarjeta, con motivo obligatorio (`PUT /api/platform/tenants/{id}/block`, `{ blocked, reason }`). Todas sus tiendas reciben en su próxima consulta (hasta 4 horas) una licencia con `blocked: true` y quedan Bloqueadas. **Desbloquear negocio** (con motivo) vuelve a la licencia de la suscripción; un pago en Paddle no quita un bloqueo puesto a mano. Sin tiempo pagado, ponga también un acuerdo al desbloquear: si no, la tienda sigue bloqueada. La IA de facturas se niega a un negocio bloqueado.
+
 ## Recomendaciones: "Recomiende Abastalia" (TK-255)
 
 **Regla del dueño:** recomendar da un **descuento en el próximo pago de quien recomienda**, y solo cuando el negocio recomendado **paga** un plan que califica (crear la cuenta no da nada). Apagado mientras `Billing:Referrals:Amount` esté vacío o el cobro con Paddle esté apagado.
@@ -167,7 +170,7 @@ Hasta ahora las licencias se firman fuera de línea con la llave del dueño (`do
 - Una llave **EC P-256 en Azure Key Vault, no exportable**: la API firma con ella por Key Vault ("Key Vault Crypto User", ya asignado en `deploy/azure/main.bicep`) y la parte privada nunca sale de la bóveda.
 - La tienda acepta licencias firmadas por **cualquiera de las dos** llaves públicas: la de siempre y la de la nube (`AbastaliaCloudPublicKey` en `src/Modules/Settings/Abastalia.Settings/License.cs`, vacía hasta crear la llave).
 - La tienda conectada pide su licencia por el canal del nodo (`POST /api/nodes/license`, firmado con la llave de la caja) en cada latido (al iniciar y cada 4 horas) y la **instala sola** si es válida y **más nueva** (fecha de emisión) que la instalada. La fecha de emisión es la del último cambio de la suscripción, así que la misma licencia no se reinstala en cada consulta.
-- Contenido: tienda, nombre del plan, funciones, cajas y cajeros de `Billing:Plans:<Plan>` (si un plan no lo define, toma lo de `Default`), más una caja por cada `ExtraRegister`, los cajeros de cada adicional (TK-277) y la función del adicional `SupplierInvoiceReading`. Solo la reciben las tiendas que cubre el plan más las `ExtraStore` (las más antiguas primero; TK-258). **Vence** en "pagado hasta" (Paddle o acuerdo manual) + 3 días; luego la gracia de 15 días de la tienda.
+- Contenido: tienda, nombre del plan, funciones, cajas y cajeros de `Billing:Plans:<Plan>` (si un plan no lo define, toma lo de `Default`), más una caja por cada `ExtraRegister`, los cajeros de cada adicional (TK-277) y la función del adicional `SupplierInvoiceReading`. Solo la reciben las tiendas que cubre el plan más las `ExtraStore` (las más antiguas primero; TK-258). **Vence** en "pagado hasta" (Paddle o acuerdo manual) + 3 días; luego la gracia de 15 días de la tienda, Restringido y, a los 30 días del vencimiento, Bloqueada (TK-279).
 - Sin tiempo pagado la nube no entrega licencia (una vencida reemplazaría una válida emitida fuera de línea).
 - **Emisión fuera de línea:** sigue igual (tiendas sin internet, acuerdos especiales). Gana la licencia emitida más tarde, la firme quien la firme.
 
@@ -197,6 +200,7 @@ Luego desplegar con `licenseKeyName = abastalia-license` (pone `Billing__License
 | `Billing:Paddle:SyncInBackground` | `false` solo en pruebas (sincronizan ellas mismas) |
 | `Billing:License:KeyId` | URI de la llave de licencias en Key Vault; vacío = la nube no emite licencias |
 | `Billing:License:MarginDays` | Días de margen tras "pagado hasta" (3) |
+| `Billing:License:BlockAfterDays` | TK-279: días tras el vencimiento hasta Bloqueada; va firmado en la licencia (`blockAfterDays`). Vacío = 30 (lo que usa la tienda) |
 | `Billing:Plans:<Plan>:Name` / `:Registers` / `:Features` | Lo que la licencia dice de cada plan |
 | `Billing:Referrals:QualifyingPlans` | TK-255: códigos de plan o `pri_…` cuyo primer pago da la recompensa (además de `custom_data.abastalia.referral: true`). D19: `Essential`, `Default`, `MultiRegister` |
 | `Billing:Referrals:DiscountType` / `:Amount` / `:Currency` | `percentage` (`Amount` = por ciento) o `flat` (`Amount` en la unidad mínima, `500` = US$5.00, con `Currency`). `Amount` vacío = recomendaciones apagadas. D19: `flat`, `1200`, `USD` |

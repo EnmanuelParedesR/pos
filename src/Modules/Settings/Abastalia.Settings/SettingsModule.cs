@@ -41,6 +41,7 @@ public static class SettingsModule
         services.AddSingleton<IFeatureService>(sp => sp.GetRequiredService<LicenseService>());
         services.AddScoped<IStoreLicense, StoreLicense>();
         services.AddHostedService<NightlyBackup>();
+        services.AddHostedService<LicenseClockKeeper>(); // TK-279
         return services;
     }
 }
@@ -87,6 +88,9 @@ internal sealed class Business
     public string? UpdateNotesUrl { get; set; }
     /// <summary>R11 A16: card and transfer payments at the register need their authorization or transfer number.</summary>
     public bool RequirePaymentReference { get; set; } = true;
+    /// <summary>TK-279: the latest time the license clock saw and its HMAC with a server secret outside the database (<see cref="LicenseClock"/>).</summary>
+    public DateTime? ClockSeenUtc { get; set; }
+    public string? ClockSeenSeal { get; set; }
 
     public BusinessProfile ToProfile() => new(Name, Rnc, Address, Phone, ReceiptFooter, DiscountCapPercent, RequirePaymentReference);
 }
@@ -115,6 +119,7 @@ internal sealed class BusinessConfiguration : IEntityTypeConfiguration<Business>
         b.Property(n => n.UpdateAvailableVersion).HasMaxLength(20);
         b.Property(n => n.UpdateAllowedVersion).HasMaxLength(20);
         b.Property(n => n.UpdateNotesUrl).HasMaxLength(500);
+        b.Property(n => n.ClockSeenSeal).HasMaxLength(64);
         // Literal values: changing a property default later must not overwrite the owner's settings through a migration.
         b.Property(n => n.RequirePaymentReference).HasDefaultValue(true);
         b.HasData(new Business { Id = 1, Name = "Mi tienda", DiscountCapPercent = 10, RequirePaymentReference = true });

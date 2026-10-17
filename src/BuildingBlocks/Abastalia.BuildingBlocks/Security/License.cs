@@ -14,10 +14,13 @@ public enum Limit { Registers, Cashiers }
 
 /// <summary>Trial: no license installed, 14 days from the first sale with everything on (TK-196). Grace: expired less than 15 days ago
 /// (offline stores keep everything). Restricted: the trial ended or the license expired longer ago: paid functions off and one register
-/// besides the main PC, but selling, e-CF, exports and backups never stop and no data is lost (TK-220).</summary>
-public enum LicenseStatus { Trial, Active, Grace, Restricted }
+/// besides the main PC (TK-220). Blocked (TK-279): the license expired more than its <see cref="LicenseData.BlockAfterDays"/> ago (30 by default,
+/// also after the trial) or Abastalia blocked the business: no new sale, shift or e-CF; closing a shift, sending the e-CF already issued,
+/// reports, exports, backups and installing a license go on, and no data is lost.</summary>
+public enum LicenseStatus { Trial, Active, Grace, Restricted, Blocked }
 
-/// <summary>What the store's license allows (arquitectura-v1-vsa §9). Selling, fiscal and backup code must never ask it (an architecture test checks).</summary>
+/// <summary>What the store's license allows (arquitectura-v1-vsa §9). Selling, fiscal and backup code must never ask it (an architecture test checks);
+/// TK-279: their endpoints only carry the Blocked gate (<c>RequireUsableLicense</c>).</summary>
 public interface IFeatureService
 {
     LicenseStatus Status { get; }
@@ -33,8 +36,10 @@ public interface IFeatureService
 /// The store verifies it; the owner's offline script and, since TK-249, the cloud sign it.</summary>
 /// <param name="TenantId">R11 B-Low8 (TK-268): the cloud business it was issued for. The cloud only lets it unlock the paid extras of that business;
 /// the store itself ignores it (it may not be connected to the cloud).</param>
+/// <param name="Blocked">TK-279: Abastalia blocked the business (platform console): the store is Blocked while this is its installed license.</param>
+/// <param name="BlockAfterDays">TK-279: days after <paramref name="ExpiresUtc"/> until Blocked; null = 30. Only a signed value sets it, never a local setting.</param>
 public sealed record LicenseData(string Store, string Plan, IReadOnlyList<string> Features, IReadOnlyDictionary<string, int> Limits, DateTime IssuedUtc, DateTime ExpiresUtc,
-    Guid? TenantId = null);
+    Guid? TenantId = null, bool Blocked = false, int? BlockAfterDays = null);
 
 /// <summary>Compact JWS with ES256 (ECDSA P-256, SHA-256, signature r‖s). Only the vendor's private keys sign; the store has only the public keys,
 /// so there is no license generator in the client (the old system shipped one).</summary>
@@ -43,6 +48,10 @@ public static class Jws
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web);
 
     public static readonly Error Invalid = Error.Validation("License.Invalid", "La licencia no es válida o no la firmó Abastalia.");
+
+    /// <summary>TK-279: what a Blocked store answers to a new sale, shift or e-CF.</summary>
+    public static readonly Error Blocked = Error.Forbidden("License.Blocked",
+        "Su licencia está vencida: no se pueden hacer ventas nuevas. Pague su plan o escríbale a Abastalia y active la licencia en Configuración → Licencia. Sus datos, reportes y respaldos siguen disponibles.");
 
     public static string Sign(LicenseData data, ECDsa privateKey)
     {

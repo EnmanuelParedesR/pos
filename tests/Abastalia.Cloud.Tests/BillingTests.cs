@@ -288,9 +288,9 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
         owner = await own.SignInAsync(owner.Email);
         var billing = await BillingAsync(owner);
         (billing.GetProperty("status").GetString(), billing.GetProperty("plan").GetString()).ShouldBe(("PastDue", "MultiRegister"));
-        Jws.Verify((await LicenseAsync())!, own.LicenseKey).Value.ExpiresUtc.ShouldBe(PeriodEnd.AddDays(3)); // then the store's grace, then Restricted
+        Jws.Verify((await LicenseAsync())!, own.LicenseKey).Value.ExpiresUtc.ShouldBe(PeriodEnd.AddDays(3)); // then the store's grace, Restricted and Blocked
 
-        // Past the margin there is no license to hand out; the store's own grace and Restricted follow (never read-only).
+        // Past the margin there is no license to hand out; the store's own grace, Restricted and then Blocked follow (TK-279).
         own.Clock.Advance(TimeSpan.FromDays(3));
         (await LicenseAsync()).ShouldBeNull();
 
@@ -408,6 +408,37 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
         // The override pays for the store's license too.
         var node = await app.StoreWithNodeAsync(owner);
         (await (await node.Client.PostAsync("/api/nodes/license", null)).Json()).GetProperty("license").GetString().ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task TK279_staff_block_a_business_with_a_reason_and_its_stores_get_a_blocked_license_until_it_is_unblocked()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        async Task<LicenseData?> LicenseAsync() =>
+            (await (await node.Client.PostAsync("/api/nodes/license", null)).Json()).GetProperty("license").GetString() is { } jws ? Jws.Verify(jws, app.LicenseKey).Value : null;
+        (await LicenseAsync()).ShouldBeNull(); // nothing paid
+        var url = $"/api/platform/tenants/{owner.TenantId}/block";
+        (await owner.Client.PutAsJsonAsync(url, new { blocked = true, reason = "x" })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+
+        var staff = await app.StaffAsync();
+        (await (await staff.Client.PutAsJsonAsync(url, new { blocked = true })).ErrorCode()).ShouldBe("Billing.ReasonRequired");
+        (await staff.Client.PutAsJsonAsync(url, new { blocked = true, reason = "Sin pago desde agosto" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var blocked = await LicenseAsync(); // even without paid time: the block has to reach the store
+        (blocked!.Blocked, blocked.TenantId).ShouldBe((true, owner.TenantId));
+        var view = (await staff.Client.GetFromJsonAsync<JsonElement>($"/api/platform/tenants/{owner.TenantId}/billing")).GetProperty("subscription");
+        (view.GetProperty("blockedUtc").ValueKind, view.GetProperty("blockNote").GetString()).ShouldBe((JsonValueKind.String, "Sin pago desde agosto"));
+        (await app.InDbAsync(db => db.PlatformAudit.AnyAsync(a => a.TenantId == owner.TenantId && a.Method == "PUT" && a.Path.EndsWith("/block")))).ShouldBeTrue();
+
+        // Paid outside Paddle and unblocked: the next license is newer (the store installs it) and no longer blocked.
+        app.Clock.Advance(TimeSpan.FromSeconds(2));
+        (await staff.Client.PutAsJsonAsync($"/api/platform/tenants/{owner.TenantId}/billing", new { manualUntilUtc = PeriodEnd, note = "Transferencia" })).EnsureSuccessStatusCode();
+        (await LicenseAsync())!.Blocked.ShouldBeTrue(); // a payment alone does not lift a block from the console
+        app.Clock.Advance(TimeSpan.FromSeconds(2));
+        (await staff.Client.PutAsJsonAsync(url, new { blocked = false, reason = "Pagó por transferencia" })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var unblocked = await LicenseAsync();
+        (unblocked!.Blocked, unblocked.ExpiresUtc).ShouldBe((false, PeriodEnd.AddDays(3)));
+        unblocked.IssuedUtc.ShouldBeGreaterThan(blocked.IssuedUtc);
     }
 }
 

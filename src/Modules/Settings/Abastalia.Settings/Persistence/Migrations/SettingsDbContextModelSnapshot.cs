@@ -63,6 +63,13 @@ namespace Abastalia.Settings.Persistence.Migrations
                     b.Property<TimeSpan?>("BackupTime")
                         .HasColumnType("time");
 
+                    b.Property<string>("ClockSeenSeal")
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<DateTime?>("ClockSeenUtc")
+                        .HasColumnType("datetime2");
+
                     b.Property<decimal>("DiscountCapPercent")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");

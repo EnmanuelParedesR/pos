@@ -39,7 +39,7 @@ public sealed class TenantSubscription
     public SubscriptionStatus Status { get; set; }
     public BillingInterval? Interval { get; set; }
     /// <summary>The end of the last period Paddle was paid for (or of the trial). It never moves while the payment is overdue, so the store's
-    /// license runs out at the end of what was paid, then its 15 days of grace, then Restricted (never read-only).</summary>
+    /// license runs out at the end of what was paid, then its 15 days of grace, then Restricted, then Blocked (TK-279).</summary>
     public DateTime? PaidThroughUtc { get; set; }
     public DateTime? NextBilledUtc { get; set; }
     public DateTime? PastDueSinceUtc { get; set; }
@@ -56,6 +56,10 @@ public sealed class TenantSubscription
     public string? ReferredByCode { get; set; }
     /// <summary>TK-255: its first paid transaction; only that one can earn its referrer a reward.</summary>
     public DateTime? FirstPaidUtc { get; set; }
+    /// <summary>TK-279: Abastalia staff blocked the business (console): its stores get a license that says so. A payment does not lift it; unblocking does.</summary>
+    public DateTime? BlockedUtc { get; set; }
+    /// <summary>TK-279: the staff's reason for the last block or unblock (the call itself is in PlatformAudit).</summary>
+    public string? BlockNote { get; set; }
 
     /// <summary>Until when the business has paid: the later of Paddle and the staff override.</summary>
     public DateTime? PaidUntilUtc => new[] { PaidThroughUtc, ManualUntilUtc }.Max();
@@ -92,6 +96,7 @@ internal static class BillingModel
             e.Property(s => s.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(s => s.Interval).HasConversion<string>().HasMaxLength(20);
             e.Property(s => s.ManualNote).HasMaxLength(500);
+            e.Property(s => s.BlockNote).HasMaxLength(500);
             e.HasIndex(s => s.PaddleSubscriptionId);
             e.Property(s => s.ReferralCode).HasMaxLength(20);
             e.Property(s => s.ReferredByCode).HasMaxLength(20);

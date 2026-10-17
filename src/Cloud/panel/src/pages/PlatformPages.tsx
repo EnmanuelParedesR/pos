@@ -53,8 +53,8 @@ export function licenseLabel(status: string | null | undefined, endsUtc: string 
     const days = Math.ceil((Date.parse(endsUtc) - now) / 86_400_000);
     return `Prueba · quedan ${days} ${days === 1 ? "día" : "días"}`;
   }
-  const names: Record<string, string> = { Active: "Activa", Grace: "En gracia", Restricted: "Restringida" };
-  return status === "Restricted" || !endsUtc ? (names[status] ?? status) : `${names[status] ?? status} · vence ${dayName(endsUtc.slice(0, 10))}`;
+  const names: Record<string, string> = { Active: "Activa", Grace: "En gracia", Restricted: "Restringida", Blocked: "Bloqueada" };
+  return status === "Restricted" || status === "Blocked" || !endsUtc ? (names[status] ?? status) : `${names[status] ?? status} · vence ${dayName(endsUtc.slice(0, 10))}`;
 }
 
 /** TK-238: the DGII environment the store sends to now (heartbeat); "Dgii" and "Relay" come from older versions. */

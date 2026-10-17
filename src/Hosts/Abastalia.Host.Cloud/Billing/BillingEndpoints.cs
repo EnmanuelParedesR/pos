@@ -45,9 +45,13 @@ public sealed record NodeLicenseResponse(string? License, int? TrialDays = null)
 /// <param name="ManualUntilUtc">Paid through this date whatever Paddle says; null removes the override.</param>
 public sealed record BillingOverrideRequest(DateTime? ManualUntilUtc, string? Note);
 
+/// <summary>TK-279: block (or unblock) the business; the reason is required either way.</summary>
+public sealed record BlockRequest(bool Blocked, string? Reason);
+
 public sealed record PlatformBillingResponse(TenantSubscriptionView Subscription, IReadOnlyList<BillingEventView> Events);
 public sealed record TenantSubscriptionView(SubscriptionStatus Status, BillingInterval? Interval, string? PaddleSubscriptionId, string? PaddleCustomerId,
-    DateTime? PaidThroughUtc, DateTime? NextBilledUtc, DateTime? PastDueSinceUtc, DateTime? ManualUntilUtc, string? ManualNote, DateTime? UpdatedUtc);
+    DateTime? PaidThroughUtc, DateTime? NextBilledUtc, DateTime? PastDueSinceUtc, DateTime? ManualUntilUtc, string? ManualNote, DateTime? UpdatedUtc,
+    DateTime? BlockedUtc = null, string? BlockNote = null);
 public sealed record BillingEventView(string Id, string Type, DateTime OccurredUtc, DateTime ReceivedUtc);
 
 internal static class BillingEndpoints
@@ -165,7 +169,22 @@ internal static class BillingEndpoints
             return Results.Ok(new PlatformBillingResponse(s is null
                 ? new TenantSubscriptionView(SubscriptionStatus.None, null, null, null, null, null, null, null, null, null)
                 : new TenantSubscriptionView(s.Status, s.Interval, s.PaddleSubscriptionId, s.PaddleCustomerId, s.PaidThroughUtc, s.NextBilledUtc, s.PastDueSinceUtc,
-                    s.ManualUntilUtc, s.ManualNote, s.UpdatedUtc), events));
+                    s.ManualUntilUtc, s.ManualNote, s.UpdatedUtc, s.BlockedUtc, s.BlockNote), events));
+        });
+
+        // TK-279: the next license the stores pull says Blocked (or no longer does). UpdatedUtc moves so the stores install it as newer.
+        platform.MapPut("/tenants/{tenantId:guid}/block", async (Guid tenantId, BlockRequest r, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
+        {
+            if (!await db.Tenants.AnyAsync(t => t.Id == tenantId, ct)) return EndpointExtensions.Problem(Error.NotFound("Platform.TenantNotFound", "No encontramos ese cliente."));
+            var reason = r.Reason?.Trim() ?? "";
+            if (reason.Length is 0 or > 500)
+                return EndpointExtensions.Problem(Error.Validation("Billing.ReasonRequired", "Escriba por qué, en 500 letras o menos."));
+            var s = await BillingModel.SubscriptionAsync(db, tenantId, ct);
+            var now = clock.GetUtcNow().UtcDateTime;
+            if (r.Blocked != (s.BlockedUtc is not null)) (s.BlockedUtc, s.UpdatedUtc) = (r.Blocked ? now : null, now);
+            s.BlockNote = reason;
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
         });
 
         platform.MapPut("/tenants/{tenantId:guid}/billing", async (Guid tenantId, BillingOverrideRequest r, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>

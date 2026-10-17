@@ -67,7 +67,7 @@ public sealed class CashierSeatsTests(AbastaliaApp app) : IClassFixture<Abastali
         (await app.SignInAsync("c3", "4321", (await app.AdminAsync()).Device)).Token.ShouldNotBeNullOrEmpty();
 
         // Restricted (the license ran out long ago): the smallest plan's 2.
-        await InstallAsync(admin, 50, app.Clock.GetUtcNow().UtcDateTime.AddDays(-30));
+        await InstallAsync(admin, 50, app.Clock.GetUtcNow().UtcDateTime.AddDays(-20)); // past the 15 days of grace, before Blocked (TK-279)
         admin = app.Client(await app.SignInAsync("admin", AbastaliaApp.AdminPin, (await app.AdminAsync()).Device));
         var restricted = await CreateAsync(admin, "c6", Roles.Cashier);
         (await restricted.ErrorCode()).ShouldBe("Identity.CashierLimitReached");

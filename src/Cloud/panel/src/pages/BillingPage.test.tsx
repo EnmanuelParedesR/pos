@@ -112,3 +112,34 @@ it("TK-249: staff set a paid-through deal with its reason", async () => {
   expect(url).toMatch(/\/api\/platform\/tenants\/t1\/billing$/);
   expect(JSON.parse(String(init!.body))).toEqual({ manualUntilUtc: "2026-12-31T23:59:59Z", note: "Feria: un mes gratis" });
 });
+
+it("TK-279: staff block a business with its reason, and unblock it", async () => {
+  let blocked: string | null = null;
+  const view = (): PlatformBilling => ({
+    subscription: {
+      status: "PastDue", interval: null, paddleSubscriptionId: null, paddleCustomerId: null, paidThroughUtc: null, nextBilledUtc: null,
+      pastDueSinceUtc: null, manualUntilUtc: null, manualNote: null, updatedUtc: null, blockedUtc: blocked, blockNote: blocked ? "Sin pago" : null,
+    },
+    events: [],
+  });
+  const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+    if (init?.method !== "PUT") return json(200, view());
+    blocked = JSON.parse(String(init.body)).blocked ? "2026-10-16T00:00:00Z" : null;
+    return json(204);
+  });
+  vi.stubGlobal("fetch", fetch);
+  render(<PlatformBillingCard tenantId="t1" />);
+
+  const button = await screen.findByRole("button", { name: "Bloquear negocio" });
+  expect(button.hasAttribute("disabled")).toBe(true); // the reason is required
+  fireEvent.change(screen.getByLabelText("Motivo del bloqueo o desbloqueo"), { target: { value: "Sin pago" } });
+  fireEvent.click(button);
+  await screen.findByText(/Bloqueado desde el/);
+  const [url, init] = fetch.mock.calls.find(([, i]) => i?.method === "PUT")!;
+  expect(url).toMatch(/\/api\/platform\/tenants\/t1\/block$/);
+  expect(JSON.parse(String(init!.body))).toEqual({ blocked: true, reason: "Sin pago" });
+
+  fireEvent.change(screen.getByLabelText("Motivo del bloqueo o desbloqueo"), { target: { value: "Pagó por transferencia" } });
+  fireEvent.click(screen.getByRole("button", { name: "Desbloquear negocio" }));
+  await screen.findByRole("button", { name: "Bloquear negocio" });
+});

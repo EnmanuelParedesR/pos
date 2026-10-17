@@ -14,6 +14,8 @@ Una licencia es un **JWS compacto** (`encabezado.cuerpo.firma`, base64url) firma
 | `limits` | Límites por nombre: `Registers` (cajas además de la PC principal) y, desde TK-277, `Cashiers` (cajeros habilitados: usuarios activos que pueden vender o abrir turno; el Administrador no cuenta). Sin `Cashiers`, la tienda no limita los cajeros |
 | `issuedUtc`, `expiresUtc` | Emisión y vencimiento, en UTC |
 | `tenantId` | Opcional. Id del negocio en la nube (consola de la plataforma). La tienda no lo mira; la nube solo deja que la licencia active el lector de facturas con IA de ese negocio (R11 B-Low8, TK-268). Sin él, la licencia no cuenta en la nube (el negocio usa su suscripción o la prueba) |
+| `blocked` | Opcional (TK-279). `true` = Abastalia bloqueó el negocio desde la consola: la tienda queda **Bloqueada** mientras sea su licencia instalada |
+| `blockAfterDays` | Opcional (TK-279). Días después de `expiresUtc` hasta **Bloqueada**; sin él, 30. Solo lo cambia una licencia firmada, nunca un ajuste local |
 
 Ejemplo de cuerpo:
 
@@ -30,7 +32,16 @@ La tienda solo tiene **llaves públicas** (dentro de `LicenseService`): la del d
 - **Prueba:** sin licencia, 14 días desde la primera venta, todo encendido. 30 días si la nube dice que el negocio llegó recomendado (TK-276; la tienda lo guarda en `settings.Business.TrialDays`).
 - **Activa:** licencia válida y sin vencer.
 - **Gracia:** venció hace menos de 15 días; todo sigue igual (tiendas sin internet).
-- **Restringido:** terminó la prueba o la gracia: funciones pagas apagadas y una caja además de la PC principal. Vender, e-CF, exportar y respaldar **nunca** se detienen y no se pierden datos.
+- **Restringido:** terminó la prueba o la gracia: funciones pagas apagadas y una caja además de la PC principal (2 cajeros). Todavía se vende y se factura; el aviso dice el día en que se detiene la venta.
+- **Bloqueada (TK-279, cambia la regla de TK-220 "Restringido vende para siempre"):** 30 días (o `blockAfterDays`) después del vencimiento, 30 días después del fin de la prueba, o al instante con una licencia `blocked` de la nube. **No** se puede: vender (`POST /api/sales`), crear encargos, abrir turnos, anular o devolver (la nota de crédito es un e-CF nuevo). Responde **403 `License.Blocked`** "Su licencia está vencida…". **Sí** se puede (obligaciones fiscales y los datos son del cliente): entrar, cerrar el turno abierto, enviar a la DGII los e-CF ya emitidos o en cola (y reemplazar un rechazado), ver el historial y los reportes, exportar el 606/607/608, respaldar y restaurar, e instalar una licencia (Configuración → Licencia o la que trae sola la nube). La caja muestra a pantalla completa "Su licencia está vencida" con cómo pagar y los botones **Activar licencia** (dueño) y **Cerrar el turno**; el dueño ve la alerta en el Resumen y en Configuración → Licencia. Ningún dato se pierde y una licencia nueva lo levanta al momento.
+
+Línea de tiempo con una licencia que vence el día 0: días 0–15 Gracia, 15–30 Restringido, desde el 30 Bloqueada. Con la prueba (14 días, o 30 si llegó recomendado): Prueba, luego Restringido 30 días, luego Bloqueada. Sin ninguna venta la prueba no empieza, así que nunca se bloquea una tienda que no ha vendido.
+
+### La hora de la PC (TK-279)
+
+La licencia firmada vence sola, aunque la tienda nunca se conecte. Para que atrasar el reloj de Windows no la estire, la licencia corre con su propio reloj (`LicenseClock`): guarda la hora **más tardía** que la tienda vio y nunca va hacia atrás. Esa hora sale de: el reloj de la PC en cada consulta, el último registro de auditoría (encadenado, R11 A18), la fecha de emisión de la licencia (firmada) y la hora de la DGII en su última respuesta (encabezado HTTP `Date`, TK-156). Se guarda cada 10 minutos y al cerrar en `settings.Business.ClockSeenUtc` con un HMAC (`ClockSeenSeal`) hecho con un secreto del servidor que no está en la base de datos (carpeta de llaves, como el PIN pepper de R11 A3): cambiar la fecha a mano en la base de datos no sirve (se ignora y quedan los otros pisos).
+
+Si la PC está atrasada más de 5 minutos respecto de esa hora, la licencia cuenta desde ella y sigue avanzando con el contador de tiempo encendido de la máquina; la caja y el dueño ven "La hora de la PC está atrasada". Atajo: el tiempo con la PC apagada y el reloj atrasado no se cuenta hasta que vuelva la hora correcta (o hable con la DGII). Si una PC tuvo la hora **adelantada** mucho tiempo y luego se corrige, la licencia cuenta desde la hora adelantada: el arreglo es una licencia nueva con más días.
 
 ## Emitir una licencia (personal de Abastalia)
 
@@ -51,3 +62,5 @@ En la app: **Configuración → Licencia**, elegir el archivo `.jws` o pegar el 
 ## Licencias de la nube (TK-249)
 
 Con el cobro en línea (`docs/cobro-paddle.md`), la nube firma la licencia de cada tienda con su propia llave de Key Vault según la suscripción (plan, adicionales y "pagado hasta" + 3 días). La tienda conectada la pide por el canal del nodo en cada latido y la instala sola si es más nueva que la instalada. La emisión fuera de línea de arriba sigue igual: gana la licencia emitida más tarde.
+
+**Bloquear desde la consola (TK-279):** cliente → tarjeta **Suscripción** → **Bloquear negocio** con motivo obligatorio (`PUT /api/platform/tenants/{id}/block`, `{ blocked, reason }`, auditado en `PlatformAudit`; el motivo queda en `TenantSubscriptions.BlockNote`). Desde ahí la nube entrega a **todas** las tiendas del negocio, aunque no tenga tiempo pagado, una licencia con `blocked: true` emitida en ese momento (más nueva que la instalada): la tienda se bloquea en su siguiente consulta (al iniciar o cada 4 horas). **Desbloquear negocio** (también con motivo) vuelve a la licencia de la suscripción. Un pago en Paddle **no** quita un bloqueo de la consola. Si el negocio no tiene tiempo pagado, al desbloquear ponga también un acuerdo ("pagado hasta"): sin él la nube no entrega licencia nueva y la tienda sigue con la bloqueada (o envíele una licencia fuera de línea, que gana por ser más nueva).

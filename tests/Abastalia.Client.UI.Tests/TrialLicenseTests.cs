@@ -18,13 +18,41 @@ public sealed class TrialLicenseTests
     [InlineData("Trial", null, null, "Prueba gratis: los 14 días empiezan con la primera venta")]
     [InlineData("Trial", 9, null, "Prueba gratis · quedan 9 días")]
     [InlineData("Trial", 2, "Last", "La prueba termina en 2 días")]
-    [InlineData("Restricted", null, "Ended", "Modo restringido: la venta sigue")]
+    [InlineData("Restricted", null, "Ended", "Modo restringido")] // TK-279: with the date it stops selling when the server says it
+    [InlineData("Blocked", null, "Blocked", "Licencia vencida: no se puede vender")]
     [InlineData("Active", null, null, null)]
     public void The_note_is_calm_until_the_last_days(string status, int? daysLeft, string? warning, string? expected)
     {
         var note = Names.LicenseNote(new Api.LicenseFeatures(status, null, null, [], 2, null, daysLeft, warning));
         if (expected is null) note.ShouldBeNull();
         else note.ShouldStartWith(expected);
+    }
+
+    [Fact]
+    public void TK279_Restricted_says_when_the_sale_stops()
+    {
+        var note = Names.LicenseNote(new Api.LicenseFeatures("Restricted", null, null, [], 1, null, null, "Ended", new DateTime(2026, 12, 1, 16, 0, 0, DateTimeKind.Utc)));
+        note.ShouldStartWith("Modo restringido: la venta se detiene el 01/12/2026");
+    }
+
+    [Fact]
+    public void TK279_a_blocked_register_shows_the_full_screen_message_instead_of_the_sale()
+    {
+        var (ctx, api) = ScreenContext.Create("sales.create", "settings.manage");
+        using var _ = ctx;
+        api.Json("GET", "/api/settings/features", new
+        {
+            status = "Blocked", plan = "Estándar", expiresUtc = DateTime.UtcNow.AddDays(-40), enabled = Array.Empty<string>(), registers = 1, warning = "Blocked",
+            clockBehind = true,
+        });
+        var frame = ctx.Render<Abastalia.Client.UI.Components.Frame>(p => p.Add(x => x.Body,
+            (Microsoft.AspNetCore.Components.RenderFragment)(b => b.AddContent(0, "PANTALLA DE VENTA"))));
+
+        frame.WaitForAssertion(() => frame.Find("main [role=alert] h1").TextContent.ShouldBe("Su licencia está vencida"));
+        frame.Markup.ShouldNotContain("PANTALLA DE VENTA");
+        frame.Find("main").TextContent.ShouldContain("Plan y facturación");
+        frame.FindAll("main button").ShouldContain(b => b.TextContent == "Activar licencia");
+        frame.Find(".esc-status-bar").TextContent.ShouldContain("La hora de la PC está atrasada");
     }
 
     [Fact]

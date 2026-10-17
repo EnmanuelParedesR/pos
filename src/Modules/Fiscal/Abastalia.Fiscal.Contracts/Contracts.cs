@@ -43,6 +43,13 @@ public sealed record IssuedDocument(Guid DocumentId, string ENcf, string Securit
 /// (or a number Abastalia does not know).</summary>
 public enum IssuedIn { Simulated, Test, Production }
 
+/// <summary>TK-279: the DGII's own time at its last answer (HTTP Date, TK-156), a time that surely passed whatever this PC's clock says; null
+/// until the DGII answers once. The license clock never runs behind it.</summary>
+public interface IDgiiTime
+{
+    DateTime? LastDgiiUtc { get; }
+}
+
 /// <summary>Issues e-CF inside the caller's transaction: reserves the next e-NCF (no gaps), signs locally and queues it for the 72-hour submission.</summary>
 public interface IFiscalDocuments
 {
