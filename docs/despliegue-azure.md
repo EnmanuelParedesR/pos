@@ -157,6 +157,28 @@ npx @azure/static-web-apps-cli deploy dist --env production
 
 El token va en una variable de entorno, nunca en el repositorio. El panel importa el CSS del sistema de diseño desde `src/Client/Abastalia.Escuadra/wwwroot`, así que si se compila desde una copia (por ejemplo `git archive HEAD src/Cloud/panel src/Client/Abastalia.Escuadra/wwwroot`) hay que incluir esa carpeta.
 
+### Sitio con código de acceso antes del lanzamiento (TK-285)
+
+Hasta el lanzamiento, el sitio público puede quedar detrás de un código de acceso. El código lo da el dueño por fuera del repositorio; se pasa al compilar y solo su SHA-256 entra al build:
+
+```
+$env:SITE_GATE_CODE = "<código que dio el dueño>"
+$env:VITE_API_URL = "https://app-abastalia-prod-5qsy5n.azurewebsites.net"
+npm run build
+Remove-Item Env:SITE_GATE_CODE
+```
+
+(También se puede pasar directamente el hash en `VITE_SITE_GATE`, en hexadecimal; `SITE_GATE_CODE` tiene prioridad.) La consola dice `Prerendered 13 public pages behind the site gate`. Con el código puesto:
+
+- Cada página pública (`index.html`, `precios.html`…, `404.html`) trae solo la pantalla "Sitio en preparación" (logo, campo "Código de acceso" y "Entrar"), con título "Abastalia", descripción genérica y `noindex, nofollow`; sin canonical, `og:` ni JSON-LD.
+- `robots.txt` queda en `Disallow: /` y no se genera `sitemap.xml`.
+- Quien escribe el código correcto (se compara el SHA-256 en el navegador) ve el sitio; el navegador lo recuerda (`localStorage`). Un código equivocado muestra el error al lado del campo; desde el cuarto intento cada uno espera 1 s.
+- El panel y lo que abren los correos (`/app`, `/c/…`, `/invite`, `/unsubscribe`) no tienen código: tienen su propio inicio de sesión.
+
+Es una barrera del lado del navegador: aleja buscadores y curiosos, pero el texto del sitio sigue dentro del JavaScript que se descarga. Cambiar el código obliga a todos a escribirlo de nuevo.
+
+**Al lanzar:** compilar sin `SITE_GATE_CODE` ni `VITE_SITE_GATE` (cerrar la terminal o `Remove-Item Env:SITE_GATE_CODE, Env:VITE_SITE_GATE`) y volver a publicar. El build vuelve a ser el de siempre (contenido, `robots.txt` con el sitemap, `sitemap.xml`). CI y Lighthouse compilan siempre sin código.
+
 ### Una sola app: sitio público y panel (TK-228)
 
 La misma Static Web App sirve el sitio de Abastalia y el panel del dueño, porque son una sola app React:

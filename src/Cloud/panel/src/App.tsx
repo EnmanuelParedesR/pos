@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation, useOutletContext } from "react-router";
 import type { Store } from "./api";
+import { SiteGate } from "./pages/site/SiteGate";
 import { SiteLayout } from "./pages/site/SiteLayout";
 import { notFound, sitePages } from "./pages/site/SitePages";
 
@@ -37,7 +38,14 @@ export function App() {
   return (
     <Suspense fallback={null}>
       <Routes>
-        <Route element={<SiteLayout />}>
+        {/* TK-285: before launch the public site can sit behind an access code; the app's own addresses below have their own sign-in. */}
+        <Route
+          element={
+            <SiteGate>
+              <SiteLayout />
+            </SiteGate>
+          }
+        >
           {sitePages.map((p) => (
             <Route key={p.path} path={p.path} element={p.element} />
           ))}
