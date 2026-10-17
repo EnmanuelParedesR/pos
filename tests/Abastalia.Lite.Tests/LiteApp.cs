@@ -49,6 +49,8 @@ public class LiteApp : WebApplicationFactory<Program>
 {
     public const string Key = "test-provisioning-key-0123456789abcdef";
     public const string Pin = "1234";
+    /// <summary>TK-324: where the selling app is served from (Lite:AppOrigins).</summary>
+    public const string AppOrigin = "https://venta.abastalia.test";
     private readonly string _provider, _connectionString;
     private readonly string? _sqliteFile;
     private readonly string _folder = Path.Combine(Path.GetTempPath(), $"abastalia_lite_{Guid.NewGuid():N}");
@@ -83,6 +85,7 @@ public class LiteApp : WebApplicationFactory<Program>
         builder.UseSetting("Database:MultiTenant", "true");
         builder.UseSetting("Lite:ProvisioningKey", Key);
         builder.UseSetting("Lite:PairPerMinutePerIp", "1000"); // every test request comes from no address
+        builder.UseSetting("Lite:AppOrigins:0", AppOrigin);
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
         builder.UseSetting("Outbox:Process", Workers.ToString());
         builder.UseSetting("Sync:Enabled", Workers.ToString());

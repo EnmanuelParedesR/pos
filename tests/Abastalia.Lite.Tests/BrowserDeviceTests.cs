@@ -57,7 +57,7 @@ public sealed class BrowserDeviceTests(KestrelLiteApp app) : IClassFixture<Kestr
         (await app.Provision(new { TenantId = tenantId, OwnerName = "Dueña", OwnerCode = "dueno", LiteApp.Pin })).EnsureSuccessStatusCode();
         var code = await app.CodeAsync(tenantId);
 
-        using var result = await NodeAsync(JsonSerializer.Serialize(new { baseUrl, code, pin = LiteApp.Pin }));
+        using var result = await NodeAsync(Script, JsonSerializer.Serialize(new { baseUrl, code, pin = LiteApp.Pin }));
         result.RootElement.GetProperty("session").GetInt32().ShouldBe(200);
         result.RootElement.GetProperty("me").GetInt32().ShouldBe(200);
         result.RootElement.GetProperty("extractable").GetBoolean().ShouldBeFalse();
@@ -65,13 +65,14 @@ public sealed class BrowserDeviceTests(KestrelLiteApp app) : IClassFixture<Kestr
         listed.GetProperty("devices").EnumerateArray().Single().GetProperty("id").GetGuid().ShouldBe(result.RootElement.GetProperty("deviceId").GetGuid());
     }
 
-    private static async Task<JsonDocument> NodeAsync(string input)
+    /// <summary>Runs an ES module script in src/Client/lite-signer with <paramref name="input"/> on stdin; its stdout is JSON.</summary>
+    internal static async Task<JsonDocument> NodeAsync(string script, string input)
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (!File.Exists(Path.Combine(root.FullName, "Abastalia.slnx"))) root = root.Parent!;
         var start = new ProcessStartInfo("node")
         {
-            ArgumentList = { "--input-type=module", "-e", Script },
+            ArgumentList = { "--input-type=module", "-e", script },
             WorkingDirectory = Path.Combine(root.FullName, "src", "Client", "lite-signer"),
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
         };

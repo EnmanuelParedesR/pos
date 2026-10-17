@@ -1,11 +1,12 @@
 @page "/"
 @inject NavigationManager Nav
 @inject Session Session
+@inject IServiceProvider Services
 
 @code {
     protected override async Task OnInitializedAsync()
     {
         await Session.LoadAsync();
-        Nav.NavigateTo(!Session.IsPaired ? "setup" : !Session.IsOpen ? "sign-in" : Session.IsBackOffice ? "admin" : "sale");
+        Nav.NavigateTo(!Session.IsPaired ? (Services.GetService(typeof(BrowserHost)) as BrowserHost)?.FirstRun ?? "setup" : !Session.IsOpen ? "sign-in" : Session.IsBackOffice ? "admin" : "sale");
     }
 }

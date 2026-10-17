@@ -1,0 +1,52 @@
+/* TK-324: the Lite app on a phone (320–430 px) or a tablet. Escuadra and client.css draw the register; this file only adapts it to touch. */
+
+.lite-loading { min-height: 100vh; display: grid; place-items: center; color: var(--text-2); font: 600 var(--t-17) / 1.4 "IBM Plex Sans", system-ui, sans-serif; }
+
+/* The e-CF bar (LiteBar.razor): above the register's own status bar. */
+.lite-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 16px; padding-top: max(8px, env(safe-area-inset-top));
+  background: var(--surface-2); color: var(--text); border-bottom: 1px solid var(--card-border); font-size: var(--t-15, 15px); }
+.lite-bar--warn { background: var(--warning-tint, #FEF0C7); color: var(--warning-text, #7A2E0E); border-bottom-color: currentColor; }
+.lite-bar__text { flex: 1 1 220px; min-width: 0; }
+.lite-bar__action { min-height: var(--touch, 44px); padding: 0 14px; border: 1px solid currentColor; border-radius: var(--r-control, 6px); background: transparent;
+  color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+
+/* First run: the connection code and the certificate. */
+.lite-start { align-items: center; justify-content: center; }
+.lite-start__card { width: min(480px, 100%); gap: 20px; }
+.lite-start__code { letter-spacing: .12em; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Touch: no physical F-keys, so their keycaps are noise; every target is at least 44 px. */
+@media (pointer: coarse) {
+  .esc-keycap { display: none; }
+  .esc-key-bar button, .esc-chip { min-height: 44px; }
+}
+
+/* Phones. */
+@media (max-width: 600px) {
+  .esc-status-bar { flex-wrap: wrap; gap: 4px 12px; padding: 8px 12px; font-size: var(--t-13, 13px); }
+  .esc-status-bar__group { flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+  /* What a phone already shows or never needs: "Turno abierto", "En línea" (offline stays, amber) and the clock. */
+  .esc-status-bar .muted:not([role]), .esc-status-bar__group:last-child > span:last-child { display: none; }
+  .esc-page { padding: 12px; }
+  .sale { padding: 8px; gap: 8px; }
+  .sale__left, .sale__cart { flex-basis: 100%; }
+  .sale__cart { min-height: 0; }
+  /* The total and Cobrar stay on screen while the cashier scrolls the products. */
+  .sale__totals { position: sticky; bottom: 0; z-index: 2; padding: 12px; gap: 8px; box-shadow: 0 -4px 12px rgba(20, 24, 29, .12); }
+  .sale__lines { min-height: 0; max-height: 40vh; }
+  .sale__scanner { font-size: var(--t-17, 17px); height: 48px; }
+  .sale__tiles { grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr)); max-height: 45vh; }
+  /* The register's key bar scrolls sideways instead of wrapping into three rows. */
+  .esc-key-bar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .esc-key-bar button { flex: 0 0 auto; }
+  .esc-dialog { width: 100%; max-height: 100%; overflow: auto; }
+  .esc-overlay { padding: 8px; align-items: flex-end; }
+}
+
+/* The receipt prints alone (Imprimir o guardar PDF): nothing of the register around it. */
+@media print {
+  body:has(.receipt) * { visibility: hidden; }
+  body:has(.receipt) .receipt, body:has(.receipt) .receipt * { visibility: visible; }
+  body:has(.receipt) .receipt { position: absolute; inset: 0 auto auto 0; border: 0; width: 80mm; }
+  .lite-bar { display: none; }
+}

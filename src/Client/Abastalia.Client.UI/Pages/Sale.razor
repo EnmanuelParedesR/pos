@@ -7,6 +7,7 @@
 @inject Peripherals Peripherals
 @inject BusinessLogo Logo
 @inject Approver Approver
+@inject IServiceProvider Services
 
 <div class="sale" data-keys @onkeydown="KeyAsync">
     <section class="sale__left" aria-label="Productos">
@@ -178,7 +179,7 @@
         <OrdersDialog ShiftId="Session.Shift!.ShiftId" OnClose="CloseOrdersAsync" OnDone="OrdersDoneAsync" />
         break;
     case Panel.Receipt when _last is { } u:
-        <ReceiptDialog Receipt="u.Receipt" OnClose="Close" />
+        <ReceiptDialog Receipt="u.Receipt" SaleId="u.SaleId" OnClose="Close" />
         break;
     case Panel.Void:
         <Dialog Title="¿Anular esta venta?" Subtitle="Se borran todas las líneas. Todavía no se ha cobrado nada." OnClose="Close">
@@ -513,6 +514,7 @@
         var wasOrder = Cart.OrderId is not null;
         Cart.Clear();
         Close();
+        (Services.GetService(typeof(BrowserHost)) as BrowserHost)?.OnSold(); // TK-324: the Lite device signs its e-CF now
         if (wasOrder) await UpcomingAsync();
         if (Peripherals.Printer is null) return;
         StateHasChanged(); // the sale shows as saved while the printer works

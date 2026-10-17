@@ -2,17 +2,19 @@
   "name": "abastalia-lite-signer",
   "private": true,
   "version": "0.1.0",
-  "description": "TK-322: the Lite browser signer (.p12 to a non-extractable CryptoKey, allowlist, signing log, DGII client); TK-321: the selling device key and signed requests",
+  "description": "TK-322: the Lite browser signer (.p12 to a non-extractable CryptoKey, allowlist, signing log, DGII client); TK-321: the selling device key and signed requests; TK-324: the device's e-CF pass and the bundle Abastalia.Client.Lite serves",
   "type": "module",
   "exports": "./index.js",
   "scripts": {
     "test": "node --test",
+    "build": "node build.mjs",
     "bench": "node bench.mjs"
   },
   "dependencies": {
     "node-forge": "1.4.0"
   },
   "devDependencies": {
-    "@xmldom/xmldom": "0.9.12"
+    "@xmldom/xmldom": "0.9.12",
+    "esbuild": "0.25.12"
   }
 }

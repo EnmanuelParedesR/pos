@@ -34,6 +34,19 @@ public static class Services
         services.AddScoped(sp => new Peripherals(sp.GetRequiredService<ILocalStore>(), drivers, defaults ?? new()));
 }
 
+/// <summary>TK-324: the Lite selling app (Abastalia.Client.Lite), a browser on a phone or tablet. It pairs with a code from the panel at its own
+/// <see cref="FirstRun"/> page (the store's setup is not for it), has no printer (the browser prints the receipt, saves it as PDF or shares it)
+/// and its device signs each sale's e-CF (<see cref="Sold"/>).</summary>
+public sealed class BrowserHost(string firstRun)
+{
+    public string FirstRun { get; } = firstRun;
+
+    /// <summary>A sale was saved: its e-CF waits for this device's signature.</summary>
+    public event Action? Sold;
+
+    public void OnSold() => Sold?.Invoke();
+}
+
 /// <summary>Pages of another assembly the router serves too (the web host's /dev/escuadra gallery, in Development only).</summary>
 public sealed record ExtraPages(params System.Reflection.Assembly[] Assemblies);
 

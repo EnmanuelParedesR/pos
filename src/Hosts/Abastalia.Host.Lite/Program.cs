@@ -81,6 +81,11 @@ foreach (var worker in builder.Services.Where(d => d.ServiceType == typeof(IHost
              && !liteWorkers.Contains(d.ImplementationType.Name)).ToList())
     builder.Services.Remove(worker);
 
+// TK-324: the selling app (Abastalia.Client.Lite) has its own origin. Date is exposed so the device signs with this server's clock: a phone
+// off by more than the signature's 15 minutes still works (lite-signer device.js).
+builder.Services.AddCors(o => o.AddDefaultPolicy(p => p.WithOrigins(builder.Configuration.GetSection("Lite:AppOrigins").Get<string[]>() ?? [])
+    .AllowAnyMethod().WithHeaders("Authorization", "Content-Type", DeviceTenant.SignatureHeader, NodeSignature.BodyHashHeader, "X-Abastalia-Background")
+    .WithExposedHeaders("Date", "Content-Disposition").SetPreflightMaxAge(TimeSpan.FromHours(1))));
 builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddProblemDetails();
 
@@ -89,6 +94,7 @@ var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseSerilogRequestLogging();
+app.UseCors(); // before the device check: a preflight carries no signature
 app.Use(DeviceTenant.ResolveAsync); // before authentication: Identity reads the devices and sessions of that business only
 app.UseAuthentication();
 app.UseAuthorization();

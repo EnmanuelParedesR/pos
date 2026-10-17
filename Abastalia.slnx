@@ -5,6 +5,7 @@
     <Project Path="src/BuildingBlocks/Abastalia.SharedKernel/Abastalia.SharedKernel.csproj" />
   </Folder>
   <Folder Name="/src/Client/">
+    <Project Path="src/Client/Abastalia.Client.Lite/Abastalia.Client.Lite.csproj" />
     <Project Path="src/Client/Abastalia.Client.UI/Abastalia.Client.UI.csproj" />
     <Project Path="src/Client/Abastalia.Client.Web/Abastalia.Client.Web.csproj" />
     <Project Path="src/Client/Abastalia.Client.Wpf/Abastalia.Client.Wpf.csproj" />

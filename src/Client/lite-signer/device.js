@@ -43,15 +43,41 @@ export async function signRequest({ deviceId, key }, method, pathAndQuery, body,
 }
 
 /** fetch for the host with every request signed by the paired device. path = '/api/…?…' exactly as sent; init.body a string or bytes.
- *  Throws DeviceMissing without a device; a 401 from the host is returned as is (the session may have expired: sign in again first). */
+ *  Throws DeviceMissing without a device; a 401 from the host is returned as is (the session may have expired: sign in again first).
+ *  TK-324: the time it signs with is the host's (clockOffset from each answer's Date header): a phone off by more than the host's 15 minutes
+ *  still works. Before the first signature it asks the unsigned /health once to learn it. */
 export function deviceFetch({ baseUrl, store, fetch = globalThis.fetch, subtle = globalThis.crypto.subtle, now = Date.now }) {
+  let offset = 0, calibrated = false;
+  const timed = async (url, init) => {
+    const sentAt = now();
+    const response = await fetch(url, init);
+    offset = clockOffset(response.headers?.get?.('Date'), sentAt, now()) ?? offset;
+    return response;
+  };
   return async (path, init = {}) => {
     const device = await store.getDevice();
     if (device?.key?.type !== 'private' || !device.deviceId) throw new DeviceMissing();
+    if (!calibrated) {
+      calibrated = true;
+      await timed(`${baseUrl}/health`).catch(() => {}); // offline: the request below says so
+    }
     const method = init.method ?? 'GET';
-    const signed = await signRequest(device, method, path, init.body, { now: now(), subtle });
-    return fetch(`${baseUrl}${path}`, { ...init, method, headers: { ...init.headers, ...signed } });
+    const send = async () => timed(`${baseUrl}${path}`,
+      { ...init, method, headers: { ...init.headers, ...await signRequest(device, method, path, init.body, { now: now() + offset, subtle }) } });
+    const before = offset;
+    const response = await send();
+    // Refused with a clock that has just moved (the phone corrected its own, or the first answer came late): once more on the new one.
+    return response.status === 401 && Math.abs(offset - before) > RESIGN_AFTER_MS ? send() : response;
   };
+}
+
+const RESIGN_AFTER_MS = 60_000;
+
+/** TK-324: ms to add to this device's clock to get the host's, from an answer's Date header (Host.Lite exposes it to the app's origin), or null
+ *  without one. sentAt and receivedAt = this device's clock around the request. Date has whole seconds: +500 ms puts it mid-second. */
+export function clockOffset(date, sentAt, receivedAt) {
+  const host = Date.parse(date ?? '');
+  return Number.isNaN(host) ? null : Math.round(host + 500 - (sentAt + receivedAt) / 2);
 }
 
 export const forgetDevice = store => store.deleteDevice();

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, webcrypto } from 'node:crypto';
-import { pairDevice, signRequest, deviceFetch, forgetDevice, memoryStore, DeviceMissing, PairingFailed } from '../index.js';
+import { pairDevice, signRequest, deviceFetch, forgetDevice, clockOffset, memoryStore, DeviceMissing, PairingFailed } from '../index.js';
 
 const { subtle } = webcrypto;
 const ECDSA = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' };
@@ -92,4 +92,54 @@ test('deviceFetch signs what it sends and needs a paired device', async () => {
 
   await forgetDevice(store);
   await assert.rejects(send('/api/identity/me'), DeviceMissing);
+});
+
+test('TK-324: the clock offset comes from the Date header, centered on the round trip', () => {
+  const host = Date.UTC(2026, 9, 17, 12, 0, 0);
+  assert.equal(clockOffset(new Date(host).toUTCString(), host - 20 * 60_000 - 100, host - 20 * 60_000 + 100), 20 * 60_000 + 500);
+  assert.equal(clockOffset(null, 0, 10), null);
+  assert.equal(clockOffset('no es una fecha', 0, 10), null);
+});
+
+test('TK-324: a phone 20 minutes behind signs with the host time it learned from /health', async () => {
+  const store = memoryStore();
+  const hostNow = Date.UTC(2026, 9, 17, 12, 0, 0);
+  const calls = [];
+  const fetch = async (url, init = {}) => {
+    calls.push({ url, ...init });
+    const body = url.endsWith('/pair') ? { deviceId: DEVICE } : {};
+    return new Response(JSON.stringify(body), { headers: { Date: new Date(hostNow).toUTCString() } });
+  };
+  await pairDevice({ baseUrl: 'https://lite.test', code: '12345678', store, fetch });
+  const send = deviceFetch({ baseUrl: 'https://lite.test', store, fetch, now: () => hostNow - 20 * 60_000 });
+  await send('/api/identity/me');
+  await send('/api/identity/me');
+
+  assert.deepEqual(calls.slice(1).map(c => c.url), ['https://lite.test/health', 'https://lite.test/api/identity/me', 'https://lite.test/api/identity/me']);
+  assert.equal(calls[1].headers, undefined); // /health goes unsigned
+  for (const c of calls.slice(2)) {
+    const seconds = Number(c.headers['X-Device-Signature'].split('.')[1]);
+    assert.ok(Math.abs(seconds * 1000 - hostNow) <= 1000, `signed at ${new Date(seconds * 1000).toISOString()}`);
+  }
+});
+
+test('TK-324: refused while the clock was off, it signs once more with the corrected time', async () => {
+  const store = memoryStore();
+  const hostNow = Date.UTC(2026, 9, 17, 12, 0, 0);
+  let date = null; // the first answer carries no Date (a proxy dropped it), the next ones the host's
+  const signedAt = [];
+  const fetch = async (url, init = {}) => {
+    if (url.endsWith('/pair')) return new Response(JSON.stringify({ deviceId: DEVICE }));
+    const signature = init.headers?.['X-Device-Signature'];
+    if (signature) signedAt.push(Number(signature.split('.')[1]) * 1000);
+    const headers = date ? { Date: date } : {};
+    date = new Date(hostNow).toUTCString();
+    const tooFar = signature && Math.abs(signedAt.at(-1) - hostNow) > 15 * 60_000;
+    return new Response('{}', { status: tooFar ? 401 : 200, headers });
+  };
+  await pairDevice({ baseUrl: '', code: '12345678', store, fetch });
+  const response = await deviceFetch({ baseUrl: '', store, fetch, now: () => hostNow - 30 * 60_000 })('/api/identity/me');
+  assert.equal(response.status, 200);
+  assert.equal(signedAt.length, 2);
+  assert.ok(Math.abs(signedAt[1] - hostNow) <= 1000);
 });

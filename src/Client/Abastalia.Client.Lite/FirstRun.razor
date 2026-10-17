@@ -1,0 +1,116 @@
+@page "/lite/start"
+@inject LiteDevice Device
+@inject Session Session
+@inject NavigationManager Nav
+
+@* TK-324: the first run of the Lite app. 1) The code the owner got in the panel pairs this browser (lite-signer makes its key).
+   2) The owner's .p12, read here and kept as a key that cannot be copied out; its password is never kept. Then the usual PIN sign-in. *@
+<div class="esc-page lite-start">
+    <section class="esc-card esc-card--padded esc-col lite-start__card" aria-labelledby="lite-start-title">
+        <Logo />
+        @if (_step == Step.Loading)
+        {
+            <div class="esc-muted" role="status">Cargando…</div>
+        }
+        else if (_step == Step.Pair)
+        {
+            <div>
+                <h1 id="lite-start-title" class="esc-title">Unir este equipo a su negocio</h1>
+                <p class="esc-subtitle">En el panel de Abastalia, entre a <b>Tiendas → Dispositivo de venta → Unir un dispositivo</b> y escriba aquí el código de 8 dígitos. Vence en 10 minutos.</p>
+            </div>
+            <form class="esc-col" style="gap:16px" @onsubmit="PairAsync">
+                <Field Label="Código de conexión">
+                    <input class="esc-input esc-input--large lite-start__code" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="1234 5678"
+                           @bind="_code" @bind:event="oninput" aria-describedby="@(_error is null ? null : "lite-start-error")" />
+                </Field>
+                <Field Label="Nombre de este equipo" Hint="Así lo verá en el panel.">
+                    <input class="esc-input" maxlength="100" @bind="_name" />
+                </Field>
+                @if (_error is not null)
+                {
+                    <div id="lite-start-error"><Notice Kind="Notice.Kinds.Error" Title="@_error" /></div>
+                }
+                <Button Type="submit" Variant="Button.Variants.Primary" Disabled="@(_busy || Digits.Length != 8)">@(_busy ? "Uniendo…" : "Unir este equipo")</Button>
+            </form>
+        }
+        else
+        {
+            <div>
+                <h1 id="lite-start-title" class="esc-title">Su certificado digital</h1>
+                <p class="esc-subtitle">Con él este equipo firma sus facturas electrónicas. Se guarda solo en este navegador y no se puede copiar; la contraseña no se guarda.</p>
+            </div>
+            <form class="esc-col" style="gap:16px" @onsubmit="ImportAsync">
+                <Field Label="Archivo del certificado (.p12)">
+                    <input @ref="_file" class="esc-input" type="file" accept=".p12,.pfx,application/x-pkcs12" />
+                </Field>
+                <Field Label="Contraseña del certificado">
+                    <input @ref="_password" class="esc-input" type="password" autocomplete="off" />
+                </Field>
+                @if (_error is not null)
+                {
+                    <Notice Kind="Notice.Kinds.Error" Title="@_error" />
+                }
+                <Button Type="submit" Variant="Button.Variants.Primary" Disabled="_busy">@(_busy ? "Importando…" : "Importar el certificado")</Button>
+                <Button Variant="Button.Variants.Ghost" OnClick="Later">Lo haré después</Button>
+            </form>
+            <p class="esc-subtitle">Sin el certificado puede vender, pero las facturas no llegan a la DGII. Tiene 72 horas para enviarlas.</p>
+        }
+    </section>
+</div>
+
+@code {
+    private enum Step { Loading, Pair, Certificate }
+
+    /// <summary><c>?step=certificate</c>: the status bar sends here to import (or replace) the certificate.</summary>
+    [SupplyParameterFromQuery(Name = "step")] public string? Requested { get; set; }
+
+    private Step _step;
+    private string? _code, _error;
+    private string _name = "Equipo de venta";
+    private bool _busy;
+    private ElementReference _file, _password;
+
+    private string Digits => new((_code ?? "").Where(char.IsAsciiDigit).ToArray());
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.LoadAsync();
+        if (!Session.IsPaired) _step = Step.Pair;
+        else if (Requested == "certificate" || !await Device.HasCertificateAsync()) _step = Step.Certificate;
+        else Nav.NavigateTo("sign-in");
+    }
+
+    private async Task PairAsync()
+    {
+        if (_busy || Digits.Length != 8) return;
+        (_busy, _error) = (true, null);
+        var paired = await Device.PairAsync(Digits, _name);
+        _busy = false;
+        if (paired.DeviceId is null)
+        {
+            _error = paired.Error;
+            return;
+        }
+        await Session.PairAsync(null, paired.DeviceId); // no server certificate to pin: the device's key is the pairing
+        _step = await Device.HasCertificateAsync() ? Step.Loading : Step.Certificate;
+        if (_step == Step.Loading) Nav.NavigateTo("sign-in");
+    }
+
+    private async Task ImportAsync()
+    {
+        if (_busy) return;
+        (_busy, _error) = (true, null);
+        var imported = await Device.ImportCertificateAsync(_file, _password);
+        _busy = false;
+        if (imported.Error is not null)
+        {
+            _error = imported.Error;
+            return;
+        }
+        Next();
+    }
+
+    private void Later() => Next();
+
+    private void Next() => Nav.NavigateTo(Session.IsOpen ? "sale" : "sign-in");
+}
