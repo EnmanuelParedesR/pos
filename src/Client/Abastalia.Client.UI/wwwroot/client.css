@@ -3,6 +3,9 @@
 /* TK-242: help panel (F1) */
 .esc-status-bar__help { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; color: var(--frame-muted); }
 .esc-status-bar__help .esc-keycap { border-color: var(--frame-muted); color: var(--frame-muted); }
+/* TK-361: `all: unset` also dropped the keyboard focus ring and any hover. */
+.esc-status-bar__help:hover { color: var(--frame-text); text-decoration: underline; }
+.esc-status-bar__help:focus-visible { outline: 2px solid var(--frame-text); outline-offset: 3px; border-radius: 2px; }
 .esc-help { margin: 0 0 16px; padding-left: 20px; display: grid; gap: 8px; }
 .esc-help__title { font-size: var(--t-17); font-weight: 700; margin: 0 0 8px; }
 .esc-help__keys { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; margin: 0 0 16px; }

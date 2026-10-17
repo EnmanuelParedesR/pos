@@ -24,7 +24,9 @@ public partial class MainWindow
         services.AddSingleton<ILocalStore, ProtectedStore>();
         services.AddSingleton<IDeviceKeys, CngDeviceKeys>();
         services.AddSingleton<IAppUpdater>(new RegisterUpdates(App.Log)); // TK-254
-        // Simulated scale and printer in Debug builds, the real drivers in Release; appsettings "Hardware": { "Simulated": true|false } overrides it.
+        // Simulated drivers in Debug builds, the real ones in Release; appsettings "Hardware": { "Simulated": true|false } overrides it.
+        // TK-361: either way no scale or printer is set until someone types its port in Configuración → Equipos de la caja (any name works
+        // with the simulated ones), so the register never claims devices that are not there.
 #if DEBUG
         var simulate = true;
 #else
@@ -32,8 +34,7 @@ public partial class MainWindow
 #endif
         if (config.TryGetProperty("Hardware", out var hw) && hw.TryGetProperty("Simulated", out var simulated)) simulate = simulated.GetBoolean();
         if (simulate)
-            services.AddAbastaliaHardware(new SimulatedDrivers(new SimulatedScale(), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Abastalia", "receipts.txt")),
-                new HardwareSettings(new PrinterSettings("Simulada"), new ScaleSettings("Simulada", ScaleProtocol.Continuous)));
+            services.AddAbastaliaHardware(new SimulatedDrivers(new SimulatedScale(), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Abastalia", "receipts.txt")));
         else
             services.AddAbastaliaHardware(new RealDrivers());
 #if DEBUG

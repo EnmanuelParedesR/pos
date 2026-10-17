@@ -26,6 +26,7 @@ public sealed class RegisterApp : IAsyncLifetime
             ["Api__Url"] = Api.Base.ToString(),
             ["Client__File"] = ClientFile,
             ["Hardware__PrinterFile"] = Path.Combine(_folder, "receipts.txt"),
+            ["Hardware__Simulated"] = "true", // TK-361: the simulated scale and printer start set
             ["Hardware__Pounds"] = "2.5",
         });
         _playwright = await Playwright.CreateAsync();

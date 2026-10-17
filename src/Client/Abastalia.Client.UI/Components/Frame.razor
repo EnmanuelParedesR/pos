@@ -70,7 +70,12 @@
                 {
                     <span class="esc-offline" role="status">@Names.ClockBehind</span>
                 }
-                @* TK-243: this PC's scale and printer, when it has them; amber when one stops answering (the sale goes on). *@
+                @* TK-243: this PC's scale and printer, when it has them; amber when one stops answering (the sale goes on).
+                   TK-361: none set on this PC: nothing to report, only a quiet way to set them for whoever may (the drawer hangs off the printer). *@
+                @if (Peripherals.Scale is null && Peripherals.Printer is null && Session.Can("settings.manage") && Session.IsOpen)
+                {
+                    <button type="button" class="esc-status-bar__help" @onclick='() => Nav.NavigateTo("admin/settings?section=hardware")'><Icon Name="printer" Size="16" />Conectar impresora o balanza</button>
+                }
                 @foreach (var (icon, device, state) in new[] { ("scale", "Balanza", Peripherals.ScaleState), ("printer", "Impresora", Peripherals.PrinterState) })
                 {
                     if (state is { } st)

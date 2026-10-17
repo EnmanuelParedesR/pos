@@ -230,6 +230,26 @@ public sealed class EscuadraComponentTests : IDisposable
     }
 
     [Fact]
+    public async Task Without_a_scale_or_printer_the_status_bar_claims_none_and_only_the_owner_gets_a_way_to_set_them()
+    {
+        // TK-361: no device status, no scale readout; whoever may change the settings gets a quiet link to Equipos de la caja.
+        var (owner, _) = await ScreenContext.CreateAsync("sales.create", "settings.manage");
+        using var _ = owner;
+        var frame = owner.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
+        frame.FindAll(".esc-status-bar__device").ShouldBeEmpty();
+        var link = frame.FindAll(".esc-status-bar button").Single(b => b.TextContent.Contains("Conectar impresora o balanza", StringComparison.Ordinal));
+        link.Click();
+        owner.Services.GetRequiredService<NavigationManager>().Uri.ShouldEndWith("admin/settings?section=hardware");
+
+        var (cashier, _) = await ScreenContext.CreateAsync("sales.create");
+        using var __ = cashier;
+        var bar = cashier.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta")))).Find(".esc-status-bar");
+        bar.TextContent.ShouldNotContain("Balanza");
+        bar.TextContent.ShouldNotContain("Impresora");
+        bar.TextContent.ShouldNotContain("Conectar impresora");
+    }
+
+    [Fact]
     public async Task The_status_bar_shows_the_scale_and_the_printer_configured_connected_or_failing()
     {
         var (ctx, _, hw) = await RegisterAsync(new(new PrinterSettings("EPSON TM-T20"), new ScaleSettings("COM3", ScaleProtocol.Cas)));
