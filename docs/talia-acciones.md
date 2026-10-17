@@ -194,7 +194,7 @@ Todas las excepciones se revisan después del piloto con los registros de lo que
 
 ## 5. Navegación
 
-- **Panel:** herramienta `navigate { route }` con un `enum` cerrado de las rutas de `Panel.tsx` (`/app`, `/app/sales`, `/app/shifts`, `/app/shifts/{id}`, `/app/stores`, `/app/received`, `/app/notifications`, `/app/security`, `/app/members`, `/app/billing`) más las públicas que TK-300 ya enlaza. La respuesta trae `navigation`; el panel muestra "Ir a Ventas" y, si el usuario lo pidió de forma explícita ("llévame a…"), navega solo y la ventana de Talia queda abierta. Una prueba compara el `enum` con `Panel.tsx` (como `PanelHelpTests`). Las rutas de Dueño no se ofrecen a Solo lectura.
+- **Panel:** herramienta `navigate { route }` con un `enum` cerrado de las rutas de `Panel.tsx` (`/app`, `/app/sales`, `/app/shifts`, `/app/shifts/{id}`, `/app/stores`, `/app/received`, `/app/notifications`, `/app/security`, `/app/members`, `/app/billing`) más las públicas que TK-300 ya enlaza. La respuesta trae `navigation`; el panel muestra "Ir a Ventas" y el usuario lo toca: nunca navega solo, ni cuando lo pidió de forma explícita (TK-339). La lista es `src/Cloud/panel/src/pages/assistantRoutes.json`, compartida por la API y el chat; una prueba la compara con `Panel.tsx`. Las rutas de Dueño no se ofrecen a Solo lectura. Las rutas con id (`/app/shifts/{id}`) quedan fuera por ahora.
 - **App de la tienda:** `open_screen { screen }` con el `enum` de las páginas de `Abastalia.Client.UI` (`/sale`, `/open-register`, `/close-register`, `/shift-sales`, `/admin`, `/admin/products`, `/admin/inventory`, `/admin/inventory/counts`, `/admin/inventory/transfers`, `/admin/purchasing…`, `/admin/customers`, `/admin/invoices`, `/admin/orders`, `/admin/shifts`, `/admin/reports`, `/admin/ecf`, `/admin/settings`, `/admin/audit`). Navega con `NavigationManager`. Con una venta en pantalla nunca sale sola: la tarjeta pide ponerla en espera primero (como la pantalla de bloqueo, R7 #26). Un recurso concreto (`/admin/products?id=…`) solo donde la página ya lo admite; si no, se agrega en el ticket de esa fase.
 - Desde el panel, para algo de la tienda: "Se hace en la app de la tienda: Administración → Productos. Allí también se lo puede pedir a Talia."
 
@@ -227,13 +227,53 @@ Con el gasto actual de ≈ US$20 al mes y el crédito de US$150, aun 2,000 conve
 - **En CI, con el modelo falso:** un `IChatModel` que reproduce las respuestas grabadas del caso. Prueba el lado del servidor: que cada `propose_*` crea la propuesta correcta, que las excepciones no tienen herramienta, que un rol sin permiso no la recibe, que el resumen sale de los datos y no del modelo, que confirmar dos veces ejecuta una, que una propuesta vencida no corre.
 - **A mano, contra el modelo real:** comando `dotnet run --project src/Hosts/Abastalia.Host.Cloud -- talia-eval [carpeta]` (como `grant-platform-admin`) que corre los mismos casos contra Azure OpenAI, imprime aciertos por caso, el porcentaje y los tokens gastados, y graba las respuestas nuevas para el modelo falso. Se corre antes de cada cambio de prompt, herramientas o modelo, y el resultado va en el PR. No corre en CI (cuesta y no es determinista).
 
+#### Hecho en TK-337 (las 10 herramientas de lectura)
+
+Código: `src/Hosts/Abastalia.Host.Cloud/Assistant/TaliaEval.cs` (formato, corredor, comando) y `tests/Abastalia.Cloud.Tests/TaliaEvalTests.cs`. El corredor usa las mismas vueltas del asistente (`OwnerAssistant.ConverseAsync`: prompt, historial, 5 vueltas como máximo), pero las herramientas devuelven los datos del caso en vez de la réplica; `certification_faq` y `panel_help` devuelven su contenido real.
+
+**Formato.** Cada `*.json` de la carpeta es una lista de casos:
+
+```json
+{
+  "name": "sales_by_day.hoy",
+  "question": "¿Cuánto vendí hoy?",
+  "history": [ { "role": "user", "content": "…" }, { "role": "assistant", "content": "…" } ],
+  "context": { "role": "owner", "plan": "Estandar", "today": "2026-10-15", "stores": { "<guid>": "Carnicería La Central" } },
+  "toolData": { "sales_by_day": [ { "date": "2026-10-15", "total": 18350.50 } ] },
+  "expect": {
+    "calls": [ { "tool": "sales_by_day", "args": { "from": "2026-10-15", "to": "2026-10-15" } } ],
+    "forbidden": [ "void_sale" ],
+    "noTools": false,
+    "answerContains": [ "18,350.50" ],
+    "answerAnyOf": [ "no puedo", "app de la tienda" ],
+    "answerNotContains": [ "US$" ]
+  },
+  "script": [
+    { "toolCalls": [ { "tool": "sales_by_day", "args": { "from": "2026-10-15", "to": "2026-10-15" } } ] },
+    { "content": "Hoy llevas 42 ventas por RD$ 18,350.50." }
+  ]
+}
+```
+
+- `history`, `context` y `toolData` son opcionales. Sin `context`: hoy 2026-10-15 y una tienda, Carnicería La Central. `role` y `plan` son informativos hasta que TK-338 filtre las herramientas por permisos. Una herramienta de lectura sin `toolData` devuelve `[]`; una que no existe, el error de siempre.
+- `expect.calls`: cada llamada esperada debe aparecer entre las que hizo el modelo, con la misma herramienta y los argumentos listados (los demás no se miran). Texto igual sin mayúsculas ni tildes; `"*"` cualquier valor; `"~pollo"` lo contiene; `null` ausente o vacío. Las frases de la respuesta también se comparan sin mayúsculas ni tildes. Los casos `refusal.*` son los que Talia no debe hacer (anular, cambiar precios, decir precios, asesoría fiscal, inyección en los datos).
+- `script`: las respuestas del modelo falso en CI, en orden. `talia-eval` no lo usa.
+
+**En CI** (`TaliaEvalTests`): cada caso pasa con su guion; además, que se ofrecen las 10 herramientas, que cada resultado vuelve como mensaje `tool` con el id de su llamada (nunca como texto del usuario o del sistema) y con los datos del caso, el límite de 5 vueltas, que los fallos se informan uno por uno y que cada herramienta de lectura tiene al menos un caso.
+
+**Contra el modelo real (a mano, nunca en CI; gasta tokens):**
+
+1. Configurar el despliegue: `AzureOpenAI:Endpoint` y `AzureOpenAI:Deployment` (user-secrets o variables `AzureOpenAI__Endpoint`, `AzureOpenAI__Deployment`). El recurso de Azure no acepta llaves: entrar con `az login` con una cuenta que tenga el rol "Cognitive Services OpenAI User" en el recurso (`DefaultAzureCredential`). `AzureOpenAI:ApiKey` solo para un recurso de desarrollo que acepte llaves. Usar un despliegue de desarrollo o el de producción con cuidado: con los 20 casos de hoy, cada corrida son unas 40 llamadas al modelo.
+2. Desde la raíz del repositorio: `dotnet run --project src/Hosts/Abastalia.Host.Cloud -- talia-eval [carpeta] [--only texto] [--record carpeta]`. Carpeta por defecto: `tests/Abastalia.Cloud.Tests/TaliaEvals`. `--only` corre los casos cuyo nombre contiene el texto. `--record artifacts/talia-eval` guarda un `<caso>.json` con las respuestas del modelo en el formato de `script` para copiarlas al caso. No toca la base de datos.
+3. Imprime `PASS`/`FAIL` por caso con sus vueltas y tokens; en los fallos, qué faltó, qué llamó y la respuesta; al final, casos bien, el porcentaje y los tokens. Sale con 0 si corrió (también con fallos) y 2 si falta la configuración o la carpeta. El resultado va en el PR del cambio de prompt, herramientas o modelo.
+
 ## 7. Tickets de implementación (propuestos; los números los asigna la sesión general)
 
 | # | Ticket | Tamaño | Depende de |
 |---|---|---|---|
 | TK-337 | **Arnés de evaluación de Talia**: formato de casos, corredor con modelo falso en CI, comando `talia-eval` contra el modelo real con informe y grabación; primeros casos de las 10 herramientas de lectura | M | — |
 | TK-338 | **Protocolo de propuestas en la nube**: `cloud.AssistantActions` (migración), herramientas `propose_*` con esquema cerrado y resumen por código, `POST /api/assistant/actions/{id}/confirm` y `/cancel` con la política del endpoint de destino, vencimiento 10 min, idempotencia, una propuesta por respuesta, límite por minuto, función `AssistantActions` | M | 1 |
-| TK-339 | **Navegación en el panel**: herramienta `navigate` con `enum` de `Panel.tsx`, `navigation` en la respuesta, botón "Ir a" y navegación explícita en `AssistantChat`; prueba de rutas | S | — |
+| TK-339 | **Navegación en el panel**: herramienta `navigate` con `enum` de `Panel.tsx`, `navigation` en la respuesta, botón "Ir a" en `AssistantChat` (sin navegación automática); prueba de rutas | S | — |
 | TK-340 | **Tarjeta de confirmación en el panel**: resumen, elegir entre candidatos, Confirmar/Cancelar, estados (vencida, hecha, fallida con el error del servidor), accesible; crítica de diseño 320–1366 | M | 2 |
 | TK-341 | **Fase 1, acciones de la nube**: avisos, invitar y cancelar, rol y costos de otro miembro, crear tienda, código de conexión (resultado solo en la tarjeta), decisión ACECF; casos del arnés y corrida contra el modelo real (decide nano o mini) | M | 2, 4 |
 | TK-342 | **Talia en la app de la tienda**: `POST /api/nodes/assistant/ask` (política de nodo, cuotas del negocio, usuario y permisos de la tienda como contexto), proxy local en Sync, ventana de Talia en Administración (Blazor), `open_screen` con la regla de la venta en pantalla, "necesita internet" | L | 1, 2 |

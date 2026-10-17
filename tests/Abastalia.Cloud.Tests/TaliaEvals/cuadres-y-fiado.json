@@ -1,0 +1,69 @@
+[
+  {
+    "name": "shift_differences.faltante-ayer",
+    "question": "¿Hubo algún faltante en los cuadres de ayer?",
+    "toolData": {
+      "shift_differences": [
+        { "shiftId": "0199f000-0000-7000-8000-0000000000c1", "storeId": "0199f000-0000-7000-8000-000000000001", "storeName": "Carnicería La Central",
+          "registerId": "0199f000-0000-7000-8000-0000000000d1", "cashierId": "0199f000-0000-7000-8000-0000000000a2", "zNumber": 118,
+          "expectedCash": 15200, "countedCash": 14700, "difference": -500, "closedUtc": "2026-10-15T01:10:00Z", "registerName": "Caja 1", "cashierName": "Pedro" }
+      ]
+    },
+    "expect": {
+      "calls": [ { "tool": "shift_differences", "args": { "from": "2026-10-14", "to": "2026-10-14" } } ],
+      "answerContains": [ "Pedro", "500" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "shift_differences", "args": { "from": "2026-10-14", "to": "2026-10-14" } } ] },
+      { "content": "Sí: el cierre Z 118 de Pedro en Caja 1 tuvo un faltante de RD$ 500.00." }
+    ]
+  },
+  {
+    "name": "receivables.total",
+    "question": "¿Cuánto me deben los clientes de fiado?",
+    "toolData": {
+      "receivables": { "total": 23500, "customerCount": 7, "topDebtors": [
+        { "customerId": "0199f000-0000-7000-8000-0000000000e1", "storeId": "0199f000-0000-7000-8000-000000000001", "debt": 8000, "customerName": "Juan Pérez" } ] }
+    },
+    "expect": {
+      "calls": [ { "tool": "receivables" } ],
+      "answerContains": [ "23,500" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "receivables", "args": {} } ] },
+      { "content": "Te deben RD$ 23,500.00 entre 7 clientes; el que más debe es Juan Pérez con RD$ 8,000.00." }
+    ]
+  },
+  {
+    "name": "receivables.cliente",
+    "question": "¿Cuánto me debe Juan?",
+    "toolData": {
+      "receivables": { "total": 23500, "customerCount": 7, "topDebtors": [
+        { "customerId": "0199f000-0000-7000-8000-0000000000e1", "storeId": "0199f000-0000-7000-8000-000000000001", "debt": 8000, "customerName": "Juan Pérez" } ] }
+    },
+    "expect": {
+      "calls": [ { "tool": "receivables" } ],
+      "answerContains": [ "8,000" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "receivables", "args": { "storeId": "" } } ] },
+      { "content": "Juan Pérez te debe RD$ 8,000.00." }
+    ]
+  },
+  {
+    "name": "sync_status.ultima",
+    "question": "¿Cuándo fue la última vez que la tienda mandó datos?",
+    "toolData": {
+      "sync_status": [ { "storeId": "0199f000-0000-7000-8000-000000000001", "storeName": "Carnicería La Central", "lastEventUtc": "2026-10-15T14:55:00Z",
+        "lastSyncUtc": "2026-10-15T14:56:00Z", "pendingEvents": 0, "failedEvents": 0, "nodes": [] } ]
+    },
+    "expect": {
+      "calls": [ { "tool": "sync_status" } ],
+      "answerAnyOf": [ "10:55", "10:56", "14:55", "14:56" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "sync_status", "args": {} } ] },
+      { "content": "Carnicería La Central mandó su último dato hoy a las 10:55 a. m. y no tiene nada pendiente." }
+    ]
+  }
+]

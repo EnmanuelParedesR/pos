@@ -1,9 +1,14 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { api, ApiError } from "../api";
 import { Icon, Notice, PageHead, Talia } from "../ui";
+import assistantRoutes from "./assistantRoutes.json";
 
-interface Turn { role: "user" | "assistant"; content: string }
+/** TK-339: `navigation` is a route Talia suggests opening; the server only sends one of assistantRoutes.json. */
+interface Turn { role: "user" | "assistant"; content: string; navigation?: string | null }
+
+/** The button's label for a route Talia suggested; anything outside the shared list gets no button. */
+export const routeLabel = (route?: string | null) => assistantRoutes.find((r) => r.route === route)?.label;
 
 /** A question asked from outside the chat (the "Pregúntale a Talia" bar). `id` tells two equal questions apart. */
 export interface PendingQuestion { text: string; id: number }
@@ -62,8 +67,11 @@ export function AssistantChat({ pending, inputId = "question", inPopup = false, 
     setQuestion("");
     setHistory((h) => [...h, { role: "user", content: q }]);
     try {
-      const { answer } = await api<{ answer: string }>("/api/assistant/ask", "POST", { question: q, history });
-      setHistory((h) => [...h, { role: "assistant", content: answer }]);
+      const { answer, navigation } = await api<{ answer: string; navigation?: string | null }>("/api/assistant/ask", "POST", {
+        question: q,
+        history: history.map(({ role, content }) => ({ role, content })),
+      });
+      setHistory((h) => [...h, { role: "assistant", content: answer, navigation }]);
     } catch (err) {
       setError(err as ApiError);
       setQuestion(q);
@@ -106,13 +114,24 @@ export function AssistantChat({ pending, inputId = "question", inPopup = false, 
             </div>
           </div>
         )}
-        {history.map((t, i) => (
-          <div key={i} className={`esc-bubble-row esc-bubble-row--${t.role}`}>
-            {t.role === "assistant" && <Talia size={28} />}
-            {/* Plain text: React escapes it, so an answer can never inject HTML. Only known in-app paths become links (TK-301). */}
-            <p className={`esc-bubble esc-bubble--${t.role}`}>{t.role === "assistant" ? withLinks(t.content, onNavigate) : t.content}</p>
-          </div>
-        ))}
+        {history.map((t, i) => {
+          // Plain text: React escapes it, so an answer can never inject HTML. Only known in-app paths become links (TK-301).
+          const label = t.role === "assistant" ? routeLabel(t.navigation) : undefined;
+          return (
+            <Fragment key={i}>
+              <div className={`esc-bubble-row esc-bubble-row--${t.role}`}>
+                {t.role === "assistant" && <Talia size={28} />}
+                <p className={`esc-bubble esc-bubble--${t.role}`}>{t.role === "assistant" ? withLinks(t.content, onNavigate) : t.content}</p>
+              </div>
+              {/* TK-339: Talia suggests, the user goes: never an automatic navigation. */}
+              {label && (
+                <Link className="esc-button talia-go" to={t.navigation!} onClick={onNavigate}>
+                  Ir a {label} <Icon name="chevron-right" size={18} />
+                </Link>
+              )}
+            </Fragment>
+          );
+        })}
         {busy && (
           <div className="esc-bubble-row">
             <Talia size={28} mood="thinking" />
