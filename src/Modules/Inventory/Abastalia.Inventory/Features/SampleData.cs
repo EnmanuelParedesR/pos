@@ -29,7 +29,7 @@ internal static class SampleData
             ("Carne de res molida (ejemplo)", UnitOfMeasure.Pound, ItbisRate.Exempt, 260m, 190m),
             ("Chuleta ahumada (ejemplo)", UnitOfMeasure.Pound, ItbisRate.General18, 225m, 160m),
         ]),
-        ("Colmado (ejemplo)", "#0B5CAD", [
+        ("Colmado (ejemplo)", "#6B1F5E", [
             ("Arroz 5 lb (ejemplo)", UnitOfMeasure.Unit, ItbisRate.Exempt, 210m, 175m),
             ("Aceite 1 L (ejemplo)", UnitOfMeasure.Unit, ItbisRate.General18, 245m, 190m),
             ("Salami 1 lb (ejemplo)", UnitOfMeasure.Unit, ItbisRate.General18, 175m, 128m),
