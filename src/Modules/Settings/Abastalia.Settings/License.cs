@@ -50,8 +50,13 @@ internal sealed class LicenseService : IFeatureService
         """;
 
     /// <summary>TK-249: the cloud's license key (EC P-256 in Azure Key Vault, non-exportable), for licenses of a paid subscription.
-    /// Empty until the owner creates the key (docs/cobro-paddle.md §Licencias): paste its PEM here and ship an update.</summary>
-    private const string AbastaliaCloudPublicKey = "";
+    /// Key <c>abastalia-license</c> in kv-abastalia-prod (created 17/10/2026, docs/cobro-paddle.md §Licencias); rotating it means shipping the new PEM first.</summary>
+    private const string AbastaliaCloudPublicKey = """
+        -----BEGIN PUBLIC KEY-----
+        MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJqyBCfkWt0epl8b88VzV59h57xJJ
+        JaKj4hg4bqUrrOGLCN+u5de4vRhT87J25bwqWnWXwSD0PvhN9CaVzMkGSw==
+        -----END PUBLIC KEY-----
+        """;
 
     private readonly TimeProvider _clock;
     private readonly IServiceScopeFactory _scopes;

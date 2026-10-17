@@ -19,7 +19,7 @@
     "alertEmail": { "value": "" },
     "paddleEnvironment": { "value": "sandbox" },
     "paddleClientToken": { "value": "test_d4caa0f9484c025aab1210c2bff" },
-    "licenseKeyName": { "value": "" },
+    "licenseKeyName": { "value": "abastalia-license" },
     "panelDomain": { "value": "abastalia.com" }
   }
 }
