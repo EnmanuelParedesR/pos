@@ -215,7 +215,7 @@ h1, h2, h3, p { margin: 0; }
 .esc-logo--on-dark, :root[data-theme="dark"] .esc-admin .esc-logo, .esc-admin[data-theme="dark"] .esc-logo { --logo-tag: #FFFFFF; --logo-mark: #0B5CAD; }
 .esc-logo__tag { fill: var(--logo-tag); stroke: var(--logo-tag); }
 .esc-logo__mark { stroke: var(--logo-mark); }
-/* Talia, the assistant: same colors everywhere, she carries her own blue circle */
+/* Talia, the assistant (the cloud panel shares this file): same colors everywhere, she carries her own blue circle */
 .esc-talia { flex: none; display: inline-block; vertical-align: middle; }
 
 /* Money */
