@@ -60,6 +60,8 @@ public class CloudApp : WebApplicationFactory<Program>
         builder.UseSetting("Auth:RequestsPerMinute", "10000"); // TK-248: every test client is the same (empty) IP
         builder.UseSetting("Panel:RequestsPerMinutePerUser", "10000");
         builder.UseSetting("Ai:AssistantQuestionsPerMinutePerUser", "10000");
+        builder.UseSetting("Talia:PublicPerMinutePerIp", "10000");
+        builder.UseSetting("Talia:Knowledge:WatchHours", "0"); // TK-350: no DGII fetches from tests, even when a test moves the clock
         builder.UseSetting("Alerts:MinutesBetweenRuns", "0"); // R12 H: tests run the alerts on every apply
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
         builder.UseSetting("Platform:Admins:0", LegacyAdminEmail); // R8 #1: ignored now

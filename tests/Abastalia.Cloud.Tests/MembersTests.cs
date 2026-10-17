@@ -185,7 +185,9 @@ public sealed class MembersTests(CloudApp app) : IClassFixture<CloudApp>
     public void Every_panel_write_endpoint_requires_an_owner()
     {
         // TK-222: every member chooses their own e-mail alerts.
-        string[] readOnlyAllowed = ["POST /api/assistant/ask", "POST /api/me/tenant", "PUT /api/notifications/"];
+        // TK-338: confirm and cancel check each action's own policies (an Owner-only action refuses a ReadOnly member there). TK-349: every member may rate Talia's answers.
+        string[] readOnlyAllowed = ["POST /api/assistant/actions/{id:guid}/cancel", "POST /api/assistant/actions/{id:guid}/confirm", "POST /api/assistant/ask",
+            "POST /api/assistant/feedback", "POST /api/me/tenant", "PUT /api/notifications/"];
         var endpoints = app.Services.GetRequiredService<EndpointDataSource>().Endpoints.OfType<RouteEndpoint>()
             .Select(e => (
                 Name: $"{string.Join(",", e.Metadata.GetMetadata<Microsoft.AspNetCore.Routing.HttpMethodMetadata>()?.HttpMethods ?? [])} /{e.RoutePattern.RawText?.TrimStart('/')}",

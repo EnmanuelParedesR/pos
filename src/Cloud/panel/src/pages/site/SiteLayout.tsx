@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useLocation } from "react-router";
 import { Logo, ThemeToggle } from "../../ui";
 import { site } from "./config";
 import { Trial } from "./SiteParts";
+import { SiteTalia } from "./SiteTalia";
 import { notFound, sitePages, type SitePage } from "./SitePages";
 
 export const pageFor = (pathname: string): SitePage => sitePages.find((p) => p.path === pathname) ?? notFound;
@@ -106,6 +107,7 @@ export function SiteLayout() {
           <p className="muted foot__legal">La información sobre la DGII es orientativa y no sustituye la asesoría de su contador ni lo que publique la DGII.</p>
         </div>
       </footer>
+      <SiteTalia />
     </div>
   );
 }

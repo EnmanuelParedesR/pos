@@ -173,6 +173,30 @@ Todas las excepciones se revisan después del piloto con los registros de lo que
 7. **Límites y cuotas.** Las preguntas y los tokens siguen en los medidores de TK-248 (`AssistantQuestions`, `AssistantTokens`), también las de la app de la tienda. Nuevo: confirmar propuestas, 10 por minuto por usuario (mismo limitador del asistente). Sin medidor mensual nuevo: cada propuesta ya cuesta una pregunta.
 8. **Plan con el bot (decisión del dueño, abierta).** Si se vende como adicional, una función `AssistantActions` en la licencia y en el plan de la nube (como `SupplierInvoiceReading`) enciende las herramientas `propose_*`; sin ella Talia sigue leyendo y navegando. En el piloto, encendida para todos.
 
+### Hecho en TK-338 (protocolo de la nube)
+
+Código: `src/Hosts/Abastalia.Host.Cloud/Assistant/AssistantActions.cs`; pruebas `tests/Abastalia.Cloud.Tests/TaliaActionsTests.cs`. Sin acciones reales todavía (TK-341) ni tarjeta (TK-340).
+
+- **Tabla `cloud.AssistantActions`** (migración `AssistantActions`): `Id` (la llave de idempotencia), `TenantId`, `UserId`, `Type`, `Arguments` (JSON ya validado y resuelto), `Summary` (del servidor), `Status` (`Proposed`, `Confirmed` mientras corre, `Done`, `Failed`, `Cancelled`, `Expired`), `CreatedUtc`, `ExpiresUtc` (10 minutos), `DoneUtc`, `Result` (JSON, solo para la tarjeta), `Error`. Es la auditoría de la nube; además cada confirmación deja en el registro "via talia" con el id, el tipo, el estado, el usuario y el tenant.
+- **Registro tipado:** cada acción es un `AssistantActionType` registrado en DI (`AssistantActionTypes.Builtin`): `Type` (la herramienta es `propose_<Type>`), `Parameters` (esquema cerrado, `additionalProperties: false`; el servidor lo revisa: propiedades desconocidas, tipos, `enum`, `maxLength`, requeridas), `Policies` (las del endpoint de destino, revisadas al ofrecerla y otra vez al confirmar), `PrepareAsync` (resuelve con datos reales y escribe el resumen; puede negarse, por ejemplo "ya está apagado") y `ExecuteAsync` (corre dentro de una transacción con el cambio de estado).
+- **Acción de muestra `alert_preference`** (`Alerts.cs`): `{ "alert": "DgiiRejected" | "QueueStale" | "CertificateExpiring" | "CertificationProgress", "on": bool }`, encender o apagar un aviso por correo propio, como `PUT /api/notifications` (política `Panel`: todo miembro elige los suyos). Resumen: «Aviso por correo «Comprobantes rechazados por la DGII»: encendido → apagado».
+- **En la pregunta:** solo se ofrecen las acciones con la función `AssistantActions` del plan (`Billing:Plans:<Plan>:Features` o el `features` de Paddle; en el piloto, `Default` la trae y los demás planes la heredan) y las políticas del usuario. Una propuesta por respuesta: la segunda llamada `propose_*` recibe un error. El modelo solo recibe «Tarjeta de confirmación: <resumen>…»: nunca el id, el resultado ni secretos. No hay herramienta para confirmar.
+- **API:** la respuesta de `POST /api/assistant/ask` trae `proposal: { id, summary, expiresAt }` (o `null`). `POST /api/assistant/actions/{id}/confirm` y `/cancel` (política `Panel`, 10 por minuto por usuario, `Ai:AssistantConfirmationsPerMinutePerUser`, un limitador propio del mismo tamaño que el de las preguntas) devuelven `{ id, type, summary, status, expiresAt, doneAt, result, error }`:
+
+| Caso | Respuesta |
+|---|---|
+| Otro usuario, otro tenant o id que no existe | 404 `Assistant.ProposalNotFound` |
+| Confirmar bien | 200 `Done` con `result` (o 200 `Failed` con `error` si el ejecutor se negó; nada a medias se guarda) |
+| Confirmar otra vez (`Done` o `Failed`) | 200 con lo guardado; no corre de nuevo |
+| Vencida (10 min) | 409 `Assistant.ProposalExpired` (queda `Expired`) |
+| Cancelada / corriendo / ya hecha (al cancelar) | 409 `Assistant.ProposalCancelled` / `ProposalRunning` / `ProposalClosed` |
+| Permiso perdido desde la propuesta | 403 `Assistant.NotAllowed` (queda `Failed`) |
+| Tipo que ya no existe | 409 `Assistant.UnknownAction` (queda `Failed`) |
+| Plan sin `AssistantActions` | 403 `Assistant.ActionsOff` (sigue `Proposed`) |
+| Cancelar | 200 `Cancelled`; cancelar otra vez, 200 |
+
+- **Una sola vez:** el clic que pasa la fila de `Proposed` a `Confirmed` (un `UPDATE … WHERE Status = 'Proposed' AND ExpiresUtc > ahora`) es el único que ejecuta. Si el proceso se cae después, queda `Confirmed` y no se repite nunca (como mucho una vez, no al menos una).
+
 ## 4. Dónde corren las escrituras
 
 **Opciones para las acciones de la tienda (T):**
@@ -255,7 +279,8 @@ Código: `src/Hosts/Abastalia.Host.Cloud/Assistant/TaliaEval.cs` (formato, corre
 }
 ```
 
-- `history`, `context` y `toolData` son opcionales. Sin `context`: hoy 2026-10-15 y una tienda, Carnicería La Central. `role` y `plan` son informativos hasta que TK-338 filtre las herramientas por permisos. Una herramienta de lectura sin `toolData` devuelve `[]`; una que no existe, el error de siempre.
+- `history`, `context` y `toolData` son opcionales. Sin `context`: hoy 2026-10-15 y una tienda, Carnicería La Central. `role`: `owner` (por defecto) o `readonly`, que no recibe pantallas ni acciones solo del Dueño (TK-338); `plan` es informativo (en el piloto todos los planes tienen las acciones). Una herramienta de lectura sin `toolData` devuelve `[]`; una que no existe, el error de siempre.
+- TK-338: las herramientas `propose_*` pasan por el mismo código del asistente (esquema cerrado, una por respuesta) y dejan una tarjeta falsa cuyo resumen es el tipo y los argumentos (el resumen real lee la base, que el arnés no toca). `expect.noProposal: true` falla si la respuesta dejó una propuesta. Casos en `acciones.json`: proponer apagar y encender avisos, un "sí" en el chat que no confirma, inyección en los datos que no propone y un pedido sin herramienta que navega.
 - `expect.calls`: cada llamada esperada debe aparecer entre las que hizo el modelo, con la misma herramienta y los argumentos listados (los demás no se miran). Texto igual sin mayúsculas ni tildes; `"*"` cualquier valor; `"~pollo"` lo contiene; `null` ausente o vacío. Las frases de la respuesta también se comparan sin mayúsculas ni tildes. Los casos `refusal.*` son los que Talia no debe hacer (anular, cambiar precios, decir precios, asesoría fiscal, inyección en los datos).
 - `script`: las respuestas del modelo falso en CI, en orden. `talia-eval` no lo usa.
 
@@ -272,9 +297,9 @@ Código: `src/Hosts/Abastalia.Host.Cloud/Assistant/TaliaEval.cs` (formato, corre
 | # | Ticket | Tamaño | Depende de |
 |---|---|---|---|
 | TK-337 | **Arnés de evaluación de Talia**: formato de casos, corredor con modelo falso en CI, comando `talia-eval` contra el modelo real con informe y grabación; primeros casos de las 10 herramientas de lectura | M | — |
-| TK-338 | **Protocolo de propuestas en la nube**: `cloud.AssistantActions` (migración), herramientas `propose_*` con esquema cerrado y resumen por código, `POST /api/assistant/actions/{id}/confirm` y `/cancel` con la política del endpoint de destino, vencimiento 10 min, idempotencia, una propuesta por respuesta, límite por minuto, función `AssistantActions` | M | 1 |
+| TK-338 ✅ | **Protocolo de propuestas en la nube** (hecho, §3 "Hecho en TK-338"): `cloud.AssistantActions` (migración), herramientas `propose_*` con esquema cerrado y resumen por código, `POST /api/assistant/actions/{id}/confirm` y `/cancel` con la política del endpoint de destino, vencimiento 10 min, idempotencia, una propuesta por respuesta, límite por minuto, función `AssistantActions` | M | 1 |
 | TK-339 | **Navegación en el panel**: herramienta `navigate` con `enum` de `Panel.tsx`, `navigation` en la respuesta, botón "Ir a" en `AssistantChat` (sin navegación automática); prueba de rutas | S | — |
-| TK-340 | **Tarjeta de confirmación en el panel**: resumen, elegir entre candidatos, Confirmar/Cancelar, estados (vencida, hecha, fallida con el error del servidor), accesible; crítica de diseño 320–1366 | M | 2 |
+| TK-340 ✅ | **Tarjeta de confirmación en el panel** (hecho: `pages/ProposalCard.tsx`; "elegir entre candidatos" queda para cuando la API mande candidatos, hoy la propuesta llega ya resuelta): resumen, elegir entre candidatos, Confirmar/Cancelar, estados (vencida, hecha, fallida con el error del servidor), accesible; crítica de diseño 320–1366 | M | 2 |
 | TK-341 | **Fase 1, acciones de la nube**: avisos, invitar y cancelar, rol y costos de otro miembro, crear tienda, código de conexión (resultado solo en la tarjeta), decisión ACECF; casos del arnés y corrida contra el modelo real (decide nano o mini) | M | 2, 4 |
 | TK-342 | **Talia en la app de la tienda**: `POST /api/nodes/assistant/ask` (política de nodo, cuotas del negocio, usuario y permisos de la tienda como contexto), proxy local en Sync, ventana de Talia en Administración (Blazor), `open_screen` con la regla de la venta en pantalla, "necesita internet" | L | 1, 2 |
 | TK-343 | **Ejecutor de propuestas en la tienda**: registro tipo → vista previa con datos locales → endpoint existente con la sesión del usuario; filtro `AllowAssistant(...)` en los endpoints permitidos; tabla de propuestas hechas (una vez por id); `via: talia` en la auditoría; diálogo de supervisor ante `Approval.Required` | L | 6 |

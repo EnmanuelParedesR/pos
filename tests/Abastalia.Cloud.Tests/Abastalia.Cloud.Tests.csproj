@@ -20,4 +20,8 @@
     <!-- e-CF built and signed as a store does, for the receiver tests (TK-152) -->
     <ProjectReference Include="..\..\src\Modules\Fiscal\Abastalia.Fiscal\Abastalia.Fiscal.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- TK-347/TK-348: Talia's eval cases and the knowledge retrieval questions. -->
+    <None Include="Talia\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

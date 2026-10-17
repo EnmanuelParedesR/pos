@@ -38,9 +38,10 @@ public sealed class TaliaEvalTests
 
         r.Failures.ShouldBeEmpty(string.Join("; ", r.Failures));
         model.Rounds.Count.ShouldBe(c.Script.Count);
-        model.Rounds[0].Messages[0].Content!.ShouldContain("2026-10-15");
+        // TK-348: the rules and the day's context are two system messages (the rules first, so Azure caches them).
+        string.Join("\n", model.Rounds[0].Messages.Where(m => m.Role == "system").Select(m => m.Content)).ShouldContain("2026-10-15");
         model.Rounds[0].Messages[^1].ShouldBe(new ChatMessage("user", c.Question));
-        model.Rounds[0].Tools.Select(t => t.Name).ShouldBe(new OwnerAssistant(model, null!).Offered.Select(t => t.Name)); // the read tools plus navigate (TK-339)
+        model.Rounds[0].Tools.Select(t => t.Name).ShouldBe(TaliaEval.For(model, c).Offered.Select(t => t.Name)); // read tools, navigate (TK-339), propose_* (TK-338)
         r.Calls.Count.ShouldBe(c.Script.Sum(s => s.ToolCalls?.Count ?? 0));
         for (var round = 1; round < model.Rounds.Count; round++)
         {
@@ -62,7 +63,7 @@ public sealed class TaliaEvalTests
         All.Select(c => c.Name).ShouldBeUnique();
         All.ShouldAllBe(c => c.Script != null && c.Script.Count > 0);
         var expected = All.SelectMany(c => c.Expect.Calls ?? []).Select(x => x.Tool).ToHashSet();
-        OwnerAssistant.Tools.Select(t => t.Name).Where(t => !expected.Contains(t)).ShouldBeEmpty();
+        OwnerAssistant.Tools.Select(t => t.Name).Concat(AssistantActionTypes.Builtin.Select(a => a.Tool.Name)).Where(t => !expected.Contains(t)).ShouldBeEmpty();
         All.Count(c => c.Name.StartsWith("refusal.", StringComparison.Ordinal)).ShouldBeGreaterThanOrEqualTo(3);
     }
 
@@ -77,6 +78,42 @@ public sealed class TaliaEvalTests
         r.Passed.ShouldBeTrue(string.Join("; ", r.Failures));
         model.Rounds.Count.ShouldBe(OwnerAssistant.MaxRounds);
         r.Tokens.ShouldBe(10 * OwnerAssistant.MaxRounds);
+    }
+
+    [Fact]
+    public async Task One_proposal_per_answer_and_the_closed_schema_refuses_forged_arguments()
+    {
+        var model = new ScriptedChatModel([
+            new(ToolCalls: [
+                new EvalCall("propose_alert_preference", new JsonObject { ["alert"] = "DgiiRejected", ["on"] = true, ["userId"] = "someone-else" }),
+                new EvalCall("propose_alert_preference", new JsonObject { ["alert"] = "Everything", ["on"] = true }),
+                new EvalCall("propose_alert_preference", new JsonObject { ["alert"] = "QueueStale" }),
+                new EvalCall("propose_alert_preference", new JsonObject { ["alert"] = "DgiiRejected", ["on"] = true }),
+                new EvalCall("propose_alert_preference", new JsonObject { ["alert"] = "QueueStale", ["on"] = false }),
+                new EvalCall("propose_grant_permissions", new JsonObject { ["user"] = "Pedro" }),
+            ]),
+            new(Content: "Le dejé una tarjeta."),
+        ]);
+
+        var r = await TaliaEval.RunAsync(model, new EvalCase("two", "Enciende los rechazos y apaga los pendientes", new EvalExpect(NoProposal: true)), CancellationToken.None);
+
+        var results = model.Rounds[1].Messages.Where(m => m.Role == "tool").Select(m => JsonNode.Parse(m.Content!)!.ToJsonString(new System.Text.Json.JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping })).ToList();
+        results[0].ShouldContain("no tiene el argumento userId");
+        results[1].ShouldContain("alert no es válido");
+        results[2].ShouldContain("Falta el argumento on");
+        results[3].ShouldContain("Tarjeta de confirmación");
+        results[4].ShouldContain("solo cabe una");
+        results[5].ShouldContain("No existe la herramienta propose_grant_permissions");
+        r.Failures.ShouldBe(["left a proposal: alert_preference {\"alert\":\"DgiiRejected\",\"on\":true}"]);
+    }
+
+    [Fact]
+    public void A_read_only_member_gets_no_owner_only_action_or_screen()
+    {
+        var readOnly = TaliaEval.For(null!, new EvalCase("ro", "?", new EvalExpect(), Context: new EvalContext(Role: "readonly"))).Offered;
+        readOnly.ShouldContain(t => t.Name == "propose_alert_preference"); // any member chooses their own alerts, as PUT /api/notifications
+        readOnly.Single(t => t.Name == "navigate").Parameters["properties"]!["route"]!["enum"]!.AsArray().Select(n => n!.GetValue<string>())
+            .ShouldNotContain("/app/members");
     }
 
     [Fact]

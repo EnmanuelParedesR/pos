@@ -68,6 +68,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Platform.AppRelease> AppReleases => Set<Platform.AppRelease>();
     public DbSet<Backups.StoreBackup> StoreBackups => Set<Backups.StoreBackup>();
     public DbSet<Platform.LimitRejection> LimitRejections => Set<Platform.LimitRejection>(); // TK-311
+    public DbSet<Assistant.AssistantAction> AssistantActions => Set<Assistant.AssistantAction>(); // TK-338
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -328,6 +329,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
         Certification.AccompanimentModel.Configure(builder);
         Platform.Releases.Configure(builder);
         Platform.LimitRejection.Configure(builder); // TK-311
+        Assistant.AssistantAction.Configure(builder); // TK-338
         Abastalia.Host.Cloud.Nodes.UsedNonce.Configure(builder);
     }
 

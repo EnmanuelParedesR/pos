@@ -84,6 +84,7 @@ var invoicesPerNodeMinute = config.GetValue("Ai:SupplierInvoicesPerMinutePerNode
 var authPerMinute = config.GetValue("Auth:RequestsPerMinute", 10);
 var panelPerUserMinute = config.GetValue("Panel:RequestsPerMinutePerUser", 120);
 var assistantPerUserMinute = config.GetValue("Ai:AssistantQuestionsPerMinutePerUser", 10);
+var confirmationsPerUserMinute = config.GetValue("Ai:AssistantConfirmationsPerMinutePerUser", 10); // TK-338
 // R11 B-Med2/B-Med3: account management per user; uploads per store PC (a compromised one cannot flood the database).
 var managePerUserMinute = config.GetValue("Auth:ManagePerMinutePerUser", 10);
 var ingestPerNodeMinute = config.GetValue("Ingest:BatchesPerMinutePerNode", 60);
@@ -92,8 +93,10 @@ var archivePerNodeMinute = config.GetValue("Archive:UploadsPerMinutePerNode", 12
 var backupsPerNodeHour = config.GetValue("CloudBackup:UploadsPerHourPerNode", 4);
 var backupDownloadsPerUserHour = config.GetValue("CloudBackup:DownloadsPerHourPerUser", 10); // R12 #6
 // The e-CF receiver's limits (R9 #2) are the global limiter, set by AddFe.
+var talia = config.GetSection(TaliaOptions.Section).Get<TaliaOptions>() ?? new TaliaOptions();
 builder.Services.AddRateLimiter(o =>
 {
+    o.AddPublicAssistantRateLimit(talia.PublicPerMinutePerIp); // TK-315: the site's Talia, per IP
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     // TK-248: say when the window reopens, so the store's uploads wait that long instead of retrying blind.
     o.OnRejected = (rejected, _) =>
@@ -119,6 +122,8 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = authPerMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(QuotaRateLimits.PanelUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.PanelPerMinute, panelPerUserMinute));
     o.AddPolicy(QuotaRateLimits.AssistantUser, http => QuotaRateLimits.PerPlan(http, QuotaRateLimits.UserOrIp(http), PlanLimits.AssistantPerMinute, assistantPerUserMinute));
+    o.AddPolicy(AssistantActionEndpoints.RateLimit, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = confirmationsPerUserMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(AccountSecurityEndpoints.ManageRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(QuotaRateLimits.UserOrIp(http),
         _ => new FixedWindowRateLimiterOptions { PermitLimit = managePerUserMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(IngestEndpoint.NodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "",
@@ -137,6 +142,7 @@ builder.Services.AddSingleton<InboxSignal>();
 builder.Services.AddSingleton<InboxApplier>();
 builder.Services.AddHostedService<InboxApplierWorker>();
 builder.Services.AddScoped<PanelQueries>();
+foreach (var action in AssistantActionTypes.Builtin) builder.Services.AddSingleton(action); // TK-338: what Talia may propose
 builder.Services.AddScoped<PlatformQueries>();
 builder.Services.AddSingleton<LimitWatch>(); // TK-311
 builder.Services.AddHostedService<LimitWatchWorker>();
@@ -150,6 +156,10 @@ builder.Services.AddBilling(config, builder.Environment); // TK-249: off until B
 builder.Services.AddHttpClient(LiteDeviceEndpoints.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(15)); // TK-321
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
+// TK-348/TK-315: how each Talia calls the model, and the site's daily budget.
+builder.Services.AddSingleton(talia);
+builder.Services.AddSingleton<PublicAssistantBudget>();
+builder.Services.AddTaliaUpdates(config); // TK-350: the base from Blob Storage, live prices, the DGII pages watcher
 if (openAi.IsConfigured)
 {
     builder.Services.AddSingleton(openAi);
@@ -235,6 +245,8 @@ app.MapNodeUpdates();
 app.MapIngest();
 app.MapPanel();
 app.MapAssistant();
+app.MapAssistantActions();
+app.MapPublicAssistant();
 app.MapSupplierInvoiceReader();
 app.MapEcfArchive();
 app.MapColdArchive();

@@ -112,6 +112,14 @@ export async function api<T>(path: string, method = "GET", body?: unknown): Prom
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+/** TK-315: a call that needs no account (the site's Talia): no token, no renewal; errors as ApiError like api(). */
+export async function publicApi<T>(path: string, method = "GET", body?: unknown): Promise<T> {
+  const response = await send(path, method, body, false);
+  if (!response.ok) throw await toError(response);
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
 /** TK-238: a store backup (up to 1 GB). R12 #9: the session asks for a link that lasts two minutes and the browser downloads it by itself,
  * so the file never sits in the page's memory. `path` is the backup's (`/api/stores/{id}/backups/{backupId}`). */
 export async function download(path: string) {

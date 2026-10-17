@@ -28,7 +28,7 @@ Un producto es de Abastalia solo si su `custom_data` tiene la clave `abastalia` 
     "rateLimits": { "panelPerMinute": 120, "assistantPerMinute": 10, "supplierInvoicesPerMinute": 10 },
     "registers": 3,
     "stores": 1,
-    "features": ["ButcherModule", "WholesaleModule", "CloudBackup", "AiAssistant"]
+    "features": ["ButcherModule", "WholesaleModule", "CloudBackup", "AiAssistant", "AssistantActions"]
   }
 }
 ```
@@ -41,7 +41,7 @@ Un producto es de Abastalia solo si su `custom_data` tiene la clave `abastalia` 
 | `registers` | Cajas además de la PC principal que pone la licencia. En un adicional (`ExtraRegister`), se suman por unidad |
 | `stores` | Tiendas del negocio que reciben licencia de la nube (1 si nadie lo dice). En un adicional (`ExtraStore`), se suman por unidad |
 | `cashiers` | TK-277: cajeros que la tienda puede tener habilitados (el Dueño no cuenta). En un adicional se suman por unidad: `ExtraCashier` 1 (Paddle); `ExtraRegister` 2 y `ExtraStore` 4 salen de `Billing:AddOns` |
-| `features` | Funciones de la licencia (`ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant`, `SupplierInvoiceReading`). Todos los planes llevan todas |
+| `features` | Funciones de la licencia (`ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant`, `SupplierInvoiceReading`, `AssistantActions`). Todos los planes llevan todas: un `features` en Paddle sin `AssistantActions` apaga las propuestas de Talia en ese plan (TK-338) |
 
 **Orden:** `custom_data` de Paddle &gt; appsettings (`Quotas:<Plan>`, `Quotas:<Plan>:RateLimits`, `Billing:Plans:<Plan>`, `Quotas:AddOns:<Adicional>`, `Billing:AddOns:<Adicional>`) &gt; lo de `Default` (Paddle, luego appsettings) &gt; el valor global (`Panel:RequestsPerMinutePerUser`, `Ai:AssistantQuestionsPerMinutePerUser`, `Ai:SupplierInvoicesPerMinutePerNode`). Lo que falte en Paddle sale de appsettings: se puede empezar solo con `plan` y completar después. Los nombres de las claves no distinguen mayúsculas. Un cambio en Paddle aplica en la siguiente lectura del catálogo (o al instante con el webhook); los límites por minuto de un negocio siguen a su plan en menos de un minuto.
 

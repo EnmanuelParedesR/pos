@@ -151,7 +151,8 @@ it("TK-245: the home page shows the product: deadline banner, trial and contact 
   const trials = screen.getAllByRole("link", { name: "Probar 14 días gratis" });
   expect(trials.length).toBe(3); // header, hero, price band
   for (const trial of trials) expect(trial.getAttribute("href")).toBe("/descargar");
-  expect(screen.getByRole("link", { name: "Hablemos" }).getAttribute("href")).toBe("/precios#contacto"); // no WhatsApp number yet
+  // The owner gave the WhatsApp number (17/10/2026): "Hablemos" became "Hablar por WhatsApp", straight to the chat.
+  expect(screen.getByRole("link", { name: /Hablar por WhatsApp/ }).getAttribute("href")).toMatch(/^https:\/\/wa\.me\/18496313513\?text=/);
   expect(document.querySelector(".art__stage")!.getAttribute("aria-hidden")).toBe("true");
   expect(screen.getByText(/cifras son ilustrativas/)).toBeTruthy();
   expect(screen.queryByText("Precio por confirmar")).toBeNull(); // TK-274: no placeholder on the home
@@ -165,7 +166,7 @@ it("TK-245: the home page shows the product: deadline banner, trial and contact 
 it.each(["/carniceria", "/colmado", "/deli"])("TK-245: %s keeps both calls to action", (path) => {
   renderAt(path);
   expect(screen.getAllByRole("link", { name: "Probar 14 días gratis" }).length).toBeGreaterThan(1);
-  expect(screen.getByRole("link", { name: "Hablemos" })).toBeTruthy();
+  expect(screen.getByRole("link", { name: /Hablar por WhatsApp/ })).toBeTruthy();
 });
 
 it("TK-263: the e-CF guide, the comparison and the glossary link to each other and from /e-cf, /precios, /certificacion, /novedades and the footer", () => {
