@@ -41,6 +41,7 @@ public static partial class ScaleProtocols
         var end = frame[start..].IndexOf(Cr);
         if (end < 2) return null;
         var text = Encoding.ASCII.GetString(frame.Slice(start + 1, end - 1)).Trim();
+        if (text.Length == 0) return null; // R12: only blanks between STX and CR
         if (text[0] == '?')
         {
             if (text.Length < 2) return null;

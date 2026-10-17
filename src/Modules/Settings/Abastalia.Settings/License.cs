@@ -82,17 +82,43 @@ internal sealed class LicenseService : IFeatureService
                 return key;
             })];
         FilePath = config["License:File"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Abastalia", "license.jws");
-        if (File.Exists(FilePath) && Jws.Verify(File.ReadAllText(FilePath), _keys) is { IsSuccess: true } saved) (Data, Current) = (saved.Value, File.ReadAllText(FilePath).Trim());
+        if (File.Exists(FilePath) && Jws.Verify(File.ReadAllText(FilePath), _keys) is { IsSuccess: true } saved) (_data, _current) = (saved.Value, File.ReadAllText(FilePath).Trim());
     }
 
+    public static readonly Error Older = Error.Conflict("License.Older", "Esta licencia es más antigua que la última instalada. Pídale a Abastalia la licencia vigente.");
+    public static readonly Error OtherBusiness = Error.Validation("License.OtherBusiness",
+        "Esta licencia es de otro negocio: su RNC no es el de esta tienda (Configuración → Negocio).");
+
+    private LicenseData? _data;
+    private string? _current;
+    private volatile bool _rncChecked;
+
     /// <summary>The installed license as signed (JWS), or null.</summary>
-    public string? Current { get; private set; }
+    public string? Current => Data is null ? null : _current;
 
     /// <summary>R11 B-Low8: the heartbeat sends it so the cloud checks it itself.</summary>
     string? IFeatureService.LicenseJws => Current;
 
     public string FilePath { get; }
-    public LicenseData? Data { get; private set; }
+
+    /// <summary>R12: a license saved for another business's RNC is ignored (checked once, when first read: the database is ready by then).</summary>
+    public LicenseData? Data
+    {
+        get
+        {
+            if (!_rncChecked)
+            {
+                if (_data is { Rnc: { } rnc } && !SameRnc(rnc, BusinessRnc())) _data = null;
+                _rncChecked = true;
+            }
+            return _data;
+        }
+    }
+
+    private string? BusinessRnc() => Read(sp => sp.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => b.Rnc).SingleOrDefault());
+
+    private static bool SameRnc(string license, string? business) =>
+        business is not null && license.Where(char.IsDigit).SequenceEqual(business.Where(char.IsDigit));
 
     /// <summary>The store's first sale (settings.Business), read once and then kept here; <see cref="StartTrialOnFirstSale"/> sets it.</summary>
     public DateTime? TrialStartedUtc
@@ -123,7 +149,8 @@ internal sealed class LicenseService : IFeatureService
     }
 
     /// <summary>TK-279: loaded once from the latest time this store saw: the sealed copy in settings.Business (ignored when its seal does not
-    /// match, e.g. edited by hand), the newest audit record (hash-chained) and the installed license's issue date (signed).</summary>
+    /// match, e.g. edited by hand), R12 B1 its sealed twin in the keys folder (so wiping the database's copy or its seal gains nothing), the newest
+    /// audit record (hash-chained) and the installed license's issue date (signed).</summary>
     public LicenseClock Time
     {
         get
@@ -134,7 +161,8 @@ internal sealed class LicenseService : IFeatureService
                 {
                     var saved = sp.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => new { b.ClockSeenUtc, b.ClockSeenSeal }).SingleOrDefault();
                     var audited = sp.GetRequiredService<InfraDbContext>().AuditRecords.Max(r => (DateTime?)r.DateUtc);
-                    return new[] { LicenseClock.Unseal(saved?.ClockSeenUtc, saved?.ClockSeenSeal, ClockKey), audited, Data?.IssuedUtc }.Max();
+                    var kept = ReadSealed(SeenFile) is { } ticks && long.TryParse(ticks, out var t) ? new DateTime(t, DateTimeKind.Utc) : (DateTime?)null;
+                    return new[] { LicenseClock.Unseal(saved?.ClockSeenUtc, saved?.ClockSeenSeal, ClockKey), kept, audited, Data?.IssuedUtc }.Max();
                 }));
             }
         }
@@ -146,6 +174,7 @@ internal sealed class LicenseService : IFeatureService
         if (_time is null) return; // nothing read yet
         var seen = Time.SeenUtc;
         var seal = LicenseClock.Seal(seen, ClockKey);
+        WriteSealed(SeenFile, seen.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture));
         await using var scope = _scopes.CreateAsyncScope();
         await scope.ServiceProvider.GetRequiredService<SettingsDbContext>().Business
             .ExecuteUpdateAsync(s => s.SetProperty(b => b.ClockSeenUtc, seen).SetProperty(b => b.ClockSeenSeal, seal), ct);
@@ -153,6 +182,52 @@ internal sealed class LicenseService : IFeatureService
 
     /// <summary>A secret of this server kept outside the database (R11 A3), like the PIN pepper.</summary>
     private byte[] ClockKey => _secrets.GetOrCreate("license-clock");
+
+    internal const string SeenFile = "license-clock.seen", IssuedFile = "license-issued.seen";
+
+    /// <summary>R12: small values kept in the keys folder (outside the database), with an HMAC of this server's secret and the file's name.</summary>
+    internal void WriteSealed(string name, string value)
+    {
+        Directory.CreateDirectory(_secrets.Folder);
+        var path = Path.Combine(_secrets.Folder, name);
+        File.WriteAllText(path + ".tmp", $"{value}|{SealOf(name, value)}");
+        File.Move(path + ".tmp", path, overwrite: true);
+    }
+
+    /// <summary>The value, or null when the file is missing or its seal does not match.</summary>
+    internal string? ReadSealed(string name)
+    {
+        var path = Path.Combine(_secrets.Folder, name);
+        if (!File.Exists(path)) return null;
+        var text = File.ReadAllText(path);
+        var bar = text.LastIndexOf('|');
+        if (bar < 0) return null;
+        var value = text[..bar];
+        return CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(text[(bar + 1)..]), Encoding.ASCII.GetBytes(SealOf(name, value))) ? value : null;
+    }
+
+    private string SealOf(string name, string value) => Convert.ToBase64String(HMACSHA256.HashData(ClockKey, Encoding.UTF8.GetBytes($"{name}:{value}")));
+
+    /// <summary>R12 (security M2): the newest license ever installed here, and whether it was a block: an older license never undoes it, nor does
+    /// deleting license.jws. Before the first install with this version: the installed license itself.</summary>
+    private (DateTime IssuedUtc, bool Blocked)? Newest
+    {
+        get
+        {
+            lock (_gate)
+            {
+                if (_newestLoaded) return _newest;
+                _newest = ReadSealed(IssuedFile)?.Split('|') is [var ticks, var blocked] && long.TryParse(ticks, out var t)
+                    ? (new DateTime(t, DateTimeKind.Utc), blocked == "1")
+                    : _data is { } d ? (d.IssuedUtc, d.Blocked) : null;
+                _newestLoaded = true;
+                return _newest;
+            }
+        }
+    }
+
+    private (DateTime IssuedUtc, bool Blocked)? _newest;
+    private bool _newestLoaded;
 
     /// <summary>On its own connection. The scope only disposes asynchronously (UnitOfWork).</summary>
     private T Read<T>(Func<IServiceProvider, T> read)
@@ -185,12 +260,19 @@ internal sealed class LicenseService : IFeatureService
     /// <summary>TK-279: when the store goes Blocked by date: 30 days (or what the license says) after it expired or the trial ended.</summary>
     public DateTime? BlocksUtc => Data is { } d ? d.ExpiresUtc.AddDays(d.BlockAfterDays ?? DefaultBlockAfterDays) : TrialEndsUtc?.AddDays(DefaultBlockAfterDays);
 
-    /// <summary>The license clock, never behind the DGII's time at its last answer (TK-156).</summary>
+    private DateTime? _dgiiSeen;
+
+    /// <summary>The license clock, set by the DGII's time at each new answer (TK-156): never behind it and, R12, brought back down from a date
+    /// far ahead (a PC that once booted in the future).</summary>
     private DateTime Now
     {
         get
         {
-            if (_dgii?.LastDgiiUtc is { } dgii) Time.Observe(dgii);
+            if (_dgii?.LastDgiiUtc is { } dgii && dgii != _dgiiSeen)
+            {
+                _dgiiSeen = dgii;
+                Time.Correct(dgii);
+            }
             return Time.UtcNow;
         }
     }
@@ -200,11 +282,22 @@ internal sealed class LicenseService : IFeatureService
         get
         {
             var now = Now;
-            if (Data is { Blocked: true } || now > BlocksUtc) return LicenseStatus.Blocked;
+            if (BlockedBy(now) is not null) return LicenseStatus.Blocked;
             if (Data is null) return TrialEndsUtc is { } end && now > end ? LicenseStatus.Restricted : LicenseStatus.Trial;
             return now <= Data.ExpiresUtc ? LicenseStatus.Active : now <= Data.ExpiresUtc + GracePeriod ? LicenseStatus.Grace : LicenseStatus.Restricted;
         }
     }
+
+    /// <summary>R12: why the store is Blocked: "Suspended" (Abastalia blocked the business, also when that license was deleted or replaced by an
+    /// older one), "Trial" (30 days after the trial) or "Expired"; null when it is not.</summary>
+    private string? BlockedBy(DateTime now) =>
+        Data is { Blocked: true } || (Newest is { Blocked: true } newest && !(Data?.IssuedUtc > newest.IssuedUtc)) ? "Suspended"
+        : now > BlocksUtc ? Data is null ? "Trial" : "Expired"
+        : null;
+
+    public string? BlockReason => BlockedBy(Now);
+
+    public Error BlockedError => BlockReason switch { "Suspended" => Jws.Suspended, "Trial" => Jws.TrialOver, _ => Jws.Blocked };
 
     /// <summary>Days left of the trial (the day in course counts), or null outside the trial or before its first sale.</summary>
     public int? TrialDaysLeft => Status == LicenseStatus.Trial && TrialEndsUtc is { } end ? (int)Math.Ceiling((end - Now).TotalDays) : null;
@@ -236,15 +329,22 @@ internal sealed class LicenseService : IFeatureService
 
     public Result<LicenseData> Verify(string jws) => Jws.Verify(jws, _keys);
 
+    public Result<TrialGrant> VerifyTrial(string jws) => Jws.Verify<TrialGrant>(jws, Jws.TrialType, _keys);
+
     public Result<LicenseData> Install(string jws)
     {
         var verified = Verify(jws);
         if (verified.IsFailure) return verified.Error!;
+        var v = verified.Value;
+        if (v.Rnc is { } rnc && !SameRnc(rnc, BusinessRnc())) return OtherBusiness;
+        if (Newest is { } newest && v.IssuedUtc < newest.IssuedUtc) return Older; // R12 (security M2): never undoes a newer one, e.g. a block
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         File.WriteAllText(FilePath, jws.Trim());
-        (Data, Current) = (verified.Value, jws.Trim());
-        Time.Observe(verified.Value.IssuedUtc);
-        return verified.Value;
+        WriteSealed(IssuedFile, $"{v.IssuedUtc.Ticks}|{(v.Blocked ? 1 : 0)}");
+        lock (_gate) (_newest, _newestLoaded) = ((v.IssuedUtc, v.Blocked), true);
+        (_data, _current, _rncChecked) = (v, jws.Trim(), true);
+        Time.Observe(v.IssuedUtc);
+        return v;
     }
 }
 
@@ -282,18 +382,33 @@ internal sealed class LicenseClock(TimeProvider clock, DateTime? seenUtc)
                 var wall = clock.GetUtcNow().UtcDateTime;
                 var running = _seen == DateTime.MinValue ? wall : _seen + clock.GetElapsedTime(_stamp);
                 Behind = wall < running - Tolerance;
-                // Within the tolerance the PC's clock wins and the latest instant stays put, so small corrections never pile up.
-                (_seen, _stamp) = (Behind ? running : wall > _seen ? wall : _seen, clock.GetTimestamp());
+                // Within the tolerance the PC's clock wins and small corrections never pile up; the latest instant only moves (and its uptime
+                // stamp restarts) when it changes, so a clock set back a little again and again does not stop the time (R12).
+                if (Behind) (_seen, _stamp) = (running, clock.GetTimestamp());
+                else if (wall > _seen) (_seen, _stamp) = (wall, clock.GetTimestamp());
                 return Behind ? running : wall;
             }
         }
     }
 
-    /// <summary>A time known to have passed (a license's signed issue date).</summary>
+    /// <summary>The time a trusted outside source says it is now may bring the clock back down from this far ahead (R12).</summary>
+    public static readonly TimeSpan MaxAhead = TimeSpan.FromDays(1);
+
+    /// <summary>A time known to have passed (a license's signed issue date). R12: the interval since the latest instant counts once.</summary>
     public void Observe(DateTime utc)
     {
         lock (_gate)
-            if (utc > _seen) _seen = utc;
+            if (_seen == DateTime.MinValue || utc > _seen + clock.GetElapsedTime(_stamp)) (_seen, _stamp) = (utc, clock.GetTimestamp());
+    }
+
+    /// <summary>R12: what a trusted outside source (the DGII's time at its answer) says it is now. Raises the clock like <see cref="Observe"/> and
+    /// also brings it back down when it ran more than <see cref="MaxAhead"/> ahead (a PC that once booted with a date far in the future would
+    /// otherwise stay Blocked even after paying).</summary>
+    public void Correct(DateTime utc)
+    {
+        lock (_gate)
+            if (_seen == DateTime.MinValue || utc > _seen + clock.GetElapsedTime(_stamp) || _seen + clock.GetElapsedTime(_stamp) - utc > MaxAhead)
+                (_seen, _stamp) = (utc, clock.GetTimestamp());
     }
 
     public static string Seal(DateTime utc, byte[] key) => Convert.ToBase64String(HMACSHA256.HashData(key, BitConverter.GetBytes(utc.Ticks)));
@@ -340,9 +455,12 @@ internal sealed class LicenseClockKeeper(LicenseService license, ILogger<License
 /// issued after the installed one: an older copy never replaces a newer license, whoever signed it.</summary>
 internal sealed class StoreLicense(LicenseService license, ICommandHandler<InstallLicense.Command, Ok> install, SettingsDbContext db) : IStoreLicense
 {
-    /// <summary>TK-276: a longer trial (a business that came recommended); never a shorter one, and 90 days at most. Saved with the business.</summary>
-    public async Task<bool> ExtendTrialAsync(int days, CancellationToken ct)
+    /// <summary>TK-276: a longer trial (a business that came recommended); never a shorter one, and 90 days at most. Saved with the business.
+    /// R12 (security B3): only from a <see cref="TrialGrant"/> signed with a license key for this store's cloud business.</summary>
+    public async Task<bool> ExtendTrialAsync(string grant, Guid tenantId, CancellationToken ct)
     {
+        if (license.VerifyTrial(grant) is not { IsSuccess: true } verified || verified.Value.TenantId != tenantId) return false;
+        var days = verified.Value.Days;
         if (days <= license.TrialLength.TotalDays || days > 90) return false;
         await db.Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialDays, days), ct);
         license.TrialLengthChanged(days);
@@ -369,8 +487,10 @@ internal sealed class StartTrialOnFirstSale(SettingsDbContext db, LicenseService
         var issuedIn = await fiscal.IssuedInAsync(e.ENcf, ct);
         if (issuedIn == IssuedIn.Test) return;
         if (issuedIn == IssuedIn.Simulated && await catalog.AnySampleAsync([.. e.Lines.Select(l => l.ProductId)], ct)) return;
-        await db.Business.Where(b => b.TrialStartedUtc == null).ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialStartedUtc, e.OccurredUtc), ct);
-        license.TrialStarted((await db.Business.AsNoTracking().SingleAsync(ct)).TrialStartedUtc ?? e.OccurredUtc);
+        // R12: by the license clock, like Status: a PC clock turned back before the first sale does not move the trial's start back.
+        var now = license.Time.UtcNow;
+        await db.Business.Where(b => b.TrialStartedUtc == null).ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialStartedUtc, now), ct);
+        license.TrialStarted((await db.Business.AsNoTracking().SingleAsync(ct)).TrialStartedUtc ?? now);
     }
 }
 
@@ -402,8 +522,9 @@ internal static class InstallLicense
     /// <param name="Warning">Null, "Soon" (trial day 10 on), "Last" (day 13 on), "Ended" (Restricted) or "Blocked" (TK-279).</param>
     /// <param name="BlocksUtc">TK-279: when it goes Blocked by date (null before the trial starts).</param>
     /// <param name="ClockBehind">TK-279: the PC's clock is behind the latest time this store saw; the license counts from that time.</param>
+    /// <param name="BlockReason">R12: while Blocked, "Expired", "Trial" or "Suspended" (Abastalia blocked the business), so the register says which.</param>
     public sealed record Features(LicenseStatus Status, string? Plan, DateTime? ExpiresUtc, IReadOnlyList<string> Enabled, int Registers,
-        DateTime? TrialEndsUtc, int? TrialDaysLeft, string? Warning, DateTime? BlocksUtc, bool ClockBehind);
+        DateTime? TrialEndsUtc, int? TrialDaysLeft, string? Warning, DateTime? BlocksUtc, bool ClockBehind, string? BlockReason);
 
     internal sealed class Endpoint : IEndpoint
     {
@@ -414,7 +535,7 @@ internal static class InstallLicense
             // The register shows or hides menus with this; the server still checks every gated action itself.
             app.MapGet("/api/settings/features", (LicenseService license) => Results.Ok(new Features(license.Status, license.Data?.Plan, license.Data?.ExpiresUtc,
                     Enum.GetValues<Feature>().Where(license.IsEnabled).Select(f => f.ToString()).ToList(), license.LimitOf(Limit.Registers),
-                    license.Data is null ? license.TrialEndsUtc : null, license.TrialDaysLeft, license.Warning, license.BlocksUtc, license.Time.Behind)))
+                    license.Data is null ? license.TrialEndsUtc : null, license.TrialDaysLeft, license.Warning, license.BlocksUtc, license.Time.Behind, license.BlockReason)))
                 .RequireAuthorization().WithTags("Settings");
         }
     }

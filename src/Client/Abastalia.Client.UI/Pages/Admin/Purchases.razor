@@ -434,7 +434,9 @@
                 item.Waiting = false;
                 continue;
             }
-            if (r.Problem is { Code: "Purchasing.AiQuotaExceeded" or "Purchasing.AiBusy" or "Purchasing.AiNeedsCloud" or "Purchasing.AiUnreachable" } or { IsUncertain: true })
+            // R12: also when the cloud AI is down, not set up or not allowed (403/5xx), and when there are too many drafts waiting.
+            if (r.Problem is { Code: "Purchasing.AiQuotaExceeded" or "Purchasing.AiBusy" or "Purchasing.AiNeedsCloud" or "Purchasing.AiUnreachable" or "Purchasing.AiUnavailable" or "Purchasing.TooManyDrafts" }
+                or { IsUncertain: true })
                 _batchStop = $"{r.Problem.Message} Las facturas que faltan no se leyeron.";
             else item.Error = r.Problem?.Message;
             return;

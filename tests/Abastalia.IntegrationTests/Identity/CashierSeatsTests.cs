@@ -43,6 +43,8 @@ public sealed class CashierSeatsTests(AbastaliaApp app) : IClassFixture<Abastali
         (await CreateAsync(admin, "cont", Roles.Accountant)).EnsureSuccessStatusCode();
         var seats = await admin.GetFromJsonAsync<JsonElement>("/api/identity/cashier-seats"); // Configuración → Usuarios shows it
         (seats.GetProperty("used").GetInt32(), seats.GetProperty("limit").GetInt32()).ShouldBe((4, 4));
+        // R12: a second Administrador sells too: only the owner is free.
+        (await (await CreateAsync(admin, "admin2", Roles.Administrator)).ErrorCode()).ShouldBe("Identity.CashierLimitReached");
 
         var users = (await admin.GetFromJsonAsync<List<JsonElement>>("/api/identity/users"))!;
         Guid Id(string code) => users.Single(u => string.Equals(u.GetProperty("code").GetString(), code, StringComparison.OrdinalIgnoreCase)).GetProperty("id").GetGuid();

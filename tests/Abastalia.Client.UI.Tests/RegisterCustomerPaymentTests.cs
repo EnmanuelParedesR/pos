@@ -63,6 +63,9 @@ public sealed class RegisterCustomerPaymentTests
         // A card payment may carry centavos.
         dialog.Find("[role=dialog]").KeyDown(new KeyboardEventArgs { Key = "F6" });
         dialog.Find("input[data-no-scan]").Input("150.50");
+        confirm().HasAttribute("disabled").ShouldBeTrue(); // R12: the card authorization first (the store's default)
+        dialog.Markup.ShouldNotContain("(opcional)");
+        dialog.Find("input[aria-required=true]").Input("483920");
         confirm().Click();
         dialog.WaitForAssertion(() => dialog.Find("[role=dialog]").TextContent.ShouldContain("No se sabe si el abono se guardó"));
         dialog.FindAll(".esc-dialog__footer button")[0].HasAttribute("disabled").ShouldBeTrue(); // no other customer until it is known
@@ -74,6 +77,25 @@ public sealed class RegisterCustomerPaymentTests
         sent.Count.ShouldBe(2);
         sent[1].ShouldBe(sent[0]);
         api.Requests.Last(r => r.Method == "POST").Body.ShouldContain("\"method\":\"Card\"");
+    }
+
+    [Fact]
+    public void R12_a_store_that_turned_the_reference_off_records_a_card_payment_without_it()
+    {
+        var (ctx, api) = ScreenContext.Create("register.open", "register.close", "register.cash-in", "credit.collect", "customers.manage");
+        using var _ = ctx;
+        Customer(api, 300m)
+            .Json("GET", "/api/settings/business", new Api.BusinessProfile("Carnicería", null, null, null, null, 10m, RequirePaymentReference: false))
+            .Json("POST", $"/api/customers/{Ana}/payments", new { customerPaymentId = Guid.NewGuid(), applied = 300m, remainingDebt = 0m });
+        var dialog = ctx.Render<CustomerPaymentDialog>();
+        dialog.Find("input[aria-label='Buscar cliente']").Input("Ana");
+        dialog.Find("form").Submit();
+        dialog.WaitForAssertion(() => dialog.Find("tbody tr").Click());
+
+        dialog.WaitForAssertion(() => dialog.Find("[role=dialog]").KeyDown(new KeyboardEventArgs { Key = "F6" }));
+        dialog.WaitForAssertion(() => dialog.Markup.ShouldContain("Referencia (opcional)"));
+        dialog.Find(".esc-button--money").Click();
+        dialog.WaitForAssertion(() => dialog.Find(".receipt").ShouldNotBeNull());
     }
 
     [Fact]

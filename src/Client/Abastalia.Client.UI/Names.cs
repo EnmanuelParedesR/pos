@@ -91,9 +91,30 @@ public static class Names
         ("Restricted", _, _) => f.BlocksUtc is { } blocks
             ? $"Modo restringido: la venta se detiene el {Format.ShortDate(blocks)} · compre la licencia en Configuración → Licencia"
             : "Modo restringido · compre la licencia en Configuración → Licencia",
-        ("Blocked", _, _) => "Licencia vencida: no se puede vender · active la licencia en Configuración → Licencia",
+        ("Blocked", _, _) => f.BlockReason switch
+        {
+            "Trial" => "Terminó la prueba gratis: no se puede vender · compre la licencia en Configuración → Licencia",
+            "Suspended" => "Abastalia suspendió el servicio: no se puede vender · escríbale a Abastalia",
+            _ => "Licencia vencida: no se puede vender · active la licencia en Configuración → Licencia",
+        },
         ("Grace", _, _) => "La licencia venció · renuévela en Configuración → Licencia",
         _ => null,
+    };
+
+    /// <summary>R12: the block screen's heading, by why the store is Blocked.</summary>
+    public static string BlockedTitle(string? reason) => reason switch
+    {
+        "Trial" => "Terminó la prueba gratis",
+        "Suspended" => "Abastalia suspendió el servicio de su negocio",
+        _ => "Su licencia está vencida",
+    };
+
+    /// <summary>R12: how to get out of the block, by its cause.</summary>
+    public static string BlockedWayOut(string? reason) => reason switch
+    {
+        "Suspended" => "Escríbale a Abastalia con el nombre y el RNC de su tienda para resolverlo.",
+        "Trial" => "Compre su plan en el panel de Abastalia (Plan y facturación) o escríbale a Abastalia con el nombre y el RNC de su tienda.",
+        _ => "Pague su plan en el panel de Abastalia (Plan y facturación) o escríbale a Abastalia con el nombre y el RNC de su tienda.",
     };
 
     /// <summary>TK-279: the license counts from the latest time the store saw, not from the PC's clock.</summary>

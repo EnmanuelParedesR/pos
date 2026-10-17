@@ -24,8 +24,12 @@ internal static class LogoImage
     public const int MaxSide = 600;
     /// <summary>The cloud takes events of up to 64 KB of JSON; 48 KB of PNG is 64 KB in Base64.</summary>
     public const int MaxStoredBytes = 47 * 1024;
-    /// <summary>A 512 KB PNG can still claim a huge canvas (a decompression bomb): refused before decoding.</summary>
-    private const long MaxPixels = 25_000_000;
+    /// <summary>A 512 KB PNG can still claim a huge canvas (a decompression bomb): refused before decoding. R12: 6 MP (24 MB decoded, was 100 MB);
+    /// a logo is a few hundred pixels a side.</summary>
+    internal const long MaxPixels = 6_000_000;
+
+    public static readonly Error TooManyPixels = Error.Validation("Settings.LogoTooLarge",
+        "El logo tiene demasiados píxeles (más de 6 megapíxeles). Achíquelo a unos 600 px de ancho y súbalo de nuevo.");
 
     public static readonly Error TooBig = Error.Validation("Settings.LogoTooBig", "El logo pasa de 512 KB. Use una imagen más liviana (PNG o JPG).");
     public static readonly Error WrongType = Error.Validation("Settings.LogoType", "El logo debe ser una imagen PNG o JPG.");
@@ -46,7 +50,8 @@ internal static class LogoImage
         using var codec = SKCodec.Create(data);
         if (codec is null || codec.EncodedFormat != expected) return Unreadable;
         var (w, h) = (codec.Info.Width, codec.Info.Height);
-        if (w <= 0 || h <= 0 || (long)w * h > MaxPixels) return Unreadable;
+        if (w <= 0 || h <= 0) return Unreadable;
+        if ((long)w * h > MaxPixels) return TooManyPixels;
         using var source = new SKBitmap(new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul));
         if (codec.GetPixels(source.Info, source.GetPixels()) is not (SKCodecResult.Success or SKCodecResult.IncompleteInput)) return Unreadable;
 

@@ -22,8 +22,9 @@ public interface IStoreLicense
     /// False when it was refused or brings nothing new.</summary>
     Task<bool> InstallFromCloudAsync(string jws, CancellationToken ct);
 
-    /// <summary>TK-276: the cloud says the trial lasts <paramref name="days"/> (the business came recommended). False when it changes nothing.</summary>
-    Task<bool> ExtendTrialAsync(int days, CancellationToken ct);
+    /// <summary>TK-276: the cloud says the trial is longer (the business came recommended). R12: <paramref name="grant"/> is a cloud-signed
+    /// <c>TrialGrant</c> JWS for <paramref name="tenantId"/>. False when it was refused or changes nothing.</summary>
+    Task<bool> ExtendTrialAsync(string grant, Guid tenantId, CancellationToken ct);
 }
 
 /// <summary>TK-254: how this store takes updates, as the owner set it in Configuración → Actualizaciones and the cloud allows it.</summary>

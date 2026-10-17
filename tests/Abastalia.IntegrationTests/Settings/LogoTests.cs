@@ -118,6 +118,16 @@ public sealed class LogoTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
     }
 
     [Fact]
+    public void R12_a_small_file_with_a_huge_canvas_is_refused_before_decoding()
+    {
+        using var flat = new SKBitmap(3000, 2100); // 6.3 MP of one colour: a few KB as PNG
+        flat.Erase(SKColors.White);
+        using var data = flat.Encode(SKEncodedImageFormat.Png, 100);
+        data.Size.ShouldBeLessThan(LogoImage.MaxUploadBytes);
+        LogoImage.Normalize(data.ToArray()).Error!.Code.ShouldBe("Settings.LogoTooLarge");
+    }
+
+    [Fact]
     public void A_detailed_photo_shrinks_until_it_fits_one_cloud_event_and_transparency_prints_as_paper()
     {
         // Noise does not compress: 600 px of it is far over 47 KB, so it comes out smaller.

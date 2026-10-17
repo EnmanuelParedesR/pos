@@ -93,11 +93,34 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
     /// <param name="label">Added to the name of a backup made for a reason ("antes-de-restaurar"); such a backup prunes nothing and is not copied off the PC.</param>
     public async Task<Result<BackupFile>> CreateAsync(CancellationToken ct, string? label = null)
     {
+        await Gate.WaitAsync(ct);
+        try
+        {
+            ClearWork();
+            return await CreateCoreAsync(label, ct);
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+
+    /// <summary>R12: one backup or restore at a time on this server (the nightly one, the button, a restore's own backup first): they share
+    /// <see cref="WorkFolder"/>, which each one clears.</summary>
+    private static readonly SemaphoreSlim Gate = new(1);
+
+    private void ClearWork()
+    {
+        Directory.CreateDirectory(WorkFolder);
+        foreach (var leftover in Directory.EnumerateFiles(WorkFolder)) File.Delete(leftover); // a plain copy left by a crash never stays
+    }
+
+    private async Task<Result<BackupFile>> CreateCoreAsync(string? label, CancellationToken ct)
+    {
         var key = await KeyAsync(ct);
         if (key.IsFailure) return key.Error!;
 
         Directory.CreateDirectory(WorkFolder);
-        foreach (var leftover in Directory.EnumerateFiles(WorkFolder)) File.Delete(leftover); // a plain copy left by a crash never stays
         var now = clock.GetUtcNow().UtcDateTime;
         var name = $"{FilePrefix}{now + BusinessDay.Offset:yyyyMMdd-HHmmss}" + (label is null ? "" : "-" + label);
         if (File.Exists(Path.Combine(Folder, name + Extension))) name += $"-{Guid.NewGuid().ToString()[..4]}"; // two in the same second
@@ -157,26 +180,20 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
     /// <summary>The newest scheduled backup: one made before a restore is not copied off the PC, so the copies are judged on these.</summary>
     public FileInfo? Newest() => List().FirstOrDefault(f => !f.Name.EndsWith("-antes-de-restaurar" + Extension, StringComparison.Ordinal));
 
-    /// <summary>Replaces the whole database with a backup of this folder. The current data is backed up first (when the stored key works) as
-    /// "…-antes-de-restaurar", so a wrong choice can be undone by restoring that file. The caller checks that the registers are closed.</summary>
+    /// <summary>Replaces the whole database with a backup of this folder. R12: the backup is opened first (a wrong phrase or another kind of
+    /// installation stops here, with nothing made); then the current data is backed up (when the stored key works) as "…-antes-de-restaurar",
+    /// so a wrong choice can be undone by restoring that file. The caller checks that the registers are closed.</summary>
     /// <returns>The name of that backup of the current data, or null when there is no usable key to make it.</returns>
     public async Task<Result<string?>> RestoreAsync(string fileName, string passphrase, CancellationToken ct)
     {
         var source = Path.Combine(Folder, fileName);
         if (Path.GetFileName(fileName) != fileName || !fileName.EndsWith(Extension, StringComparison.Ordinal) || !File.Exists(source)) return NotFound;
 
-        string? before = null;
-        if ((await KeyAsync(ct)).IsSuccess)
-        {
-            var made = await CreateAsync(ct, "antes-de-restaurar");
-            if (made.IsFailure) return made.Error!;
-            before = made.Value.FileName;
-        }
-
-        Directory.CreateDirectory(WorkFolder);
+        await Gate.WaitAsync(ct);
         var plain = Path.Combine(WorkFolder, "restore" + (options.Provider == DbProvider.SqlServer ? ".bak" : ".tmp"));
         try
         {
+            ClearWork();
             try
             {
                 await using var input = File.OpenRead(source);
@@ -189,6 +206,14 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
             }
             if (IsSqlite(plain) != (options.Provider == DbProvider.Sqlite)) return OtherDatabase;
 
+            string? before = null;
+            if ((await KeyAsync(ct)).IsSuccess)
+            {
+                var made = await CreateCoreAsync("antes-de-restaurar", ct);
+                if (made.IsFailure) return made.Error!;
+                before = made.Value.FileName;
+            }
+
             // From here on nothing is cancelled: a restore cut halfway would leave the store without data.
             if (options.Provider == DbProvider.SqlServer) await RestoreSqlServerAsync(plain);
             else RestoreSqlite(plain);
@@ -198,6 +223,7 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
         finally
         {
             File.Delete(plain);
+            Gate.Release();
         }
     }
 
@@ -252,9 +278,11 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
     private static IEnumerable<FileInfo> List(string folder) =>
         Directory.Exists(folder) ? new DirectoryInfo(folder).GetFiles("*" + Extension).OrderByDescending(f => f.Name) : [];
 
+    /// <summary>R12: a backup made before a restore is neither counted nor deleted here: several restores in a row never push out the daily history.</summary>
     private static void Prune(string folder, int keep, bool makeRoom = false)
     {
-        foreach (var old in List(folder).Skip(makeRoom ? keep - 1 : keep)) old.Delete();
+        foreach (var old in List(folder).Where(f => !f.Name.EndsWith("-antes-de-restaurar" + Extension, StringComparison.Ordinal)).Skip(makeRoom ? keep - 1 : keep))
+            old.Delete();
     }
 
     /// <summary>TK-238: whether the newest backup is in the off-PC folder, or why not; null when there is no copy to make.</summary>

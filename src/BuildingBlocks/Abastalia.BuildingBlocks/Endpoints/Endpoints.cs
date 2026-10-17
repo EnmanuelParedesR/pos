@@ -34,8 +34,8 @@ public static class EndpointExtensions
     /// this gate; they never read the license themselves.</summary>
     public static TBuilder RequireUsableLicense<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder =>
         builder.AddEndpointFilter(async (context, next) =>
-            context.HttpContext.RequestServices.GetService(typeof(IFeatureService)) is IFeatureService { Status: LicenseStatus.Blocked }
-                ? Problem(Jws.Blocked)
+            context.HttpContext.RequestServices.GetService(typeof(IFeatureService)) is IFeatureService { Status: LicenseStatus.Blocked } license
+                ? Problem(license.BlockedError)
                 : await next(context));
 
     public static IResult ToHttp<T>(this Result<T> result, Func<T, IResult> ok) =>

@@ -7,9 +7,14 @@
 <Notice Kind="Notice.Kinds.Warning" Title="Hay una venta sin cobrar.">Póngala en espera o anúlela antes de salir; si no, el siguiente usuario la encontraría en su caja.</Notice>
 @if (Cart.CheckoutUncertain)
 {
-    <Notice Kind="Notice.Kinds.Warning" Title="El último cobro no recibió respuesta.">Cóbrela de nuevo (F12) antes de salir: no se cobra dos veces.</Notice>
+    <Notice Kind="Notice.Kinds.Warning" Title="El último cobro no recibió respuesta.">Compruebe si se guardó antes de salir: no se cobra dos veces.</Notice>
 }
 <div class="esc-col">
+    @if (Cart.CheckoutUncertain)
+    {
+        @* R12: also on the block screen, where F12 is out of reach: asks the server whether that sale was saved. *@
+        <Button Wide="true" Variant="Button.Variants.Primary" Disabled="@_sending" OnClick="CheckAsync">Comprobar el último cobro</Button>
+    }
     <Button Wide="true" Disabled="@(Cart.CheckoutUncertain || _sending || Session.Shift is null)" OnClick="HoldAsync">Ponerla en espera y salir</Button>
     <Button Wide="true" Variant="Button.Variants.Danger" Disabled="@(Cart.CheckoutUncertain || _sending)" OnClick="VoidAsync">Anularla y salir</Button>
 </div>
@@ -31,6 +36,22 @@
         _problem = await HeldSalesDialog.HoldAsync(Api, Cart, shift.ShiftId, null);
         _sending = false;
         if (_problem is null) await OnCleared.InvokeAsync();
+    }
+
+    /// <summary>Saved: the sale is done (the cart empties; its receipt reprints from Ventas del turno). Never saved: hold or void it as usual.</summary>
+    private async Task CheckAsync()
+    {
+        if (_sending) return;
+        _sending = true;
+        var saved = await Api.SavedSaleAsync(Cart.SaleId);
+        _sending = false;
+        if (saved.Value is not null)
+        {
+            Cart.Clear();
+            await OnCleared.InvokeAsync();
+        }
+        else if (saved.Ok) (Cart.CheckoutUncertain, _problem) = (false, new Problem(0, Problem.NoServer, "Ese cobro no se guardó: póngala en espera o anúlela."));
+        else _problem = new Problem(0, Problem.NoServer, "Todavía no se sabe si se guardó. Revise la conexión y compruebe de nuevo."); // amber, never red
     }
 
     private async Task VoidAsync()

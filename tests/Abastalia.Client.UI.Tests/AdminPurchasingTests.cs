@@ -185,4 +185,26 @@ public sealed class AdminPurchasingTests
         page.WaitForAssertion(() => page.Find("[role=dialog]").TextContent.ShouldContain("Agregue: Chuleta (2 × 100.00)"));
         page.Find("[role=dialog]").TextContent.ShouldContain("Compra #7 (borrador)");
     }
+
+    [Theory]
+    [InlineData("Purchasing.AiUnavailable")]
+    [InlineData("Purchasing.TooManyDrafts")]
+    public void R12_the_cloud_AI_unavailable_or_too_many_drafts_stops_the_batch(string code)
+    {
+        var (ctx, api) = ScreenContext.Create("purchasing.manage");
+        using var _ = ctx;
+        Suppliers(api);
+        api.Json("GET", "/api/purchasing/purchases", Array.Empty<object>())
+           .Json("GET", "/api/inventory/warehouses", new[] { new { id = Main, name = "Tienda", isActive = true, isMain = true } })
+           .Respond("POST", "/api/purchasing/purchases/draft-from-invoice", _ => FakeApi.Problem(HttpStatusCode.Conflict, code, "La lectura de facturas con IA no está disponible ahora."));
+        var page = ctx.Render<Purchases>();
+        page.WaitForAssertion(() => page.Find(".esc-empty__title"));
+
+        page.FindComponent<Microsoft.AspNetCore.Components.Forms.InputFile>().UploadFiles(
+            InputFileContent.CreateFromText("%PDF uno", "uno.pdf", contentType: "application/pdf"),
+            InputFileContent.CreateFromText("%PDF dos", "dos.pdf", contentType: "application/pdf"));
+
+        page.WaitForAssertion(() => page.Find("section[aria-label='Facturas leídas en lote'] .esc-notice").TextContent.ShouldContain("Las facturas que faltan no se leyeron."));
+        api.Requests.Count(r => r.Route == "/api/purchasing/purchases/draft-from-invoice").ShouldBe(1);
+    }
 }

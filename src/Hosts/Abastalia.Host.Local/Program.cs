@@ -42,9 +42,10 @@ if (args is ["decrypt-backup", var file, var output])
             await BackupEncryption.DecryptAsync(input, destination, passphrase, CancellationToken.None);
         Console.WriteLine($"Listo: {output}");
     }
-    catch (System.Security.Cryptography.CryptographicException e)
+    catch (Exception e)
     {
-        File.Delete(output); // a half-written file must never look like a usable backup
+        File.Delete(output); // a half-written file must never look like a usable backup (R12: whatever stopped it: a full disk too)
+        if (e is not System.Security.Cryptography.CryptographicException) throw;
         Console.Error.WriteLine($"No se pudo abrir el respaldo: {e.Message} (¿frase equivocada?)");
         Environment.ExitCode = 1;
     }
@@ -137,7 +138,9 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi().AllowAnonymous();
     app.MapScalarApiReference().AllowAnonymous();
 }
-app.MapHealthChecks("/health").AllowAnonymous();
+// R12: liveness only, like the cloud: every register polls it, and running every check (the database, the audit chain, the disk) on each poll
+// costs the main PC. The checks themselves are in Configuración → Salud (/api/settings/health).
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
 app.MapEndpoints(modules);
 
 

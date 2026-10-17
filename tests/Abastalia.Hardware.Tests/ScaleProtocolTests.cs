@@ -48,6 +48,7 @@ public sealed class ScaleProtocolTests
         // "?" + status: bits 4 and 5 always set; bit 0 motion, bit 1 over capacity, bit 2 under zero.
         ScaleProtocols.ParseToledo("\u0002?1\r"u8).ShouldBe(new ScaleReading(0m, ScaleStatus.Unstable));
         ScaleProtocols.ParseToledo("\u0002?2\r"u8).ShouldBe(new ScaleReading(0m, ScaleStatus.Overload));
+        ScaleProtocols.ParseToledo("\u0002 \r"u8).ShouldBeNull(); // R12: a blank frame is no reading, never a crash
         ScaleProtocols.ParseToledo("\u0002?4\r"u8).ShouldBe(new ScaleReading(0m, ScaleStatus.Unstable));
         ScaleProtocols.ParseToledo("\u000201.2"u8).ShouldBeNull(); // no CR yet
     }

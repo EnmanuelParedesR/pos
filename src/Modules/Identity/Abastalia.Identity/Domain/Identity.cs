@@ -61,15 +61,17 @@ internal sealed class Role
 }
 
 /// <summary>TK-277: the license's <c>Cashiers</c> counts active users whose role can sell or open a shift (they sign in at a register with
-/// their PIN); the Administrador (the owner) is not counted. Disabling a user frees the seat and keeps its history.</summary>
+/// their PIN). R12: every Administrador can sell, so they count too, except one (the owner): a second Administrador takes a seat.
+/// Disabling a user frees the seat and keeps its history.</summary>
 internal static class CashierSeats
 {
-    public static bool Counts(Role role) => role.Id != Role.AdministratorId && role.Permissions.Any(p => p is P.SalesCreate or P.RegisterOpen);
+    public static bool Counts(Role role) => role.Effective.Any(p => p is P.SalesCreate or P.RegisterOpen);
 
     public static async Task<int> CountAsync(Persistence.IdentityDbContext db, CancellationToken ct)
     {
         var roles = (await db.Roles.AsNoTracking().ToListAsync(ct)).Where(Counts).Select(r => r.Id).ToList();
-        return await db.Users.CountAsync(u => u.IsActive && roles.Contains(u.RoleId), ct);
+        var sellers = await db.Users.CountAsync(u => u.IsActive && roles.Contains(u.RoleId), ct);
+        return await db.Users.AnyAsync(u => u.IsActive && u.RoleId == Role.AdministratorId, ct) ? sellers - 1 : sellers; // the owner is free
     }
 
     /// <summary>Null when <paramref name="adding"/> more cashiers fit; the error otherwise.</summary>

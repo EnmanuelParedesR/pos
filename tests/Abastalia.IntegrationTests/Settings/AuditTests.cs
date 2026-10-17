@@ -71,10 +71,10 @@ public sealed class AuditTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
         result.GetProperty("isIntact").GetBoolean().ShouldBeFalse();
         result.GetProperty("firstBrokenRecord").GetInt64().ShouldBe(2);
 
-        // The check that runs after every start (and at 03:00) turns /health red.
+        // The check that runs after every start (and at 03:00) turns Configuración → Salud red.
         var check = app.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<NightlyAuditCheck>().Single();
         await check.VerifyAsync(CancellationToken.None);
-        (await app.Anonymous().GetAsync("/health")).StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        (await app.HealthAsync()).ShouldBe("Unhealthy");
 
         var cashier = app.Client(await app.UserAsync(Roles.Cashier));
         (await cashier.GetAsync("/api/audit/verify")).StatusCode.ShouldBe(HttpStatusCode.Forbidden);

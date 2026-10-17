@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Abastalia.IntegrationTests.Infra;
 using Abastalia.IntegrationTests.Sync;
@@ -21,7 +22,7 @@ public sealed class SupplierInvoiceBatchTests(AbastaliaApp app) : IClassFixture<
         }),
     };
 
-    private static object Pdf(string name) => new { File = Convert.ToBase64String("%PDF-1.4 factura"u8.ToArray()), ContentType = "application/pdf", FileName = name };
+    private static object Pdf(string name) => new { File = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"%PDF-1.4 factura {name}")), ContentType = "application/pdf", FileName = name };
 
     [Fact]
     public async Task Each_invoice_becomes_a_draft_with_its_original_and_a_spent_quota_stops_the_batch()
@@ -52,7 +53,7 @@ public sealed class SupplierInvoiceBatchTests(AbastaliaApp app) : IClassFixture<
         draft.GetProperty("lines").EnumerateArray().Single().GetProperty("productId").GetGuid().ShouldBe(product);
         draft.GetProperty("attachmentName").GetString().ShouldBe("uno.pdf");
         var original = await c.GetAsync($"/api/purchasing/purchases/{id}/attachment");
-        (original.Content.Headers.ContentType!.MediaType, await original.Content.ReadAsStringAsync()).ShouldBe(("application/pdf", "%PDF-1.4 factura"));
+        (original.Content.Headers.ContentType!.MediaType, await original.Content.ReadAsStringAsync()).ShouldBe(("application/pdf", "%PDF-1.4 factura uno.pdf"));
 
         // A new RNC: the supplier is created (to confirm) and the draft keeps the invoice's totals until its products are added.
         var second = await (await c.PostAsJsonAsync("/api/purchasing/purchases/draft-from-invoice", Pdf("dos.pdf"))).Json();
@@ -66,8 +67,35 @@ public sealed class SupplierInvoiceBatchTests(AbastaliaApp app) : IClassFixture<
         (await spent.Content.ReadAsStringAsync()).ShouldContain("01/11/2026");
         (await (await c.PostAsJsonAsync("/api/purchasing/purchases/draft-from-invoice", Pdf("cuatro.pdf"))).ErrorCode()).ShouldBe("Purchasing.AiBusy");
 
-        // The same invoice again is not a second draft.
-        (await (await c.PostAsJsonAsync("/api/purchasing/purchases/draft-from-invoice", Pdf("uno.pdf"))).ErrorCode()).ShouldBe("Purchasing.DuplicateNcf");
+        // The same invoice again is not a second draft. R12: the same file (a retry, the batch picked again) opens its draft without reading it again;
+        // another file of the same invoice is refused by its NCF.
+        var again = await (await c.PostAsJsonAsync("/api/purchasing/purchases/draft-from-invoice", Pdf("uno.pdf"))).Json();
+        again.GetProperty("purchaseId").GetGuid().ShouldBe(id);
+        answers.Count.ShouldBe(1); // the cloud was not asked
+        (await (await c.PostAsJsonAsync("/api/purchasing/purchases/draft-from-invoice", Pdf("uno-foto.pdf"))).ErrorCode()).ShouldBe("Purchasing.DuplicateNcf");
         (await c.GetFromJsonAsync<JsonElement>("/api/purchasing/purchases")).EnumerateArray().Count(p => p.GetProperty("status").GetString() == "Draft").ShouldBe(2);
+
+        // R12: the cloud AI down, not set up or not allowed (403/5xx) has its own code, which stops the batch.
+        foreach (var status in new[] { HttpStatusCode.Forbidden, HttpStatusCode.ServiceUnavailable })
+        {
+            answers.Enqueue(new HttpResponseMessage(status) { Content = JsonContent.Create(new { code = "Ai.Unavailable", detail = "La IA no está disponible." }) });
+            (await (await c.PostAsJsonAsync("/api/purchasing/purchases/draft-from-invoice", Pdf($"{status}.pdf"))).ErrorCode()).ShouldBe("Purchasing.AiUnavailable");
+        }
+
+        // R12 (draft spam): 20 drafts a minute per person, then it waits.
+        var me = (await app.AdminAsync()).UserId;
+        await app.InScopeAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<Abastalia.Purchasing.PurchasingDbContext>();
+            var now = app.Clock.GetUtcNow().UtcDateTime;
+            for (var i = 0; i < Abastalia.Purchasing.Features.DraftFromInvoice.PerMinute; i++)
+                db.Purchases.Add(new Abastalia.Purchasing.Domain.Purchase
+                {
+                    Id = Guid.CreateVersion7(), Status = Abastalia.Purchasing.Domain.PurchaseStatus.Draft, SupplierId = supplier, SupplierName = "x",
+                    InvoiceDate = Day, AttachmentName = "x.pdf", CreatedUtc = now, UserId = me,
+                });
+            return await db.SaveChangesAsync();
+        });
+        (await (await c.PostAsJsonAsync("/api/purchasing/purchases/draft-from-invoice", Pdf("spam.pdf"))).ErrorCode()).ShouldBe("Purchasing.AiBusy");
     }
 }

@@ -49,6 +49,8 @@ internal static class ReadSupplierInvoice
     public static readonly Error Busy = Error.Conflict("Purchasing.AiBusy", "Se leyeron muchas facturas en poco tiempo. Espere un minuto e intente de nuevo.");
     /// <summary>The cloud's month quota (or daily cap) is spent: a batch stops there; the message says when it renews.</summary>
     public const string QuotaExceededCode = "Purchasing.AiQuotaExceeded";
+    /// <summary>R12: the cloud answered 403 or 5xx: a batch stops there too.</summary>
+    public const string UnavailableCode = "Purchasing.AiUnavailable";
     public static readonly Error InvalidFile = Error.Validation("Purchasing.AiInvalidFile", "Suba un PDF, una foto (JPG, PNG o WEBP) o el XML del e-CF, de hasta 4 MB.");
 
     public static async Task<Result<SupplierInvoiceReading>> AskCloudAsync(ICloudClient cloud, SupplierInvoiceReadRequest request, CancellationToken ct)
@@ -61,6 +63,10 @@ internal static class ReadSupplierInvoice
             var detail = body.Length > 0 && JsonSerializer.Deserialize<JsonElement>(body) is { ValueKind: JsonValueKind.Object } p && p.TryGetProperty("detail", out var d) ? d.GetString() : null;
             // The per-minute limit answers 429 with no body; the month's quota and the daily cap answer 429 saying when they renew.
             if (response.StatusCode == HttpStatusCode.TooManyRequests) return detail is null ? Busy : Error.Conflict(QuotaExceededCode, detail);
+            // R12: the cloud's AI is down, not set up, or the license does not allow it (Ai.Unavailable, Ai.NotConfigured, Ai.LicenseRestricted):
+            // the next invoice would fail the same way, so a batch stops.
+            if (response.StatusCode == HttpStatusCode.Forbidden || (int)response.StatusCode >= 500)
+                return Error.Conflict(UnavailableCode, detail ?? "La lectura de facturas con IA no está disponible ahora. Intente más tarde o escriba la compra a mano.");
             return Error.Conflict("Purchasing.AiRefused", detail ?? $"La nube respondió {(int)response.StatusCode}.");
         }
         catch (InvalidOperationException) { return NotConnected; }
@@ -286,13 +292,42 @@ internal static class DraftFromInvoice
         public void Map(IEndpointRouteBuilder app) =>
             // Read outside the transaction (the cloud takes seconds); the draft and its file are saved together.
             app.MapPost("/api/purchasing/purchases/draft-from-invoice", async (ReadSupplierInvoice.Body b, ICloudClient cloud, ISupplierEcfs ecfs,
-                    ICommandHandler<Command, Response> h, CancellationToken ct) =>
+                    ICommandHandler<Command, Response> h, PurchasingDbContext db, IUserContext user, TimeProvider clock, CancellationToken ct) =>
                 {
                     if (ReadSupplierInvoice.File(b.File) is not { } file) return EndpointExtensions.Problem(ReadSupplierInvoice.InvalidFile);
+                    // R12: the same file again (a retry, or the batch picked again) opens its draft: no second reading, no second draft.
+                    if (await ExistingDraftAsync(db, file.Content, ct) is { } existing) return Results.Ok(existing);
+                    if (await TooManyAsync(db, user, clock, ct) is { } tooMany) return EndpointExtensions.Problem(tooMany);
                     var read = await ReadSupplierInvoice.ReadAsync(file.Content, file.Type, b.FileName, cloud, ecfs, ct);
                     if (read.IsFailure) return EndpointExtensions.Problem(read.Error!);
                     return (await h.Handle(new Command(read.Value, file.Content, file.Type, PurchaseAttachment.Name(b.FileName)), ct)).ToHttp();
                 })
                 .RequirePermission(Permissions.PurchasingManage).WithTags("Purchasing");
+    }
+
+    /// <summary>R12 (draft spam): at most this many drafts read from invoices a minute per person, and this many waiting to be received.</summary>
+    public const int PerMinute = 20, Waiting = 200;
+
+    public static readonly Error TooManyWaiting = Error.Conflict("Purchasing.TooManyDrafts",
+        $"Hay {Waiting} borradores de facturas sin recibir. Revise y reciba (o anule) los que tiene antes de leer más.");
+
+    private static async Task<Error?> TooManyAsync(PurchasingDbContext db, IUserContext user, TimeProvider clock, CancellationToken ct)
+    {
+        var drafts = db.Purchases.Where(p => p.Status == PurchaseStatus.Draft && p.AttachmentName != null);
+        var since = clock.GetUtcNow().UtcDateTime.AddMinutes(-1);
+        if (await drafts.CountAsync(p => p.UserId == user.UserId && p.CreatedUtc > since, ct) >= PerMinute) return ReadSupplierInvoice.Busy;
+        return await drafts.CountAsync(ct) >= Waiting ? TooManyWaiting : null;
+    }
+
+    /// <summary>The draft already made from these same bytes, still waiting to be received; null when there is none.</summary>
+    private static async Task<Response?> ExistingDraftAsync(PurchasingDbContext db, byte[] content, CancellationToken ct)
+    {
+        var drafts = db.Purchases.Where(p => p.Status == PurchaseStatus.Draft).Select(p => p.Id);
+        var candidates = await db.Set<PurchaseFile>().AsNoTracking()
+            .Where(f => f.Content.Length == content.Length && drafts.Contains(f.PurchaseId)).Select(f => new { f.PurchaseId, f.Content }).ToListAsync(ct);
+        if (candidates.FirstOrDefault(f => f.Content.AsSpan().SequenceEqual(content)) is not { } same) return null;
+        var p = await db.Purchases.AsNoTracking().SingleAsync(x => x.Id == same.PurchaseId, ct);
+        return new Response(p.Id, new ReadSupplierInvoice.Response(p.SupplierId, p.SupplierRnc, p.SupplierName, p.Ncf.Length > 0 ? p.Ncf : null, p.InvoiceDate, [],
+            p.Subtotal, p.Itbis, p.Total, 1m, ["Esta factura ya se leyó: es el mismo borrador de antes."]));
     }
 }

@@ -396,8 +396,8 @@
             if (license.Warning is { } warning)
                 _alerts.Insert(warning == "Blocked" ? 0 : _alerts.Count, warning switch // Blocked goes first: nothing else matters while the sale is stopped
                 {
-                    "Blocked" => new("error", "lock", "Su licencia está vencida: la venta está <b>detenida</b>",
-                        "No se pueden hacer ventas nuevas, abrir turnos ni emitir e-CF. Siguen cerrar el turno abierto, el envío a la DGII de lo ya emitido, los reportes, exportar y los respaldos. Pague su plan o escríbale a Abastalia y active la licencia: todo vuelve al momento.",
+                    "Blocked" => new("error", "lock", $"{Names.BlockedTitle(license.BlockReason)}: la venta está <b>detenida</b>",
+                        $"No se pueden hacer ventas nuevas, abrir turnos ni emitir e-CF. Siguen cerrar el turno abierto, el envío a la DGII de lo ya emitido, los reportes, exportar y los respaldos. {Names.BlockedWayOut(license.BlockReason)} Con la licencia activa, todo vuelve al momento.",
                         "Activar licencia", "admin/settings?section=license"),
                     "Ended" => new("warning", "lock", $"Abastalia está en modo <b>Restringido</b>: la venta se detiene {blocks}",
                         "Por ahora siguen la venta, el e-CF, los reportes y los respaldos en la PC principal y una caja. Con la licencia vuelve todo, con sus datos.",

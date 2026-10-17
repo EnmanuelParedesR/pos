@@ -111,9 +111,9 @@
                 <div class="esc-page" style="align-items:center;justify-content:center" role="alert">
                     <section class="esc-card" style="max-width:560px;display:flex;flex-direction:column;gap:16px;padding:32px">
                         <Icon Name="lock" Size="32" />
-                        <h1 style="margin:0">Su licencia está vencida</h1>
-                        <p style="margin:0">No se pueden hacer ventas nuevas ni abrir turnos hasta activar la licencia. Sus ventas, sus reportes y sus respaldos están a salvo.</p>
-                        <p style="margin:0"><b>Para seguir vendiendo:</b> pague su plan en el panel de Abastalia (Plan y facturación) o escríbale a Abastalia con el nombre y el RNC de su tienda.
+                        <h1 style="margin:0">@Names.BlockedTitle(_license.BlockReason)</h1>
+                        <p style="margin:0">Por ahora no se pueden hacer ventas nuevas ni abrir turnos. Sus ventas, sus reportes y sus respaldos están a salvo.</p>
+                        <p style="margin:0"><b>Para seguir vendiendo:</b> @Names.BlockedWayOut(_license.BlockReason)
                             Si la tienda está conectada a la nube, la licencia nueva llega sola; si no, el dueño la carga en Configuración → Licencia.</p>
                         <div class="esc-row" style="gap:8px;flex-wrap:wrap">
                             @if (Session.Can("settings.manage"))

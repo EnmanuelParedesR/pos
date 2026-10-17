@@ -83,8 +83,11 @@ public sealed class TrialTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
         features.GetProperty("blocksUtc").GetDateTime().ShouldBe(trialEnds.AddDays(LicenseService.DefaultBlockAfterDays));
         app.Clock.Advance(trialEnds.AddDays(LicenseService.DefaultBlockAfterDays) - app.Clock.GetUtcNow().UtcDateTime + TimeSpan.FromMinutes(1));
         admin = app.Client(await app.SignInAsync("admin", AbastaliaApp.AdminPin, device));
-        (await Features()).GetProperty("status").GetString().ShouldBe("Blocked");
-        (await (await admin.PostAsJsonAsync("/api/sales", Sale(shift, 59m, 59m, Line(soda, 1)))).ErrorCode()).ShouldBe("License.Blocked");
+        features = await Features();
+        (features.GetProperty("status").GetString(), features.GetProperty("blockReason").GetString()).ShouldBe(("Blocked", "Trial"));
+        var blocked = await admin.PostAsJsonAsync("/api/sales", Sale(shift, 59m, 59m, Line(soda, 1)));
+        (await blocked.ErrorCode()).ShouldBe("License.Blocked");
+        (await blocked.Content.ReadAsStringAsync()).ShouldContain("La prueba gratis terminó"); // R12: says why
         (await admin.GetAsync($"/api/reports/dgii/607?from={today:yyyy-MM-dd}&to={today:yyyy-MM-dd}")).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         // Buying: the license Abastalia staff send, installed here; no reinstall, every sale kept, the waiting register back.

@@ -77,6 +77,55 @@ public sealed class LicenseClockTests
     }
 
     [Fact]
+    public void An_outside_time_ahead_of_the_clock_counts_the_interval_once()
+    {
+        // R12: a store offline from the cloud, left on overnight: the DGII's time raises the clock without adding the night twice.
+        var pc = new PcClock(Start);
+        var clock = new LicenseClock(pc, null);
+        clock.UtcNow.ShouldBe(Start);
+        pc.Run(TimeSpan.FromHours(12));
+        clock.Observe(Start.AddHours(12));
+        clock.UtcNow.ShouldBe(Start.AddHours(12));
+        clock.Behind.ShouldBeFalse();
+        clock.Observe(Start.AddHours(1)); // older than the clock: changes nothing
+        clock.UtcNow.ShouldBe(Start.AddHours(12));
+    }
+
+    [Fact]
+    public void A_clock_set_back_a_little_again_and_again_does_not_freeze_the_time()
+    {
+        // R12: a script turning the clock back 4 minutes every 4 minutes (within the tolerance each time).
+        var pc = new PcClock(Start);
+        var clock = new LicenseClock(pc, null);
+        clock.UtcNow.ShouldBe(Start);
+        for (var i = 0; i < 100; i++)
+        {
+            pc.Run(TimeSpan.FromMinutes(4));
+            pc.Wall -= TimeSpan.FromMinutes(4);
+            _ = clock.UtcNow;
+        }
+        clock.UtcNow.ShouldBeGreaterThanOrEqualTo(Start.AddMinutes(400) - LicenseClock.Tolerance);
+        clock.Behind.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_trusted_time_brings_back_down_a_clock_far_ahead_and_raises_one_behind()
+    {
+        // R12: the PC once booted in 2030; the store saw that date. The DGII says it is now.
+        var pc = new PcClock(Start);
+        var clock = new LicenseClock(pc, Start.AddYears(4));
+        clock.UtcNow.ShouldBe(Start.AddYears(4));
+        clock.Correct(Start);
+        clock.UtcNow.ShouldBe(Start);
+        clock.Behind.ShouldBeFalse();
+
+        clock.Correct(Start.AddHours(-12)); // within a day of it (the DGII's last answer is a little old): kept
+        clock.UtcNow.ShouldBe(Start);
+        clock.Correct(Start.AddDays(3)); // ahead: raised, like Observe
+        clock.UtcNow.ShouldBe(Start.AddDays(3));
+    }
+
+    [Fact]
     public void A_saved_time_edited_in_the_database_is_ignored()
     {
         var key = RandomNumberGenerator.GetBytes(32);

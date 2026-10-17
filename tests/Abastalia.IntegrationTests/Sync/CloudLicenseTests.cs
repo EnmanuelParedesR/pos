@@ -85,16 +85,19 @@ public sealed class CloudLicenseTests(AbastaliaApp app) : IClassFixture<Abastali
     }
 }
 
-/// <summary>TK-276: a business that came with a referral code gets a 30-day store trial; the cloud says so on the license channel. Own app.</summary>
+/// <summary>TK-276: a business that came with a referral code gets a 30-day store trial; the cloud says so on the license channel. Own app.
+/// R12 (security B3): only with a grant the cloud signed for this business; a bare number, a stranger's key or another business's grant change nothing.</summary>
 public sealed class ReferredTrialTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
 {
     [Fact]
-    public async Task The_cloud_lengthens_the_trial_to_30_days_and_never_shortens_it()
+    public async Task The_cloud_lengthens_the_trial_to_30_days_only_with_its_signed_grant_and_never_shortens_it()
     {
         await app.ConnectAsync();
-        var trialDays = 30;
-        app.Cloud.Respond = path => path == PullLicense.Path ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(new { license = (string?)null, trialDays }) } : null;
+        var tenant = (await app.StatusAsync()).GetProperty("tenantId").GetGuid();
+        object answer = new { license = (string?)null, trialDays = 30 }; // what the cloud sent before R12: unsigned
+        app.Cloud.Respond = path => path == PullLicense.Path ? new HttpResponseMessage(HttpStatusCode.OK) { Content = JsonContent.Create(answer) } : null;
         Task<bool> PullAsync() => app.InScopeAsync(sp => PullLicense.RunAsync(sp.GetRequiredService<CloudClient>(), sp.GetRequiredService<IStoreLicense>(), CancellationToken.None));
+        string Grant(Guid tenantId, int days, ECDsa key) => Jws.Sign(new TrialGrant(tenantId, days, app.Clock.GetUtcNow().UtcDateTime), key, Jws.TrialType);
 
         var cashier = await app.CashierWithShiftAsync();
         var admin = app.Client(await app.AdminAsync());
@@ -105,9 +108,23 @@ public sealed class ReferredTrialTests(AbastaliaApp app) : IClassFixture<Abastal
         (await DaysLeftAsync()).ShouldBe(14);
 
         await PullAsync();
+        (await DaysLeftAsync()).ShouldBe(14); // unsigned: ignored
+        using var stranger = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        answer = new { trial = Grant(tenant, 30, stranger) };
+        await PullAsync();
+        answer = new { trial = Grant(Guid.NewGuid(), 30, app.CloudLicenseKey) }; // another business's grant
+        await PullAsync();
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        answer = new { trial = Jws.Sign(new LicenseData("x", "y", [], new Dictionary<string, int>(), now, now.AddDays(1)), app.CloudLicenseKey) }; // a license is no grant
+        await PullAsync();
+        (await DaysLeftAsync()).ShouldBe(14);
+
+        answer = new { trial = Grant(tenant, 30, app.CloudLicenseKey) };
+        await PullAsync();
         (await DaysLeftAsync()).ShouldBe(30);
-        (await app.InScopeAsync(sp => sp.GetRequiredService<IStoreLicense>().ExtendTrialAsync(30, CancellationToken.None))).ShouldBeFalse(); // nothing new
-        trialDays = 14;
+        (await app.InScopeAsync(sp => sp.GetRequiredService<IStoreLicense>().ExtendTrialAsync(Grant(tenant, 30, app.CloudLicenseKey), tenant, CancellationToken.None)))
+            .ShouldBeFalse(); // nothing new
+        answer = new { trial = Grant(tenant, 14, app.CloudLicenseKey) };
         await PullAsync();
         (await DaysLeftAsync()).ShouldBe(30); // never shorter
         (await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.Select(b => b.TrialDays).SingleAsync())).ShouldBe(30); // kept for restarts

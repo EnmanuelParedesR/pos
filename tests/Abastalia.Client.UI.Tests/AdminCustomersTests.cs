@@ -69,6 +69,14 @@ public sealed class AdminCustomersTests
         page.Find("[role=dialog]").TextContent.ShouldContain("pesos enteros"); // cash, no centavos
 
         page.Find("[role=dialog] input.esc-num").Change("500");
+        // R12: a transfer needs its number (the store's default), as at the register.
+        page.FindAll("[role=dialog] .esc-segmented button").Single(b => b.TextContent.Contains("Transferencia")).Click();
+        page.Find("[role=dialog] input.esc-num").Change("500");
+        page.FindAll("[role=dialog] .esc-dialog__footer button")[^1].Click();
+        page.Find("[role=dialog]").TextContent.ShouldContain("Escriba el número de autorización o de la transferencia.");
+        api.Requests.ShouldNotContain(r => r.Method == "POST");
+        page.FindAll("[role=dialog] .esc-segmented button").Single(b => b.TextContent.Contains("Efectivo")).Click();
+        page.Find("[role=dialog] input.esc-num").Change("500");
         page.FindAll("[role=dialog] .esc-dialog__footer button")[^1].Click();
         page.WaitForAssertion(() => page.Find("[role=dialog]").TextContent.ShouldContain("No se sabe si se registró"));
 
