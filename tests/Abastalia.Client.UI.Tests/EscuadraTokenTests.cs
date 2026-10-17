@@ -53,9 +53,9 @@ public sealed partial class EscuadraTokenTests
                 foreach (var declaration in body.Split(';'))
                     if (!declaration.Trim().StartsWith("--", StringComparison.Ordinal) && Hex().IsMatch(declaration))
                         found.Add($"{Path.GetFileName(file)}: {selector.Trim()} {{ {declaration.Trim()} }}");
-        // Razor components: inline styles too (the artwork of the logo and of Talia is the brand itself, fixed by design).
+        // Razor components: inline styles too (the logo's artwork is the brand itself, fixed by design).
         foreach (var file in Directory.GetFiles(Path.Combine(Root, "src", "Client", "Abastalia.Escuadra", "Components"), "*.razor"))
-            if (Path.GetFileName(file) is not ("Logo.razor" or "Talia.razor") && Hex().IsMatch(File.ReadAllText(file)))
+            if (Path.GetFileName(file) is not "Logo.razor" && Hex().IsMatch(File.ReadAllText(file)))
                 found.Add(Path.GetFileName(file));
         found.ShouldBeEmpty();
     }

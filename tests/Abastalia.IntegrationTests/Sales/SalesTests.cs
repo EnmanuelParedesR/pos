@@ -54,6 +54,21 @@ public sealed class SalesTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
     }
 
     [Fact]
+    public async Task TK304_whoever_reads_another_cashiers_sale_also_finds_it_in_the_list()
+    {
+        var cashier = await app.CashierWithShiftAsync();
+        var (_, soda) = await ProductsAsync();
+        var saleId = (await (await cashier.SellAsync(Sale(cashier.ShiftId, 59m, 59m, Line(soda, 1)))).Json()).GetProperty("saleId").GetGuid();
+        // Turnos y cuadres without reports (R11 A13: they see every sale's detail).
+        var role = (await (await (await Admin()).PostAsJsonAsync("/api/identity/roles",
+            new { Name = "Cuadres " + Guid.NewGuid().ToString()[..4], Permissions = new[] { "sales.create", "shifts.view" } })).Json()).GetProperty("id").GetGuid();
+        var supervisor = app.Client(await app.UserAsync(role));
+
+        (await supervisor.GetAsync($"/api/sales/{saleId}")).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await supervisor.GetFromJsonAsync<JsonElement>($"/api/sales?shiftId={cashier.ShiftId}")).EnumerateArray().Single().GetProperty("id").GetGuid().ShouldBe(saleId);
+    }
+
+    [Fact]
     public async Task Repeating_the_same_sale_returns_the_same_response_without_duplicating()
     {
         var cashier = await app.CashierWithShiftAsync();

@@ -421,11 +421,11 @@
     {
         if (_form is not { } f || _sending) return;
         string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
-        var taxId = Clean(f.TaxId)?.Replace("-", "");
+        var taxId = TaxId.Normalize(f.TaxId);
         _errors = [];
         _error = null;
         if (string.IsNullOrWhiteSpace(f.Name)) _errors["name"] = "Escriba el nombre.";
-        if (taxId is not null && (taxId.Length is not (9 or 11) || !taxId.All(char.IsAsciiDigit))) _errors["taxId"] = "El RNC tiene 9 números y la cédula 11.";
+        if (taxId is not null && !TaxId.IsValid(taxId)) _errors["taxId"] = "El RNC tiene 9 números y la cédula 11.";
         else if (taxId is null && f.FiscalCredit) _errors["taxId"] = "Para crédito fiscal hace falta el RNC o la cédula.";
         if (Format.ParseNumber(f.CreditLimit ?? "0") is not >= 0) _errors["limit"] = "Escriba un número (0 si no se le fía).";
         if (_errors.Count > 0) return;

@@ -213,6 +213,8 @@
     private StockLevel? _open;
     private string? _warehouse, _search, _category, _message, _quantity, _note, _quantityError, _error, _saved;
     private bool _loading = true, _belowMinimum, _needsCount, _adjusting, _adding, _sending;
+    /// <summary>TK-304: one id per adjustment: a retry after no answer is applied once.</summary>
+    private Guid _adjustmentId;
     private AdjustmentReason _reason = AdjustmentReason.Shrinkage;
 
     private IEnumerable<StockLevel> Visible => _stock.Where(s =>
@@ -255,7 +257,7 @@
         _kardex = r.Value ?? [];
     }
 
-    private void StartAdjust() => (_adjusting, _reason, _adding, _quantity, _note, _quantityError, _error) = (true, AdjustmentReason.Shrinkage, false, null, null, null, null);
+    private void StartAdjust() => (_adjusting, _reason, _adding, _quantity, _note, _quantityError, _error, _adjustmentId) = (true, AdjustmentReason.Shrinkage, false, null, null, null, null, Guid.CreateVersion7());
 
     /// <summary>Merma, daño, consumo and regalo take stock out; a correction is usually adding what was missing.</summary>
     private void ReasonChanged() => _adding = _reason == AdjustmentReason.Correction;
@@ -270,10 +272,11 @@
         if (!_adding && q > p.Quantity) { _quantityError = $"No se puede sacar más de lo que hay ({AdminNames.Stock(p.Quantity, p.Unit)}). Si hay menos, haga un conteo físico."; return; }
         _sending = true;
         var r = await Api.PostAsync<AdjustmentRecorded>("/api/inventory/adjustments",
-            new AdjustStock(p.ProductId, Guid.TryParse(_warehouse, out var w) ? w : null, _adding ? q.Value : -q.Value, _reason, string.IsNullOrWhiteSpace(_note) ? null : _note.Trim()));
+            new AdjustStock(p.ProductId, Guid.TryParse(_warehouse, out var w) ? w : null, _adding ? q.Value : -q.Value, _reason, string.IsNullOrWhiteSpace(_note) ? null : _note.Trim(), _adjustmentId));
         _sending = false;
         if (r.Problem is { } problem)
         {
+            if (!problem.IsUncertain) _adjustmentId = Guid.CreateVersion7(); // refused: the corrected one is another adjustment
             if (problem.Code == "Inventory.OutOfStock") _quantityError = "No hay tanto en existencia. Si hay menos, haga un conteo físico.";
             else _error = problem.Message;
             return;

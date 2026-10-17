@@ -33,6 +33,13 @@ internal sealed class CustomersDbContext(DbContextOptions<CustomersDbContext> op
     public DbSet<CustomerPaymentApplication> Applications => Set<CustomerPaymentApplication>();
     public DbSet<CreditBalanceMovement> BalanceMovements => Set<CreditBalanceMovement>();
 
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
+        // TK-304: "jose" finds "José", as products do (SQL Server only; Sqlite has no such collation).
+        if (Database.IsSqlServer()) modelBuilder.Entity<Customer>().Property(c => c.Name).UseCollation("Latin1_General_100_CI_AI");
+    }
+
     /// <summary>Locks the customer row until commit: limit checks, payments and balance use run one at a time per customer.</summary>
     public Task<int> LockAsync(Guid customerId, CancellationToken ct) =>
         Customers.Where(c => c.Id == customerId).ExecuteUpdateAsync(s => s.SetProperty(c => c.Version, c => c.Version + 1), ct);

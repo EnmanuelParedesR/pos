@@ -96,14 +96,16 @@ internal static class ListSales
                     SalesDbContext db, CancellationToken ct) =>
                 {
                     var q = db.Sales.AsNoTracking();
-                    if (!user.Has(Permissions.ReportsView)) q = q.Where(s => s.CashierId == user.UserId);
+                    if (!SaleAccess.SeesAll(user)) q = q.Where(s => s.CashierId == user.UserId); // as the detail (R11 A13)
                     if (shiftId is { } sh) q = q.Where(s => s.ShiftId == sh);
                     if (from is not null || to is not null)
                     {
                         var (f, t) = BusinessDay.UtcRange(from ?? to!.Value, to ?? from!.Value);
                         q = q.Where(s => s.DateUtc >= f && s.DateUtc < t);
                     }
-                    if (!string.IsNullOrWhiteSpace(search)) q = q.Where(s => s.ENcf == search.Trim() || s.Number.ToString() == search.Trim());
+                    // TK-304: a number or an e-NCF, each by its index (Number.ToString() would read the whole table).
+                    if (long.TryParse(search, System.Globalization.NumberStyles.AllowLeadingWhite | System.Globalization.NumberStyles.AllowTrailingWhite, null, out var number)) q = q.Where(s => s.Number == number);
+                    else if (!string.IsNullOrWhiteSpace(search)) { var encf = search.Trim().ToUpperInvariant(); q = q.Where(s => s.ENcf == encf); }
                     var items = await q.OrderByDescending(s => s.Number).Skip((Math.Max(page ?? 1, 1) - 1) * PageSize).Take(PageSize)
                         .Select(s => new Item(s.Id, s.Number, s.ENcf, s.DateUtc, s.Status == SaleStatus.Voided ? "Voided" : "Completed", s.Cashier, s.CustomerName, s.Total))
                         .ToListAsync(ct);

@@ -249,7 +249,6 @@
     private List<BarChart.Point> _chart = [], _hours = [];
     private List<ProductSales> _top = [];
     private decimal _topTotal;
-    private Dictionary<Guid, string> _units = [];
     private List<RegisterInfo> _registers = [];
     private List<Mix> _mix = [];
     private Dictionary<Guid, DateTime> _openSince = [];
@@ -335,8 +334,6 @@
         var products = (await Api.GetAsync<List<ProductSales>>($"/api/reports/sales/by-product?from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}")).Value ?? [];
         _topTotal = products.Sum(p => p.NetWithoutItbis);
         _top = [.. products.OrderByDescending(p => p.NetWithoutItbis).Take(6)];
-        if (_units.Count == 0)
-            _units = ((await Api.GetAsync<List<ProductSummary>>("/api/inventory/products?includeInactive=true")).Value ?? []).ToDictionary(p => p.Id, p => p.Unit);
         _registers = (await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers")).Value ?? [];
         // Who owes (JTBD 4): today's balances, whatever the period.
         _debts = [.. ((await Api.GetAsync<List<Receivable>>("/api/reports/receivables")).Value ?? []).Where(d => d.Total > 0)];
@@ -436,7 +433,7 @@
     private static string HourLong(int h) => $"{(h % 12 == 0 ? 12 : h % 12)} {(h % 24 < 12 ? "a. m." : "p. m.")}";
 
     private string Quantity(ProductSales p) =>
-        _units.TryGetValue(p.ProductId, out var unit) && unit == "Pound" ? $"{N(p.Quantity)} lb" : $"{N(p.Quantity)} {(p.Quantity == 1 ? "unidad" : "unidades")}";
+        p.Unit == "Pound" ? $"{N(p.Quantity)} lb" : $"{N(p.Quantity)} {(p.Quantity == 1 ? "unidad" : "unidades")}";
 
     /// <summary>"hoy, 6:05 p. m.", "ayer, 7:10 p. m." or "lun 12 oct, 6:05 p. m.".</summary>
     private static string When(DateTime utc)

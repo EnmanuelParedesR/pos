@@ -100,8 +100,8 @@
     private Mode _mode = Mode.Join;
     private string? _server, _code, _error, _name, _userCode, _pin, _fingerprint, _shown, _businessName, _rnc, _phone, _address, _footer;
 
-    private string? Rnc => string.IsNullOrWhiteSpace(_rnc) ? null : new string(_rnc.Where(char.IsAsciiDigit).ToArray());
-    private string? RncError => _rnc is null || Rnc is null or { Length: 9 or 11 } ? null : "El RNC tiene 9 números y la cédula 11.";
+    private string? Rnc => TaxId.Normalize(_rnc);
+    private string? RncError => Rnc is null || TaxId.IsValid(Rnc) ? null : "El RNC tiene 9 números y la cédula 11.";
     private string _deviceName = "PC principal";
     private bool _sending, _confirmed, _sampleData;
     private const string ServerChanged = "El servidor cambió desde que se mostró la huella, así que este equipo no se unió. Vuelva a abrir esta pantalla y compare la huella otra vez.";

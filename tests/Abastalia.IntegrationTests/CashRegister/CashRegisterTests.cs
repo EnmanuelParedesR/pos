@@ -87,7 +87,10 @@ public sealed class CashRegisterTests(AbastaliaApp app) : IClassFixture<Abastali
         (await cashier.PostAsJsonAsync($"/api/cash/shifts/{shift}/drawer-openings",
             new { Reason = "Cambio para un cliente", SupervisorApprovalId = await ApproveAsync(cashier, "register.open-drawer", shift) })).StatusCode.ShouldBe(HttpStatusCode.OK);
         var admin = app.Client(await app.AdminAsync());
-        (await admin.PostAsJsonAsync($"/api/cash/shifts/{shift}/drawer-openings", new { Reason = "Revisar billetes" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        // TK-304: a retry with the same id (no answer the first time) is the same opening.
+        var opening = new { Reason = "Revisar billetes", OpeningId = Guid.CreateVersion7() };
+        (await admin.PostAsJsonAsync($"/api/cash/shifts/{shift}/drawer-openings", opening)).StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await (await admin.PostAsJsonAsync($"/api/cash/shifts/{shift}/drawer-openings", opening)).Json()).GetProperty("openingId").GetGuid().ShouldBe(opening.OpeningId);
 
         var x = await admin.GetFromJsonAsync<JsonElement>($"/api/cash/shifts/{shift}/z");
         x.GetProperty("drawerOpenings").GetInt32().ShouldBe(2);

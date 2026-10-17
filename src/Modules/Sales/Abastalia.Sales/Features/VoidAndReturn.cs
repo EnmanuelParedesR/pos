@@ -60,6 +60,10 @@ internal static class VoidSale
                 sale.Itbis, sale.Total, sale.ENcf, ModificationCode.Void), ct);
             if (note.IsFailure) return note.Error!;
             if (sale.CustomerId is not null) await customers.VoidSaleAsync(sale.Id, ct);
+            // TK-304: the order this sale charged is open again (its deposit, back in the credit balance, is reserved for it again).
+            if (await db.Orders.Where(o => o.SaleId == sale.Id).Select(o => (Guid?)o.Id).FirstOrDefaultAsync(ct) is { } orderId
+                && await db.LockOrderAsync(orderId, ct) is { } order)
+                (order.Status, order.SaleId, order.ClosedUtc) = (OrderStatus.Pending, null, null);
 
             sale.Status = SaleStatus.Voided;
             sale.VoidedUtc = clock.GetUtcNow().UtcDateTime;

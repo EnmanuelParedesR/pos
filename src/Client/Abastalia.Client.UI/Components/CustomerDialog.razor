@@ -57,7 +57,7 @@
             {
                 <div class="esc-subtitle">O escriba los datos para una sola factura:</div>
                 <div style="display:grid;grid-template-columns:1fr 2fr;gap:12px">
-                    <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="Cart.ManualRnc" @bind:after="LookupManualAsync" /></label>
+                    <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="13" @bind="Cart.ManualRnc" @bind:after="LookupManualAsync" /></label>
                     <label class="esc-field"><span>Nombre o razón social</span><input class="esc-input" maxlength="150" @bind="Cart.ManualName" /></label>
                 </div>
                 @if (_manualStatus is not null || _manualHint is not null) { <div class="esc-row" style="gap:8px;align-items:center"><TaxpayerBadge Status="@_manualStatus" /><span class="esc-muted">@_manualHint</span></div> }
@@ -68,7 +68,7 @@
                 <form class="esc-col" style="gap:12px;padding-top:8px" @onsubmit="CreateAsync">
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px, 100%), 1fr));gap:12px">
                         <label class="esc-field"><span>Nombre</span><input class="esc-input" maxlength="150" @bind="_newName" /></label>
-                        <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="_newTaxId" @bind:after="LookupNewAsync" /></label>
+                        <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="13" @bind="_newTaxId" @bind:after="LookupNewAsync" /></label>
                         <label class="esc-field"><span>Teléfono</span><input class="esc-input" inputmode="tel" maxlength="30" @bind="_newPhone" /></label>
                     </div>
                     @if (_newStatus is not null || _newHint is not null) { <div class="esc-row" style="gap:8px;align-items:center"><TaxpayerBadge Status="@_newStatus" /><span class="esc-muted">@_newHint</span></div> }
@@ -99,6 +99,7 @@
 
     private async Task LookupManualAsync()
     {
+        Cart.ManualRnc = TaxId.Normalize(Cart.ManualRnc); // the receipt and the e-CF carry the digits only
         var (name, hint, status) = await TaxpayerLookup.FindAsync(Api, Cart.ManualRnc);
         (Cart.ManualName, _manualFilled, _manualHint, _manualStatus) = (TaxpayerLookup.Fill(Cart.ManualName, _manualFilled, name), name ?? _manualFilled, hint, status);
     }
@@ -127,7 +128,7 @@
     private async Task CreateAsync()
     {
         if (string.IsNullOrWhiteSpace(_newName)) { _error = "Escriba el nombre."; return; }
-        var taxId = string.IsNullOrWhiteSpace(_newTaxId) ? null : _newTaxId.Trim();
+        var taxId = TaxId.Normalize(_newTaxId);
         var r = await Api.PostAsync<Created>("/api/customers", new NewCustomer(_newName.Trim(), taxId, _newPhone?.Trim(), null, taxId is not null && Cart.DocumentType == EcfType.FiscalCredit31));
         if (r.Value is { } c) await ChooseAsync(c.Id);
         else _error = r.Problem!.Code == "Customers.DuplicateTaxId" ? "Ya hay un cliente con ese RNC o cédula. Búsquelo." : r.Problem.Message;

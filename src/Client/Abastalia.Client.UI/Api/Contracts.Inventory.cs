@@ -15,11 +15,13 @@ public sealed record StockMovement(long Sequence, DateTime DateUtc, StockMovemen
     decimal ResultingStock, Guid? ReferenceId, string? Reason);
 
 /// <param name="Quantity">Positive adds, negative takes out.</param>
-public sealed record AdjustStock(Guid ProductId, Guid? WarehouseId, decimal Quantity, AdjustmentReason Reason, string? Note);
+/// <param name="AdjustmentId">TK-304: the same id on a retry: the server applies it once.</param>
+public sealed record AdjustStock(Guid ProductId, Guid? WarehouseId, decimal Quantity, AdjustmentReason Reason, string? Note, Guid AdjustmentId);
 public sealed record AdjustmentRecorded(Guid AdjustmentId);
 
 public sealed record TransferLine(Guid ProductId, decimal Quantity);
-public sealed record TransferStock(Guid Source, Guid Destination, IReadOnlyList<TransferLine> Lines);
+/// <param name="TransferId">TK-304: the same id on a retry: the server moves the stock once.</param>
+public sealed record TransferStock(Guid Source, Guid Destination, IReadOnlyList<TransferLine> Lines, Guid TransferId);
 public sealed record TransferRecorded(Guid TransferId);
 
 public sealed record StartStockCount(Guid? WarehouseId, Guid? CategoryId);

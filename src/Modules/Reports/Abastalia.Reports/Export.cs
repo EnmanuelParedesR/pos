@@ -87,7 +87,7 @@ internal static class Export
     {
         DateTime utc => utc + BusinessDay.Offset,
         Enum e => Spanish.GetValueOrDefault(e.ToString(), e.ToString()),
-        string method when p.Name == "Method" => Spanish.GetValueOrDefault(method, method), // a payment method sent as text by its module
+        string text when p.Name is "Method" or "Unit" => Spanish.GetValueOrDefault(text, text), // a payment method or a unit sent as text by its module
         var v => v,
     };
 

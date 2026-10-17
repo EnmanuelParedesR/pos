@@ -12,8 +12,8 @@ public static class TaxpayerLookup
     /// <returns><c>Status</c>: the DGII status as the badge shows it ("Activo", "Suspendido"); null when the DGII did not answer.</returns>
     public static async Task<(string? Name, string? Hint, string? Status)> FindAsync(AbastaliaApi api, string? taxId)
     {
-        var digits = new string((taxId ?? "").Where(char.IsAsciiDigit).ToArray());
-        if (digits.Length is not (9 or 11)) return (null, null, null);
+        var digits = TaxId.Normalize(taxId);
+        if (!TaxId.IsValid(digits)) return (null, null, null);
         var r = await api.GetAsync<Taxpayer>($"/api/fiscal/taxpayers/{digits}");
         if (r.Value is { } t)
             return (t.Name, t.IsActive ? null : t.FromDgii ? $"La DGII lo muestra como {StatusText(t.Status)?.ToLowerInvariant()}." : "Aparece como inactivo en el padrón de la DGII.",

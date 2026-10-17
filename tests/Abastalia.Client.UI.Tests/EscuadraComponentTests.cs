@@ -148,7 +148,6 @@ public sealed class EscuadraComponentTests : IDisposable
         _ctx.Render<Skeleton>().Find("span").GetAttribute("aria-hidden").ShouldBe("true");
         _ctx.Render<Sparkline>(p => p.Add(x => x.Values, [1m, 2m])).Find("svg").GetAttribute("aria-hidden").ShouldBe("true");
         _ctx.Render<Logo>().Find("svg").GetAttribute("aria-label").ShouldBe("Abastalia");
-        _ctx.Render<Talia>(p => p.Add(x => x.Mood, Talia.Moods.Thinking)).Find("svg").GetAttribute("aria-hidden").ShouldBe("true");
     }
 
     [Theory]
@@ -204,7 +203,7 @@ public sealed class EscuadraComponentTests : IDisposable
         using var _ = ctx;
         var sale = ctx.Render<Sale>();
 
-        sale.Find("input.sale__scanner").GetAttribute("aria-label").ShouldBe("Código de barras o PLU");
+        sale.Find("input.sale__scanner").GetAttribute("aria-label").ShouldBe("Código de barras o PLU, o nombre del producto");
         sale.Find("ol.sale__lines").GetAttribute("aria-label").ShouldBe("Líneas");
         var keys = sale.Find("nav.esc-key-bar");
         keys.GetAttribute("aria-label").ShouldBe("Teclas");

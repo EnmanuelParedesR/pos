@@ -1,6 +1,7 @@
 @page "/sign-in"
 @inject AbastaliaApi Api
 @inject Session Session
+@inject Cart Cart
 @inject NavigationManager Nav
 
 <div class="esc-page" style="align-items:center;justify-content:center">
@@ -115,6 +116,7 @@
         Session.Open(s, new Me(s.UserId, s.Name, Guid.Empty, []));
         var me = await Api.GetAsync<Me>("/api/identity/me");
         Session.Open(s, me.Value ?? new Me(s.UserId, s.Name, Guid.Empty, []));
+        Cart.HandOver(s.UserId, s.Name); // TK-304: a sale left by an expired session stays its cashier's
         if (Session.Can("products.manage") && await Session.TakeSampleDataRequestAsync()) await Api.PostAsync<SampleDataStatus>("/api/inventory/sample-data");
         if (Session.Can("settings.manage") && await Session.TakeBusinessRequestAsync() is { } business) await Api.PutAsync<Empty>("/api/settings/business", business);
         _sending = false;

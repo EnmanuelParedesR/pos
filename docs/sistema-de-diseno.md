@@ -46,7 +46,7 @@ Decisión del 15 de octubre de 2026: **no es marca blanca a nivel visual**. Los 
 
 - Colores de marca: Azul Abastalia `#0B5CAD`, Tinta `#14181D`, Papel `#FFFFFF`, Mostrador `#EEF0F2`, Azul claro `#E4EFFA`, Azul noche `#6DB3F5` (tema oscuro) y **Ámbar `#FFC233`** (TK-273: solo acento en anuncios, avatar alterno y Talia; siempre sobre azul o con texto Tinta, nunca solo sobre blanco ni como texto).
 - Logo: **la etiqueta de precio girada 45°** (TK-273): etiqueta azul #0B5CAD con la esquina cortada, el hueco de colgar y la "a" blanca de dos pisos, junto a "abastalia" en IBM Plex Sans 700. Sobre oscuro (marco de la caja, administración en tema oscuro) la etiqueta es blanca y la "a" azul. Una tinta para la impresora térmica: el hueco y la "a" quedan del color del papel. Componentes: `Logo.razor` y `Logo` en `ui.tsx` (colores en `.esc-logo` de `escuadra.css`). Antes: C5, la etiqueta con el ojo que guiña (Toki, TK-267).
-- Talia (la asistente): la misma etiqueta en ámbar con cara, dentro de un círculo azul. Estados atenta, contenta y pensando: cambian solo los ojos y la boca. Componentes: `Talia.razor` y `Talia` en `ui.tsx`. Reglas de uso en `docs/mascota.md`.
+- Talia (la asistente): la misma etiqueta en ámbar con cara, dentro de un círculo azul. Estados atenta, contenta y pensando: cambian solo los ojos y la boca. Componente: `Talia` en `ui.tsx` (solo el panel). Reglas de uso en `docs/mascota.md`.
 - La marca nunca se usa para estados.
 
 ### 3. Componentes

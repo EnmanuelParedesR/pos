@@ -106,6 +106,8 @@ else
     private string? _amount, _note, _message;
     private Notice.Kinds _messageKind;
     private bool _sending, _leaving, _focusAmount, _customerPayment, _drawer;
+    /// <summary>TK-304: kept while the server has not answered, so tapping again records one opening.</summary>
+    private Guid? _openingId;
     /// <summary>The movement's idempotency key: made when the form opens, kept across retries until the server records it.</summary>
     private Guid _movementId;
     private ElementReference _amountInput;
@@ -175,8 +177,10 @@ else
         if (string.IsNullOrWhiteSpace(_note)) { (_messageKind, _message) = (Notice.Kinds.Error, "Escriba el motivo."); return; }
         var shift = Session.Shift!.ShiftId;
         _sending = true;
-        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/cash/shifts/{shift}/drawer-openings", new { Reason = _note.Trim(), SupervisorApprovalId = id }),
-            shift, "Abrir la gaveta sin venta");
+        var opening = _openingId ??= Guid.CreateVersion7();
+        var r = await Approver.WithSupervisorAsync(id => Api.PostAsync<Empty>($"/api/cash/shifts/{shift}/drawer-openings",
+            new { Reason = _note.Trim(), SupervisorApprovalId = id, OpeningId = opening }), shift, "Abrir la gaveta sin venta");
+        if (r.Problem is not { IsUncertain: true }) _openingId = null; // answered: the next opening is another one
         var opened = r.Ok && await Peripherals.TryAsync(p => p.OpenDrawerAsync(CancellationToken.None));
         _sending = false;
         if (opened) (_drawer, _messageKind, _message) = (false, Notice.Kinds.Success, "Gaveta abierta.");
@@ -186,13 +190,7 @@ else
 
     private async Task SignOutAsync()
     {
-        if (!Cart.IsEmpty)
-        {
-            (_leaving, _message) = (true, null);
-            return;
-        }
-        await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
-        Session.Close();
-        Nav.NavigateTo("sign-in");
+        if (await Session.SignOutAsync(Api, Cart)) Nav.NavigateTo("sign-in");
+        else (_leaving, _message) = (true, null);
     }
 }

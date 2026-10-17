@@ -28,8 +28,8 @@
                         <Field Label="Nombre del negocio" Wide="true" Error="@Err("name")">
                             <input class="esc-input" maxlength="150" @bind="_business.Name" @bind:after='() => Clear("name")' aria-invalid="@Invalid("name")" />
                         </Field>
-                        <Field Label="RNC" Error="@Err("rnc")" Hint="@(_registryName is { } dgii ? $"En el padrón de la DGII: {dgii}" : "9 u 11 números, sin guiones.")">
-                            <input class="esc-input" inputmode="numeric" maxlength="11" @bind="_business.Rnc" @bind:after="RncChangedAsync" aria-invalid="@Invalid("rnc")" />
+                        <Field Label="RNC" Error="@Err("rnc")" Hint="@(_registryName is { } dgii ? $"En el padrón de la DGII: {dgii}" : "9 u 11 números, con o sin guiones.")">
+                            <input class="esc-input" inputmode="numeric" maxlength="13" @bind="_business.Rnc" @bind:after="RncChangedAsync" aria-invalid="@Invalid("rnc")" />
                         </Field>
                         <Field Label="Teléfono">
                             <input class="esc-input" maxlength="30" @bind="_business.Phone" />
@@ -834,10 +834,11 @@
         string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
         _errors.Clear();
         if (string.IsNullOrWhiteSpace(f.Name)) _errors["name"] = "Escriba el nombre del negocio.";
-        if (Clean(f.Rnc) is { } rnc && (rnc.Length is not (9 or 11) || !rnc.All(char.IsAsciiDigit))) _errors["rnc"] = "El RNC tiene 9 números (o 11 si es una cédula).";
+        var rnc = TaxId.Normalize(f.Rnc);
+        if (rnc is not null && !TaxId.IsValid(rnc)) _errors["rnc"] = "El RNC tiene 9 números (o 11 si es una cédula).";
         if (Format.ParseNumber(f.DiscountCap ?? "0") is not (>= 0 and <= 100)) _errors["discount"] = "Escriba un porcentaje de 0 a 100.";
         if (_errors.Count > 0) return;
-        var r = await Api.PutAsync<Empty>("/api/settings/business", new BusinessProfile(f.Name.Trim(), Clean(f.Rnc), Clean(f.Address), Clean(f.Phone), Clean(f.ReceiptFooter), Format.ParseNumber(f.DiscountCap) ?? 0, f.RequireReference));
+        var r = await Api.PutAsync<Empty>("/api/settings/business", new BusinessProfile(f.Name.Trim(), rnc, Clean(f.Address), Clean(f.Phone), Clean(f.ReceiptFooter), Format.ParseNumber(f.DiscountCap) ?? 0, f.RequireReference));
         ShowResult(r.Problem, "Datos del negocio guardados.");
     }
 

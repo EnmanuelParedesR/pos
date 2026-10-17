@@ -9,7 +9,8 @@ public sealed record DailySales(DateOnly Day, int SaleCount, decimal SalesWithIt
     decimal? Cost, decimal? Profit);
 
 /// <param name="Quantity">Base units (pounds or units) sold minus returned in the period.</param>
-public sealed record ProductSales(Guid ProductId, Guid CategoryId, string Product, decimal Quantity, decimal NetWithoutItbis, decimal? Cost, decimal? Profit);
+/// <param name="Unit">The product's base unit, "Unit" or "Pound" (what Quantity counts).</param>
+public sealed record ProductSales(Guid ProductId, Guid CategoryId, string Product, decimal Quantity, string Unit, decimal NetWithoutItbis, decimal? Cost, decimal? Profit);
 
 /// <param name="SoldWithItbis">What the cashier's completed sales charged, ITBIS included (returns are not per cashier).</param>
 /// <param name="SoldOnCredit">R11 A6: what the cashier's completed sales charged on credit (fiado) or to a customer's credit balance.</param>

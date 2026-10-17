@@ -129,7 +129,7 @@ public sealed class AdminAuditGapsTests
         api.Json("GET", "/api/fiscal/taxpayers/00112345678", new { rnc = "00112345678", name = "JUAN PÉREZ", tradeName = (string?)null, isActive = false });
         var dialog = ctx.Render<CustomerDialog>();
 
-        dialog.FindAll("input[maxlength='11']")[^1].Change("00112345678");
+        dialog.FindAll("input[maxlength='13']")[^1].Change("001-1234567-8"); // TK-304: with dashes too
         dialog.WaitForAssertion(() => dialog.FindAll("input[maxlength='150']")[^1].GetAttribute("value").ShouldBe("JUAN PÉREZ"));
         dialog.Markup.ShouldContain("Aparece como inactivo en el padrón de la DGII.");
     }

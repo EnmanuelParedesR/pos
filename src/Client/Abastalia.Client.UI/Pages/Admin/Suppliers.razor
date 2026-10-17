@@ -142,12 +142,12 @@
     {
         if (_editing is not { } f) return;
         _errors.Clear();
-        var rnc = new string((f.Rnc ?? "").Where(char.IsAsciiDigit).ToArray());
+        var rnc = TaxId.Normalize(f.Rnc);
         if (string.IsNullOrWhiteSpace(f.Name)) _errors["name"] = "Escriba el nombre.";
-        if (rnc.Length is not (0 or 9 or 11)) _errors["rnc"] = "El RNC tiene 9 números y la cédula 11.";
+        if (rnc is not null && !TaxId.IsValid(rnc)) _errors["rnc"] = "El RNC tiene 9 números y la cédula 11.";
         if (!int.TryParse(f.CreditDays, out var days) || days is < 0 or > 365) _errors["days"] = "De 0 a 365 días.";
         if (_errors.Count > 0) return;
-        var body = new SaveSupplier(f.Name.Trim(), rnc.Length == 0 ? null : rnc, Blank(f.Phone), Blank(f.Contact), days, f.IsActive);
+        var body = new SaveSupplier(f.Name.Trim(), rnc, Blank(f.Phone), Blank(f.Contact), days, f.IsActive);
         _sending = true;
         var p = f.Id is { } id
             ? (await Api.PutAsync<Empty>($"/api/purchasing/suppliers/{id}", body)).Problem

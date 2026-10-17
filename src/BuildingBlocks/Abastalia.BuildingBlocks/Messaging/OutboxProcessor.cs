@@ -41,6 +41,25 @@ public sealed class OutboxProcessor(InfraDbContext db, IServiceScopeFactory scop
         }
     }
 
+    /// <summary>TK-304: how long a delivered and uploaded event stays (the cloud has it; nothing here reads it again).</summary>
+    public static readonly TimeSpan KeepFor = TimeSpan.FromDays(90);
+
+    /// <summary>Deletes the events both processed here and uploaded to the cloud more than <see cref="KeepFor"/> ago, in small batches so a sale
+    /// writing its own event never waits long. An event the cloud has not confirmed stays, however old.</summary>
+    /// <returns>How many were deleted.</returns>
+    public async Task<int> PurgeAsync(CancellationToken ct)
+    {
+        var before = clock.GetUtcNow().UtcDateTime - KeepFor;
+        var total = 0;
+        int deleted;
+        do
+        {
+            deleted = await db.Outbox.Where(m => m.ProcessedUtc < before && m.UploadedUtc < before).OrderBy(m => m.Sequence).Take(1000).ExecuteDeleteAsync(ct);
+            total += deleted;
+        } while (deleted == 1000);
+        return total;
+    }
+
     private async Task DeliverAsync(OutboxMessage m, CancellationToken ct)
     {
         try
@@ -72,6 +91,7 @@ internal sealed class OutboxProcessorWorker(IServiceScopeFactory scopes, IConfig
     {
         if (!config.GetValue("Outbox:Process", true)) return;
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(config.GetValue("Outbox:IntervalSeconds", 5)), clock);
+        var purged = DateTimeOffset.MinValue;
         do
         {
             try
@@ -79,6 +99,11 @@ internal sealed class OutboxProcessorWorker(IServiceScopeFactory scopes, IConfig
                 await using var scope = scopes.CreateAsyncScope();
                 var processor = scope.ServiceProvider.GetRequiredService<OutboxProcessor>();
                 await processor.ProcessAsync(stoppingToken);
+                if (clock.GetUtcNow() - purged >= TimeSpan.FromHours(1))
+                {
+                    purged = clock.GetUtcNow();
+                    await processor.PurgeAsync(stoppingToken); // TK-304: the table does not grow forever
+                }
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {

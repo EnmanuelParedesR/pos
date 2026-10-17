@@ -95,6 +95,29 @@ public sealed class OrdersTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
 
         // Delivered: it cannot be charged again.
         (await (await cashier.SellAsync(sale with { SaleId = Guid.CreateVersion7() })).ErrorCode()).ShouldBe("Orders.Closed");
+
+        // TK-304: voiding that sale opens the order again, with its deposit back in the credit balance and reserved for it: it can be charged again.
+        (await cashier.Client.PostAsJsonAsync($"/api/sales/{sale.SaleId}/void",
+            new { Reason = "Se cobró mal", SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.void", sale.SaleId) })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        order = await OrderAsync(cashier.Client, orderId);
+        (order.GetProperty("status").GetString(), order.GetProperty("saleId").ValueKind).ShouldBe(("Pending", JsonValueKind.Null));
+        (await CreditBalanceAsync(customer)).ShouldBe(300m);
+        (await cashier.SellAsync(sale with { SaleId = Guid.CreateVersion7() })).StatusCode.ShouldBe(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task TK304_two_simultaneous_retries_of_a_new_order_both_get_it_and_take_one_deposit()
+    {
+        var cashier = await app.CashierWithShiftAsync(openingFloat: 1000m);
+        var (customer, steak) = (await CustomerAsync(), await SteakAsync());
+        var orderId = Guid.CreateVersion7();
+        var body = NewOrder(orderId, customer, steak, 1m, new { cashier.ShiftId, Method = "Cash", Amount = 100m });
+
+        var both = await Task.WhenAll(cashier.Client.PostAsJsonAsync("/api/orders", body), cashier.Client.PostAsJsonAsync("/api/orders", body));
+
+        both.ShouldAllBe(r => r.StatusCode == HttpStatusCode.Created);
+        (await CreditBalanceAsync(customer)).ShouldBe(100m);
+        (await app.XReportAsync(cashier.ShiftId)).GetProperty("expectedCash").GetDecimal().ShouldBe(1100m);
     }
 
     [Fact]

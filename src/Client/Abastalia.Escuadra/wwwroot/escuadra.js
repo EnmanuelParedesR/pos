@@ -122,6 +122,8 @@
       } catch { /* kept in unsavedTheme */ }
       applyTheme();
     },
+    // Whether a dialog is open (the register does not close to update in the middle of one).
+    hasDialog: () => document.querySelector('.esc-overlay') !== null,
     // HTML autofocus only works on page load; a dialog Blazor inserts later focuses its field here.
     focusFirst: el => {
       // A screen may focus its own field first (Blazor Server runs this after the client acknowledges the render): keep it.

@@ -20,11 +20,13 @@ internal sealed class SalesReports(SalesDbContext db, Abastalia.Fiscal.Contracts
             .AsNoTracking().ToListAsync(ct);
         var returns = await ReturnedAsync(f, t, ct);
 
-        var days = sales.Select(s => BusinessDay.Of(s.DateUtc)).Concat(returns.Select(x => BusinessDay.Of(x.DateUtc))).Distinct().Order();
-        return days.Select(day =>
+        // TK-304: grouped once (a year of sales would be scanned once per day otherwise).
+        var salesByDay = sales.ToLookup(s => BusinessDay.Of(s.DateUtc));
+        var returnsByDay = returns.ToLookup(x => BusinessDay.Of(x.DateUtc));
+        return salesByDay.Select(g => g.Key).Concat(returnsByDay.Select(g => g.Key)).Distinct().Order().Select(day =>
         {
-            var ofDay = sales.Where(s => BusinessDay.Of(s.DateUtc) == day).ToList();
-            var rets = returns.Where(x => BusinessDay.Of(x.DateUtc) == day).ToList();
+            var ofDay = salesByDay[day].ToList();
+            var rets = returnsByDay[day].ToList();
             var itbis = ofDay.Sum(s => s.Itbis) - rets.Sum(x => x.Itbis);
             var net = ofDay.Sum(s => s.Total - s.Itbis) - rets.Sum(x => x.Total - x.Itbis);
             var cost = Money.Round(ofDay.Sum(s => s.Cost) - rets.Sum(x => x.RestockedCost));
@@ -38,7 +40,7 @@ internal sealed class SalesReports(SalesDbContext db, Abastalia.Fiscal.Contracts
         var sold = await (from l in db.Lines
                           join s in db.Sales on l.SaleId equals s.Id
                           where s.DateUtc >= f && s.DateUtc < t && s.Status == SaleStatus.Completed
-                          select new MovedLine(l.ProductId, l.CategoryId, l.Description, l.PresentationId == null, l.Quantity * l.Factor, l.Total - l.Itbis, l.UnitCost * l.Quantity))
+                          select new MovedLine(l.ProductId, l.CategoryId, l.Description, l.PresentationId == null, l.Unit, l.Quantity * l.Factor, l.Total - l.Itbis, l.UnitCost * l.Quantity))
             .AsNoTracking().ToListAsync(ct);
         var returned = (await ReturnedAsync(f, t, ct)).SelectMany(x => x.Lines);
 
@@ -47,7 +49,7 @@ internal sealed class SalesReports(SalesDbContext db, Abastalia.Fiscal.Contracts
             var net = g.Sum(m => m.Net);
             var cost = Money.Round(g.Sum(m => m.Cost));
             var name = g.OrderByDescending(m => m.WithoutPresentation).First().Description;
-            return new ProductSales(g.Key, g.First().CategoryId, name, g.Sum(m => m.Quantity), net, cost, net - cost);
+            return new ProductSales(g.Key, g.First().CategoryId, name, g.Sum(m => m.Quantity), g.First().Unit.ToString(), net, cost, net - cost);
         }).OrderByDescending(p => p.NetWithoutItbis).ToList();
     }
 
@@ -123,7 +125,7 @@ internal sealed class SalesReports(SalesDbContext db, Abastalia.Fiscal.Contracts
     }
 
     /// <summary>A line sold (positive) or returned (negative) in the period.</summary>
-    private sealed record MovedLine(Guid ProductId, Guid CategoryId, string Description, bool WithoutPresentation, decimal Quantity, decimal Net, decimal Cost);
+    private sealed record MovedLine(Guid ProductId, Guid CategoryId, string Description, bool WithoutPresentation, Inventory.Contracts.UnitOfMeasure Unit, decimal Quantity, decimal Net, decimal Cost);
 
     private sealed record Returned(DateTime DateUtc, decimal Total, decimal Itbis, decimal RestockedCost, List<MovedLine> Lines);
 
@@ -134,12 +136,12 @@ internal sealed class SalesReports(SalesDbContext db, Abastalia.Fiscal.Contracts
                            join x in db.Returns on rl.ReturnId equals x.Id
                            join sl in db.Lines on rl.SaleLineId equals sl.Id
                            where x.DateUtc >= f && x.DateUtc < t
-                           select new { x.Id, x.DateUtc, ReturnTotal = x.Total, ReturnItbis = x.Itbis, sl.ProductId, sl.CategoryId, sl.Description, sl.PresentationId,
+                           select new { x.Id, x.DateUtc, ReturnTotal = x.Total, ReturnItbis = x.Itbis, sl.ProductId, sl.CategoryId, sl.Description, sl.PresentationId, sl.Unit,
                                sl.Factor, sl.UnitCost, rl.Quantity, rl.Total, rl.Itbis, rl.Restocked })
             .AsNoTracking().ToListAsync(ct);
         return lines.GroupBy(l => l.Id).Select(g =>
         {
-            var moved = g.Select(l => new MovedLine(l.ProductId, l.CategoryId, l.Description, l.PresentationId == null, -l.Quantity * l.Factor, -(l.Total - l.Itbis),
+            var moved = g.Select(l => new MovedLine(l.ProductId, l.CategoryId, l.Description, l.PresentationId == null, l.Unit, -l.Quantity * l.Factor, -(l.Total - l.Itbis),
                 l.Restocked ? -l.UnitCost * l.Quantity : 0)).ToList();
             return new Returned(g.First().DateUtc, g.First().ReturnTotal, g.First().ReturnItbis, -moved.Sum(m => m.Cost), moved);
         }).ToList();

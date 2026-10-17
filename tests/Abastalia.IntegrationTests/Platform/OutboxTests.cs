@@ -35,4 +35,27 @@ public sealed class OutboxTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
         (await app.InScopeAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox.SingleAsync(m => m.Id == good.EventId))).ProcessedUtc.ShouldNotBeNull();
         (await app.InScopeAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox.CountAsync(m => m.Payload == "{roto" && m.ProcessedUtc == null))).ShouldBe(150);
     }
+
+    [Fact]
+    public async Task TK304_only_events_processed_and_uploaded_more_than_90_days_ago_are_purged()
+    {
+        await app.AdminAsync();
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        var (old, recent) = (now - OutboxProcessor.KeepFor - TimeSpan.FromDays(1), now - OutboxProcessor.KeepFor + TimeSpan.FromDays(1));
+        OutboxMessage Message(DateTime? processed, DateTime? uploaded) =>
+            new() { Id = Guid.NewGuid(), Type = "Purge.Test", AggregateId = Guid.NewGuid(), Payload = "{}", OccurredUtc = old, ProcessedUtc = processed, UploadedUtc = uploaded };
+        var gone = Enumerable.Range(0, 1001).Select(_ => Message(old, old)).ToList(); // more than one batch
+        var kept = new[] { Message(old, null), Message(null, old), Message(old, recent), Message(recent, old) };
+        await app.InScopeAsync(sp =>
+        {
+            var db = sp.GetRequiredService<InfraDbContext>();
+            db.Outbox.AddRange(gone.Concat(kept));
+            return db.SaveChangesAsync();
+        });
+
+        (await app.InScopeAsync(sp => sp.GetRequiredService<OutboxProcessor>().PurgeAsync(CancellationToken.None))).ShouldBeGreaterThanOrEqualTo(1001);
+
+        var left = await app.InScopeAsync(sp => sp.GetRequiredService<InfraDbContext>().Outbox.Where(m => m.Type == "Purge.Test").Select(m => m.Id).ToListAsync());
+        left.ShouldBe(kept.Select(m => m.Id), ignoreOrder: true); // not uploaded to the cloud, or not 90 days yet: kept
+    }
 }

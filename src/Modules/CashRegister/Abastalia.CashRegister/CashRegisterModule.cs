@@ -182,14 +182,6 @@ internal sealed class CashRegisterOperations(CashRegisterDbContext db, IUserCont
         return Result.Success();
     }
 
-    public async Task<decimal> ExpectedCashAsync(Guid shiftId, CancellationToken ct)
-    {
-        var shift = await db.Shifts.AsNoTracking().SingleAsync(s => s.Id == shiftId, ct);
-        var movements = await db.Movements.Where(m => m.ShiftId == shiftId).AsNoTracking().ToListAsync(ct);
-        movements.AddRange(db.Movements.Local.Where(m => m.ShiftId == shiftId && db.Entry(m).State == EntityState.Added));
-        return ShiftBalance.ExpectedCash(shift.OpeningFloat, movements);
-    }
-
     public CashMovement Add(Guid shiftId, CashMovementType type, PaymentMethod method, decimal amount, Guid? referenceId, string? reference,
         MovementReason? reason = null, string? note = null, Guid? id = null, bool publish = true)
     {
