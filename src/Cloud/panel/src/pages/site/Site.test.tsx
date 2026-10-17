@@ -226,4 +226,17 @@ it.each(sitePages.map((p) => [p.path]))("TK-330: %s promises nothing the TK-279 
   renderAt(path);
   const text = document.body.textContent ?? "";
   for (const promise of [/solo lectura/i, /pago atrasado/i, /nunca se detiene/i]) expect(text).not.toMatch(promise);
+});\n\nit.each(sitePages.map((p) => [p.path]))("TK-312: %s never says \"fiado\" (ventas a crédito, cuentas por cobrar)", (path) => {
+  renderAt(path);
+  const page = sitePages.find((p) => p.path === path)!;
+  expect(`${document.body.textContent} ${page.title} ${page.description}`).not.toMatch(/fiad/i);
+});
+
+it("TK-312: the site is light unless dark was picked, and its switch has only claro and oscuro", async () => {
+  renderAt("/");
+  const toggle = await screen.findByRole("button", { name: "Tema: claro. Cambiar a oscuro" });
+  toggle.click();
+  expect(await screen.findByRole("button", { name: "Tema: oscuro. Cambiar a claro" })).toBeTruthy();
+  expect(localStorage.getItem("abastalia.theme")).toBe("dark");
+  expect(document.documentElement.dataset.choice).toBe("dark");
 });

@@ -34,20 +34,17 @@
   --focus: 0 0 0 3px var(--bg), 0 0 0 6px var(--brand);
   color-scheme: light;
 }
-/* Dark: the device's choice (theme.ts sets data-theme), or the system's before the script runs on a prerendered page. */
-:root[data-theme="dark"] .site { --brand: #6DB3F5; --brand-strong: #9CCBF8; --brand-soft: #16263A; --on-brand: #14181D; --ink: #F1F3F5; --muted: #B4BCC4;
+/* TK-312: light by default, also on a dark phone (a sales page reads best on paper, and the photos and screenshots are light). Dark only
+   when the visitor picks it with the toggle in the footer (theme.ts sets data-choice; shared with the panel's choice on this device). */
+:root[data-choice="dark"] .site { --brand: #6DB3F5; --brand-strong: #9CCBF8; --brand-soft: #16263A; --on-brand: #14181D; --ink: #F1F3F5; --muted: #B4BCC4;
   --bg: #14181D; --counter: #1C2128; --line: #3A424B; --line-strong: #4A535D; --warn-bg: #3A2A12; --warn-ink: #F5C98A; --ok-ink: #8FD8AB;
   --amber-soft: #33270F; --amber-line: #F5C98A; --green-soft: #14301E; --green-line: #8FD8AB; --night: #0B0E12; --night-line: #2A3038;
   --shadow: rgba(0, 0, 0, 0.5); color-scheme: dark; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .site { --brand: #6DB3F5; --brand-strong: #9CCBF8; --brand-soft: #16263A; --on-brand: #14181D; --ink: #F1F3F5; --muted: #B4BCC4;
-    --bg: #14181D; --counter: #1C2128; --line: #3A424B; --line-strong: #4A535D; --warn-bg: #3A2A12; --warn-ink: #F5C98A; --ok-ink: #8FD8AB;
-    --amber-soft: #33270F; --amber-line: #F5C98A; --green-soft: #14301E; --green-line: #8FD8AB; --night: #0B0E12; --night-line: #2A3038;
-    --shadow: rgba(0, 0, 0, 0.5); color-scheme: dark; }
-  :root:not([data-theme]) .site .esc-logo { --logo-tag: #FFFFFF; --logo-mark: #0B5CAD; }
-}
 /* TK-273: on the dark site the tag turns white and the "a" blue (blue on #14181D is only 2.7:1), as in the dark back office. */
-:root[data-theme="dark"] .site .esc-logo { --logo-tag: #FFFFFF; --logo-mark: #0B5CAD; }
+:root[data-choice="dark"] .site .esc-logo { --logo-tag: #FFFFFF; --logo-mark: #0B5CAD; }
+/* The panel paints <html> dark when the device is dark (panel.css); the light site keeps its own page color past the edges. */
+:root:has(.site), :root:has(.site) body { background: var(--site-page, #FFFFFF); }
+:root[data-choice="dark"]:has(.site), :root[data-choice="dark"]:has(.site) body { --site-page: #14181D; }
 
 .site { min-height: 100vh; display: flex; flex-direction: column; font: 400 17px/1.6 "Abastalia Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   font-variant-numeric: tabular-nums; color: var(--ink); background: var(--bg); -webkit-text-size-adjust: 100%; overflow-x: clip; }

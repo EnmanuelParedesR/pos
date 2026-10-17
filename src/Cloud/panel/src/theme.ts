@@ -23,8 +23,11 @@ export const nextTheme = (choice: ThemeChoice): ThemeChoice => (choice === "syst
 
 export const themeName = (choice: ThemeChoice) => (choice === "light" ? "claro" : choice === "dark" ? "oscuro" : "automático");
 
+/** TK-312: <html data-choice> is the choice itself; the public site reads it to stay light unless the visitor picked dark. */
 function apply() {
-  document.documentElement.dataset.theme = resolveTheme(getTheme(), darkQuery()?.matches ?? false);
+  const choice = getTheme();
+  document.documentElement.dataset.theme = resolveTheme(choice, darkQuery()?.matches ?? false);
+  document.documentElement.dataset.choice = choice;
 }
 
 export function setTheme(choice: ThemeChoice) {

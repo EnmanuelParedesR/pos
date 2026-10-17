@@ -78,7 +78,7 @@ function Home() {
             <h2>Hecho para el mostrador</h2>
             <ul className="checks">
               <li>Por libra y por unidad en la misma venta.</li>
-              <li>El fiado y el cuadre, sin cuaderno.</li>
+              <li>Las ventas a crédito y el cuadre, sin cuaderno.</li>
               <li>El e-CF sale solo, con o sin internet.</li>
             </ul>
           </div>
@@ -148,13 +148,13 @@ function Butcher() {
 function Grocery() {
   return (
     <>
-      <Hero eyebrow="Colmado" title="El fiado claro y la caja al día." sub="Venta rápida, fiado sin cuaderno y el e-CF de cada venta." cta={both} art={<BusinessArt kind="grocery" />} />
+      <Hero eyebrow="Colmado" title="Las cuentas claras y la caja al día." sub="Venta rápida, ventas a crédito sin cuaderno y el e-CF de cada venta." cta={both} art={<BusinessArt kind="grocery" />} />
       <Section className="counter">
         <h2 className="esc-visually-hidden">Lo que hace por su colmado</h2>
         <IconTiles
           items={[
             ["bolt", "Venta rápida", "Escáner siempre listo y el total grande. Por libra también."],
-            ["people", "Fiado con límite", "Abonos, antigüedad y estado de cuenta para WhatsApp."],
+            ["people", "Crédito con límite", "Abonos, antigüedad y estado de cuenta para WhatsApp."],
             ["qr", "Pedidos por WhatsApp", "Catálogo con QR para el mostrador, sin costos ni existencias."],
             ["box", "Reponer a tiempo", "Mínimos, máximos y pedido sugerido con el último suplidor."],
           ]}
@@ -164,7 +164,7 @@ function Grocery() {
         items={[
           ["Tengo una sola caja. ¿Necesito una PC aparte?", "No. En una tienda de una caja, la misma PC es la caja y la principal."],
           ["¿Qué pasa si se va el internet o la luz?", "Sin internet sigue vendiendo y los e-CF salen al volver la conexión (la DGII da 72 horas). Si la PC no puede emitir e-CF (por ejemplo, se venció el certificado), Abastalia lo guía para declarar la contingencia, facturar con serie B y luego regularizar."],
-          ["¿El fiado sale en el cuadre de la caja?", "Sí. Lo vendido a crédito y lo cobrado de fiado salen separados en el cierre de cada turno."],
+          ["¿Las ventas a crédito salen en el cuadre de la caja?", "Sí. Lo vendido a crédito y los abonos cobrados salen separados en el cierre de cada turno."],
           ["¿Hay un límite de facturas al mes?", "No. Abastalia no cobra por documento ni detiene la facturación por volumen."],
           [
             "¿Cuándo me toca el e-CF?",
@@ -366,7 +366,7 @@ const versus: [IconName, string, ReactNode, ReactNode, string][] = [
   ["tag", "Costo", <>Mensual, por tamaño de tienda. <Link to="/precios">Ver precios</Link></>, "Gratis", "¿Cuánto cobra al mes? ¿Cobra por factura?"],
   ["ecf", "Pensado para", "Tiendas con mostrador, sin cupo ni cobro por documento", "Bajo volumen. Unas 150 facturas al mes, según la DGII (El Día, 12/05/2026)", "¿Tiene cupo o tope de facturas?"],
   ["offline", "Sin internet", <>{yes}: firma y envía al volver (72 horas)</>, "No emite", "¿Factura si se va el internet?"],
-  ["scale", "Caja, balanza, inventario y fiado", yes, "No: emite, recibe y consulta e-CF", "¿Lee la balanza y vende por libra?"],
+  ["scale", "Caja, balanza, inventario y crédito a clientes", yes, "No: emite, recibe y consulta e-CF", "¿Lee la balanza y vende por libra?"],
   ["pc", "Dónde se usa", "Programa en la PC de la tienda y panel en el celular", "Portal web de la DGII", "¿Funciona en la PC de la tienda o solo en la web?"],
   ["data", "Guarda sus e-CF", "10 años, en la tienda y en la nube", "Hasta 2 años en el portal; usted debe guardarlos 10", "¿Guarda los e-CF 10 años? ¿Me llevo mis datos si me voy?"],
   ["key", "Certificado digital", "Comprado a una entidad autorizada por INDOTEL", "El gratis de la DGII (solo sirve ahí) o uno comprado", "¿Está certificado ante la DGII?"],
@@ -618,7 +618,7 @@ function Pricing() {
             ["ecf", "e-CF sin cupo", "Consumo, crédito fiscal y notas de crédito, sin cobro por documento."],
             ["box", "Inventario completo", "Compras, mermas, conteos, mínimos y pedido sugerido."],
             ["register", "Cuadre ciego y cierre Z", "Autorización de supervisor con PIN."],
-            ["people", "Clientes y fiado", "Con límite y estado de cuenta."],
+            ["people", "Clientes y cuentas por cobrar", "Crédito con límite, abonos y estado de cuenta."],
             ["quote", "606, 607 y 608", "Para su contador."],
             ["lock", "Permisos por acción", "Usuarios, roles y registro de auditoría."],
             ["data", "Sus datos", "Respaldo y exportación completa cuando quiera."],
@@ -694,8 +694,8 @@ function WhatsNew() {
           <News title="Encargos y cotizaciones">Encargos con fecha, hora y abono, cobrados con el peso real. Cotizaciones con vigencia que se convierten en venta.</News>
           <News title="Catálogo con QR y pedido por WhatsApp">Sus productos y precios en una página pública, sin costos ni existencias, con un QR para el mostrador.</News>
           <News title="Pedido sugerido">Mínimos y máximos; Abastalia calcula cuánto pedir, a qué suplidor y crea la compra en borrador.</News>
-          <News title="Permisos más finos">Abrir caja, cerrar caja, cobrar fiado, ver costos y pagar a suplidores son permisos separados. Nadie da un permiso que no tiene.</News>
-          <News title="Reportes y documentos">Reporte 608, ventas por medio de pago y por hora, y el cierre Z y el estado de cuenta del fiado en una página para PDF.</News>
+          <News title="Permisos más finos">Abrir caja, cerrar caja, cobrar abonos de crédito, ver costos y pagar a suplidores son permisos separados. Nadie da un permiso que no tiene.</News>
+          <News title="Reportes y documentos">Reporte 608, ventas por medio de pago y por hora, y el cierre Z y el estado de cuenta de cada cliente en una página para PDF.</News>
           <News title="Panel del dueño">Quién le debe, lo más vendido, más de una persona con acceso por invitación y modo oscuro.</News>
         </ul>
       </Section>
@@ -740,8 +740,8 @@ export const sitePages: SitePage[] = [
   {
     path: "/colmado",
     nav: "Colmado",
-    title: "Abastalia para colmados · Fiado, venta rápida y e-CF",
-    description: "Punto de venta para colmados: venta rápida con escáner, fiado con límite y estado de cuenta, catálogo con pedido por WhatsApp y e-CF aunque se vaya el internet.",
+    title: "Abastalia para colmados · Crédito, venta rápida y e-CF",
+    description: "Punto de venta para colmados: venta rápida con escáner, crédito con límite y estado de cuenta, pedidos por WhatsApp y e-CF aunque se vaya el internet.",
     element: <Grocery />,
   },
   {
@@ -797,7 +797,7 @@ export const sitePages: SitePage[] = [
     path: "/precios",
     nav: "Precios",
     title: "Precios de Abastalia · Planes por tamaño de tienda",
-    description: "Planes de Abastalia según sus cajas y sucursales. Lo básico está en todos: balanza, e-CF sin cupo, inventario, cuadre ciego, fiado, 606/607/608 y respaldo.",
+    description: "Planes de Abastalia según sus cajas y sucursales. Lo básico está en todos: balanza, e-CF sin cupo, inventario, cuadre ciego, crédito, 606/607/608 y respaldo.",
     element: <Pricing />,
   },
   {

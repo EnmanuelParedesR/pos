@@ -119,11 +119,14 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
 }
 
 /** Theme switch (TK-183): automático → claro → oscuro, remembered on this device. */
-export function ThemeToggle({ className = "esc-side__item", showLabel = true, size = 20 }: { className?: string; showLabel?: boolean; size?: number }) {
+/** `lightFirst` (TK-312, the public site): only claro and oscuro, "automático" counts as claro (the site is light unless dark is picked). */
+export function ThemeToggle({ className = "esc-side__item", showLabel = true, size = 20, lightFirst = false }: { className?: string; showLabel?: boolean; size?: number; lightFirst?: boolean }) {
   // R12 #12: "system" on the first render, as the prerendered HTML says; the saved choice comes after hydration (no mismatch).
-  const [theme, setChoice] = useState<ThemeChoice>("system");
+  const [saved, setChoice] = useState<ThemeChoice>("system");
   useEffect(() => setChoice(getTheme()), []);
-  const label = `Tema: ${themeName(theme)}. Cambiar a ${themeName(nextTheme(theme))}`;
+  const theme: ThemeChoice = lightFirst && saved !== "dark" ? "light" : saved;
+  const next: ThemeChoice = lightFirst ? (theme === "dark" ? "light" : "dark") : nextTheme(theme);
+  const label = `Tema: ${themeName(theme)}. Cambiar a ${themeName(next)}`;
   return (
     <button
       type="button"
@@ -131,7 +134,6 @@ export function ThemeToggle({ className = "esc-side__item", showLabel = true, si
       title={label}
       aria-label={label}
       onClick={() => {
-        const next = nextTheme(theme);
         setTheme(next);
         setChoice(next);
       }}

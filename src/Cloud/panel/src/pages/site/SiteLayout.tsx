@@ -103,7 +103,7 @@ export function SiteLayout() {
               </li>
             </ul>
           </nav>
-          <ThemeToggle className="btn btn--ghost btn--small" size={18} />
+          <ThemeToggle className="btn btn--ghost btn--small" size={18} lightFirst />
           <p className="muted foot__legal">La información sobre la DGII es orientativa y no sustituye la asesoría de su contador ni lo que publique la DGII.</p>
         </div>
       </footer>

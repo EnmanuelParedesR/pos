@@ -364,8 +364,8 @@ export const BusinessArt = ({ kind }: { kind: Business }) => (
 /** TK-281: the businesses on the home as icons (quick to scan, light on a phone); the photos live on each business page. */
 export function BusinessCards() {
   const cards: [Business, IconName, string, string, string][] = [
-    ["butcher", "meat", "/carniceria", "Carnicería", "Balanza, cortes por libra y fiado."],
-    ["grocery", "basket", "/colmado", "Colmado", "Escáner rápido, fiado y cuadre."],
+    ["butcher", "meat", "/carniceria", "Carnicería", "Balanza, cortes por libra y encargos."],
+    ["grocery", "basket", "/colmado", "Colmado", "Escáner rápido, crédito y cuadre."],
     ["deli", "cheese", "/deli", "Deli", "Pedidos, encargos y catálogo con QR."],
   ];
   return (

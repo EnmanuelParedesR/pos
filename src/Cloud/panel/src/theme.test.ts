@@ -14,8 +14,10 @@ describe("theme (TK-183)", () => {
   it("remembers the choice on this device and marks <html> with the resolved theme", () => {
     startTheme();
     expect(document.documentElement.dataset.theme).toBe("light"); // jsdom has no matchMedia: like a light system
+    expect(document.documentElement.dataset.choice).toBe("system"); // TK-312: the site reads the choice: light unless "dark"
     setTheme("dark");
     expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(document.documentElement.dataset.choice).toBe("dark");
     expect(getTheme()).toBe("dark");
     setTheme("system");
     expect(localStorage.getItem("abastalia.theme")).toBeNull();
