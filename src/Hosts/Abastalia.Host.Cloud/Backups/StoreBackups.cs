@@ -70,7 +70,7 @@ internal sealed class FileSystemBackupStore(string folder) : IStoreBackupStore
 }
 
 /// <summary>Azure Blob Storage (deploy/azure/main.bicep, container <c>store-backups</c>): Hot, since most copies live a week (Cool charges 30 days
-/// for each); the API's managed identity signs in, no keys, no public access. A lifecycle rule deletes anything older than 60 days as a safety net.</summary>
+/// for each); the API's managed identity signs in, no keys, no public access. A lifecycle rule deletes anything older than 400 days as a safety net (R12 #8).</summary>
 internal sealed class BlobBackupStore(BlobContainerClient container) : IStoreBackupStore
 {
     public async Task PutAsync(string key, Stream content, CancellationToken ct) =>
@@ -230,7 +230,7 @@ internal static partial class StoreBackupEndpoints
                 return EndpointExtensions.Problem(NotFound);
             var expires = clock.GetUtcNow() + LinkLifetime;
             var token = Protector(protection).Protect(string.Join('|', tenantId.ToString("N"), id.ToString("N"), user.FindFirstValue(ClaimTypes.NameIdentifier),
-                expires.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
+                expires.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture)));
             return Results.Ok(new { url = $"/api/backups/download/{token}", expiresUtc = expires.UtcDateTime });
         }).RequireAuthorization(CloudAuth.PanelPolicy).RequireAuthorization(CloudAuth.OwnerPolicy).RequireRateLimiting(DownloadRateLimit);
 
@@ -241,8 +241,8 @@ internal static partial class StoreBackupEndpoints
             try { parts = Protector(protection).Unprotect(token).Split('|'); }
             catch (System.Security.Cryptography.CryptographicException) { parts = []; }
             if (parts is not [var tenant, var backup, var userId, var expiry] || !Guid.TryParse(tenant, out var tenantId) || !Guid.TryParse(backup, out var id)
-                || !long.TryParse(expiry, CultureInfo.InvariantCulture, out var expires) || expires < clock.GetUtcNow().ToUnixTimeSeconds())
-                return EndpointExtensions.Problem(Error.NotFound("Backup.LinkExpired", "El enlace de descarga venció. Vuelva a pulsar Descargar en el panel."));
+                || !long.TryParse(expiry, CultureInfo.InvariantCulture, out var expires) || expires < clock.GetUtcNow().ToUnixTimeMilliseconds())
+                return EndpointExtensions.Problem(LinkExpired);
             var row = await db.StoreBackups.SingleOrDefaultAsync(b => b.Id == id && b.TenantId == tenantId, ct);
             if (row is null || services.GetService<IStoreBackupStore>() is not { } store) return EndpointExtensions.Problem(NotFound);
             // R12 #8: the file is gone (the lifecycle rule, or by hand): the row goes too, so the list stops offering it.
@@ -252,8 +252,14 @@ internal static partial class StoreBackupEndpoints
                 await db.SaveChangesAsync(ct);
                 return EndpointExtensions.Problem(NotFound);
             }
-            (row.LastDownloadedBy, row.LastDownloadedUtc) = (userId, clock.GetUtcNow().UtcDateTime);
-            await db.SaveChangesAsync(ct);
+            // R13: one download per link (its URL lands in request logs and the browser's history); claimed in one UPDATE, so two GETs never both pass.
+            var (issued, now) = ((DateTimeOffset.FromUnixTimeMilliseconds(expires) - LinkLifetime).UtcDateTime, clock.GetUtcNow().UtcDateTime);
+            if (await db.StoreBackups.Where(b => b.Id == row.Id && (b.LastDownloadedUtc == null || b.LastDownloadedUtc < issued))
+                    .ExecuteUpdateAsync(s => s.SetProperty(b => b.LastDownloadedBy, userId).SetProperty(b => b.LastDownloadedUtc, now), ct) == 0)
+            {
+                await content.DisposeAsync();
+                return EndpointExtensions.Problem(LinkExpired);
+            }
             logs.CreateLogger("Abastalia.Backups").LogInformation("Backup {BackupId} of store {StoreId} downloaded by user {UserId}", row.Id, row.StoreId, userId);
             return Results.Stream(content, "application/octet-stream", row.FileName);
         }).AllowAnonymous();
@@ -262,6 +268,8 @@ internal static partial class StoreBackupEndpoints
     public static readonly TimeSpan LinkLifetime = TimeSpan.FromMinutes(2);
 
     private static readonly Error NotFound = Error.NotFound("Backup.NotFound", "Ese respaldo ya no está en la nube.");
+
+    private static readonly Error LinkExpired = Error.NotFound("Backup.LinkExpired", "El enlace de descarga venció. Vuelva a pulsar Descargar en el panel.");
 
     private static IDataProtector Protector(IDataProtectionProvider protection) => protection.CreateProtector("Abastalia.Backups.DownloadLink");
 }

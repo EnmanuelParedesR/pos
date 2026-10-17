@@ -125,6 +125,9 @@ public sealed class Cart
 
     /// <summary>The cashier whose sale was set aside at the last sign-in (for the register's message).</summary>
     public string? SetAsideFor { get; private set; }
+
+    /// <summary>R13: a sale waits on this PC for its cashier (memory only), so an automatic restart to update must wait too.</summary>
+    public bool HasSetAside => _setAside.Count > 0;
     /// <summary>What the last sign-in did with the cart; the register shows it once.</summary>
     public HandOverResult? LastHandOver { get; set; }
 

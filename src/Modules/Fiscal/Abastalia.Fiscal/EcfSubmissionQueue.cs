@@ -171,12 +171,20 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
         log.LogWarning(ex, "Could not send {Document} to the DGII (attempt {Attempts})", what, attempts);
     }
 
+    /// <summary>R13: documents the cloud refused (a 4xx) wait this long before they are offered again, so twenty of them never hold up the
+    /// newer ones (each pass takes <see cref="BatchSize"/>). In memory: a restart offers them again, harmlessly.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTime> Refused = new();
+    internal static readonly TimeSpan RetryRefusedAfter = TimeSpan.FromDays(1);
+
     /// <summary>Uploads final documents to the cloud archive (10-year copy outside the store). Best effort: a store not connected to the
     /// cloud, or a cloud that is down, never holds up the DGII queue; the next pass tries again.</summary>
     private async Task ArchiveAsync(CancellationToken ct)
     {
         var final = new[] { SubmissionStatus.Accepted, SubmissionStatus.AcceptedConditional, SubmissionStatus.Rejected };
-        var documents = await db.Documents.Where(d => d.ArchivedUtc == null && final.Contains(d.Status)).OrderBy(d => d.ResultUtc).Take(BatchSize).ToListAsync(ct);
+        var now = clock.GetUtcNow().UtcDateTime;
+        var skip = Refused.Where(r => r.Value > now).Select(r => r.Key).ToList();
+        var documents = await db.Documents.Where(d => d.ArchivedUtc == null && final.Contains(d.Status) && !skip.Contains(d.Id))
+            .OrderBy(d => d.ResultUtc).Take(BatchSize).ToListAsync(ct);
         foreach (var d in documents)
         {
             try
@@ -190,9 +198,11 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
                 if (!response.IsSuccessStatusCode)
                 {
                     log.LogWarning("The cloud refused to archive e-CF {ENcf} ({Status})", d.ENcf, (int)response.StatusCode);
+                    Refused[d.Id] = now + RetryRefusedAfter;
                     continue;
                 }
                 d.ArchivedUtc = clock.GetUtcNow().UtcDateTime;
+                Refused.TryRemove(d.Id, out _);
                 await db.SaveChangesAsync(ct);
             }
             catch (InvalidOperationException) { return; } // not connected to the cloud

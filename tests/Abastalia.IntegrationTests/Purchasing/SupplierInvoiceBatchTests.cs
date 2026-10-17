@@ -81,6 +81,9 @@ public sealed class SupplierInvoiceBatchTests(AbastaliaApp app) : IClassFixture<
             answers.Enqueue(new HttpResponseMessage(status) { Content = JsonContent.Create(new { code = "Ai.Unavailable", detail = "La IA no está disponible." }) });
             (await (await c.PostAsJsonAsync("/api/purchasing/purchases/draft-from-invoice", Pdf($"{status}.pdf"))).ErrorCode()).ShouldBe("Purchasing.AiUnavailable");
         }
+        // R13: one unreadable invoice (the cloud's 422) is that invoice's problem only: the batch goes on.
+        answers.Enqueue(new HttpResponseMessage(HttpStatusCode.UnprocessableEntity) { Content = JsonContent.Create(new { code = "Ai.Unreadable", detail = "No se pudo leer la factura." }) });
+        (await (await c.PostAsJsonAsync("/api/purchasing/purchases/draft-from-invoice", Pdf("borrosa.pdf"))).ErrorCode()).ShouldBe("Purchasing.AiRefused");
 
         // R12 (draft spam): 20 drafts a minute per person, then it waits.
         var me = (await app.AdminAsync()).UserId;

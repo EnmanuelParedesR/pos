@@ -133,6 +133,13 @@ public sealed class RestoreBackupTests(AbastaliaApp app) : IClassFixture<Abastal
         (await admin.PostAsync("/api/backups", null)).EnsureSuccessStatusCode();
         BeforeRestores().Length.ShouldBe(2);
         (Directory.GetFiles(folder, "*" + Backups.Extension).Length - BeforeRestores().Length).ShouldBe(1);
+        // R13: but not for good: the newest few stay (each is the whole database).
+        for (var i = 0; i < Backups.KeepBeforeRestore; i++)
+            await File.WriteAllTextAsync(Path.Combine(folder, $"abastalia-20200101-00000{i}-antes-de-restaurar{Backups.Extension}"), "viejo");
+        app.Clock.Advance(TimeSpan.FromSeconds(1));
+        (await admin.PostAsync("/api/backups", null)).EnsureSuccessStatusCode();
+        BeforeRestores().Length.ShouldBe(Backups.KeepBeforeRestore);
+        BeforeRestores().ShouldContain(f => f.EndsWith(before, StringComparison.Ordinal));
 
         // A register selling right now: refused, nothing replaced.
         await app.CashierWithShiftAsync();

@@ -127,7 +127,8 @@ internal static class SupplierInvoiceEndpoint
             // TK-248: the month's allowance of the plan (or of the add-on) first; the daily cap only stops a burst within it.
             var month = await quota.TryConsumeAsync(node.TenantId, Meter.SupplierInvoices, 1, ct);
             if (!month.Allowed) return month.Problem();
-            if (!await TakeAsync(db, node.TenantId, BusinessDay.Of(clock.GetUtcNow().UtcDateTime), config.GetValue("Ai:SupplierInvoicesPerDay", 100), ct))
+            var today = BusinessDay.Of(clock.GetUtcNow().UtcDateTime); // R13: the read and its refund count on the same day, even across midnight
+            if (!await TakeAsync(db, node.TenantId, today, config.GetValue("Ai:SupplierInvoicesPerDay", 100), ct))
             {
                 await quota.AddAsync(node.TenantId, Meter.SupplierInvoices, -1, ct);
                 return Refused("Ai.DailyLimit", "Ya se leyeron con IA todas las facturas de hoy. Mañana puede seguir, o escríbala a mano.",
@@ -139,7 +140,8 @@ internal static class SupplierInvoiceEndpoint
                 // Sizes only: the invoice carries the store's and the supplier's data.
                 log.LogInformation("Supplier invoice read for tenant {TenantId}: {Bytes} bytes {Type}, {Lines} lines", node.TenantId, data.Length, type, reading?.Lines.Count);
                 return reading is null
-                    ? Unavailable("Ai.Unreadable", "No se pudo leer la factura. Intente con una foto más clara o escríbala a mano.")
+                    // R13: 422, not 503: only this invoice failed, so the store's batch goes on with the next one.
+                    ? Refused("Ai.Unreadable", "No se pudo leer la factura. Intente con una foto más clara o escríbala a mano.", StatusCodes.Status422UnprocessableEntity)
                     : Results.Ok(reading);
             }
             catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
@@ -147,7 +149,6 @@ internal static class SupplierInvoiceEndpoint
                 log.LogWarning(ex, "Chat model call failed reading a supplier invoice");
                 // R12 #11: the model never answered, so the month's and the day's read are given back.
                 await quota.AddAsync(node.TenantId, Meter.SupplierInvoices, -1, CancellationToken.None);
-                var today = BusinessDay.Of(clock.GetUtcNow().UtcDateTime);
                 await db.AiUsage.Where(u => u.TenantId == node.TenantId && u.Day == today && u.SupplierInvoices > 0)
                     .ExecuteUpdateAsync(s => s.SetProperty(u => u.SupplierInvoices, u => u.SupplierInvoices - 1), CancellationToken.None);
                 return Unavailable("Ai.Unavailable", "La lectura con IA no está disponible ahora. Intente de nuevo en un momento.");

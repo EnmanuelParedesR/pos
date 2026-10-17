@@ -121,7 +121,10 @@ internal sealed class DgiiClient(IHttpClientFactory http, IEcfSigner signer, Dgi
     {
         using var response = await SendAsync(() => Upload($"{urls.Fc}/recepcionfc/api/recepcion/ecf", $"{issuerRnc}{encf}.xml", signedRfce), ct);
         var json = await JsonAsync(response, ct);
-        return json.ValueKind == JsonValueKind.Object ? Answer(json, null) : throw NotDgii(response);
+        if (json.ValueKind != JsonValueKind.Object) throw NotDgii(response);
+        // R13: a refusal without codigo/estado ({"error": …}) is a rejection, as for an e-CF; read as "not found" it would wait as Sent for good.
+        var answer = Answer(json, null);
+        return answer.State == DgiiState.NotFound && Join(Str(json, "error"), Messages(json)) is { } why ? new DgiiAnswer(DgiiState.Rejected, Messages: why) : answer;
     }
 
     public async Task<DgiiAnswer?> FindAsync(string issuerRnc, string encf, string securityCode, EcfChannel channel, CancellationToken ct)

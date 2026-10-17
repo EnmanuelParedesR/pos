@@ -121,6 +121,7 @@ internal sealed class FeLateAcknowledger(CloudDbContext db, FeSigner signer, FeS
             .ToDictionary(c => c.TenantId);
         if (receivers.Count == 0) return 0;
         var ready = receivers.Keys.ToList();
+        var failed = new HashSet<Guid>();
         var done = 0;
         long after = 0;
         while (true)
@@ -130,14 +131,18 @@ internal sealed class FeLateAcknowledger(CloudDbContext db, FeSigner signer, FeS
             foreach (var d in due)
             {
                 after = d.Id;
+                // R13: a business whose signature failed once (its PC went off mid-run) waits for the next run, not one broker timeout per document.
+                if (failed.Contains(d.TenantId)) continue;
                 d.AcknowledgedUtc = clock.GetUtcNow().UtcDateTime;
                 if (await FeReceiverEndpoints.AcknowledgeAsync(signer, receivers[d.TenantId], d.IssuerRnc, d.BuyerRnc, d.ENcf, null, clock, ct) is not null) done++;
                 else
                 {
                     d.AcknowledgedUtc = null;
+                    failed.Add(d.TenantId);
                     await db.SaveChangesAsync(ct);
                 }
             }
+            db.ChangeTracker.Clear(); // R13: a long run does not keep every row it read
         }
     }
 }

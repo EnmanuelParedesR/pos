@@ -124,6 +124,10 @@ public sealed class ReferredTrialTests(AbastaliaApp app) : IClassFixture<Abastal
         (await DaysLeftAsync()).ShouldBe(30);
         (await app.InScopeAsync(sp => sp.GetRequiredService<IStoreLicense>().ExtendTrialAsync(Grant(tenant, 30, app.CloudLicenseKey), tenant, CancellationToken.None)))
             .ShouldBeFalse(); // nothing new
+        // R13: and the other way round, a grant or a signed time never installs as a license.
+        var store = app.Services.GetRequiredService<LicenseService>();
+        store.Verify(Grant(tenant, 30, app.CloudLicenseKey)).IsSuccess.ShouldBeFalse();
+        store.Verify(Jws.Sign(new ServerTime(tenant, "n", now), app.CloudLicenseKey, Jws.TimeType)).IsSuccess.ShouldBeFalse();
         answer = new { trial = Grant(tenant, 14, app.CloudLicenseKey) };
         await PullAsync();
         (await DaysLeftAsync()).ShouldBe(30); // never shorter
