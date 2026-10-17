@@ -159,11 +159,11 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 
 ### D21 · ¿La hora de la DGII puede bajar el reloj de la licencia? (R13)
 - **Pregunta:** hoy la hora de la DGII baja el reloj si va más de un día adelantado. Un dueño con permisos de administrador podría falsificar esa hora (certificado raíz propio) y estirar una licencia vencida. ¿Mantenerlo, o que solo la hora firmada de la nube baje el reloj (una tienda sin nube que arrancó con fecha futura quedaría bloqueada hasta conectarse)?
-- **Respuesta:**
+- **Respuesta:** Mantener la hora de la DGII (dueño, 17/10/2026). Falsificarla exige instalar un certificado raíz propio e interceptar HTTPS, tan difícil como parchear el programa; a cambio, una tienda sin nube que arrancó con fecha futura se corrige sola con la DGII.
 
 ### D22 · Límites por IP de la puerta de nodos (R13)
 - **Pregunta:** 8 conexiones a la vez y 300 por minuto por IP. Con operadoras móviles que comparten IP, unas 15 tiendas detrás de una IP recibirían "demasiadas solicitudes" (solo se retrasan). ¿Subirlos o vigilarlos en el piloto? (`Nodes:ConcurrentPerIp`, `Nodes:RequestsPerMinutePerIp`).
-- **Respuesta:**
+- **Respuesta:** Vigilarlos en el piloto con tableros y alertas para el personal de Abastalia (TK-311) antes de cambiarlos (dueño, 17/10/2026).
 
 ---
 
