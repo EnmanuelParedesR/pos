@@ -56,7 +56,8 @@ public sealed class BlockedLicenseTests(AbastaliaApp app) : IClassFixture<Abasta
         (await admin.GetAsync($"/api/reports/dgii/607?from={today.AddDays(-60):yyyy-MM-dd}&to={today:yyyy-MM-dd}")).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await admin.GetAsync("/api/fiscal/queue")).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await admin.PutAsJsonAsync("/api/backups/passphrase", new { Passphrase = "una frase larga para los respaldos" })).EnsureSuccessStatusCode();
-        (await admin.PostAsync("/api/backups", null)).StatusCode.ShouldBe(HttpStatusCode.Created);
+        // A container SQL Server writes the .bak inside itself (BackupsTests skips the same way); the license gate is what matters here.
+        if (TestSqlServer.BacksUpOnThisMachine) (await admin.PostAsync("/api/backups", null)).StatusCode.ShouldBe(HttpStatusCode.Created);
         var closed = await admin.PostAsJsonAsync($"/api/cash/shifts/{shift}/close", new { CashCount = new[] { new { Denomination = 500m, Quantity = 1 } } });
         closed.StatusCode.ShouldBe(HttpStatusCode.OK);
 
