@@ -112,6 +112,20 @@ public sealed class BusinessLogoTests
     }
 
     [Fact]
+    public async Task R12_a_new_logo_version_that_cannot_be_fetched_shows_no_logo_not_the_old_one()
+    {
+        var (ctx, api) = ScreenContext.Create("sales.create");
+        using var _ = ctx;
+        api.Json("GET", "/api/settings/business/logo", new { png = new byte[] { 1, 2, 3 }, version = "1" });
+        var logo = ctx.Services.GetRequiredService<BusinessLogo>();
+        (await logo.DataUrlAsync("1")).ShouldBe("data:image/png;base64,AQID");
+
+        api.Respond("GET", "/api/settings/business/logo", _ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
+        (await logo.DataUrlAsync("2")).ShouldBeNull();
+        (await logo.DataUrlAsync("1")).ShouldBe("data:image/png;base64,AQID"); // the kept one, for its own version
+    }
+
+    [Fact]
     public void TK288_the_Z_downloaded_from_Turnos_carries_the_business_logo()
     {
         var (ctx, api) = ScreenContext.Create("reports.view");

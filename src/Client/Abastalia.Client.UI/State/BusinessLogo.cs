@@ -16,8 +16,13 @@ public sealed class BusinessLogo(AbastaliaApi api)
     public async Task<string?> DataUrlAsync(string? version)
     {
         if (version is null) return null;
-        if (_image?.Version != version && (await api.GetAsync<Image>("/api/settings/business/logo")).Value is { } fetched) _image = fetched;
-        return _image is { } i ? "data:image/png;base64," + Convert.ToBase64String(i.Png) : null;
+        if (_image?.Version != version)
+        {
+            // R12: the fetch failed: no logo rather than the old one under the new version (it is fetched again next time).
+            if ((await api.GetAsync<Image>("/api/settings/business/logo")).Value is not { } fetched) return null;
+            _image = fetched;
+        }
+        return "data:image/png;base64," + Convert.ToBase64String(_image!.Png);
     }
 
     /// <summary>The logo as it comes out of a printer of <paramref name="width"/> mm (58 or 80), or null.</summary>
