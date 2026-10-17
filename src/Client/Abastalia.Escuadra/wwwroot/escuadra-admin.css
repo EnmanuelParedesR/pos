@@ -3,9 +3,9 @@
    high contrast, keyboard first, 48/72 px. See docs/sistema-de-diseno.md, "Escuadra Admin". */
 
 .esc-admin {
-  /* Brand scale: Azul Abastalia (logo C5) is 600. */
-  --brand-50: #EEF5FC; --brand-100: #DCEAF8; --brand-200: #B9D4F1; --brand-300: #8AB7E7; --brand-400: #4F93D8;
-  --brand-500: #1F74C2; --brand-600: #0B5CAD; --brand-700: #094B8E; --brand-800: #0A3B6E; --brand-900: #0B2D52;
+  /* Brand scale: Berenjena #6B1F5E (the logo tag) is 600; OKLCH hue -25°, same lightness steps as the old blue scale; 50 and 100 lean 20° toward violet so a selected row or an info note never reads as the error tint (TK-356). */
+  --brand-50: #F9F2FD; --brand-100: #F1E4F8; --brand-200: #F0C5E5; --brand-300: #DD9CCD; --brand-400: #BC6BAB;
+  --brand-500: #9B418A; --brand-600: #6B1F5E; --brand-700: #57174C; --brand-800: #42133A; --brand-900: #300D29;
 
   /* Warm neutrals (paper, not steel) */
   --background: #F6F5F2;
@@ -43,7 +43,7 @@
   --elev-1: 0 0 0 1px rgba(40, 34, 24, 0.05), 0 1px 2px rgba(40, 34, 24, 0.05), 0 2px 8px rgba(40, 34, 24, 0.03);
   --elev-2: 0 0 0 1px rgba(40, 34, 24, 0.05), 0 4px 16px rgba(40, 34, 24, 0.08);
   --elev-pop: 0 0 0 1px rgba(40, 34, 24, 0.06), 0 16px 40px rgba(40, 34, 24, 0.18);
-  --ring: 0 0 0 3px rgba(31, 116, 194, 0.35);
+  --ring: 0 0 0 3px rgba(155, 65, 138, 0.35);
   --touch: 44px;
 
   /* Surfaces that are not plain tokens elsewhere (redefined in dark mode) */
@@ -51,7 +51,7 @@
   --danger-line: #F2C4BF;
   --row-hover: #FAF9F7;
   --topbar-bg: rgba(246, 245, 242, 0.92);
-  --hover-tint: rgba(31, 116, 194, 0.06);
+  --hover-tint: rgba(155, 65, 138, 0.06);
   --tip-bg: var(--text); --tip-text: #FFFFFF; --tip-muted: #CFC9BF;
 
   color-scheme: light;
@@ -62,11 +62,11 @@
 
 /* Dark mode (TK-183). escuadra.js (the panel: theme.ts) sets data-theme on <html> from the device's choice, or from prefers-color-scheme
    when the user chose "Sistema". Only the admin goes dark: the register keeps its high-contrast light screens.
-   Contrast (WCAG AA) on --surface: text 13.9:1, text-2 7.9:1, text-3 5.7:1, links (--brand) 5.7:1; semantic text on its tint ≥ 6.7:1;
-   white on the primary button 5.1:1; brand-700 on brand-50 (selected items) 7.7:1. */
+   Contrast (WCAG AA) on --surface: text 13.9:1, text-2 7.9:1, text-3 5.7:1, links (--brand) 5.4:1; semantic text on its tint ≥ 6.7:1;
+   white on the primary button 5.4:1; brand-700 on brand-50 (selected items) 7.6:1. */
 :root[data-theme="dark"] .esc-admin, .esc-admin[data-theme="dark"] { /* the second: a dark sample on a light page (/dev/escuadra) */
-  --brand-50: #132A42; --brand-100: #1A3758; --brand-200: #24497A; --brand-300: #3A6FAD; --brand-400: #4A86CC;
-  --brand-500: #5A9BE0; --brand-600: #2A6FC0; --brand-700: #8EC1F5; --brand-800: #CFE3FA; --brand-900: #E6F0FB;
+  --brand-50: #2F1F36; --brand-100: #3B2743; --brand-200: #64365A; --brand-300: #915584; --brand-400: #AD699E;
+  --brand-500: #C17CB2; --brand-600: #9C4E8C; --brand-700: #DEA8D1; --brand-800: #F0D9EA; --brand-900: #F6EBF3;
 
   --background: #131416;
   --surface: #1C1E21;
@@ -92,7 +92,7 @@
   --elev-1: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.4);
   --elev-2: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 4px 16px rgba(0, 0, 0, 0.45);
   --elev-pop: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 40px rgba(0, 0, 0, 0.6);
-  --ring: 0 0 0 3px rgba(90, 155, 224, 0.45);
+  --ring: 0 0 0 3px rgba(193, 124, 178, 0.45);
 
   --primary-hover: #235FA6;
   --danger-line: #6B2A25;
@@ -337,7 +337,7 @@
   transition: background-color 120ms, box-shadow 120ms;
 }
 .esc-admin .esc-button:hover:not(:disabled) { background: var(--surface-2); }
-.esc-admin .esc-button--primary { background: var(--brand-600); color: var(--paper); box-shadow: 0 1px 2px rgba(11, 45, 82, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
+.esc-admin .esc-button--primary { background: var(--brand-600); color: var(--paper); box-shadow: 0 1px 2px rgba(48, 13, 41, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.12); }
 .esc-admin .esc-button--primary:hover:not(:disabled) { background: var(--primary-hover); }
 .esc-admin .esc-button--danger { color: var(--error); box-shadow: 0 0 0 1px var(--danger-line); }
 .esc-admin .esc-button--danger:hover:not(:disabled) { background: var(--error-bg); }

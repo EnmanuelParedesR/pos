@@ -14,14 +14,14 @@ public static class Printables
 {
     /// <summary>The Abastalia tag (TK-273), as in Escuadra's Logo component. The hole and the "a" are cut out, so on the thermal printer's one ink they stay paper-white.</summary>
     private const string Logo =
-        """<svg width="44" height="44" viewBox="0 0 120 120" role="img" aria-label="Abastalia"><path d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#0B5CAD" fill-rule="evenodd" stroke="#0B5CAD" stroke-width="6" stroke-linejoin="round"/><path d="M54.2 51.2 Q57.8 44 68.6 44 Q83 44 83 58.4 V92 M83 68 H67.4 Q53 68 53 80 Q53 92 67.4 92 Q78.2 92 83 82.4" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>""";
+        """<svg width="44" height="44" viewBox="0 0 120 120" role="img" aria-label="Abastalia"><path d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#6B1F5E" fill-rule="evenodd" stroke="#6B1F5E" stroke-width="6" stroke-linejoin="round"/><path d="M54.2 51.2 Q57.8 44 68.6 44 Q83 44 83 58.4 V92 M83 68 H67.4 Q53 68 53 80 Q53 92 67.4 92 Q78.2 92 83 82.4" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>""";
 
     private const string Style = """
         @page { size: A4; margin: 14mm; }
         * { box-sizing: border-box; }
         body { margin: 0; padding: 24px; background: #F1F3F5; color: #14181D; font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
         main { max-width: 760px; margin: 0 auto; background: #FFFFFF; padding: 32px; border-radius: 8px; }
-        header { display: flex; gap: 14px; align-items: center; border-bottom: 2px solid #0B5CAD; padding-bottom: 14px; }
+        header { display: flex; gap: 14px; align-items: center; border-bottom: 2px solid #6B1F5E; padding-bottom: 14px; }
         header .business { flex: 1; }
         header h1 { margin: 0; font-size: 18px; }
         .logo { display: block; max-width: 60mm; max-height: 20mm; margin-bottom: 8px; }
@@ -39,7 +39,7 @@ public static class Printables
         .kpi strong { font-size: 17px; font-variant-numeric: tabular-nums; }
         .bad { color: #B42318; } .good { color: #067647; }
         footer { margin-top: 24px; font-size: 11px; }
-        .print { display: block; margin: 0 auto 16px; padding: 10px 18px; border: 0; border-radius: 6px; background: #0B5CAD; color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer; }
+        .print { display: block; margin: 0 auto 16px; padding: 10px 18px; border: 0; border-radius: 6px; background: #6B1F5E; color: #FFFFFF; font: inherit; font-weight: 600; cursor: pointer; }
         @media print { body { background: #FFFFFF; padding: 0; } main { padding: 0; max-width: none; } .print { display: none; } }
         @media (max-width: 600px) { body { padding: 8px; } main { padding: 16px; } .kpis { grid-template-columns: 1fr; } }
         """;

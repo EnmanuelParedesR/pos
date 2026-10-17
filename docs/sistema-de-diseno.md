@@ -34,7 +34,7 @@ Que todas las pantallas (caja, administración, celular del dueño, reportes y t
 ### 1. Tokens (la fuente única de verdad)
 
 - Un archivo `tokens.json` → se genera `escuadra.css` con variables CSS (`--color-marca`, `--espacio-3`, `--texto-total`…).
-- **Color:** marco, fondo, superficie, bordes (tarjeta #C9CED4, control #7A838C), texto, marca (azul Abastalia #0B5CAD, fijo), éxito, aviso, error, sin-internet. Tema claro por defecto; tema oscuro opcional para turnos de noche.
+- **Color:** marco, fondo, superficie, bordes (tarjeta #C9CED4, control #7A838C), texto, marca (Berenjena #6B1F5E, fija; TK-356), éxito, aviso, error, sin-internet. Tema claro por defecto; tema oscuro opcional para turnos de noche.
 - **Tipografía:** IBM Plex Sans 400/600/700 **incluida en la app** (licencia OFL; nunca desde internet). Cifras tabulares. Escala: 12 · 13 · 15 · 17 · 20 · 24 · 32 · 44 · 52 · 72.
 - **Espacio y forma:** escala 4 · 8 · 12 · 16 · 24 · 32 · 48; radios 4 / 6 / 8; bordes de 1 px; sin sombras salvo diálogos.
 - **Tamaños táctiles:** mínimo 48 px; 72 px para lo que mueve dinero.
@@ -44,9 +44,9 @@ Que todas las pantallas (caja, administración, celular del dueño, reportes y t
 
 Decisión del 15 de octubre de 2026: **no es marca blanca a nivel visual**. Los colores y el logo son siempre los de Abastalia. Un revendedor solo aparece como "Vendido por …" en la factura y en la pantalla de ayuda.
 
-- Colores de marca: Azul Abastalia `#0B5CAD`, Tinta `#14181D`, Papel `#FFFFFF`, Mostrador `#EEF0F2`, Azul claro `#E4EFFA`, Azul noche `#6DB3F5` (tema oscuro) y **Ámbar `#FFC233`** (TK-273: solo acento en anuncios, avatar alterno y Talia; siempre sobre azul o con texto Tinta, nunca solo sobre blanco ni como texto).
-- Logo: **la etiqueta de precio girada 45°** (TK-273): etiqueta azul #0B5CAD con la esquina cortada, el hueco de colgar y la "a" blanca de dos pisos, junto a "abastalia" en IBM Plex Sans 700. Sobre oscuro (marco de la caja, administración en tema oscuro) la etiqueta es blanca y la "a" azul. Una tinta para la impresora térmica: el hueco y la "a" quedan del color del papel. Componentes: `Logo.razor` y `Logo` en `ui.tsx` (colores en `.esc-logo` de `escuadra.css`). Antes: C5, la etiqueta con el ojo que guiña (Toki, TK-267).
-- Talia (la asistente): la misma etiqueta en ámbar con cara, dentro de un círculo azul. Estados atenta, contenta y pensando: cambian solo los ojos y la boca. Componente: `Talia` en `ui.tsx` (solo el panel). Reglas de uso en `docs/mascota.md`.
+- Colores de marca (TK-356): **Berenjena `#6B1F5E`** (hover `#551849`), Tinta `#14181D`, Papel `#FFFFFF`, Mostrador `#EEF0F2`, Berenjena clara `#F5EAFA`, Berenjena noche `#E2A3D3` (tema oscuro del sitio) y **Ámbar `#FFC233`** (TK-273: solo acento en anuncios, avatar alterno y Talia; siempre sobre berenjena o con texto Tinta, nunca solo sobre blanco ni como texto).
+- Logo: **la etiqueta de precio girada 45°** (TK-273): etiqueta berenjena #6B1F5E con la esquina cortada, el hueco de colgar y la "a" blanca de dos pisos, junto a "abastalia" en IBM Plex Sans 700. Sobre oscuro (marco de la caja, administración en tema oscuro) la etiqueta es blanca y la "a" berenjena. Una tinta para la impresora térmica: el hueco y la "a" quedan del color del papel. Componentes: `Logo.razor` y `Logo` en `ui.tsx` (colores en `.esc-logo` de `escuadra.css`). Antes: C5, la etiqueta con el ojo que guiña (Toki, TK-267).
+- Talia (la asistente): la misma etiqueta en ámbar con cara, dentro de un círculo berenjena. Estados atenta, contenta y pensando: cambian solo los ojos y la boca. Componente: `Talia` en `ui.tsx` (solo el panel). Reglas de uso en `docs/mascota.md`.
 - La marca nunca se usa para estados.
 
 ### 3. Componentes
@@ -107,12 +107,12 @@ La caja se opera; la administración se **revisa**. Por eso la administración d
 
 | Token | Valor |
 |---|---|
-| Marca | Escala `--brand-50 … --brand-900`; **600 = Azul Abastalia #0B5CAD** (logo C5). 500 #1F74C2 para barras, 700 #094B8E para hover y "hoy" |
+| Marca | Escala `--brand-50 … --brand-900`; **600 = Berenjena #6B1F5E** (la etiqueta del logo). 500 #9B418A para barras, 700 #57174C para hover y "hoy"; en oscuro 500 #C17CB2 (TK-356) |
 | Neutros cálidos | Fondo #F6F5F2, superficie #FFFFFF, superficie 2/3 #F2F0EC / #E9E6E0, líneas #ECE9E3 / #DAD5CC; texto #191C20, #57524A y #6E685E (todos AA sobre el fondo) |
 | Semánticos suaves | Fondo con tinte y texto fuerte: éxito #16663A/#E6F4EB, aviso #8C4A06/#FCF1DD, error #B42318/#FDECEA; un punto de color en cada píldora |
 | Datos (en orden fijo) | #1F6FC5 · #0E9384 · #D9822B · #8B5CF6 (validados para daltonismo, ΔE ≥ 11); periodo anterior en gris #D9D4CA |
 | Tipografía | Héroe 46 px (38 en el celular), título 28, métrica 24, cuerpo 15, etiquetas 13 en tipo oración (sin MAYÚSCULAS); cifras tabulares |
-| Forma | Radio 10 (controles), 16 (tarjetas), 20 (diálogos); superficies sin borde con sombra muy suave (`--elev-1`); foco con anillo azul de 3 px |
+| Forma | Radio 10 (controles), 16 (tarjetas), 20 (diálogos); superficies sin borde con sombra muy suave (`--elev-1`); foco con anillo de marca de 3 px |
 | Táctil | 44 px mínimo; barra inferior del celular de 60 px |
 
 **Componentes nuevos** (Razor en `Abastalia.Escuadra/Components`, espejo en `src/Cloud/panel/src/ui.tsx`): `BarChart` (barras con la referencia en gris, tooltip al pasar o enfocar, estado vacío), `Sparkline`, `Delta` (+12 % con flecha), `Segmented` (Hoy / Ayer / 7 días / Mes), `EmptyState`, `Skeleton`, `Field` (etiqueta, ayuda y error en línea). Clases: marco `esc-shell` / `esc-side` (menú con íconos, contraíble) / `esc-topbar` + `esc-tabbar` (celular), `esc-page-head`, `esc-hero`, `esc-stats`, `esc-alerts` ("Para revisar"), `esc-barlist` (proporciones), `esc-tabs`, `esc-setting` (descripción a la izquierda, formulario a la derecha), `esc-ask` ("Pregúntale a Talia…"), `esc-hide-sm` / `esc-only-sm` (tablas que se vuelven lista en el celular).
@@ -125,7 +125,7 @@ La caja se opera; la administración se **revisa**. Por eso la administración d
 
 ## Pendientes
 
-- Nombre y color de marca: decididos (Abastalia, Azul Abastalia #0B5CAD; TK-267). Logo: Etiqueta 2.0 (TK-273, abajo).
+- Nombre y color de marca: decididos (Abastalia, TK-267; color Berenjena #6B1F5E desde TK-356, antes Azul Abastalia #0B5CAD). Logo: Etiqueta 2.0 (TK-273, abajo).
 - Validar el tema claro con luz fuerte en una tienda real y en una pantalla barata.
 
 ### Marca Abastalia (TK-267, 16 oct 2026)
@@ -150,3 +150,17 @@ La caja se opera; la administración se **revisa**. Por eso la administración d
   - Se acepta: a 16 px el hueco cae en un píxel; a 28 px la diferencia entre estados de Talia es sutil, y el texto ("Buscando en sus datos…") es el que dice el estado.
   - Se mantiene a propósito: en el menú del panel "Asistente" sigue con el ícono de línea (sparkles); Talia a color rompería el ritmo de los íconos de línea. Talia va donde ella habla: el chat y la barra "Pregúntale a Talia".
   - Pendiente fuera de este ticket: no hay ícono .ico del instalador ni de la ventana de la caja; cuando se haga, sale de `og/avatar.png`.
+
+### Paleta Berenjena (TK-356, 17 oct 2026)
+
+- Por qué cambió: medimos el color de marca de 26 sitios que el dueño ve cada día (terminal de tarjetas, bancos, DGII, otros puntos de venta). El Azul Abastalia #0B5CAD quedaba a ΔE 7 (OKLab ×100) del terminal **Azul** #0072C6, que está junto a casi todas las cajas, y a ΔE 4 de Treinta #0050BD, que también combina azul con amarillo. Ocho de esas marcas son azules; ninguna es violeta, ciruela ni marrón.
+- Se probaron nueve paletas (Añil, Berenjena, Barro, Tinta y etiqueta amarilla, Uva, Ciruela, Buganvilia, Vino, Cacao) con maquetas de la caja, del sitio y del tema oscuro: https://claude.ai/artifact/XWrmoeeyBm7SUuZ8cVbxqe. El dueño eligió **Berenjena**: ΔE 16 o más frente a todas las marcas medidas y 17 o más frente a los colores de estado (error, aviso, éxito, sin internet), así que el botón Cobrar no se confunde con una alerta. Barro y Buganvilia se descartaron por acercarse al rojo de error; Tinta y etiqueta, porque el ámbar ya significa "sin internet".
+- No cambian: la forma del logo, IBM Plex Sans, los neutros, los colores de estado, la paleta de datos de los gráficos ni el Ámbar #FFC233. Talia conserva su etiqueta ámbar, ahora en un círculo berenjena.
+- Contraste: blanco sobre berenjena 10.6:1, ámbar sobre berenjena 6.6:1, berenjena sobre el fondo #F6F5F2 9.7:1; en oscuro, enlaces #C17CB2 5.4:1, blanco sobre el botón #9C4E8C 5.4:1, Berenjena noche #E2A3D3 sobre Tinta 8.8:1. Berenjena sobre Tinta es 1.7:1, así que sobre oscuro la etiqueta sigue pasando a blanco.
+- La escala `--brand-50 … 900` mantiene el tono (OKLCH −25°) y los mismos pasos de claridad que la escala azul anterior. Los colores de categoría que elige el usuario (por defecto #0B5CAD) son datos, no marca, y no cambian.
+- Imágenes regeneradas en `src/Cloud/panel/public/og/` (`abastalia.png`, `logo.png`, `avatar.png`, `avatar-ambar.png`, `talia.png`) y `favicon.svg`.
+- Crítica de diseño (galería de Escuadra en claro y oscuro, sitio a 1366 y 375 px, sitio en oscuro, imágenes de redes):
+  - Funciona: el botón Cobrar en berenjena no se confunde con Peligro ni con la línea en error; la etiqueta blanca sobre el marco oscuro se lee igual que antes; en oscuro el botón principal #9C4E8C y la Berenjena noche del sitio mantienen AA; Talia gana presencia (ámbar sobre berenjena 6.6:1).
+  - Se corrigió en la ronda: los tintes claros salían rosados y quedaban a ΔE 2 del fondo de error (la línea seleccionada y el aviso informativo parecían alertas). La escala 50/100 y los tintes de la caja y del sitio se corrieron 20° hacia el violeta (#F9F2FD, #F1E4F8, #F5EAFA; en oscuro #2F1F36); ahora se ven lila junto al salmón del error, y el texto y el ícono siguen marcando la diferencia.
+  - Se acepta: la paleta de datos de los gráficos empieza en azul #1F6FC5 (validada para daltonismo); el gráfico de una sola serie usa la marca.
+  - Fuera de este ticket: los gráficos de los videos (`design/video/overlays.html`, sesión de videos, avisada con la paleta) y las maquetas viejas en `docs/diseno/`, que quedan como historial.
