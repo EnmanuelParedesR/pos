@@ -117,9 +117,9 @@ public sealed class PricesAndLeavingTests
         using var _ = ctx;
         api.Json("GET", "/api/backups/warning", new BackupWarning("Falta la frase de los respaldos."));
         var frame = ctx.Render<Frame>(p => p.Add(x => x.Body, (RenderFragment)(b => b.AddContent(0, "venta"))));
-        IEnumerable<AngleSharp.Dom.IElement> Warning() => frame.FindAll(".esc-status-bar button").Where(b => b.TextContent.Contains("Respaldos sin frase", StringComparison.Ordinal));
+        IEnumerable<AngleSharp.Dom.IElement> Warning() => frame.FindAll(".esc-status-bar button").Where(b => b.TextContent.Contains("Sin respaldos", StringComparison.Ordinal));
 
-        frame.WaitForAssertion(() => Warning().Single().TextContent.ShouldBe("Respaldos sin frase: no se están haciendo · Poner la frase"));
+        frame.WaitForAssertion(() => Warning().Single().TextContent.ShouldBe("Sin respaldos: ponga la frase"));
         Warning().Single().Click();
         ctx.Services.GetRequiredService<NavigationManager>().Uri.ShouldEndWith("admin/settings?section=backups");
 
