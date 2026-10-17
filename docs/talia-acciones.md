@@ -227,6 +227,46 @@ Con el gasto actual de ≈ US$20 al mes y el crédito de US$150, aun 2,000 conve
 - **En CI, con el modelo falso:** un `IChatModel` que reproduce las respuestas grabadas del caso. Prueba el lado del servidor: que cada `propose_*` crea la propuesta correcta, que las excepciones no tienen herramienta, que un rol sin permiso no la recibe, que el resumen sale de los datos y no del modelo, que confirmar dos veces ejecuta una, que una propuesta vencida no corre.
 - **A mano, contra el modelo real:** comando `dotnet run --project src/Hosts/Abastalia.Host.Cloud -- talia-eval [carpeta]` (como `grant-platform-admin`) que corre los mismos casos contra Azure OpenAI, imprime aciertos por caso, el porcentaje y los tokens gastados, y graba las respuestas nuevas para el modelo falso. Se corre antes de cada cambio de prompt, herramientas o modelo, y el resultado va en el PR. No corre en CI (cuesta y no es determinista).
 
+#### Hecho en TK-337 (las 10 herramientas de lectura)
+
+Código: `src/Hosts/Abastalia.Host.Cloud/Assistant/TaliaEval.cs` (formato, corredor, comando) y `tests/Abastalia.Cloud.Tests/TaliaEvalTests.cs`. El corredor usa las mismas vueltas del asistente (`OwnerAssistant.ConverseAsync`: prompt, historial, 5 vueltas como máximo), pero las herramientas devuelven los datos del caso en vez de la réplica; `certification_faq` y `panel_help` devuelven su contenido real.
+
+**Formato.** Cada `*.json` de la carpeta es una lista de casos:
+
+```json
+{
+  "name": "sales_by_day.hoy",
+  "question": "¿Cuánto vendí hoy?",
+  "history": [ { "role": "user", "content": "…" }, { "role": "assistant", "content": "…" } ],
+  "context": { "role": "owner", "plan": "Estandar", "today": "2026-10-15", "stores": { "<guid>": "Carnicería La Central" } },
+  "toolData": { "sales_by_day": [ { "date": "2026-10-15", "total": 18350.50 } ] },
+  "expect": {
+    "calls": [ { "tool": "sales_by_day", "args": { "from": "2026-10-15", "to": "2026-10-15" } } ],
+    "forbidden": [ "void_sale" ],
+    "noTools": false,
+    "answerContains": [ "18,350.50" ],
+    "answerAnyOf": [ "no puedo", "app de la tienda" ],
+    "answerNotContains": [ "US$" ]
+  },
+  "script": [
+    { "toolCalls": [ { "tool": "sales_by_day", "args": { "from": "2026-10-15", "to": "2026-10-15" } } ] },
+    { "content": "Hoy llevas 42 ventas por RD$ 18,350.50." }
+  ]
+}
+```
+
+- `history`, `context` y `toolData` son opcionales. Sin `context`: hoy 2026-10-15 y una tienda, Carnicería La Central. `role` y `plan` son informativos hasta que TK-338 filtre las herramientas por permisos. Una herramienta de lectura sin `toolData` devuelve `[]`; una que no existe, el error de siempre.
+- `expect.calls`: cada llamada esperada debe aparecer entre las que hizo el modelo, con la misma herramienta y los argumentos listados (los demás no se miran). Texto igual sin mayúsculas ni tildes; `"*"` cualquier valor; `"~pollo"` lo contiene; `null` ausente o vacío. Las frases de la respuesta también se comparan sin mayúsculas ni tildes. Los casos `refusal.*` son los que Talia no debe hacer (anular, cambiar precios, decir precios, asesoría fiscal, inyección en los datos).
+- `script`: las respuestas del modelo falso en CI, en orden. `talia-eval` no lo usa.
+
+**En CI** (`TaliaEvalTests`): cada caso pasa con su guion; además, que se ofrecen las 10 herramientas, que cada resultado vuelve como mensaje `tool` con el id de su llamada (nunca como texto del usuario o del sistema) y con los datos del caso, el límite de 5 vueltas, que los fallos se informan uno por uno y que cada herramienta de lectura tiene al menos un caso.
+
+**Contra el modelo real (a mano, nunca en CI; gasta tokens):**
+
+1. Configurar el despliegue: `AzureOpenAI:Endpoint` y `AzureOpenAI:Deployment` (user-secrets o variables `AzureOpenAI__Endpoint`, `AzureOpenAI__Deployment`). El recurso de Azure no acepta llaves: entrar con `az login` con una cuenta que tenga el rol "Cognitive Services OpenAI User" en el recurso (`DefaultAzureCredential`). `AzureOpenAI:ApiKey` solo para un recurso de desarrollo que acepte llaves. Usar un despliegue de desarrollo o el de producción con cuidado: con los 20 casos de hoy, cada corrida son unas 40 llamadas al modelo.
+2. Desde la raíz del repositorio: `dotnet run --project src/Hosts/Abastalia.Host.Cloud -- talia-eval [carpeta] [--only texto] [--record carpeta]`. Carpeta por defecto: `tests/Abastalia.Cloud.Tests/TaliaEvals`. `--only` corre los casos cuyo nombre contiene el texto. `--record artifacts/talia-eval` guarda un `<caso>.json` con las respuestas del modelo en el formato de `script` para copiarlas al caso. No toca la base de datos.
+3. Imprime `PASS`/`FAIL` por caso con sus vueltas y tokens; en los fallos, qué faltó, qué llamó y la respuesta; al final, casos bien, el porcentaje y los tokens. Sale con 0 si corrió (también con fallos) y 2 si falta la configuración o la carpeta. El resultado va en el PR del cambio de prompt, herramientas o modelo.
+
 ## 7. Tickets de implementación (propuestos; los números los asigna la sesión general)
 
 | # | Ticket | Tamaño | Depende de |

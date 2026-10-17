@@ -1,0 +1,130 @@
+[
+  {
+    "name": "sales_by_day.hoy",
+    "question": "¿Cuánto vendí hoy?",
+    "context": { "role": "owner", "plan": "Estandar" },
+    "toolData": {
+      "sales_by_day": [ { "date": "2026-10-15", "count": 42, "total": 18350.50, "discount": 0, "itbis": 0, "returns": 0, "net": 18350.50, "voidedCount": 1 } ]
+    },
+    "expect": {
+      "calls": [ { "tool": "sales_by_day", "args": { "from": "2026-10-15", "to": "2026-10-15" } } ],
+      "answerContains": [ "18,350.50" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "sales_by_day", "args": { "from": "2026-10-15", "to": "2026-10-15" } } ] },
+      { "content": "Hoy llevas 42 ventas por RD$ 18,350.50 (una anulada)." }
+    ]
+  },
+  {
+    "name": "sales_by_day.ultimos-7-dias",
+    "question": "¿Cómo me fue en los últimos 7 días, contando hoy?",
+    "toolData": {
+      "sales_by_day": [
+        { "date": "2026-10-09", "count": 30, "total": 12000, "discount": 0, "itbis": 0, "returns": 0, "net": 12000, "voidedCount": 0 },
+        { "date": "2026-10-15", "count": 42, "total": 18350.50, "discount": 0, "itbis": 0, "returns": 0, "net": 18350.50, "voidedCount": 1 }
+      ]
+    },
+    "expect": {
+      "calls": [ { "tool": "sales_by_day", "args": { "from": "2026-10-09", "to": "2026-10-15" } } ],
+      "answerContains": [ "30,350.50" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "sales_by_day", "args": { "from": "2026-10-09", "to": "2026-10-15" } } ] },
+      { "content": "Del 9 al 15 de octubre vendiste RD$ 30,350.50 en 72 ventas." }
+    ]
+  },
+  {
+    "name": "sales_by_cashier.ayer",
+    "question": "¿Qué cajero vendió más ayer?",
+    "toolData": {
+      "sales_by_cashier": [
+        { "cashierId": "0199f000-0000-7000-8000-0000000000a1", "count": 25, "total": 9800, "voidedCount": 0, "cashierName": "María" },
+        { "cashierId": "0199f000-0000-7000-8000-0000000000a2", "count": 12, "total": 4100, "voidedCount": 2, "cashierName": "Pedro" }
+      ]
+    },
+    "expect": {
+      "calls": [ { "tool": "sales_by_cashier", "args": { "from": "2026-10-14", "to": "2026-10-14" } } ],
+      "answerContains": [ "María" ],
+      "answerNotContains": [ "0199f000" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "sales_by_cashier", "args": { "from": "2026-10-14", "to": "2026-10-14" } } ] },
+      { "content": "Ayer la que más vendió fue María: 25 ventas por RD$ 9,800.00." }
+    ]
+  },
+  {
+    "name": "sales_by_cashier.historial",
+    "question": "¿Y ayer?",
+    "history": [
+      { "role": "user", "content": "¿Cuánto vendió cada cajero hoy?" },
+      { "role": "assistant", "content": "Hoy María vendió RD$ 5,000.00 y Pedro RD$ 3,000.00." }
+    ],
+    "toolData": {
+      "sales_by_cashier": [ { "cashierId": "0199f000-0000-7000-8000-0000000000a1", "count": 25, "total": 9800, "voidedCount": 0, "cashierName": "María" } ]
+    },
+    "expect": {
+      "calls": [ { "tool": "sales_by_cashier", "args": { "from": "2026-10-14", "to": "2026-10-14" } } ],
+      "answerContains": [ "9,800" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "sales_by_cashier", "args": { "from": "2026-10-14", "to": "2026-10-14" } } ] },
+      { "content": "Ayer María vendió RD$ 9,800.00 en 25 ventas." }
+    ]
+  },
+  {
+    "name": "payment_mix.hoy",
+    "question": "¿Cómo me pagaron hoy los clientes?",
+    "toolData": {
+      "payment_mix": [
+        { "method": "Cash", "count": 30, "amount": 11000 },
+        { "method": "Card", "count": 10, "amount": 6000 },
+        { "method": "Credit", "count": 2, "amount": 1350.50 }
+      ]
+    },
+    "expect": {
+      "calls": [ { "tool": "payment_mix", "args": { "from": "2026-10-15", "to": "2026-10-15" } } ],
+      "answerContains": [ "11,000" ],
+      "answerAnyOf": [ "efectivo" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "payment_mix", "args": { "from": "2026-10-15", "to": "2026-10-15" } } ] },
+      { "content": "Hoy: efectivo RD$ 11,000.00, tarjeta RD$ 6,000.00 y fiado RD$ 1,350.50." }
+    ]
+  },
+  {
+    "name": "top_products.cinco",
+    "question": "Dame los 5 productos que más vendí este mes",
+    "toolData": {
+      "top_products": [
+        { "productId": "0199f000-0000-7000-8000-0000000000b1", "description": "Pechuga de pollo", "quantity": 320.5, "total": 46472.50, "profit": 9100, "unit": "Pound" },
+        { "productId": "0199f000-0000-7000-8000-0000000000b2", "description": "Chuleta ahumada", "quantity": 150, "total": 30000, "profit": 7000, "unit": "Pound" }
+      ]
+    },
+    "expect": {
+      "calls": [ { "tool": "top_products", "args": { "from": "2026-10-01", "to": "2026-10-15", "limit": "5" } } ],
+      "answerContains": [ "Pechuga de pollo" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "top_products", "args": { "from": "2026-10-01", "to": "2026-10-15", "limit": 5 } } ] },
+      { "content": "Lo más vendido en octubre: Pechuga de pollo (320.5 lb, RD$ 46,472.50) y Chuleta ahumada (150 lb, RD$ 30,000.00)." }
+    ]
+  },
+  {
+    "name": "top_products.ganancia",
+    "question": "¿Qué producto me dejó más ganancia ayer?",
+    "toolData": {
+      "top_products": [
+        { "productId": "0199f000-0000-7000-8000-0000000000b2", "description": "Chuleta ahumada", "quantity": 20, "total": 4000, "profit": 1500, "unit": "Pound" },
+        { "productId": "0199f000-0000-7000-8000-0000000000b1", "description": "Pechuga de pollo", "quantity": 30, "total": 4350, "profit": 800, "unit": "Pound" }
+      ]
+    },
+    "expect": {
+      "calls": [ { "tool": "top_products", "args": { "from": "2026-10-14", "to": "2026-10-14" } } ],
+      "answerContains": [ "Chuleta ahumada" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "top_products", "args": { "from": "2026-10-14", "to": "2026-10-14", "limit": 50 } } ] },
+      { "content": "Ayer la Chuleta ahumada dejó la mayor ganancia estimada: RD$ 1,500.00." }
+    ]
+  }
+]
