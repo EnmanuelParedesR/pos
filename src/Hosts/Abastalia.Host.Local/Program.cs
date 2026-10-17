@@ -93,6 +93,7 @@ Assembly[] modules =
     typeof(SyncModule).Assembly,
 ];
 
+builder.Services.AddSingleton(ShiftedClock.From(builder.Configuration, builder.Environment));
 builder.Services.AddAbastalia(builder.Configuration, modules);
 builder.Services.AddIdentityModule();
 builder.Services.AddSettingsModule(builder.Configuration);

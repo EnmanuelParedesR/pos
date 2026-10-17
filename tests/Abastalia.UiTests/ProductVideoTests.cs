@@ -26,6 +26,20 @@ public sealed class ProductVideoTests
     private static readonly Guid CashierRole = new("0199e000-0000-7000-8000-000000000004"); // Cajero con apertura
 
     private static string Captures => Path.Combine(WebProcess.RepoRoot, "design", "video", "capturas");
+    /// <summary>TK-307: the video's clock, the same hour on every render: the latest weekday at 10:30 a. m. store time (UTC−4). The hosts
+    /// run moved to it (Clock:Shift, E2E only: ShiftedClock), the panel's browser too (Playwright's clock).</summary>
+    private static readonly TimeSpan Shift = VideoShift(DateTime.UtcNow);
+    private static string ShiftSetting => Shift.ToString("c", CultureInfo.InvariantCulture);
+    private static DateTime UtcNow => DateTime.UtcNow + Shift;
+
+    private static TimeSpan VideoShift(DateTime utc)
+    {
+        var store = utc.AddHours(-4);
+        var at = store.Date.AddHours(10.5);
+        while (at > store || at.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) at = at.AddDays(-1);
+        return at.AddHours(4) - utc;
+    }
+
     private static JsonElement Script => JsonDocument.Parse(File.ReadAllText(Path.Combine(WebProcess.RepoRoot, "src", "Cloud", "panel", "src", "pages", "site", "productVideo.json"))).RootElement;
 
     /// <summary>The text and frames over the captures. Quick: after a text change in productVideo.json, run only this one and montaje.py.</summary>
@@ -91,6 +105,7 @@ public sealed class ProductVideoTests
             ["Panel__Origins__0"] = origin,
             // No e-mail provider: the confirmation goes to the log, where the owner's link is read (no banner in the panel then).
             ["Serilog__MinimumLevel__Override__Abastalia.Host.Cloud.Accounts.LoggingEmailSender"] = "Debug",
+            ["Clock__Shift"] = ShiftSetting,
         }, readyPath: "/health");
         using var owner = new HttpClient { BaseAddress = cloud.Base };
         await Ok(await owner.PostAsJsonAsync("/api/auth/register", new { Email, Password }));
@@ -108,7 +123,7 @@ public sealed class ProductVideoTests
         await using var preview = await WebProcess.NodeAsync("node_modules/vite/bin/vite.js", $"preview --outDir \"{dist}\" --host 127.0.0.1 --port {previewPort} --strictPort", previewPort);
 
         // ── The store: its API (connected to the cloud) and the register's web host ──
-        await using var api = await AbastaliaServer.StartAsync(new() { ["Cloud__Url"] = cloud.Base.ToString() });
+        await using var api = await AbastaliaServer.StartAsync(new() { ["Cloud__Url"] = cloud.Base.ToString(), ["Clock__Shift"] = ShiftSetting });
         var clientFile = Path.Combine(temp, "client.json");
         await using var web = await WebProcess.HostAsync("Client", "Abastalia.Client.Web", new()
         {
@@ -117,6 +132,7 @@ public sealed class ProductVideoTests
             ["Client__File"] = clientFile,
             ["Hardware__PrinterFile"] = Path.Combine(temp, "receipts.txt"),
             ["Hardware__Pounds"] = "1.25",
+            ["Clock__Shift"] = ShiftSetting,
         });
 
         using var playwright = await Playwright.CreateAsync();
@@ -149,7 +165,7 @@ public sealed class ProductVideoTests
         await Ok(await admin.PostAsJsonAsync("/api/identity/users", new { Name = "María", Code = "maria", Pin = CashierPin, RoleId = CashierRole }));
         await Ok(await admin.PutAsJsonAsync("/api/settings/business", new { Name = "Comercial La Esquina", Rnc = "131245678", DiscountCapPercent = 10m }));
         foreach (var type in new[] { 31, 32, 34 })
-            await Ok(await admin.PostAsJsonAsync("/api/fiscal/sequences", new { Type = type, From = 1, To = 1000, ExpiresOn = DateOnly.FromDateTime(DateTime.UtcNow).AddYears(1) }));
+            await Ok(await admin.PostAsJsonAsync("/api/fiscal/sequences", new { Type = type, From = 1, To = 1000, ExpiresOn = DateOnly.FromDateTime(UtcNow).AddYears(1) }));
         await Ok(await admin.PostAsJsonAsync("/api/cash/registers", new { Name = "Caja 1" }));
         async Task<Guid> Category(string name, string color) =>
             (await Ok(await admin.PostAsJsonAsync("/api/inventory/categories", new { Name = name, Color = color, Notes = Array.Empty<string>() }))).GetProperty("id").GetGuid();
@@ -288,13 +304,14 @@ public sealed class ProductVideoTests
         });
         phone.SetDefaultTimeout(20_000);
         var mobile = await phone.NewPageAsync();
+        await mobile.Clock.InstallAsync(new() { TimeString = UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture) }); // the panel's "today" and hour
         await mobile.GotoAsync("/app");
         await mobile.GetByLabel("Correo").FillAsync(Email);
         await mobile.GetByLabel("Contraseña").FillAsync(Password);
         await mobile.GetByLabel("Contraseña").PressAsync("Enter");
         await Expect(mobile.GetByRole(AriaRole.Heading, new() { Name = "Resumen" })).ToBeVisibleAsync();
         // The register's sale reaches the cloud within seconds (Sync:IntervalSeconds); reload until today's sales include it.
-        var today = DateOnly.FromDateTime(DateTime.UtcNow.AddHours(-4));
+        var today = DateOnly.FromDateTime(UtcNow.AddHours(-4));
         for (var i = 0; i < 40; i++)
         {
             var summary = await Ok(await owner.GetAsync($"/api/panel/summary?date={today:yyyy-MM-dd}"));
@@ -303,8 +320,6 @@ public sealed class ProductVideoTests
         }
         await mobile.ReloadAsync();
         await Expect(mobile.GetByRole(AriaRole.Heading, new() { Name = "Resumen" })).ToBeVisibleAsync();
-        // Before the store opens there is little of today to show: then the panel shows yesterday, a whole day.
-        if (DateTime.UtcNow.AddHours(-4).Hour < 10) await mobile.GetByText("Ayer", new() { Exact = true }).ClickAsync();
         await Expect(mobile.GetByRole(AriaRole.Heading, new() { Name = "Lo más vendido" })).ToBeVisibleAsync();
         await Pause(1500);
 
@@ -352,14 +367,15 @@ public sealed class ProductVideoTests
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var plain = new HttpClient { BaseAddress = cloud };
-        var nodeId = (await Ok(await plain.PostAsJsonAsync("/api/nodes/register",
-            new { code, nodeName = "PC de la oficina", publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) }))).GetProperty("nodeId").GetGuid();
+        using var register = JsonContent.Create(new { code, nodeName = "PC de la oficina", publicKey = Convert.ToBase64String(key.ExportSubjectPublicKeyInfo()) });
+        await register.LoadIntoBufferAsync(); // with its length: the cloud's node gate refuses a chunked body (R12 #1)
+        var nodeId = (await Ok(await plain.PostAsync("/api/nodes/register", register))).GetProperty("nodeId").GetGuid();
         using var node = new HttpClient(new NodeSigner(nodeId, key) { InnerHandler = new HttpClientHandler() }) { BaseAddress = cloud };
 
         var random = new Random(296);
         var cashier = Guid.CreateVersion7();
         var shift = Guid.CreateVersion7();
-        var nowUtc = DateTime.UtcNow;
+        var nowUtc = UtcNow;
         var storeToday = DateOnly.FromDateTime(nowUtc.AddHours(-4));
         var events = new List<object>();
         long number = 1000;
@@ -415,7 +431,7 @@ public sealed class ProductVideoTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             byte[] body = request.Content is null ? [] : await request.Content.ReadAsByteArrayAsync(cancellationToken);
-            var seconds = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var seconds = (DateTimeOffset.UtcNow + Shift).ToUnixTimeSeconds(); // the cloud runs on the video's clock
             var nonce = Base64Url(RandomNumberGenerator.GetBytes(16));
             var payload = $"{nodeId}.{seconds}.{nonce}.{request.Method.Method.ToUpperInvariant()} {request.RequestUri!.PathAndQuery} {Base64Url(SHA256.HashData(body))}";
             var signature = Base64Url(key.SignData(Encoding.UTF8.GetBytes(payload), HashAlgorithmName.SHA256));

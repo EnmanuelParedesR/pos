@@ -187,7 +187,7 @@ def encode(scene, container, codec, path, quality):
     r.ffmpeg.codec = codec
     r.ffmpeg.constant_rate_factor = quality
     r.ffmpeg.ffmpeg_preset = "BEST"
-    r.ffmpeg.gopsize = 60
+    r.ffmpeg.gopsize = 150  # TK-307: a keyframe every 5 s; the screen barely changes between them, so ~20 % fewer bytes at the same quality
     r.ffmpeg.audio_codec = "NONE"
     r.ffmpeg.use_autosplit = False
     r.filepath = path
@@ -219,12 +219,12 @@ if __name__ == "__main__":
             bpy.ops.render.render(write_still=True, scene=scene.name)
         sys.exit(0)
     poster(scene, round(1.5 * FPS), name + "-portada.webp")
-    # Blender's quality steps (HIGH, MEDIUM, LOW, VERYLOW). H.264 at MEDIUM ≈ 2.2 MB (≤ 3 MB); VP9 comes out bigger at the same step
-    # and Blender's VP9 ignores a target bitrate, so VERYLOW ≈ 2.4 MB (≤ 2.5 MB).
+    # Blender's quality steps (HIGH, MEDIUM, LOW, VERYLOW); Blender's VP9 ignores a target bitrate. TK-307, measured against the unencoded
+    # frames: H.264 HIGH ≈ 2.4 MB, VP9 MEDIUM ≈ 2.5 MB (each ≤ 3 MB), both ≈ 41–46 dB PSNR on the busiest frames; the text reads sharp.
     if os.environ.get("ABASTALIA_VIDEO_ONLY") != "webm":
-        encode(scene, "MPEG4", "H264", name + ".mp4", os.environ.get("ABASTALIA_VIDEO_MP4", "MEDIUM"))
+        encode(scene, "MPEG4", "H264", name + ".mp4", os.environ.get("ABASTALIA_VIDEO_MP4", "HIGH"))
     if os.environ.get("ABASTALIA_VIDEO_ONLY") != "mp4":
-        encode(scene, "WEBM", "WEBM", name + ".webm", os.environ.get("ABASTALIA_VIDEO_WEBM", "VERYLOW"))
+        encode(scene, "WEBM", "WEBM", name + ".webm", os.environ.get("ABASTALIA_VIDEO_WEBM", "MEDIUM"))
     for path in (name + ".mp4", name + ".webm", name + "-portada.webp"):
         if os.path.exists(path):
             print(f"{os.path.basename(path)}: {os.path.getsize(path) / 1024:.0f} KB")

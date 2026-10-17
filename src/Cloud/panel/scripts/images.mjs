@@ -17,9 +17,7 @@ const images = {
   carniceria: ["design/media/fotos/carniceria.jpg", 4 / 3, "attention"],
   colmado: ["design/media/fotos/colmado.jpg", 4 / 3, "centre"],
   deli: ["design/media/fotos/deli.jpg", 4 / 3, "centre"],
-  "paso-1-instalar": ["design/media/capturas/paso-1-instalar.png", 16 / 10, { left: 341, top: 287, width: 929, height: 581 }],
-  "paso-2-productos": ["design/media/capturas/paso-2-productos.png", 16 / 10, { left: 420, top: 256, width: 1178, height: 736 }],
-  "paso-3-vender": ["design/media/capturas/paso-3-vender.png", 16 / 10, { left: 574, top: 164, width: 1465, height: 916 }],
+  // TK-307: the three step screenshots (paso-1/2/3) left the home with the product video (TK-296).
 };
 
 mkdirSync(out, { recursive: true });
