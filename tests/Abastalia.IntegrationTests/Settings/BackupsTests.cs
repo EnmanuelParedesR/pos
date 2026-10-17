@@ -68,6 +68,23 @@ public sealed class BackupsTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
     }
 }
 
+/// <summary>R12 (audit C): one backup or restore at a time. Own app: it writes backup files.</summary>
+public sealed class BackupGateTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    private const string Passphrase = "la chuleta de los viernes 2026";
+
+    [Fact]
+    public async Task R12_two_backups_at_once_take_turns_and_both_are_complete()
+    {
+        var admin = app.Client(await app.AdminAsync());
+        (await admin.PutAsJsonAsync("/api/backups/passphrase", new { Passphrase })).EnsureSuccessStatusCode();
+        // Each clears the shared work folder when it starts: overlapping, one would delete the other's plain copy.
+        var made = await Task.WhenAll(Enumerable.Range(0, 3).Select(_ => app.InScopeAsync(sp => sp.GetRequiredService<Backups>().CreateAsync(CancellationToken.None))));
+        made.ShouldAllBe(r => r.IsSuccess);
+        made.Select(r => r.Value.FileName).Distinct().Count().ShouldBe(3);
+    }
+}
+
 /// <summary>TK-213. Own app: it replaces the database.</summary>
 public sealed class RestoreBackupTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
 {
@@ -76,7 +93,8 @@ public sealed class RestoreBackupTests(AbastaliaApp app) : IClassFixture<Abastal
     [Fact]
     public async Task The_back_office_restores_a_backup_only_with_the_registers_closed_and_the_right_passphrase()
     {
-        if (TestSqlServer.IsEnabled) Assert.Skip("SQL Server writes the .bak on its own machine (the container); this test uses Sqlite.");
+        // R12: also on a SQL Server of this PC (SQL Express), which runs RestoreSqlServerAsync; a container writes the .bak inside itself.
+        if (!TestSqlServer.BacksUpOnThisMachine) Assert.Skip("SQL Server writes the .bak on its own machine (the container).");
         var admin = app.Client(await app.AdminAsync());
         (await admin.PutAsJsonAsync("/api/backups/passphrase", new { Passphrase })).EnsureSuccessStatusCode();
         (await admin.PutAsJsonAsync("/api/settings/business", new { Name = "Antes", DiscountCapPercent = 10m })).EnsureSuccessStatusCode();
@@ -87,6 +105,9 @@ public sealed class RestoreBackupTests(AbastaliaApp app) : IClassFixture<Abastal
         (await (await admin.PostAsJsonAsync("/api/backups/no-existe.abastalia-backup/restore", new { Passphrase })).ErrorCode()).ShouldBe("Backup.NotFound");
         (await (await admin.PostAsJsonAsync("/api/backups/..%5Cotro.abastalia-backup/restore", new { Passphrase })).ErrorCode()).ShouldBe("Backup.NotFound");
         (await (await admin.PostAsJsonAsync($"/api/backups/{file}/restore", new { Passphrase = "otra frase cualquiera" })).ErrorCode()).ShouldBe("Backup.WrongPassphrase");
+        var folder = app.Services.GetRequiredService<IConfiguration>()["Backup:Folder"]!;
+        string[] BeforeRestores() => Directory.GetFiles(folder, "*-antes-de-restaurar" + Backups.Extension);
+        BeforeRestores().ShouldBeEmpty(); // R12: a wrong phrase makes no backup of the current data first
         var cashier = app.Client(await app.UserAsync(Roles.Cashier));
         (await cashier.PostAsJsonAsync($"/api/backups/{file}/restore", new { Passphrase })).StatusCode.ShouldBe(HttpStatusCode.Forbidden);
 
@@ -98,12 +119,19 @@ public sealed class RestoreBackupTests(AbastaliaApp app) : IClassFixture<Abastal
 
         (await admin.GetFromJsonAsync<JsonElement>("/api/settings/business")).GetProperty("name").GetString().ShouldBe("Antes");
         (await app.VerifyAuditAsync()).ShouldBeNull(); // the restore is recorded on the restored chain
-        var folder = app.Services.GetRequiredService<IConfiguration>()["Backup:Folder"]!;
         Directory.GetFiles(Path.Combine(folder, "work")).ShouldBeEmpty();
 
         // The data before the restore comes back from the backup made first.
+        app.Clock.Advance(TimeSpan.FromSeconds(1));
         (await admin.PostAsJsonAsync($"/api/backups/{before}/restore", new { Passphrase })).StatusCode.ShouldBe(HttpStatusCode.OK);
         (await admin.GetFromJsonAsync<JsonElement>("/api/settings/business")).GetProperty("name").GetString().ShouldBe("Después");
+
+        // R12: the daily history keeps its count; the backups made before restoring are not counted nor pruned.
+        await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.BackupKeep, 1)));
+        app.Clock.Advance(TimeSpan.FromSeconds(1));
+        (await admin.PostAsync("/api/backups", null)).EnsureSuccessStatusCode();
+        BeforeRestores().Length.ShouldBe(2);
+        (Directory.GetFiles(folder, "*" + Backups.Extension).Length - BeforeRestores().Length).ShouldBe(1);
 
         // A register selling right now: refused, nothing replaced.
         await app.CashierWithShiftAsync();
