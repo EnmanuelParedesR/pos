@@ -305,7 +305,8 @@ function CheckEmail({ email, onSignIn, onWrongEmail }: { email: string; onSignIn
           <li>¿Sigue sin llegar? {helpLink} y le ayudamos.</li>
         </ul>
       </section>
-      <button type="button" className="esc-button esc-button--primary auth-submit" onClick={onSignIn}>
+      {/* Not primary: the next step is the inbox, not this page. */}
+      <button type="button" className="esc-button auth-submit" onClick={onSignIn}>
         Ya la activé: entrar
       </button>
     </div>

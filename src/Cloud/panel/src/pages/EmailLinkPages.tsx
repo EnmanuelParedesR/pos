@@ -143,14 +143,15 @@ export function ConfirmEmailPage() {
                 )}
               </p>
             </div>
-            {/* R11 B-High1: someone else may have created the account with this e-mail; what they added before is gone, but not their password. */}
-            {result.firstConfirmation && (
-              <Notice kind="warning" title="¿No creó usted esta cuenta?">
-                Cambie la contraseña ahora: en Entrar, toque «¿La olvidó?» y le mandamos un enlace. Ya quitamos del negocio a las personas e
-                invitaciones que se agregaron antes de activar la cuenta.
-              </Notice>
-            )}
             {enter}
+            {/* R11 B-High1: someone else may have created the account with this e-mail; what they added before is gone, but not their password.
+                A note under the button: almost everyone did create it, and the success comes first. */}
+            {result.firstConfirmation && (
+              <p className="auth-note">
+                <b>¿No creó usted esta cuenta?</b> Cambie la contraseña ahora: en Entrar, toque «¿La olvidó?». Por seguridad quitamos del negocio a
+                las personas e invitaciones que se agregaron antes de activarla.
+              </p>
+            )}
           </>
         ) : error ? (
           <>

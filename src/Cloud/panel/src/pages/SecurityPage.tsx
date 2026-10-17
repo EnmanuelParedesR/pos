@@ -110,8 +110,8 @@ function Setup({ sharedKey, email, busy, failure, run }: { sharedKey: string; em
             <img src={qr} width={176} height={176} alt="Código QR para agregar Abastalia a la aplicación de autenticación" />
             <div className="sec-key">
               <span className="esc-muted">¿No puede escanear? Escriba esta clave:</span>
-              <code aria-label="Clave para la aplicación">{groups(sharedKey)}</code>
-              <button type="button" className="esc-button esc-button--small esc-button--ghost" onClick={() => void copy()}>
+              <code>{groups(sharedKey)}</code>
+              <button type="button" className="esc-button esc-button--small" onClick={() => void copy()}>
                 {copied ? "Clave copiada" : "Copiar clave"}
               </button>
             </div>
