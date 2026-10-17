@@ -71,14 +71,34 @@ internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, Bi
         var licensed = await db.Stores.AsNoTracking().Where(s => s.TenantId == tenantId).OrderBy(s => s.CreatedUtc).ThenBy(s => s.Id)
             .Take(Count(config, catalog, plan, addOns, nameof(AbastaliaProduct.Stores), t => t.Stores) ?? 1).Select(s => s.Id).ToListAsync(ct);
         if (blocked is null && !licensed.Contains(storeId)) return null;
-        var store = await db.Stores.AsNoTracking().Where(s => s.Id == storeId).Select(s => s.Name).SingleOrDefaultAsync(ct) ?? tenant.Name;
-        var data = Data(config, catalog, store, plan, addOns, Truncate(subscription.UpdatedUtc), expires.Value) with
+        var store = await db.Stores.AsNoTracking().Where(s => s.Id == storeId).Select(s => new { s.Name, s.Rnc }).SingleOrDefaultAsync(ct);
+        // TK-308: the store refuses a license for another RNC; one that has not sent its RNC yet gets none (accepted until it expires).
+        var data = Data(config, catalog, store?.Name ?? tenant.Name, plan, addOns, Truncate(subscription.UpdatedUtc), expires.Value) with
         {
-            TenantId = tenantId, Blocked = blocked is not null, BlockAfterDays = config.GetValue<int?>("Billing:License:BlockAfterDays"),
+            TenantId = tenantId, Blocked = blocked is not null, BlockAfterDays = config.GetValue<int?>("Billing:License:BlockAfterDays"), Rnc = store?.Rnc,
         };
-        var input = Jws.SigningInput(data);
-        return Jws.Compose(input, await signer.SignSha256Async(SHA256.HashData(Encoding.ASCII.GetBytes(input)), ct));
+        return await SignAsync(data, Jws.LicenseType, ct);
     }
+
+    /// <summary>R12 #7 (TK-308): the signed <see cref="TrialGrant"/> of a referred business (the store ignores a bare number); null without a key.</summary>
+    public async Task<string?> TrialAsync(Guid tenantId, int days, CancellationToken ct) =>
+        signer is null ? null : await SignAsync(new TrialGrant(tenantId, days, clock.GetUtcNow().UtcDateTime), Jws.TrialType, ct);
+
+    public const int MaxNonce = 64;
+
+    /// <summary>R12 #3 (TK-308): the cloud's signed time for the store's <paramref name="nonce"/>; null without a key or a nonce.</summary>
+    public async Task<string?> TimeAsync(Guid tenantId, string? nonce, CancellationToken ct) =>
+        signer is null || nonce is not { Length: > 0 and <= MaxNonce } ? null
+            : await SignAsync(new ServerTime(tenantId, nonce, clock.GetUtcNow().UtcDateTime), Jws.TimeType, ct);
+
+    private async Task<string> SignAsync<T>(T data, string type, CancellationToken ct)
+    {
+        var input = Jws.SigningInput(data, type);
+        return Jws.Compose(input, await signer!.SignSha256Async(SHA256.HashData(Encoding.ASCII.GetBytes(input)), ct));
+    }
+
+    /// <summary>TK-308: an RNC as the cloud keeps it: its digits when there are 9 (company) or 11 (cédula); anything else is none.</summary>
+    public static string? Rnc(string? rnc) => rnc is null ? null : new string([.. rnc.Where(char.IsAsciiDigit)]) is { Length: 9 or 11 } digits ? digits : null;
 
     /// <summary>What the license says of a plan: the Paddle product's <c>custom_data.abastalia</c> (<c>registers</c>, <c>features</c>) &gt;
     /// <c>Billing:Plans:&lt;Plan&gt;</c> &gt; Default's (Paddle, then appsettings). An add-on named like a <see cref="Feature"/>

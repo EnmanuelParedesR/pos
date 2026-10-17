@@ -131,6 +131,50 @@ public sealed class ReferredTrialTests(AbastaliaApp app) : IClassFixture<Abastal
     }
 }
 
+/// <summary>TK-308: the store sends its business RNC with each license pull (the cloud signs it into the license) and a fresh nonce; the cloud's signed
+/// time for that nonce brings a license clock that ran ahead back down, like the DGII's. Own app: it moves the license clock.</summary>
+public sealed class CloudTimeTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    [Fact]
+    public async Task The_pull_sends_the_RNC_and_only_the_cloud_signed_time_for_this_pull_corrects_the_clock()
+    {
+        await app.ConnectAsync();
+        var tenant = (await app.StatusAsync()).GetProperty("tenantId").GetGuid();
+        await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.Rnc, "131-24567-8")));
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        var clock = app.Services.GetRequiredService<LicenseService>().Time;
+        clock.Observe(now.AddDays(10)); // the PC once booted ten days ahead and the store saw that date
+
+        Func<string, ECDsa, Guid, string> time = (nonce, key, tenantId) => "";
+        app.Cloud.Respond = path => path == PullLicense.Path ? new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { license = (string?)null, time = time(app.Cloud.Requests.Last().Body.GetProperty("nonce").GetString()!, app.CloudLicenseKey, tenant) }),
+        } : null;
+        Task PullAsync() => app.InScopeAsync(sp => PullLicense.RunAsync(sp.GetRequiredService<CloudClient>(), sp.GetRequiredService<IStoreLicense>(), CancellationToken.None));
+        string Signed(ServerTime t, ECDsa key) => Jws.Sign(t, key, Jws.TimeType);
+
+        using var stranger = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var replayed = Signed(new ServerTime(tenant, "an-older-pull", now), app.CloudLicenseKey);
+        foreach (var refused in new Func<string, ECDsa, Guid, string>[]
+        {
+            (n, _, t) => Signed(new ServerTime(t, n, now), stranger),                                  // not Abastalia's key
+            (n, k, _) => Signed(new ServerTime(Guid.NewGuid(), n, now), k),                            // another business's
+            (_, _, _) => replayed,                                                                     // another pull's nonce
+            (n, k, _) => Jws.Sign(new LicenseData("x", "y", [], new Dictionary<string, int>(), now, now.AddDays(1)), k), // a license is no time
+        })
+        {
+            time = refused;
+            await PullAsync();
+            clock.UtcNow.ShouldBeGreaterThan(now.AddDays(9));
+        }
+        app.Cloud.To(PullLicense.Path).ShouldAllBe(r => r.Body.GetProperty("rnc").GetString() == "131-24567-8");
+
+        time = (n, k, t) => Signed(new ServerTime(t, n, now), k);
+        await PullAsync();
+        clock.UtcNow.ShouldBeLessThan(now.AddMinutes(1));
+    }
+}
+
 /// <summary>TK-287: a block or an unblock from the console reaches the store with its next upload (the cloud's <c>licenseUtc</c> moved), not at its
 /// next 4-hour heartbeat; a blocked store, which uploads little, asks every few minutes. Own app: it installs licenses and moves the clock.</summary>
 public sealed class LicenseSignalTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>

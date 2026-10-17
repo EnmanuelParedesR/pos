@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
+using Abastalia.BuildingBlocks.Security;
 using Abastalia.Host.Cloud.Billing;
 using Abastalia.Host.Cloud.Fe;
 
@@ -312,11 +313,14 @@ public sealed class ReferralTests(BillingApp app) : IClassFixture<BillingApp>, I
         var code = await CodeAsync(referrer);
         var referred = await app.OwnerAsync();
         var node = await app.StoreWithNodeAsync(referred, "Colmado Recomendado");
-        async Task<JsonElement> TrialDaysAsync() => (await (await node.Client.PostAsync("/api/nodes/license", null)).Json()).GetProperty("trialDays");
+        async Task<JsonElement> TrialAsync() => (await (await node.Client.PostAsync("/api/nodes/license", null)).Json()).GetProperty("trial");
 
-        (await TrialDaysAsync()).ValueKind.ShouldBe(JsonValueKind.Null); // the store's own 14
+        (await TrialAsync()).ValueKind.ShouldBe(JsonValueKind.Null); // the store's own 14
         (await referred.Client.PostAsJsonAsync("/api/billing/referrals/claim", new { code = code.ToLowerInvariant() })).StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await TrialDaysAsync()).GetInt32().ShouldBe(30);
+        // R12 #7 (TK-308): a grant signed with the license key, for this business only, never a bare number.
+        var grant = Jws.Verify<TrialGrant>((await TrialAsync()).GetString()!, Jws.TrialType, [app.LicenseKey]).Value;
+        (grant.TenantId, grant.Days, grant.IssuedUtc).ShouldBe((referred.TenantId, 30, Now));
+        Jws.Verify((await TrialAsync()).GetString()!, app.LicenseKey).IsFailure.ShouldBeTrue(); // no license either
 
         // Its own code, or a business older than two weeks, keeps nothing.
         var own = await app.OwnerAsync();

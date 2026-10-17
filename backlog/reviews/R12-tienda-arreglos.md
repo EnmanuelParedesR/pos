@@ -49,6 +49,8 @@ Hallazgos verificados de la revisión V1 y de la auditoría Ponytail que tocan l
 
 ## Pendiente del lado nube (otro agente)
 
+✅ Hecho en TK-308 (7, A y 3; ver `docs/licencias.md` → Licencias de la nube). Lo que se pedía:
+
 - **7:** `POST /api/nodes/license` debe mandar `trial`: `Jws.Sign(new TrialGrant(tenantId, referrals.ReferredTrialDays, now), …, Jws.TrialType)` firmado con la llave de licencias (Key Vault: `Jws.SigningInput(grant, Jws.TrialType)` + `Compose`), en lugar de `trialDays`. Hasta entonces la prueba de 30 días por referido no llega a la tienda.
 - **A:** `CloudLicenses.IssueAsync` debe poner `Rnc` en la licencia; hoy la nube solo guarda `RncSet` del latido, así que necesita recibir el RNC (latido o registro de la tienda).
 - **3:** una hora firmada de la nube en la respuesta de licencia permitiría corregir el reloj de tiendas que no hablan con la DGII.

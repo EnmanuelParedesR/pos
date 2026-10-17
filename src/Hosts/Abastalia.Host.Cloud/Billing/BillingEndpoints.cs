@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Abastalia.BuildingBlocks.Endpoints;
 using Abastalia.Host.Cloud.Accounts;
@@ -39,8 +40,12 @@ public sealed record BillingChangeResponse(bool Changed);
 public sealed record PortalResponse(string Url);
 
 /// <summary>The store's license (TK-249), or null when its business has no paid time left.</summary>
-/// <param name="TrialDays">TK-276: the length of the store's trial when its business came with a referral code (30); null = the store's own 14.</param>
-public sealed record NodeLicenseResponse(string? License, int? TrialDays = null);
+/// <param name="Trial">TK-276, R12 #7: a signed <c>TrialGrant</c> (JWS) when its business came with a referral code (30 days); null = the store's own 14.</param>
+/// <param name="Time">R12 #3: the cloud's signed <c>ServerTime</c> for the request's nonce; the store corrects a clock that ran ahead with it.</param>
+public sealed record NodeLicenseResponse(string? License, string? Trial = null, string? Time = null);
+
+/// <summary>TK-308: what the store sends with its license pull: its business RNC (or null) and a fresh nonce for <see cref="NodeLicenseResponse.Time"/>.</summary>
+public sealed record NodeLicenseRequest(string? Rnc, string? Nonce);
 
 /// <param name="ManualUntilUtc">Paid through this date whatever Paddle says; null removes the override.</param>
 public sealed record BillingOverrideRequest(DateTime? ManualUntilUtc, string? Note);
@@ -84,13 +89,24 @@ internal static class BillingEndpoints
         app.MapPost(PaddleWebhook.Path, (HttpRequest request, PaddleWebhook webhook, CancellationToken ct) => webhook.HandleAsync(request, ct))
             .AllowAnonymous().ExcludeFromDescription();
 
-        app.MapPost("/api/nodes/license", async (ClaimsPrincipal user, CloudLicenses licenses, CloudDbContext db, PaddleOptions paddle, ReferralOptions referrals,
-            CancellationToken ct) =>
+        app.MapPost("/api/nodes/license", async (HttpRequest request, ClaimsPrincipal user, CloudLicenses licenses, CloudDbContext db, PaddleOptions paddle,
+            ReferralOptions referrals, CancellationToken ct) =>
         {
             var node = NodeIdentity.From(user);
+            // TK-308: stores before it post an empty body; the RNC is the business's public tax id (never logged).
+            NodeLicenseRequest? r = null;
+            if (request.HasJsonContentType())
+                try { r = await request.ReadFromJsonAsync<NodeLicenseRequest>(ct); }
+                catch (JsonException) { return Results.BadRequest(); }
+            if (r is not null)
+            {
+                var rnc = CloudLicenses.Rnc(r.Rnc);
+                await db.Stores.Where(s => s.Id == node.StoreId && s.TenantId == node.TenantId && s.Rnc != rnc).ExecuteUpdateAsync(s => s.SetProperty(x => x.Rnc, rnc), ct);
+            }
             var referred = ReferralEndpoints.On(paddle, referrals)
                 && await db.TenantSubscriptions.AnyAsync(s => s.TenantId == node.TenantId && s.ReferredByCode != null, ct);
-            return Results.Ok(new NodeLicenseResponse(await licenses.IssueAsync(node.TenantId, node.StoreId, ct), referred ? referrals.ReferredTrialDays : null));
+            return Results.Ok(new NodeLicenseResponse(await licenses.IssueAsync(node.TenantId, node.StoreId, ct),
+                referred ? await licenses.TrialAsync(node.TenantId, referrals.ReferredTrialDays, ct) : null, await licenses.TimeAsync(node.TenantId, r?.Nonce, ct)));
         }).RequireAuthorization(CloudAuth.NodePolicy);
 
         // The public /precios page reads the real prices (no account; limited per IP like the public catalog).

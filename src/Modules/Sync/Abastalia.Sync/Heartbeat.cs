@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -88,15 +89,19 @@ internal static class PullLicense
     public static async Task<bool> RunAsync(CloudClient cloud, IStoreLicense license, CancellationToken ct)
     {
         if (await cloud.ConnectionAsync(ct) is not { } connection) return false;
-        using var response = await cloud.SendAsync(connection, Path, new StringContent(""), ct);
+        // TK-308: the business RNC (public tax id) goes into the cloud's license; the nonce makes the cloud's signed time fresh for this pull only.
+        var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(16));
+        using var response = await cloud.SendAsync(connection, Path, JsonContent.Create(new { rnc = await license.BusinessRncAsync(ct), nonce }), ct);
         if (!response.IsSuccessStatusCode) return false;
         var answer = await response.Content.ReadFromJsonAsync<Answer>(ct);
+        // R12 #3: before installing, so the license is judged by the corrected clock.
+        if (answer?.Time is { Length: > 0 } time) license.CorrectTime(time, connection.TenantId, nonce);
         // TK-276: a business that came recommended. R12 (security B3): only the cloud-signed grant counts, never a bare number.
         if (answer?.Trial is { Length: > 0 } trial) await license.ExtendTrialAsync(trial, connection.TenantId, ct);
         return answer?.License is { Length: > 0 } jws && await license.InstallFromCloudAsync(jws, ct);
     }
 
-    private sealed record Answer(string? License, string? Trial);
+    private sealed record Answer(string? License, string? Trial, string? Time);
 }
 
 /// <summary>TK-254: asks the cloud which version this store may install on its channel (staged rollout from the platform console) and keeps the

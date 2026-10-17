@@ -331,6 +331,8 @@ internal sealed class LicenseService : IFeatureService
 
     public Result<TrialGrant> VerifyTrial(string jws) => Jws.Verify<TrialGrant>(jws, Jws.TrialType, _keys);
 
+    public Result<ServerTime> VerifyTime(string jws) => Jws.Verify<ServerTime>(jws, Jws.TimeType, _keys);
+
     public Result<LicenseData> Install(string jws)
     {
         var verified = Verify(jws);
@@ -464,6 +466,16 @@ internal sealed class StoreLicense(LicenseService license, ICommandHandler<Insta
         if (days <= license.TrialLength.TotalDays || days > 90) return false;
         await db.Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialDays, days), ct);
         license.TrialLengthChanged(days);
+        return true;
+    }
+
+    public Task<string?> BusinessRncAsync(CancellationToken ct) => db.Business.AsNoTracking().Select(b => b.Rnc).SingleOrDefaultAsync(ct);
+
+    public bool CorrectTime(string time, Guid tenantId, string nonce)
+    {
+        if (license.VerifyTime(time) is not { IsSuccess: true } verified
+            || verified.Value.TenantId != tenantId || verified.Value.Nonce != nonce) return false;
+        license.Time.Correct(DateTime.SpecifyKind(verified.Value.Utc, DateTimeKind.Utc));
         return true;
     }
 
