@@ -129,6 +129,7 @@ public static class Names
         "CloudBackup" => "Respaldo en la nube",
         "AiAssistant" => "Asistente IA",
         "SupplierInvoiceReading" => "Lectura de facturas con IA (adicional)",
+        "AssistantActions" => "Talia con acciones",
         _ => feature,
     };
 }

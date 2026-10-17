@@ -105,16 +105,21 @@ internal sealed class CloudLicenses(CloudDbContext db, IConfiguration config, Bi
     /// (SupplierInvoiceReading) switches that function on.</summary>
     public static LicenseData Data(IConfiguration config, BillingCatalog catalog, string store, string plan, IEnumerable<string> addOns, DateTime issuedUtc, DateTime expiresUtc)
     {
-        var own = catalog.Of(plan)?.Abastalia;
-        var basic = catalog.Of(Quota.DefaultPlan)?.Abastalia;
-        string[]? Config(string p) => config.GetSection($"Billing:Plans:{p}:Features").Get<string[]>();
-        var features = (own?.Features?.ToArray() ?? Config(plan) ?? basic?.Features?.ToArray() ?? Config(Quota.DefaultPlan) ?? [])
-            .Concat(addOns.Where(a => Enum.TryParse<Feature>(a, out _))).Distinct().ToList();
+        var features = Features(config, catalog, plan, addOns);
         var limits = new Dictionary<string, int>();
         if (Count(config, catalog, plan, addOns, nameof(Limit.Registers), t => t.Registers) is { } registers) limits[nameof(Limit.Registers)] = registers;
         // TK-277: the plan's cashiers plus each add-on's (ExtraCashier 1, ExtraRegister 2, ExtraStore 4); none = the store does not limit them.
         if (Count(config, catalog, plan, addOns, nameof(Limit.Cashiers), t => t.Cashiers) is { } cashiers) limits[nameof(Limit.Cashiers)] = cashiers;
         return new LicenseData(store, config[$"Billing:Plans:{plan}:Name"] ?? catalog.Of(plan)?.Name ?? plan, features, limits, issuedUtc, expiresUtc);
+    }
+
+    /// <summary>The license's functions for a plan and its add-ons (see <see cref="Data"/>). TK-338: the cloud reads AssistantActions here too.</summary>
+    public static List<string> Features(IConfiguration config, BillingCatalog catalog, string plan, IEnumerable<string> addOns)
+    {
+        string[]? Config(string p) => config.GetSection($"Billing:Plans:{p}:Features").Get<string[]>();
+        return [.. (catalog.Of(plan)?.Abastalia.Features?.ToArray() ?? Config(plan) ?? catalog.Of(Quota.DefaultPlan)?.Abastalia.Features?.ToArray()
+                ?? Config(Quota.DefaultPlan) ?? [])
+            .Concat(addOns.Where(a => Enum.TryParse<Feature>(a, out _))).Distinct()];
     }
 
     /// <summary>Registers or stores: the plan's (Paddle &gt; <c>Billing:Plans:&lt;Plan&gt;</c> &gt; Default's), plus each add-on unit's (Paddle &gt;

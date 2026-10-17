@@ -6,8 +6,9 @@ using Abastalia.SharedKernel;
 namespace Abastalia.BuildingBlocks.Security;
 
 /// <summary>Sellable functions switched on by the license (docs/funcionalidades-v1.md §5). <see cref="SupplierInvoiceReading"/> (TK-248) is the paid
-/// add-on of invoice reading with AI: every plan reads a few a month without it; the cloud counts and enforces the month (docs/cuotas.md).</summary>
-public enum Feature { ButcherModule, WholesaleModule, CloudBackup, AiAssistant, SupplierInvoiceReading }
+/// add-on of invoice reading with AI: every plan reads a few a month without it; the cloud counts and enforces the month (docs/cuotas.md).
+/// <see cref="AssistantActions"/> (TK-338): Talia proposes writes the user confirms (docs/talia-acciones.md); in every plan during the pilot.</summary>
+public enum Feature { ButcherModule, WholesaleModule, CloudBackup, AiAssistant, SupplierInvoiceReading, AssistantActions }
 
 /// <summary><see cref="Cashiers"/> (TK-277): active users who can sell or open a shift, Administradores included except one (the owner, R12).</summary>
 public enum Limit { Registers, Cashiers }
