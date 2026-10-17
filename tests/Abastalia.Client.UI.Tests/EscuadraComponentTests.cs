@@ -180,6 +180,23 @@ public sealed class EscuadraComponentTests : IDisposable
     }
 
     [Fact]
+    public void ThemeToggle_starts_light_and_goes_dark_then_automatic()
+    {
+        // TK-360: light by default, as the PIN screen and the register; dark or automatic only when chosen on this PC.
+        var ctx = new BunitContext();
+        using var _ = ctx;
+        ctx.JSInterop.Setup<string?>("escuadra.getTheme").SetResult("light");
+        ctx.JSInterop.SetupVoid("escuadra.setTheme", _ => true);
+        var toggle = ctx.Render<ThemeToggle>();
+
+        toggle.WaitForAssertion(() => toggle.Find("button").GetAttribute("aria-label").ShouldBe("Tema: claro. Cambiar a oscuro"));
+        toggle.Find("button").Click();
+        toggle.Find("button").Click();
+        toggle.Find("button").GetAttribute("aria-label").ShouldBe("Tema: automático. Cambiar a claro");
+        ctx.JSInterop.Invocations.Where(i => i.Identifier == "escuadra.setTheme").Select(i => (string)i.Arguments[0]!).ShouldBe(["dark", "system"]);
+    }
+
+    [Fact]
     public async Task The_Sale_screen_shows_the_scale_fixed_while_this_PC_has_one()
     {
         var (ctx, _, hw) = await RegisterAsync(new(Scale: new("COM3", ScaleProtocol.Cas)));

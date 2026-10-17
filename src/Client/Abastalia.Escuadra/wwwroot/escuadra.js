@@ -98,24 +98,35 @@
     }
   }, true);
 
-  // Admin dark mode (TK-183): the choice ("light", "dark" or none = follow the system) is kept per device; <html data-theme> is always the
-  // resolved theme, set before Blazor renders so the page never flashes light.
+  // Admin dark mode (TK-183, TK-360): the choice is kept per device: "dark", "system" (follow Windows) or none = light, like the register
+  // and the PIN screen, so signing in never drops the owner from a light screen into a black one. <html data-theme> is always the
+  // resolved theme, set before Blazor renders so the page never flashes.
   const THEME_KEY = 'abastalia.theme';
   const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  const calm = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   let unsavedTheme = null; // storage blocked: the choice lasts until the page reloads
   const storedTheme = () => { try { return localStorage.getItem(THEME_KEY); } catch { return unsavedTheme; } };
+  let fade = 0;
   const applyTheme = () => {
     const choice = storedTheme();
-    document.documentElement.dataset.theme = choice === 'light' || choice === 'dark' ? choice : (darkQuery && darkQuery.matches ? 'dark' : 'light');
+    const theme = choice === 'dark' || (choice === 'system' && darkQuery && darkQuery.matches) ? 'dark' : 'light';
+    const root = document.documentElement;
+    if (root.dataset.theme && root.dataset.theme !== theme && !(calm && calm.matches)) {
+      // A switch with the page open fades (escuadra-admin.css) instead of flipping at once.
+      root.classList.add('esc-theme-fade');
+      clearTimeout(fade);
+      fade = setTimeout(() => root.classList.remove('esc-theme-fade'), 300);
+    }
+    root.dataset.theme = theme;
   };
   applyTheme();
   if (darkQuery) darkQuery.addEventListener('change', applyTheme);
 
   window.escuadra = {
-    // "system", "light" or "dark".
-    getTheme: () => storedTheme() || 'system',
+    // "light", "dark" or "system".
+    getTheme: () => { const t = storedTheme(); return t === 'dark' || t === 'system' ? t : 'light'; },
     setTheme: choice => {
-      unsavedTheme = choice === 'light' || choice === 'dark' ? choice : null;
+      unsavedTheme = choice === 'dark' || choice === 'system' ? choice : null;
       try {
         if (unsavedTheme) localStorage.setItem(THEME_KEY, unsavedTheme);
         else localStorage.removeItem(THEME_KEY);

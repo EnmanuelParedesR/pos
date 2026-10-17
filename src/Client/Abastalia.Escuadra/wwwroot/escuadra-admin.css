@@ -60,7 +60,7 @@
   line-height: 1.4;
 }
 
-/* Dark mode (TK-183). escuadra.js (the panel: theme.ts) sets data-theme on <html> from the device's choice, or from prefers-color-scheme
+/* Dark mode (TK-183). escuadra.js (the panel: theme.ts) sets data-theme on <html> from the device's choice (light by default, TK-360), or from prefers-color-scheme
    when the user chose "Sistema". Only the admin goes dark: the register keeps its high-contrast light screens.
    Contrast (WCAG AA) on --surface: text 13.9:1, text-2 7.9:1, text-3 5.7:1, links (--brand) 5.4:1; semantic text on its tint ≥ 6.7:1;
    white on the primary button 5.4:1; brand-700 on brand-50 (selected items) 7.6:1. */
@@ -94,11 +94,11 @@
   --elev-pop: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 16px 40px rgba(0, 0, 0, 0.6);
   --ring: 0 0 0 3px rgba(193, 124, 178, 0.45);
 
-  --primary-hover: #235FA6;
+  --primary-hover: var(--brand-300); /* TK-360: was the old blue; white on it 5.5:1 */
   --danger-line: #6B2A25;
   --row-hover: #212428;
   --topbar-bg: rgba(19, 20, 22, 0.92);
-  --hover-tint: rgba(90, 155, 224, 0.1);
+  --hover-tint: rgba(193, 124, 178, 0.1);
   --tip-bg: #3A3E44; --tip-text: #FFFFFF; --tip-muted: #CFC9BF;
 
   color-scheme: dark;
@@ -106,6 +106,10 @@
 /* Behind the admin (overscroll, short pages) */
 :root[data-theme="dark"] { --admin-page: #131416; }
 :root[data-theme="dark"] body:has(.esc-admin) { background: var(--admin-page); }
+/* TK-360: changing the theme fades for 250 ms (escuadra.js adds the class only then, and never with reduced motion). */
+.esc-theme-fade, .esc-theme-fade body, .esc-theme-fade .esc-admin * {
+  transition: background-color 250ms ease, color 250ms ease, border-color 250ms ease, fill 250ms ease !important;
+}
 
 .esc-admin :focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
 
