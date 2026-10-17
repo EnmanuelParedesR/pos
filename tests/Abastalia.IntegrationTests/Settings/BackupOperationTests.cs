@@ -82,7 +82,7 @@ public sealed class BackupOperationTests(AbastaliaApp app) : IClassFixture<Abast
         // The key ring of this PC cannot open the stored key (restored on a new PC): a clear message, not a 500.
         await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.ExecuteUpdateAsync(s => s.SetProperty(n => n.BackupKey, "AAAA")));
         (await (await admin.PostAsync("/api/backups", null)).ErrorCode()).ShouldBe("Backup.UnreadablePassphrase");
-        (await (await app.Anonymous().GetAsync("/health")).Content.ReadAsStringAsync()).ShouldBe("Degraded");
+        (await app.HealthAsync()).ShouldBe("Degraded");
         (await admin.PutAsJsonAsync("/api/backups/passphrase", new { Passphrase })).StatusCode.ShouldBe(HttpStatusCode.NoContent); // typing it again fixes it
         app.Clock.Advance(TimeSpan.FromMinutes(1));
         (await admin.PostAsync("/api/backups", null)).StatusCode.ShouldBe(HttpStatusCode.Created);
