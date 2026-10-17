@@ -93,7 +93,7 @@ Los nonces de los nodos ya están en la base (R11 B-Low3). Al arrancar, la API d
 
 ### Tamaño de la base (R12 A)
 
-`databaseMaxGigabytes` (250 por defecto; GP serverless con 1 vCore llega a 512). Lo que más crece sale de SQL: la bandeja borra lo aplicado a los 7 días (`InboxApplier.KeepApplied`) y el XML de los e-CF pasa al archivo frío a los 7 días (`Archive:HotDays`). Nada lee de SQL el XML de un e-CF más viejo: la búsqueda por e-NCF lo trae del archivo frío. **Costo:** si Azure cobra el almacenamiento por el máximo configurado y no por lo usado (~0.138 USD/GB-mes, ~34 USD con 250 GB), revisar la primera factura y bajarlo con el parámetro (64 GB ≈ 9 USD) hasta que haga falta; subirlo no requiere parar la base.
+`databaseMaxGigabytes` (64 por defecto, aprobado por el dueño el 17/10/2026 para no pasar el crédito mensual de US$150; GP serverless con 1 vCore llega a 512). Lo que más crece sale de SQL: la bandeja borra lo aplicado a los 7 días (`InboxApplier.KeepApplied`) y el XML de los e-CF pasa al archivo frío a los 7 días (`Archive:HotDays`). Nada lee de SQL el XML de un e-CF más viejo: la búsqueda por e-NCF lo trae del archivo frío. **Costo:** si Azure cobra el almacenamiento por el máximo configurado y no por lo usado (~0.138 USD/GB-mes, ~34 USD con 250 GB), revisar la primera factura y bajarlo con el parámetro (64 GB ≈ 9 USD) hasta que haga falta; subirlo no requiere parar la base.
 
 ### Respaldos de las tiendas en la nube (TK-238)
 

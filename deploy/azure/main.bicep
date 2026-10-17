@@ -41,7 +41,7 @@ param openAiDeploymentSku string = 'GlobalStandard'
 @description('R12 A: the database\'s maximum size in GB (General Purpose serverless, 1 vCore: up to 512).')
 @minValue(32)
 @maxValue(512)
-param databaseMaxGigabytes int = 250
+param databaseMaxGigabytes int = 64
 
 @description('Thousands of tokens per minute for the deployment. R12 F: 50K, so a few owners asking at once and the invoice reader do not hit 429s; GlobalStandard gpt-5-nano quotas are far above it (check az cognitiveservices usage list).')
 param openAiCapacity int = 50
