@@ -314,4 +314,23 @@
 .site .foot ul { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 0; }
 .site .foot__legal { flex: 1 0 100%; margin: 0; font-size: 13px; }
 
+/* TK-302: terms and privacy, drafts for the lawyer. One readable column. */
+.site .legal { padding-top: 0; }
+.site .legal__body { max-width: 760px; min-width: 0; }
+.site .legal h2 { scroll-margin-top: 16px; }
+.site .legal__toc { display: none; }
+@media (min-width: 1024px) {
+  .site .legal__grid { display: grid; grid-template-columns: minmax(0, 760px) 240px; gap: 64px; align-items: start; }
+  .site .legal__toc { display: block; order: 2; position: sticky; top: 24px; font-size: 15px; }
+  .site .legal__toc ol { list-style: none; padding: 0; margin: 8px 0 0; border-left: 2px solid var(--line); }
+  .site .legal__toc a { display: block; padding: 6px 12px; color: var(--muted); text-decoration: none; }
+  .site .legal__toc a:hover { color: var(--brand); }
+}
+.site .legal h2 { font-size: 22px; letter-spacing: -0.01em; margin: 40px 0 12px; }
+.site .legal h2:first-child { margin-top: 0; }
+.site .legal ul { padding-left: 22px; }
+.site .legal li { margin-bottom: 8px; }
+.site .legal__draft { background: var(--warn-bg); color: var(--warn-ink); border-radius: var(--radius); padding: 12px 16px; font-size: 15px; }
+.site .legal__fill { background: var(--warn-bg); color: var(--warn-ink); border-radius: 4px; padding: 0 4px; font-weight: 600; white-space: nowrap; }
+
 @media (prefers-reduced-motion: no-preference) { .site a, .site .btn { transition: background-color 120ms, color 120ms; } }

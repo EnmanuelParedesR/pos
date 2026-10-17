@@ -241,8 +241,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => Promise<unknown> }) {
             </button>
             {creating ? (
               <p className="auth-note">
-                {/* shortcut: the site has no terms or privacy pages yet; these addresses show its 404 until they exist. */}
-                Al crear la cuenta acepta los <a href="/terminos">términos</a> y la <a href="/privacidad">política de privacidad</a>. No pedimos tarjeta.
+                Al crear la cuenta acepta los <a href="/terminos" target="_blank" rel="noopener">términos</a> y la <a href="/privacidad" target="_blank" rel="noopener">política de privacidad</a>. No pedimos tarjeta.
               </p>
             ) : (
               <p className="auth-note">¿Lo invitaron al equipo de una tienda? Abra el enlace del correo de invitación.</p>
