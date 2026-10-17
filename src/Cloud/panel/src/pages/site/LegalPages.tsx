@@ -1,6 +1,7 @@
 import { Children, isValidElement, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Hero } from "./SiteParts";
+import { fairUseEcf } from "./livePrices";
 
 /** TK-302: terms and privacy, drafts for the lawyer. Every fact here must match the product (docs/cobro-paddle.md, licencias.md,
  * despliegue-azure.md, cuotas.md, ecf-propio.md). The bracketed fields are for the owner or the lawyer to fill. */
@@ -119,7 +120,7 @@ function Terms() {
         <li>Use Abastalia solo para su negocio y de acuerdo con la ley.</li>
         <li>No lo use para evadir impuestos, emitir comprobantes falsos ni engañar a la DGII o a sus clientes.</li>
         <li>No intente entrar a datos de otros negocios, saltar las licencias o las cuotas, ni sobrecargar el servicio.</li>
-        <li>Cada plan tiene cuotas (por ejemplo, preguntas a Talia o facturas leídas). Al llegar al límite, ese servicio se detiene hasta el mes siguiente o hasta que compre un adicional. Los acuses de recibo de e-CF nunca se niegan.</li>
+        <li>Cada plan tiene cuotas (por ejemplo, preguntas a Talia o facturas leídas). Al llegar al límite, ese servicio se detiene hasta el mes siguiente o hasta que compre un adicional. Los acuses de recibo de e-CF nunca se niegan, y la emisión de e-CF no tiene cuota (vea el uso justo en la sección 6).</li>
       </ul>
       <p>Si incumple estos términos, podemos suspender o bloquear el negocio, con aviso y un motivo registrado.</p>
 
@@ -128,6 +129,9 @@ function Terms() {
         <li>Usted es el emisor ante la DGII: responde por los datos de cada venta, su certificado digital, sus secuencias y sus declaraciones.</li>
         <li>Abastalia firma cada e-CF en su tienda con su certificado y lo envía directo a la DGII. Su certificado no sale de la PC principal.</li>
         <li>Guardamos una copia de cada e-CF firmado durante 10 años, el plazo que exige la ley.</li>
+        <li id="uso-justo">
+          <strong>e-CF ilimitados, con uso justo.</strong> Todos los planes incluyen los e-CF de las ventas reales de su negocio, sin cupo y sin cobro por documento. El uso justo es de {fairUseEcf.toLocaleString("en-US")} e-CF al mes por negocio, sumando todas sus tiendas. Si su negocio pasa de esa cifra, le contactamos para revisar su plan con usted. No hay cobro automático, y pasar de esa cifra no detiene la emisión de e-CF.
+        </li>
         <li>La información sobre la DGII en este sitio, en el panel y en las respuestas de Talia es orientativa: no sustituye a su contador ni lo que publique la DGII.</li>
       </ul>
 

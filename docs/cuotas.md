@@ -40,6 +40,13 @@ Notas:
 - `ArchiveRetrievals` cuenta cada intento sobre un documento frío, también mientras vuelve del nivel Archive (horas). Los documentos de menos de 90 días están en SQL y no cuentan.
 - **`ReceiverSignatures` es de uso justo, no un tope.** Un acuse de recibo es un deber fiscal: el suplidor y la DGII lo esperan, y negarlo dejaría al negocio sin recibir sus comprobantes. Por eso, pasado el límite del plan, el acuse **se firma y se envía igual**, se sigue contando (el consumo muestra, por ejemplo, 3,012 de 3,000) y la nube deja **una advertencia en el registro** al pasar el primero ("passed its fair use of receiver signatures"), para que el personal revise el plan del negocio. Un fallo al contar tampoco cuesta el acuse (`FeSigner`). Lo que de verdad frena el abuso del receptor son los límites por minuto (60 por IP, 600 por RNC) y las firmas que la tienda revisa.
 
+## e-CF emitidos: ilimitados, con uso justo (TK-316)
+
+- **No es un medidor ni un tope.** Los e-CF se firman en la tienda y van directo a la DGII; a la nube solo le cuesta guardarlos (centavos por tienda al mes). Por eso no hay cupo ni cobro por documento en ningún plan, y la emisión nunca se niega por volumen.
+- **Uso justo: 50,000 e-CF al mes por negocio** (todas sus tiendas, mes de la tienda UTC−4). Si un negocio lo pasa, el personal de Abastalia lo contacta para revisar el plan. **No hay cobro automático** y la emisión sigue. Es el texto de `/terminos#uso-justo` (sección 6) y el número de `fairUseEcf` en `src/Cloud/panel/src/pages/site/livePrices.ts`.
+- **De dónde sale la cuenta:** `replica.FiscalDocuments` (`FiscalDocumentIssuedV1` que suben las tiendas), por `IssuedUtc`. El Resumen del panel la muestra cada mes: "Este mes emitió N e-CF sin costo adicional" (`ecfThisMonth` de `GET /api/panel/summary`, con el filtro de tienda; oculto con 0).
+- shortcut: nada avisa al personal al pasar los 50,000; se revisa a mano. Cuando haya un negocio cerca, sumar una línea a la vigilancia de límites (TK-311) o una advertencia en el registro, como `ReceiverSignatures`.
+
 ## Servicio adicional: lectura de facturas con IA
 
 - **Incluido en todos los planes:** 20 facturas al mes (`Quotas:Default:SupplierInvoices`).
@@ -81,6 +88,7 @@ Notas:
 - **Panel (Dueños):** tarjeta **Consumo del mes** en Tiendas (`GET /api/usage`): cada medidor con lo usado frente al límite, el plan, los adicionales y la fecha en que se renueva.
 - **Consola de la plataforma:** **Plan y consumo** en la página de cada cliente (`GET /api/platform/tenants/{id}/usage`): el mismo consumo y el selector de plan y adicionales.
 - **Tienda:** Compras muestra las lecturas con IA que quedan (ver arriba).
+- **Resumen del panel:** los e-CF del mes, sin costo adicional (TK-316, arriba).
 
 ## Configuración
 

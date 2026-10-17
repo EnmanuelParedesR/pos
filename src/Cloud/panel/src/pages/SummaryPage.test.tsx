@@ -52,7 +52,31 @@ const summary: Summary = {
     },
   ],
   lastEventUtc: new Date(Date.now() - 5 * 60_000).toISOString(),
+  ecfThisMonth: 8742,
 };
+
+function renderSummary(s: Summary) {
+  vi.stubGlobal("fetch", vi.fn(async (url: string) => (url.includes("/api/panel/summary") ? json(200, s) : json(200, []))));
+  const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {}, canEdit: true };
+  render(
+    <MemoryRouter>
+      <Routes>
+        <Route element={<Outlet context={context} />}>
+          <Route index element={<SummaryPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+it("TK-316: tells the owner how many e-CF the month had at no extra cost, and says nothing when there were none", async () => {
+  renderSummary(summary);
+  expect(await screen.findByText("Este mes emitió 8,742 e-CF sin costo adicional.")).toBeTruthy();
+  cleanup();
+  renderSummary({ ...summary, ecfThisMonth: 0 });
+  expect(await screen.findByText("15,234.50")).toBeTruthy();
+  expect(screen.queryByText(/e-CF sin costo adicional/)).toBeNull();
+});
 
 it("shows the day's numbers, payment methods in Spanish and what to review", async () => {
   const fetch = vi.fn(async (url: string) =>
