@@ -16,7 +16,7 @@
             <TaliaAvatar Size="36" />
             <div>
                 <h2 id="talia-title">Talia</h2>
-                <span>Le explica Abastalia y le abre la pantalla</span>
+                <span>Explica, abre pantallas y propone cambios</span>
             </div>
             <button type="button" class="esc-button esc-button--ghost talia-drawer__close" aria-label="Cerrar Talia" title="Cerrar (Esc)" @onclick="OnClose"><Icon Name="x" /></button>
         </header>
@@ -35,8 +35,9 @@
                     </div>
                 </div>
             }
-            @foreach (var (turn, screen) in History)
+            @foreach (var entry in History)
             {
+                var (turn, screen) = (entry.Turn, entry.Reply?.Screen);
                 <div class="esc-bubble-row esc-bubble-row--@turn.Role">
                     @if (turn.Role == "assistant")
                     {
@@ -67,6 +68,16 @@
                         @if (StoreScreens.Label(screen) is { } label)
                         {
                             <button type="button" class="esc-button talia-drawer__go" @onclick="() => Open(screen!)">Abrir @label <Icon Name="chevron-right" Size="18" /></button>
+                        }
+                        @if (entry.Reply?.Proposal is { } proposal)
+                        {
+                            <TaliaProposalCard Proposal="proposal" State="entry.Card" />
+                        }
+                        else if (entry.Reply?.ProposalError is { } why)
+                        {
+                            @* The store could not build the card from its data (the category exists, no permission): nothing to confirm.
+                               The model was told a card would show, so the notice says plainly there is none. *@
+                            <Notice Kind="Notice.Kinds.Warning" Title="No hay nada que confirmar">@why</Notice>
                         }
                     </div>
                 </div>
@@ -105,7 +116,7 @@
     private bool _busy;
     private Problem? _problem;
 
-    private List<(TaliaTurn Turn, string? Screen)> History => BackOffice.Talia(Session.UserId);
+    private List<TaliaEntry> History => BackOffice.Talia(Session.UserId);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -118,10 +129,11 @@
         if (question.Length == 0 || _busy) return;
         (_busy, _problem, _question) = (true, null, "");
         var history = History.Select(h => h.Turn).ToList();
-        History.Add((new TaliaTurn("user", question), null));
+        // TK-343: a new question leaves the last card as it is (still confirmable): the store runs each proposal once, by its id.
+        History.Add(new TaliaEntry(new TaliaTurn("user", question)));
         // The cloud may think for a while (the model's rounds): longer than a local call.
         var r = await Api.PostAsync<TaliaAnswer>("/api/assistant/ask", new { question, history }, TimeSpan.FromSeconds(70));
-        if (r.Ok && r.Value is { } answer) History.Add((new TaliaTurn("assistant", answer.Answer), answer.Screen));
+        if (r.Ok && r.Value is { } answer) History.Add(new TaliaEntry(new TaliaTurn("assistant", answer.Answer), answer));
         else
         {
             History.RemoveAt(History.Count - 1);

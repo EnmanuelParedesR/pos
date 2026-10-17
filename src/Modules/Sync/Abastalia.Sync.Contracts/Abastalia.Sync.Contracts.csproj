@@ -2,4 +2,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\Abastalia.SharedKernel\Abastalia.SharedKernel.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- TK-343: the store actions Talia may propose, read by the cloud (the propose_* tools) and by the store (its executor). -->
+    <EmbeddedResource Include="storeActions.json" LogicalName="Abastalia.StoreActions.json" />
+  </ItemGroup>
 </Project>

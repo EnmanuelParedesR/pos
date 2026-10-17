@@ -29,6 +29,7 @@ public static class AbastaliaServices
         services.AddModuleDbContext<InfraDbContext>();
         services.AddScoped<IOutbox, Outbox>();
         services.AddScoped<IAuditLog, AuditLog>();
+        services.AddScoped<Endpoints.AssistantRun>(); // TK-343
         services.AddDataProtection(); // the Settings module keeps its key ring in the key folder
         services.AddSingleton<ServiceKeys>();
         services.AddSingleton<AuditKey>();

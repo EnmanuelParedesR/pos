@@ -1,0 +1,15 @@
+[
+  {
+    "type": "create_category",
+    "description": "Propone crear una categoría de productos nueva en esta tienda (Administración → Productos → Nueva categoría). La app de la tienda le muestra a la persona una tarjeta con el resumen y ella confirma o cancela.",
+    "permissions": ["products.manage"],
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 80, "description": "Nombre de la categoría, tal como lo dijo el usuario (por ejemplo Bebidas)." }
+      },
+      "required": ["name"],
+      "additionalProperties": false
+    }
+  }
+]

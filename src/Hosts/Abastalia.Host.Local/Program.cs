@@ -132,6 +132,7 @@ if (https)
 }
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseAssistantGuard(); // TK-343: a Talia proposal only runs on an endpoint marked AllowAssistant
 
 if (app.Environment.IsDevelopment())
 {

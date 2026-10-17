@@ -40,6 +40,8 @@ public static class SyncModule
         services.AddHostedService<HeartbeatWorker>();
         services.AddScoped<CloudBackupUploader>();
         services.AddHostedService<CloudBackupWorker>(); // TK-238
+        services.AddScoped<TaliaProposals>(); // TK-343
+        services.AddScoped<IAssistantProposals>(sp => sp.GetRequiredService<TaliaProposals>());
         services.AddHealthChecks().AddCheck<SyncHealthCheck>("sync");
         return services;
     }
@@ -65,6 +67,7 @@ internal sealed class SyncDbContext(DbContextOptions<SyncDbContext> options) : M
 {
     protected override string Schema => "sync";
     public DbSet<CloudConnection> Connections => Set<CloudConnection>();
+    public DbSet<TaliaProposal> TaliaProposals => Set<TaliaProposal>();
 }
 
 internal sealed class CloudConnectionConfiguration : IEntityTypeConfiguration<CloudConnection>

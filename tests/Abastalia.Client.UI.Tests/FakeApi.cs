@@ -23,6 +23,9 @@ internal sealed class FakeApi : HttpMessageHandler
         get { lock (_requests) return [.. _requests]; }
     }
 
+    /// <summary>TK-343: the requests sent as a Talia proposal (route and the X-Talia-Proposal id).</summary>
+    public List<(string Route, string Id)> Proposals { get; } = [];
+
     /// <summary>A throwing answer (<c>throw new TaskCanceledException()</c>) is a timeout: the request may or may not have been saved.</summary>
     public FakeApi Respond(string method, string route, Func<string, HttpResponseMessage> respond) =>
         RespondAsync(method, route, body => Task.FromResult(respond(body)));
@@ -47,6 +50,7 @@ internal sealed class FakeApi : HttpMessageHandler
         var route = request.RequestUri!.PathAndQuery;
         var body = request.Content is null ? "" : await request.Content.ReadAsStringAsync(cancellationToken);
         lock (_requests) _requests.Add((request.Method.Method, route, body));
+        if (request.Headers.TryGetValues("X-Talia-Proposal", out var proposal)) lock (_requests) Proposals.Add((route, proposal.Single()));
         (string Method, string Route, Func<string, Task<HttpResponseMessage>> Respond)[] routes;
         lock (_routes) routes = [.. _routes];
         foreach (var r in routes)
