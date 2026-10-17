@@ -5,14 +5,14 @@
 <style>
 /* Layout: one reading column (decision sheet), the three directions side by side as columns that stack on a phone. Brand tokens of abastalia.com. */
 :root {
-  --brand: #0B5CAD; --brand-soft: #E4EFFA; --ink: #14181D; --muted: #4A525B; --bg: #FFFFFF; --counter: #EEF0F2; --line: #C9CED4;
+  --brand: #6B1F5E; --brand-soft: #F5EAFA; --ink: #14181D; --muted: #4A525B; --bg: #FFFFFF; --counter: #EEF0F2; --line: #C9CED4;
   --amber: #FFC233; --amber-soft: #FFF1D6; --amber-ink: #8A4B00; --ok: #16663A; --ok-soft: #E3F4E8; --bad: #A4262C; --bad-soft: #FBE7E8;
   --night: #14181D; --night-ink: #F1F3F5; --on-brand: #FFFFFF;
   --sans: "IBM Plex Sans", system-ui, "Segoe UI", sans-serif; --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --brand: #6DB3F5; --brand-soft: #16263A; --ink: #F1F3F5; --muted: #B4BCC4; --bg: #14181D; --counter: #1C2128; --line: #3A424B;
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --brand: #E2A3D3; --brand-soft: #2F1F36; --ink: #F1F3F5; --muted: #B4BCC4; --bg: #14181D; --counter: #1C2128; --line: #3A424B;
   --amber-soft: #33270F; --amber-ink: #F5C98A; --ok: #8FD8AB; --ok-soft: #14301E; --bad: #F2A7AB; --bad-soft: #3A1A1C; --night: #0B0E12; --on-brand: #14181D; color-scheme: dark; } }
-:root[data-theme="dark"] { --brand: #6DB3F5; --brand-soft: #16263A; --ink: #F1F3F5; --muted: #B4BCC4; --bg: #14181D; --counter: #1C2128; --line: #3A424B;
+:root[data-theme="dark"] { --brand: #E2A3D3; --brand-soft: #2F1F36; --ink: #F1F3F5; --muted: #B4BCC4; --bg: #14181D; --counter: #1C2128; --line: #3A424B;
   --amber-soft: #33270F; --amber-ink: #F5C98A; --ok: #8FD8AB; --ok-soft: #14301E; --bad: #F2A7AB; --bad-soft: #3A1A1C; --night: #0B0E12; --on-brand: #14181D; color-scheme: dark; }
 body { background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--sans); }
 .wrap { max-width: 1080px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
@@ -55,7 +55,7 @@ figcaption { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .mini > div { padding: 8px 10px; border-top: 1px solid var(--line); }
 .mini > div:first-child { border-top: 0; }
 .m-dark { background: var(--night); color: var(--night-ink); }
-.m-blue { background: #0B5CAD; color: #fff; }
+.m-brand { background: #6B1F5E; color: #fff; }
 .m-gray { background: var(--counter); }
 .m-row { display: flex; gap: 6px; align-items: center; }
 .m-h { font-weight: 700; font-size: 12px; }
@@ -91,7 +91,7 @@ code { font: 500 13px var(--mono); background: var(--counter); padding: 1px 5px;
 .ecf__mono { font: 500 14px var(--mono); }
 .ecf__chip { align-self: flex-start; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 4px; background: #22303F; color: #CFE3F7; }
 .ecf__chip--warn { background: #3A2A08; color: #F5B94A; flex: none; }
-.ecf__arrow { display: grid; place-items: center; color: #6DB3F5; font-size: 20px; transform: rotate(90deg); }
+.ecf__arrow { display: grid; place-items: center; color: #E2A3D3; font-size: 20px; transform: rotate(90deg); }
 @media (min-width: 820px) { .ecf__arrow { transform: none; } }
 .ecf__offline { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; font-size: 14px; color: #D3D9DF; border-top: 1px dashed #343B44; padding-top: 12px; }
 .ecf__offline span:last-child { flex: 1 1 260px; min-width: 0; }
@@ -149,7 +149,7 @@ code { font: 500 13px var(--mono); background: var(--counter); padding: 1px 5px;
         <div class="mini" aria-hidden="true">
           <div><div class="m-row"><div style="flex:1"><div class="m-h">Venda, facture y cuadre la caja. Aunque se vaya el internet.</div><span class="m-chip">Probar 14 días</span></div><div class="m-scr"></div><div class="m-phone"></div></div></div>
           <div class="m-gray"><div class="m-tiles"><span>Sin internet</span><span>e-CF sin cupo</span><span>Cuadre de caja</span><span>Talia</span><span>Desde el celular</span><span>Clientes y crédito</span></div></div>
-          <div class="m-blue"><div class="m-row"><div style="flex:1"><div class="m-h">Pregúntele a Talia</div><span class="m-chip">¿Cuánto vendí ayer?</span><span class="m-chip">¿Quién tuvo faltante?</span></div><div class="m-phone"></div></div></div>
+          <div class="m-brand"><div class="m-row"><div style="flex:1"><div class="m-h">Pregúntele a Talia</div><span class="m-chip">¿Cuánto vendí ayer?</span><span class="m-chip">¿Quién tuvo faltante?</span></div><div class="m-phone"></div></div></div>
           <div><div class="m-h">Clientes y cuentas por cobrar</div>límite · abonos · estado de cuenta por WhatsApp</div>
           <div class="m-dark"><div class="m-h">e-CF sin intermediarios</div></div>
           <div><div class="m-h">Cómo funciona</div>video · 3 pasos</div>
@@ -157,7 +157,7 @@ code { font: 500 13px var(--mono); background: var(--counter); padding: 1px 5px;
         <ul>
           <li>La maqueta del hero <b>se mueve</b> una vez: entran las líneas, la caja pasa de «Sin internet · 3 e-CF en cola» a «3 e-CF aceptados» y el total del celular sube.</li>
           <li>Seis beneficios arriba, cada uno con su línea.</li>
-          <li>Franja azul de Talia con su captura real y las preguntas que sí contesta.</li>
+          <li>Franja berenjena de Talia con su captura real y las preguntas que sí contesta.</li>
           <li>Bloque nuevo de clientes y cuentas por cobrar con la captura del estado de cuenta.</li>
           <li>Las secciones aparecen suaves al bajar, siempre visibles sin JavaScript.</li>
         </ul>
@@ -171,7 +171,7 @@ code { font: 500 13px var(--mono); background: var(--counter); padding: 1px 5px;
           <div class="m-row"><span class="m-hour">10:30</span><div class="m-scr"></div><span>Se va el internet: sigue</span></div>
           <div class="m-row"><span class="m-hour">13:00</span><div class="m-scr"></div><span>Venta a crédito</span></div>
           <div class="m-row"><span class="m-hour">19:00</span><div class="m-scr"></div><span>Cuadre ciego</span></div>
-          <div class="m-row m-blue"><span class="m-hour" style="color:#fff">21:00</span><div class="m-phone"></div><span>Desde la casa, a Talia</span></div>
+          <div class="m-row m-brand"><span class="m-hour" style="color:#fff">21:00</span><div class="m-phone"></div><span>Desde la casa, a Talia</span></div>
         </div>
         <ul>
           <li>El inicio cuenta un día real por horas. Cada hora tiene su captura y queda fija mientras se baja.</li>
@@ -183,7 +183,7 @@ code { font: 500 13px var(--mono); background: var(--counter); padding: 1px 5px;
       <article class="dir">
         <h3>C · Talia al frente</h3>
         <div class="mini" aria-hidden="true">
-          <div class="m-blue"><div class="m-row"><div style="flex:1"><div class="m-h">Pregúntele a su negocio.</div>Ventas, cuadres y quién le debe, desde el celular.</div><div class="m-phone"></div></div></div>
+          <div class="m-brand"><div class="m-row"><div style="flex:1"><div class="m-h">Pregúntele a su negocio.</div>Ventas, cuadres y quién le debe, desde el celular.</div><div class="m-phone"></div></div></div>
           <div class="m-gray"><div class="m-tiles"><span>e-CF sin cupo</span><span>Sin internet</span><span>Cuadre</span></div></div>
           <div class="m-dark"><div class="m-h">e-CF sin intermediarios</div></div>
           <div><div class="m-h">Cómo funciona</div></div>

@@ -8,7 +8,7 @@ internal sealed class Category
     public Guid Id { get; set; }
     public string Name { get; set; } = "";
     /// <summary>#RRGGBB shown on the register tiles.</summary>
-    public string Color { get; set; } = "#0B5CAD";
+    public string Color { get; set; } = "#6B1F5E";
     /// <summary>Predefined line notes for products of this category ("molida", "sin grasa").</summary>
     public List<string> Notes { get; set; } = [];
     public bool IsActive { get; set; } = true;
