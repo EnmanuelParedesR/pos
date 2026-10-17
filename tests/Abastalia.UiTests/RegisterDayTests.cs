@@ -157,7 +157,7 @@ public sealed class RegisterDayTests(RegisterApp app) : IClassFixture<RegisterAp
         await Expect(checkout.GetByLabel("Monto")).ToHaveValueAsync("59.00");
         await Expect(checkout.GetByLabel("Monto")).ToBeFocusedAsync();
         await Keys.PressAsync("Enter");
-        await ApproveAsync("fiado RD$ 59.00 a Colmado Vecino"); // R11 A6: selling on account needs credit.sell, the cashier does not have it
+        await ApproveAsync("a crédito RD$ 59.00 a Colmado Vecino"); // R11 A6: selling on account needs credit.sell, the cashier does not have it
         await Expect(Saved).ToBeVisibleAsync();
 
         // ── Hold a sale and resume it ──

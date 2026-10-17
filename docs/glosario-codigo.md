@@ -4,6 +4,8 @@ Regla (15 de octubre de 2026): **todo el código está en inglés**. Eso incluye
 
 En español queda solo lo que ve una persona en la tienda: textos de pantalla, mensajes de error y de validación que muestra la caja, la factura impresa y los reportes para el dueño o el contador. La documentación de `docs/` y `backlog/` sigue en español.
 
+En pantalla, en el papel y en Talia nunca se dice «fiado» (TK-312 en el sitio, TK-353 en el producto): la forma de pago es «A crédito», la deuda de los clientes es «Le deben (cuentas por cobrar)», lo que pagan es «Abonos de crédito» y en el estado de cuenta el cargo es «Venta a crédito».
+
 Los nombres propios no se traducen: Abastalia, Escuadra, ITBIS, RNC, e-NCF (`ENcf`), e-CF (`Ecf`), DGII, 606/607, PLU.
 
 ## Módulos
@@ -16,7 +18,7 @@ Los nombres propios no se traducen: Abastalia, Escuadra, ITBIS, RNC, e-NCF (`ENc
 | Caja (cajas, turnos, movimientos, cierre Z) | `Abastalia.CashRegister` | `cash` | `/api/cash` |
 | Ventas | `Abastalia.Sales` | `sales` | `/api/sales` |
 | Compras y suplidores | `Abastalia.Purchasing` | `purchasing` | `/api/purchasing` |
-| Clientes y fiado | `Abastalia.Customers` | `customers` | `/api/customers` |
+| Clientes y crédito | `Abastalia.Customers` | `customers` | `/api/customers` |
 | Fiscal (e-CF) | `Abastalia.Fiscal` | `fiscal` | `/api/fiscal` |
 | Reportes | `Abastalia.Reports` | — | `/api/reports` |
 | Nube (conexión y subida) | `Abastalia.Sync` | `sync` | `/api/sync` |
@@ -26,7 +28,7 @@ Los nombres propios no se traducen: Abastalia, Escuadra, ITBIS, RNC, e-NCF (`ENc
 | Español | Código |
 |---|---|
 | venta, línea, pago | `Sale`, `SaleLine`, `Payment` |
-| medio de pago: efectivo, tarjeta, transferencia, fiado, saldo a favor | `PaymentMethod`: `Cash`, `Card`, `Transfer`, `OnAccount`, `CreditBalance` |
+| medio de pago: efectivo, tarjeta, transferencia, a crédito, saldo a favor | `PaymentMethod`: `Cash`, `Card`, `Transfer`, `OnAccount`, `CreditBalance` |
 | devuelta | `Change` |
 | anular, anulación | `Void` |
 | devolución | `Return` |
@@ -56,7 +58,7 @@ Los nombres propios no se traducen: Abastalia, Escuadra, ITBIS, RNC, e-NCF (`ENc
 | suplidor, pago a suplidor, gasto con NCF | `Supplier`, `SupplierPayment`, `Expense` |
 | cuenta por pagar / por cobrar, antigüedad | `Payable` / `Receivable`, `Aging` |
 | cliente, límite de crédito, estado de cuenta | `Customer`, `CreditLimit`, `Statement` |
-| fiado (cargo), abono | `OnAccountCharge`, `CustomerPayment` |
+| venta a crédito (cargo), abono de crédito | `OnAccountCharge`, `CustomerPayment` |
 | deuda, saldo a favor (cuenta del cliente) | `Debt`, `CreditBalance` (`CustomerBalanceChangedV1`) |
 | mezcla de medios de pago, ventas por hora | `PaymentMethodSales`, `HourlySales` |
 | tema (automático, claro, oscuro) | `Theme` (`system`, `light`, `dark`; `data-theme` en `<html>`) |
@@ -111,8 +113,8 @@ Los nombres propios no se traducen: Abastalia, Escuadra, ITBIS, RNC, e-NCF (`ENc
 | `compras.gestionar` (suplidores, compras, pedido sugerido) | `purchasing.manage` |
 | pagar a suplidores y gastos con NCF (M16) | `payables.pay` |
 | `clientes.gestionar` | `customers.manage` |
-| cobrar abonos de fiado en la caja (M16) | `credit.collect` |
-| `fiado.gestionar` / `exceder-limite` | `credit.manage` / `exceed-limit` |
+| cobrar abonos de crédito en la caja (M16) | `credit.collect` |
+| `credito.gestionar` / `exceder-limite` | `credit.manage` / `exceed-limit` |
 | `fiscal.gestionar` (certificado, secuencias, anulaciones, padrón) | `fiscal.manage` |
 | reportes de la DGII 606/607/608 (M16) | `fiscal.reports` |
 | `reportes.ver` (ventas e inventario) | `reports.view` |

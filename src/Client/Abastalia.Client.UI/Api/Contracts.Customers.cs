@@ -8,7 +8,7 @@ public sealed record CustomerRow(Guid Id, string Name, string? TaxId, string? Ph
 public sealed record SaveCustomer(string Name, string? TaxId, string? Phone, string? Address, bool FiscalCredit, PriceLevel PriceLevel,
     decimal CreditLimit, bool IsActive);
 
-/// <param name="Type">Already in Spanish (Fiado, Abono, Abono anulado…).</param>
+/// <param name="Type">Already in Spanish (Venta a crédito, Abono, Abono anulado…).</param>
 /// <param name="PaymentId">Only on a live payment taken at a register: the one that can be voided.</param>
 public sealed record StatementLine(DateTime DateUtc, string Type, string? Document, decimal Charge, decimal Payment, decimal Debt, Guid? PaymentId);
 public sealed record CustomerStatement(Guid CustomerId, string Name, decimal Debt, decimal CreditBalance, decimal CreditLimit, StatementLine[] Lines);

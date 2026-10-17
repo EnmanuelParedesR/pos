@@ -11,7 +11,7 @@ const movementNames: Record<string, string> = {
   CashIn: "Entradas de efectivo",
   Withdrawal: "Salidas de efectivo",
   Expense: "Gastos",
-  CustomerPayment: "Abonos de fiado",
+  CustomerPayment: "Abonos de crédito",
   CustomerPaymentVoid: "Abonos anulados",
   Rounding: "Redondeo",
   DrawerOpened: "Aperturas de gaveta sin venta",

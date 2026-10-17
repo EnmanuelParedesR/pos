@@ -36,11 +36,11 @@ public sealed class RolesSettingsTests
 
         page.WaitForAssertion(() => page.Find("button[aria-label='Editar Cajero']").Click());
         var legends = page.FindAll("legend").Select(l => l.TextContent).ToList();
-        legends.ShouldBe(["Caja", "Ventas", "Clientes y fiado", "Compras", "Reportes", "Administración"]);
+        legends.ShouldBe(["Caja", "Ventas", "Clientes y crédito", "Compras", "Reportes", "Administración"]);
         string Label(string text) => page.FindAll("label.esc-check").Single(l => l.TextContent.Contains(text)).TextContent;
         Label("Abrir turno").ShouldNotBeNull();
         Label("Cerrar su propio turno").ShouldNotBeNull();
-        Label("Cobrar abonos de fiado").ShouldNotBeNull();
+        Label("Cobrar abonos de crédito").ShouldNotBeNull();
         Label("Pagar a suplidores").ShouldNotBeNull();
         Label("Turnos y cuadres").ShouldNotBeNull();
         Label("reportes de la DGII").ShouldNotBeNull();

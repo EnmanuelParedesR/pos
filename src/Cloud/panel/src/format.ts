@@ -21,7 +21,7 @@ export const paymentMethodNames: Record<PaymentMethod, string> = {
   Cash: "Efectivo",
   Card: "Tarjeta",
   Transfer: "Transferencia",
-  OnAccount: "Fiado",
+  OnAccount: "A crédito",
   CreditBalance: "Saldo a favor",
 };
 

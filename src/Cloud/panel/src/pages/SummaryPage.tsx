@@ -157,7 +157,7 @@ function SummaryView({ summary: s, lastWeek, days, top, receivables, isToday }: 
         </Card>
 
         {receivables && receivables.total > 0 && (
-          <Card title="Le deben (fiado)" aside={`${money(receivables.total)} · ${receivables.customerCount} ${receivables.customerCount === 1 ? "cliente" : "clientes"}`} className="esc-span-12">
+          <Card title="Le deben (cuentas por cobrar)" aside={`${money(receivables.total)} · ${receivables.customerCount} ${receivables.customerCount === 1 ? "cliente" : "clientes"}`} className="esc-span-12">
             <BarList
               items={receivables.topDebtors.map((d) => ({
                 key: d.customerId,

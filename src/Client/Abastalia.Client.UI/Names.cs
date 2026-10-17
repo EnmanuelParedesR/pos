@@ -62,7 +62,7 @@ public static class Names
         Api.PaymentMethod.Cash => "Efectivo",
         Api.PaymentMethod.Card => "Tarjeta",
         Api.PaymentMethod.Transfer => "Transferencia",
-        Api.PaymentMethod.OnAccount => "A crédito (fiado)",
+        Api.PaymentMethod.OnAccount => "A crédito",
         _ => "Saldo a favor",
     };
 

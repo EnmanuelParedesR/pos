@@ -96,7 +96,7 @@
             @if (!_loading && !Visible.Any())
             {
                 <EmptyState Icon="users" Title="@(_onlyOwing ? "Nadie le debe" : string.IsNullOrWhiteSpace(_search) ? "Todavía no hay clientes" : $"Nada coincide con “{_search}”")">
-                    @(_message ?? (_onlyOwing ? "Cuando alguien compre fiado aparece aquí." : string.IsNullOrWhiteSpace(_search) ? "Cree el primero con “Nuevo cliente” o desde la caja (F6)." : "Pruebe con otra palabra, el RNC o el teléfono."))
+                    @(_message ?? (_onlyOwing ? "Cuando alguien compre a crédito aparece aquí." : string.IsNullOrWhiteSpace(_search) ? "Cree el primero con “Nuevo cliente” o desde la caja (F6)." : "Pruebe con otra palabra, el RNC o el teléfono."))
                 </EmptyState>
             }
             @if (_customers.Count >= 50)
@@ -115,7 +115,7 @@
                         @if (_notice is not null) { <Notice Kind="_noticeKind" Title="@_notice" /> }
                         @if (s.Debt > s.CreditLimit && s.Debt > 0)
                         {
-                            <Notice Kind="Notice.Kinds.Error" Title="@($"Pasó su límite por {Format.WithCurrency(s.Debt - s.CreditLimit)}")">Para fiarle más hace falta un supervisor en la caja.</Notice>
+                            <Notice Kind="Notice.Kinds.Error" Title="@($"Pasó su límite por {Format.WithCurrency(s.Debt - s.CreditLimit)}")">Para venderle más a crédito hace falta un supervisor en la caja.</Notice>
                         }
                         @if (_voiding is { } v)
                         {
@@ -187,7 +187,7 @@
                             </table>
                             @if (s.Lines.Length == 0)
                             {
-                                <EmptyState Icon="receipt" Title="Sin movimientos">Las compras fiadas y los abonos aparecen aquí.</EmptyState>
+                                <EmptyState Icon="receipt" Title="Sin movimientos">Las compras a crédito y los abonos aparecen aquí.</EmptyState>
                             }
                         </div>
                     </ChildContent>
@@ -223,10 +223,10 @@
                             <Field Label="Dirección" Wide="true">
                                 <input class="esc-input" maxlength="200" @bind="f.Address" />
                             </Field>
-                            <Field Label="Límite de crédito RD$" Error="@Err("limit")" Hint="@(CanCredit ? "Lo máximo que puede deber. 0 = no se le fía." : "Solo lo cambia quien tiene el permiso de fiado.")">
+                            <Field Label="Límite de crédito RD$" Error="@Err("limit")" Hint="@(CanCredit ? "Lo máximo que puede deber. 0 = no se le vende a crédito." : "Solo lo cambia quien tiene el permiso de crédito.")">
                                 <input class="esc-input esc-num" inputmode="decimal" disabled="@(!CanCredit)" @bind="f.CreditLimit" @bind:after='() => Clear("limit")' aria-invalid="@Invalid("limit")" />
                             </Field>
-                            <Field Label="Precio" Hint="@(CanCredit ? "Mayorista usa el precio mayorista de cada producto." : "Solo lo cambia quien tiene el permiso de fiado.")">
+                            <Field Label="Precio" Hint="@(CanCredit ? "Mayorista usa el precio mayorista de cada producto." : "Solo lo cambia quien tiene el permiso de crédito.")">
                                 <select class="esc-select" disabled="@(!CanCredit)" @bind="f.PriceLevel">
                                     <option value="@PriceLevel.Retail">Detalle</option>
                                     <option value="@PriceLevel.Wholesale">Mayorista</option>
@@ -237,7 +237,7 @@
                             <label class="esc-check"><input type="checkbox" @bind="f.FiscalCredit" @bind:after='() => Clear("taxId")' /> Pide factura de crédito fiscal (E31)</label>
                             @if (f.Id is not null)
                             {
-                                <label class="esc-check"><input type="checkbox" @bind="f.IsActive" disabled="@(!f.WasActive && !CanCredit)" /> Activo (se le puede vender y fiar)</label>
+                                <label class="esc-check"><input type="checkbox" @bind="f.IsActive" disabled="@(!f.WasActive && !CanCredit)" /> Activo (se le puede vender, también a crédito)</label>
                             }
                         </div>
                         @if (_error is not null) { <Notice Title="@_error" /> }
@@ -427,7 +427,7 @@
         if (string.IsNullOrWhiteSpace(f.Name)) _errors["name"] = "Escriba el nombre.";
         if (taxId is not null && !TaxId.IsValid(taxId)) _errors["taxId"] = "El RNC tiene 9 números y la cédula 11.";
         else if (taxId is null && f.FiscalCredit) _errors["taxId"] = "Para crédito fiscal hace falta el RNC o la cédula.";
-        if (Format.ParseNumber(f.CreditLimit ?? "0") is not >= 0) _errors["limit"] = "Escriba un número (0 si no se le fía).";
+        if (Format.ParseNumber(f.CreditLimit ?? "0") is not >= 0) _errors["limit"] = "Escriba un número (0 si no se le vende a crédito).";
         if (_errors.Count > 0) return;
         var body = new SaveCustomer(f.Name.Trim(), taxId, Clean(f.Phone), Clean(f.Address), f.FiscalCredit, f.PriceLevel,
             Math.Round(Format.ParseNumber(f.CreditLimit ?? "0") ?? 0, 2), f.IsActive);
@@ -444,7 +444,7 @@
                 else _view = View.None;
                 break;
             case "Customers.DuplicateTaxId": _errors["taxId"] = "Ya hay un cliente con ese RNC o cédula."; break;
-            case "Customers.CreditPermissionRequired": _error = "Cambiar el límite, el precio mayorista o reactivar un cliente necesita el permiso de fiado."; break;
+            case "Customers.CreditPermissionRequired": _error = "Cambiar el límite, el precio mayorista o reactivar un cliente necesita el permiso de crédito."; break;
             default: _error = p.Message; break;
         }
     }
