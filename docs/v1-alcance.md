@@ -8,10 +8,9 @@ Venta, caja y cuadre ciego; inventario, compras y 606/607/608; clientes y fiado;
 ## 2. V1 con código pendiente (los hace el equipo ahora)
 | Ticket | Qué falta |
 |---|---|
-| TK-307 | Pulir el video del producto (hora de tienda, nitidez del WebM) |
 | TK-303 | Alojar el instalador del piloto y la página /descargar (espera el permiso del dueño para publicarlo) |
 
-Cerrado en esta etapa: TK-160, TK-291, TK-292 (instalador probado en VM: PC principal y caja), TK-293 a TK-301 (pedidos del dueño del 17/10), TK-302 (borradores legales, falta el abogado), TK-304, TK-305, TK-308 y la revisión de cierre R12 (backlog/reviews/R12-cierre-v1.md).
+Cerrado en esta etapa: TK-160, TK-291, TK-292 (instalador probado en VM: PC principal y caja), TK-293 a TK-301 (pedidos del dueño del 17/10), TK-302 (borradores legales, falta el abogado), TK-304, TK-305, TK-308 TK-307 (video a la hora de la tienda), TK-309 (prueba tienda↔nube por HTTP real) y la revisión de cierre R12 (backlog/reviews/R12-cierre-v1.md). CI en verde en los 6 trabajos.
 
 ## 3. V1 bloqueado por terceros o por el dueño (el código está; falta validar)
 | Ticket | Bloqueo |
