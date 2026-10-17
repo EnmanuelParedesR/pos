@@ -1,0 +1,86 @@
+{
+  "name": "abastalia-demo",
+  "fps": 30,
+  "width": 1280,
+  "height": 720,
+  "phoneScreen": {
+    "x": 708,
+    "y": 30,
+    "w": 305,
+    "h": 660
+  },
+  "label": "Video de 42 segundos, sin sonido: una venta en la caja de Abastalia, el e-CF, el cierre de caja y el panel del dueño en el teléfono, con datos de ejemplo.",
+  "shots": [
+    {
+      "id": "titulo",
+      "capture": "venta",
+      "seconds": 3,
+      "title": "Abastalia",
+      "caption": "La caja de su tienda",
+      "description": "La pantalla de venta de una tienda de ejemplo, Comercial La Esquina, todavía vacía.",
+      "still": true
+    },
+    {
+      "id": "unidad",
+      "capture": "venta",
+      "seconds": 6,
+      "caption": "Venda por unidad o por código",
+      "description": "La cajera escanea un saco de arroz y toca tres veces el refresco: cada producto entra en la venta con su precio.",
+      "zoom": {
+        "x": 0.98,
+        "y": 0.3,
+        "scale": 1.2
+      }
+    },
+    {
+      "id": "peso",
+      "capture": "venta",
+      "seconds": 6,
+      "caption": "Pese en la balanza: el precio sale solo",
+      "description": "Toca el queso de freír, la balanza marca 1.250 libras y la línea sale con el precio calculado.",
+      "zoom": {
+        "x": 0.98,
+        "y": 0.7,
+        "scale": 1.2
+      }
+    },
+    {
+      "id": "ecf",
+      "capture": "cobro",
+      "seconds": 6,
+      "caption": "Cada venta emite su e-CF",
+      "description": "Cobra en efectivo, la pantalla muestra la devuelta y la factura con su número de e-CF y el código de seguridad."
+    },
+    {
+      "id": "cierre",
+      "capture": "cierre",
+      "seconds": 6,
+      "caption": "Cuadre la caja al final del día",
+      "description": "Al cerrar, cuenta el efectivo por billete y la caja compara lo contado con lo esperado: sin diferencia."
+    },
+    {
+      "id": "telefono",
+      "capture": "telefono",
+      "seconds": 7,
+      "phone": true,
+      "caption": "Vea su negocio desde el teléfono",
+      "description": "El panel del dueño en un teléfono: lo vendido en el día, los últimos 7 días y lo más vendido."
+    },
+    {
+      "id": "talia",
+      "capture": "telefono",
+      "seconds": 6,
+      "phone": true,
+      "caption": "Pregúntele a Talia",
+      "description": "Escribe «¿Qué se vendió más esta semana?» y Talia, la asistente, contesta con los productos y los montos."
+    },
+    {
+      "id": "cierre-final",
+      "seconds": 2,
+      "card": true,
+      "title": "Pruébelo gratis",
+      "caption": "abastalia.com",
+      "description": "El logo de Abastalia con la invitación a probarlo gratis en abastalia.com."
+    }
+  ]
+}

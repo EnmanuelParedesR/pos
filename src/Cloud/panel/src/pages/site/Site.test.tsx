@@ -184,3 +184,16 @@ it("TK-245: /e-cf keeps the date, the extension note and the legal disclaimer", 
   expect(screen.getByText(/prórroga de seis meses/)).toBeTruthy();
   expect(screen.getByText(/no es asesoría legal/)).toBeTruthy();
 });
+
+it("TK-296: the home's video never loads or plays by itself, has a descriptions track and a visible transcript from the same script", () => {
+  renderAt("/");
+  const video = screen.getByLabelText(/Video de 42 segundos/) as HTMLVideoElement;
+  expect(video.getAttribute("preload")).toBe("none");
+  expect(video.hasAttribute("autoplay")).toBe(false);
+  expect(video.querySelector("track")?.getAttribute("kind")).toBe("descriptions");
+  expect(video.querySelector("track")?.getAttribute("srclang")).toBe("es");
+  const transcript = document.getElementById(video.getAttribute("aria-describedby")!)!;
+  expect(within(transcript).getByText("Lo que muestra el video (sin sonido)")).toBeTruthy();
+  expect(within(transcript).getByText("Pregúntele a Talia.")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Ver el video (0:42)" })).toBeTruthy();
+});

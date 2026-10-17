@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { contactHref, site } from "./config";
 import { usePlanPrices } from "./livePrices";
+import productVideo from "./productVideo.json";
 
 /** TK-245: shared blocks of the public site ("less text, more visuals", docs/diseno/sitio-inicio-maqueta.html). Colors only through site.css tokens. */
 
@@ -290,6 +291,69 @@ export function LoopVideo({ name, poster, label }: { name: string; poster: strin
   );
 }
 
+/** "0:03" for a number of seconds. */
+const clock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
+/** TK-296: the product video (design/video/README.md). Never plays by itself: a big button over the poster starts it, then the browser's
+ *  controls. Like LoopVideo, the poster is set only near the screen (LCP), and width/height are fixed (no shift). The text on screen and the
+ *  visible transcript come from the same productVideo.json as the burned-in captions and the descriptions track. */
+export function ProductVideo() {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [near, setNear] = useState(false);
+  const [started, setStarted] = useState(false);
+  const transcript = useId();
+  const media = `/media/${productVideo.name}`;
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    if (typeof IntersectionObserver === "undefined") return setNear(true);
+    const soon = new IntersectionObserver(([e]) => e.isIntersecting && setNear(true), { rootMargin: "300px" });
+    soon.observe(video);
+    return () => soon.disconnect();
+  }, []);
+  const play = () => {
+    setStarted(true);
+    ref.current?.focus(); // the button goes away: keep the keyboard on the video (its controls)
+    ref.current?.play().catch(() => {});
+  };
+  let at = 0;
+  const lines = productVideo.shots.map((s) => {
+    const line = { time: clock(at), text: s.title ? `${s.title}: ${s.caption}` : s.caption, description: s.description };
+    at += s.seconds;
+    return line;
+  });
+  return (
+    <figure className="product-video">
+      <div className="product-video__frame">
+        <video ref={ref} className="product-video__video" controls={started} muted playsInline preload="none" poster={near ? `${media}-portada.webp` : undefined}
+          width={productVideo.width} height={productVideo.height} aria-label={productVideo.label} aria-describedby={transcript}>
+          <source src={`${media}.webm`} type="video/webm" />
+          <source src={`${media}.mp4`} type="video/mp4" />
+          <track kind="descriptions" srcLang="es" label="Español" src={`${media}.es.vtt`} default />
+        </video>
+        {!started && (
+          <button type="button" className="product-video__play" onClick={play}>
+            <span className="product-video__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="28" height="28"><path d="M8 5v14l11-7z" fill="currentColor" /></svg>
+            </span>
+            <span className="product-video__label">Ver el video ({clock(at)})</span>
+          </button>
+        )}
+      </div>
+      <details className="product-video__transcript" id={transcript}>
+        <summary>Lo que muestra el video (sin sonido)</summary>
+        <ol>
+          {lines.map((l) => (
+            <li key={l.time}>
+              <span className="product-video__time">{l.time}</span> <strong>{l.text}.</strong> {l.description}
+            </li>
+          ))}
+        </ol>
+      </details>
+    </figure>
+  );
+}
+
 /** Hero art for a business page: a real photo of that kind of counter. */
 export const BusinessArt = ({ kind }: { kind: Business }) => (
   <div className={`biz-art biz--${kind}`}>
@@ -323,15 +387,18 @@ export function BusinessCards() {
 }
 
 /** TK-281: how it works, each step with a real screenshot of the register, what it takes and how long. A vertical timeline on a phone, three columns on a wide screen. */
-export function HowItWorks({ items }: { items: { title: string; text: ReactNode; time: string; shot: string; alt: string }[] }) {
+/** TK-296: without `shot` (the home, where the video shows the product) the steps are text only. */
+export function HowItWorks({ items }: { items: { title: string; text: ReactNode; time: string; shot?: string; alt?: string }[] }) {
   return (
     <ol className="how">
       {items.map((s, i) => (
         <li key={s.title} className="how__step">
           <span className="how__num" aria-hidden="true">{i + 1}</span>
-          <div className="how__shot">
-            <Photo name={s.shot} alt={s.alt} ratio={16 / 10} sizes="(min-width: 900px) 360px, 100vw" />
-          </div>
+          {s.shot && (
+            <div className="how__shot">
+              <Photo name={s.shot} alt={s.alt ?? ""} ratio={16 / 10} sizes="(min-width: 900px) 360px, 100vw" />
+            </div>
+          )}
           <div className="how__text">
             <h3>{s.title}</h3>
             <p>{s.text}</p>

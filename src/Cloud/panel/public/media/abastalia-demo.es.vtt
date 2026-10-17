@@ -1,0 +1,35 @@
+WEBVTT
+
+NOTE TK-296: generado por design/video/montaje.py desde productVideo.json; no editar a mano.
+
+titulo
+00:00:00.000 --> 00:00:03.000
+La pantalla de venta de una tienda de ejemplo, Comercial La Esquina, todavía vacía.
+
+unidad
+00:00:03.000 --> 00:00:09.000
+La cajera escanea un saco de arroz y toca tres veces el refresco: cada producto entra en la venta con su precio.
+
+peso
+00:00:09.000 --> 00:00:15.000
+Toca el queso de freír, la balanza marca 1.250 libras y la línea sale con el precio calculado.
+
+ecf
+00:00:15.000 --> 00:00:21.000
+Cobra en efectivo, la pantalla muestra la devuelta y la factura con su número de e-CF y el código de seguridad.
+
+cierre
+00:00:21.000 --> 00:00:27.000
+Al cerrar, cuenta el efectivo por billete y la caja compara lo contado con lo esperado: sin diferencia.
+
+telefono
+00:00:27.000 --> 00:00:34.000
+El panel del dueño en un teléfono: lo vendido en el día, los últimos 7 días y lo más vendido.
+
+talia
+00:00:34.000 --> 00:00:40.000
+Escribe «¿Qué se vendió más esta semana?» y Talia, la asistente, contesta con los productos y los montos.
+
+cierre-final
+00:00:40.000 --> 00:00:42.000
+El logo de Abastalia con la invitación a probarlo gratis en abastalia.com.

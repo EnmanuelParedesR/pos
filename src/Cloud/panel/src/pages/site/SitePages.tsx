@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { site } from "./config";
 import { usePlanPrices } from "./livePrices";
 import { useReferralLink } from "../../referral";
-import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, LoopVideo, ProductArt, Section, Steps, Tbd, Trial, type IconName } from "./SiteParts";
+import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, LoopVideo, ProductArt, ProductVideo, Section, Steps, Tbd, Trial, type IconName } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
 export interface SitePage {
@@ -77,13 +77,15 @@ function Home() {
           ¿Necesita certificarse? Le acompañamos →
         </Link>
       </EcfFlow>
-      <Section>
-        <h2>Empiece hoy, en 3 pasos</h2>
+      <Section className="how-it-works">
+        <h2>Cómo funciona</h2>
+        <ProductVideo />
+        <h3 className="how-it-works__lead">Empiece hoy, en 3 pasos</h3>
         <HowItWorks
           items={[
-            { title: "Instale Abastalia", text: <>En la PC de la tienda: su nombre, su negocio y listo. <Link to="/descargar">Descargar</Link></>, time: "10 minutos", shot: "paso-1-instalar", alt: "Pantalla de Abastalia para configurar la PC principal de una tienda nueva" },
-            { title: "Cargue sus productos", text: "Con precio por libra o por unidad. O empiece con los de ejemplo.", time: "El mismo día", shot: "paso-2-productos", alt: "Lista de productos de Abastalia con precio, ITBIS y existencia" },
-            { title: "Venda", text: "Escanee o pese, cobre con F12 y vea el día desde el celular.", time: "Desde la primera venta", shot: "paso-3-vender", alt: "Pantalla de venta de Abastalia con tres productos, el peso de la balanza y el total" },
+            { title: "Instale Abastalia", text: <>En la PC de la tienda. <Link to="/descargar">Descargar</Link></>, time: "10 minutos" },
+            { title: "Cargue sus productos", text: "Por libra o por unidad, o los de ejemplo.", time: "El mismo día" },
+            { title: "Venda", text: "Escanee o pese y cobre con F12.", time: "Desde la primera venta" },
           ]}
         />
       </Section>
