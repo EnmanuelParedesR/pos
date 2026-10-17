@@ -103,6 +103,8 @@ html, body { background: #F6F5F2; }
 .esc-admin .talia-pop__close { width: 44px; min-height: 44px; padding: 0; justify-content: center; }
 .talia-pop__chat { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 16px; }
 .talia-pop__chat .esc-bubble { max-width: 85%; }
+/* TK-339: Talia's "Ir a …" under her answer, lined up with the bubble (avatar 28 + gap 10) and 8px below it (the chat's gap is 14). */
+.esc-admin .talia-go { align-self: flex-start; margin: -6px 0 0 38px; text-decoration: none; }
 .talia-pop__box > .esc-notice { margin: 0 16px 8px; }
 .talia-pop__box > .esc-composer { position: static; margin: 0; border-radius: 0; box-shadow: none; border-top: 1px solid var(--line); padding: 8px 8px 8px 8px; }
 .talia-pop__box > .esc-composer input { font-size: var(--t-16); }

@@ -20,6 +20,8 @@
   <ItemGroup>
     <!-- TK-152: the DGII XSDs of the receiver (acknowledgement, approval) and of the e-CF types, from the store's module (linked, not copied; TK-246: the store signs those too). -->
     <EmbeddedResource Include="..\..\Modules\Fiscal\Abastalia.Fiscal\Schemas\e-CF 3*.xsd;..\..\Modules\Fiscal\Abastalia.Fiscal\Schemas\A?ECF*.xsd" LogicalName="Abastalia.Fe.Schemas.%(Filename)%(Extension)" Link="Fe\Schemas\%(Filename)%(Extension)" />
+    <!-- TK-339: the screens Talia's navigate tool may name, one list shared with the panel's chat. -->
+    <EmbeddedResource Include="..\..\Cloud\panel\src\pages\assistantRoutes.json" LogicalName="Abastalia.PanelRoutes.json" Link="Assistant\assistantRoutes.json" />
   </ItemGroup>
   <ItemGroup>
     <!-- Read-only: the event payloads the stores upload (deserialized with the same JSON options as the node outbox). -->
