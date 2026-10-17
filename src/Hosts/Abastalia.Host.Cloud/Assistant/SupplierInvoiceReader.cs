@@ -145,6 +145,11 @@ internal static class SupplierInvoiceEndpoint
             catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
             {
                 log.LogWarning(ex, "Chat model call failed reading a supplier invoice");
+                // R12 #11: the model never answered, so the month's and the day's read are given back.
+                await quota.AddAsync(node.TenantId, Meter.SupplierInvoices, -1, CancellationToken.None);
+                var today = BusinessDay.Of(clock.GetUtcNow().UtcDateTime);
+                await db.AiUsage.Where(u => u.TenantId == node.TenantId && u.Day == today && u.SupplierInvoices > 0)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.SupplierInvoices, u => u.SupplierInvoices - 1), CancellationToken.None);
                 return Unavailable("Ai.Unavailable", "La lectura con IA no está disponible ahora. Intente de nuevo en un momento.");
             }
         }).RequireAuthorization(CloudAuth.NodePolicy).RequireRateLimiting(NodeRateLimit);

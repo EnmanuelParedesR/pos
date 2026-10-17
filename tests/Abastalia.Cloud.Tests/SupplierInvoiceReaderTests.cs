@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.EntityFrameworkCore;
 using Shouldly;
 using Abastalia.Host.Cloud.Assistant;
 
@@ -13,6 +14,9 @@ public sealed class FakeInvoiceModel : IChatModel
 {
     public List<IReadOnlyList<ChatMessage>> Calls { get; } = [];
 
+    /// <summary>The model call fails (R12 #11).</summary>
+    public bool Fail { get; set; }
+
     public string Arguments { get; set; } = """
         {"supplierRnc":"101234567","supplierName":"Granja Los Pinos","ncf":"E310000000123","date":"2026-10-14",
          "lines":[{"description":"Pierna de cerdo","quantity":"50","unitCost":95.5,"itbisPercent":0},{"quantity":1}],
@@ -22,6 +26,7 @@ public sealed class FakeInvoiceModel : IChatModel
     public Task<ChatMessage> CompleteAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools, CancellationToken ct)
     {
         lock (Calls) Calls.Add(messages);
+        if (Fail) throw new HttpRequestException("model down"); // R12 #11
         return Task.FromResult(new ChatMessage("assistant", null, [new ChatToolCall("call_1", SupplierInvoiceReader.ToolName, Arguments)]));
     }
 }
@@ -65,6 +70,24 @@ public sealed class SupplierInvoiceReaderTests(InvoiceReaderApp app) : IClassFix
         var file = user.Attachments.ShouldNotBeNull().ShouldHaveSingleItem();
         file.ContentType.ShouldBe("image/jpeg");
         file.Data.ShouldBe(new byte[] { 0xFF, 0xD8, 0xFF, 1, 2, 3 });
+    }
+
+    [Fact]
+    public async Task R12_11_a_failed_model_call_gives_the_read_back()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        app.Model.Fail = true;
+        try
+        {
+            var r = await node.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo());
+            r.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+            (await r.ErrorCode()).ShouldBe("Ai.Unavailable");
+        }
+        finally { app.Model.Fail = false; }
+        (await app.InDbAsync(db => db.TenantUsage.Where(u => u.TenantId == owner.TenantId && u.Meter == Abastalia.Host.Cloud.Quotas.Meter.SupplierInvoices)
+            .Select(u => u.Count).SingleAsync())).ShouldBe(0);
+        (await app.InDbAsync(db => db.AiUsage.Where(u => u.TenantId == owner.TenantId).Select(u => u.SupplierInvoices).SingleAsync())).ShouldBe(0);
     }
 
     [Fact]
