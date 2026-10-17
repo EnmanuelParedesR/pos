@@ -4,7 +4,8 @@ import { site } from "./config";
 import { usePlanPrices } from "./livePrices";
 import { useReferralLink } from "../../referral";
 import { legalPages } from "./LegalPages";
-import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, LoopVideo, ProductArt, ProductVideo, Section, Steps, Tbd, Trial, type IconName } from "./SiteParts";
+import { Download } from "./DownloadPage";
+import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, IconTiles, LoopVideo, ProductArt, ProductVideo, Section, Steps, Tbd, Trial, type IconName } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
 export interface SitePage {
@@ -515,68 +516,6 @@ function Certification() {
             ["El cambio", "Deje el otro programa (la misma secuencia repetiría números), pase a producción y revise la primera venta."],
           ]}
         />
-      </Section>
-    </>
-  );
-}
-
-function Download() {
-  return (
-    <>
-      <Hero
-        eyebrow="Descargar"
-        title="Instale Abastalia en su tienda."
-        sub="Un instalador para todas las PC. La prueba de 14 días empieza con su primera venta."
-        cta={
-          site.installerUrl ? (
-            <a className="btn" href={site.installerUrl}>
-              Descargar Abastalia para Windows
-            </a>
-          ) : (
-            <Tbd>[URL DEL INSTALADOR]</Tbd>
-          )
-        }
-        note="Sin código ni tarjeta"
-      />
-      <Section className="counter">
-        <h2>Elija el papel de cada PC</h2>
-        <div className="tiles tiles--2">
-          <div className="tile">
-            <Icon name="pc" />
-            <h3>PC principal</h3>
-            <p>Guarda las ventas y atiende a las cajas: servidor, base de datos (SQL Server Express si no la tiene) y caja. Instálela primero.</p>
-          </div>
-          <div className="tile">
-            <Icon name="register" />
-            <h3>Caja</h3>
-            <p>Cada PC de cobro adicional: solo la app de caja, unida con el código de Configuración → Equipos.</p>
-          </div>
-        </div>
-      </Section>
-      <Section>
-        <h2>Requisitos</h2>
-        <IconTiles
-          items={[
-            ["pc", "Windows 10 u 11", "De 64 bits."],
-            ["data", "Memoria y disco", "Principal: 8 GB de RAM y 10 GB libres. Caja: 4 GB y 2 GB."],
-            ["download", "Internet al instalar", "Baja de Microsoft lo que falte (SQL Server Express y WebView2)."],
-            ["stores", "Misma red", "Todas las PC en la red de la tienda."],
-          ]}
-        />
-      </Section>
-      <Section className="counter">
-        <h2>Pasos</h2>
-        <Steps
-          items={[
-            ["Descargue", "Abra el instalador en la PC principal; Windows pide permiso una vez."],
-            ["En la PC principal", "Elija \"PC principal\" y complete \"Primera instalación\" con su negocio y su usuario."],
-            ["En cada caja", "Mismo instalador, elija \"Caja\" y únala con el código de Configuración → Equipos."],
-            ["Actualizaciones", "Solas: la caja al abrir, el servidor sin turnos abiertos o fuera de horario."],
-          ]}
-        />
-        <p className="muted">
-          ¿Quiere que lo instalemos por usted? <Contact className="">Hablemos</Contact> · ¿Se va a certificar para el e-CF? Vea <Link to="/certificacion">Certifíquese con Abastalia</Link>.
-        </p>
       </Section>
     </>
   );
