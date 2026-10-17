@@ -13,6 +13,7 @@ Cómo se crea y se publica la nube de Abastalia (ADR-0008): la API `Abastalia.Ho
 | Static Web App (Free) | El sitio público y el panel del dueño: una sola app React (TK-228). | Gratis |
 | Azure OpenAI (S0) + despliegue `chat` | El asistente. El modelo se elige por precio. | Solo por uso |
 | Storage Account (StorageV2, LRS, Cool) + contenedor `ecf-archive` | Archivo frío de los e-CF firmados (TK-207): 10 años, escritura única, pasa a Archive a los 180 días. Solo la identidad de la API entra. | Centavos (ver abajo) |
+| Contenedor `store-backups` (misma cuenta) | Respaldos cifrados de las tiendas (TK-238): 7 diarios + 4 semanales por tienda | Centavos (ver abajo) |
 
 La API no consulta la base cuando no hay tiendas subiendo datos: el chequeo de salud de App Service (`/health`) no la toca y el aplicador del inbox solo trabaja cuando llega un lote. Así la base se pausa de noche. `/health/ready` sí prueba la base; desde R11 (TK-253) solo responde con el token de un administrador de la plataforma (con verificación en dos pasos): sin él, 401.
 
@@ -64,6 +65,7 @@ Precios de pago por uso (GlobalStandard, eastus2, API pública de precios de Azu
 | Key Vault, Log Analytics (5 GB/mes gratis), Static Web App Free | ~0 |
 | Azure OpenAI | Solo por uso (~0.0005 por pregunta) |
 | Archivo frío de e-CF (Blob Cool → Archive) | ~0.01–0.25 por tienda (ver abajo) |
+| Respaldos de las tiendas (Blob Hot, TK-238) | ~0.05–0.10 por tienda que lo use |
 | **Total en reposo** | **~13–15** |
 
 Cada tienda conectada manda un latido cada 4 horas (`Sync:HeartbeatMinutes`, 240; R8 #21): con uno por hora la base no se pausaba nunca. Con tiendas sincronizando todo el día la base no se pausa y sube a ~0.31/h mientras haya actividad (unos 7–8 USD por día con actividad continua). La suscripción MPN trae 150 USD de crédito al mes.
@@ -76,6 +78,17 @@ La tienda sube cada e-CF firmado (XML, RFCE y respuesta de la DGII) a `POST /fis
 - **Bloquear la retención** (irreversible; hacerlo cuando el dueño lo apruebe): `az storage container immutability-policy lock --account-name <cuenta> -c ecf-archive --if-match <etag>` (el `etag` sale de `az storage container immutability-policy show`).
 - **Costo** (precios de lista eastus2, LRS, USD; revisar en la calculadora): un e-CF comprimido pesa unos 3–5 KB. Una tienda con 300 facturas al día junta ~0.5 GB por año. Guardar: Cool ~0.01/GB-mes y Archive ~0.002/GB-mes, o sea centavos aun con 10 años acumulados. Lo que más pesa son las operaciones: ~0.10 por 10,000 escrituras en Cool y otro tanto al pasar a Archive, unos 0.10–0.25 USD al mes por tienda con ese volumen. Sacar uno de Archive cuesta ~0.02/GB más la lectura: nada para unos pocos documentos. En SQL, el mismo volumen costaría ~0.138/GB-mes y crecería sin parar.
 - **Sin Azure** (desarrollo): `Archive:Folder` guarda los archivos en una carpeta; sin `Archive:Folder` ni `Archive:Blob:ServiceUri` los XML se quedan en SQL.
+
+### Respaldos de las tiendas en la nube (TK-238)
+
+Con "Copiar también a la nube" encendido en la tienda (Configuración → Respaldos; `Backup:Cloud`) y la función de licencia `CloudBackup`, el servidor de la tienda sube el respaldo programado más nuevo **tal como está en el disco**: ya va cifrado con la frase del dueño (AES-256-GCM), que nunca sale de la PC, así que la nube no puede leerlo. Sube por el canal firmado del nodo (`POST /api/nodes/backups/{archivo}`, firma ECDSA sobre el hash del archivo), lo revisa cada 15 minutos (`Backup:CloudCheckMinutes`) y tras un fallo espera 60 (`Backup:CloudRetryMinutes`); uno que la nube rechazó (cuota, tamaño, licencia) espera al respaldo siguiente. El resultado se ve en Configuración → Respaldos ("Copia en la nube") y en Salud.
+
+- **Dónde:** contenedor privado `store-backups` de la misma cuenta del archivo frío (`{negocio}/{tienda}/{archivo}`, Hot: casi todos viven una semana y Cool cobra 30 días mínimo). Lo crea `main.bicep`; la API entra con su identidad administrada (mismo rol Storage Blob Data Contributor), sin llaves. `CloudBackup__Blob__Container` en la configuración de la API; la cuenta es `Archive__Blob__ServiceUri` (o `CloudBackup:Blob:ServiceUri`). Sin Azure, `CloudBackup:Folder`; sin ninguno, la nube no guarda respaldos (404).
+- **Límites:** `CloudBackup:MaxMegabytes` (1,024) por archivo, también como límite del cuerpo de la petición; `CloudBackup:UploadsPerHourPerNode` (4); el medidor mensual `CloudBackups` (Estándar 62, Esencial 35, Varias sucursales 124; `docs/cuotas.md`); solo con la licencia vigente o la prueba (`LicenseCheck`, como la lectura de facturas). Solo acepta nombres de respaldos programados y archivos que empiezan como un respaldo cifrado.
+- **Cuántos guarda:** por tienda, el más nuevo de cada uno de los últimos 7 días con respaldo y el más nuevo de cada una de las 4 semanas anteriores (`CloudBackup:KeepDaily`, `KeepWeekly`); borra el resto al recibir uno nuevo. Una regla de ciclo de vida borra lo que tenga más de 60 días, por si acaso.
+- **Descargar:** solo un Dueño, en el panel (Tiendas → "Respaldos en la nube" → Descargar), pasando por la API con su sesión (`GET /api/stores/{tienda}/backups/{id}`). Queda quién y cuándo en la fila y en el registro (solo ids, sin correos). Para restaurarlo hace falta la frase.
+- **Costo:** Hot ~0.02/GB-mes. Una tienda con un respaldo de 300 MB guarda ~11 copias (~3.3 GB): ~0.07 USD al mes, más centavos de escrituras. La subida entra gratis; la descarga sale a ~0.087/GB.
+- **Atajo:** la API recibe el archivo completo (la firma del nodo cubre el cuerpo, que se guarda en un archivo temporal del App Service) antes de mandarlo a Blob. Con respaldos de más de 1 GB conviene subir directo a Blob con un SAS de escritura corto.
 
 ### Prueba de humo (2026-10-15)
 

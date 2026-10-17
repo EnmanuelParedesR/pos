@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, ApiError, useApi, type ConnectionCode, type Store, type StoreSyncStatus } from "../api";
+import { api, ApiError, download, useApi, type ConnectionCode, type Store, type StoreBackup, type StoreSyncStatus } from "../api";
 import { usePanel } from "../App";
-import { ago, isStale } from "../format";
+import { ago, dateTime, isStale } from "../format";
 import { ConfirmButton, EmptyState, Icon, LoadError, Notice, PageHead, Skeleton } from "../ui";
 import { UsageCard } from "./UsageCard";
 
@@ -138,6 +138,8 @@ function StoreCard({ store: s, canEdit, onPoll, onConnected }: { store: StoreSyn
       {s.failedEvents > 0 && <Notice kind="warning" title={`${s.failedEvents} datos recibidos no se pudieron procesar.`} />}
       {/* TK-217: a ReadOnly member sees the stores but cannot connect registers. */}
       {canEdit && <ConnectRegister storeId={s.storeId} nodes={s.nodes.length} onPoll={onPoll} onConnected={onConnected} />}
+      {/* TK-238: owners only; the API refuses the rest. */}
+      {canEdit && s.nodes.length > 0 && <StoreBackups storeId={s.storeId} />}
     </section>
   );
 }
@@ -212,6 +214,68 @@ function ConnectRegister({ storeId, nodes, onPoll, onConnected }: { storeId: str
               <Icon name="plus" size={18} /> Conectar una caja
             </button>
           </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const megabytes = (bytes: number) => `${Math.max(0.1, bytes / 1024 / 1024).toLocaleString("es-DO", { maximumFractionDigits: 1 })} MB`;
+
+/** TK-238: the store's backups the cloud keeps (7 daily + 4 weekly), encrypted with the owner's passphrase: restoring one needs it. */
+function StoreBackups({ storeId }: { storeId: string }) {
+  const backups = useApi<StoreBackup[]>(`/api/stores/${storeId}/backups`);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [all, setAll] = useState(false);
+
+  async function save(b: StoreBackup) {
+    setError(null);
+    setBusy(b.id);
+    try {
+      await download(`/api/stores/${storeId}/backups/${b.id}`, b.fileName);
+    } catch (err) {
+      setError(err as ApiError);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="esc-col" style={{ gap: 8 }}>
+      <h3 className="store__section">Respaldos en la nube</h3>
+      <LoadError error={backups.error} />
+      {error && <Notice kind={error.offline ? "warning" : "error"} title={error.detail} />}
+      {backups.data?.length === 0 && (
+        <p className="esc-muted">Todavía no hay. Actívelos en la PC principal: Configuración → Respaldos → Copiar también a la nube.</p>
+      )}
+      {!!backups.data?.length && (
+        <>
+          <ul className="nodes">
+            {(all ? backups.data : backups.data.slice(0, 3)).map((b) => (
+              <li key={b.id}>
+                <span className="esc-avatar" aria-hidden="true" style={{ background: "var(--surface-2)", color: "var(--text-2)" }}>
+                  <Icon name="cloud" size={16} />
+                </span>
+                <span className="esc-col" style={{ flex: "1 1 auto", gap: 0, minWidth: 0 }}>
+                  <span style={{ fontWeight: 600 }}>{dateTime(b.createdUtc)}</span>
+                  <span className="esc-muted">{megabytes(b.bytes)}</span>
+                </span>
+                <button type="button" className="esc-button esc-button--small" disabled={busy !== null} onClick={() => save(b)}>
+                  {busy === b.id ? "Descargando…" : "Descargar"}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {/* Design review: 11 rows per store pushed the other stores far down; the newest three are what an owner usually needs. */}
+          {!all && backups.data.length > 3 && (
+            <div>
+              <button type="button" className="esc-button esc-button--ghost esc-button--small" onClick={() => setAll(true)}>
+                Ver los {backups.data.length} respaldos
+              </button>
+            </div>
+          )}
+          <p className="esc-muted">Están cifrados con la frase de los respaldos: para restaurar uno en la PC necesita esa frase. Abastalia no la conoce.</p>
         </>
       )}
     </div>

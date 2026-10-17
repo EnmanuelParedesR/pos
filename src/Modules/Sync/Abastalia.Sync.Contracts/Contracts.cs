@@ -32,7 +32,8 @@ public sealed record NodeFiscalV1(int RejectedWithoutReplacement, DateTime? Olde
 /// <param name="OnAccount">Some customer owes on credit (fiado in use).</param>
 /// <param name="ScaleConfigured">Some active register has a scale (each register reports its own, TK-190); null while none has reported.</param>
 /// <param name="PrinterConfigured">Same as <paramref name="ScaleConfigured"/>, for a receipt printer.</param>
-/// <param name="FiscalProvider">Who sends the e-CF (<c>Fiscal:Provider</c>): Simulated or Relay.</param>
+/// <param name="FiscalProvider">TK-238: the DGII environment the store sends to now (the one saved in "Comprobantes electrónicos", else appsettings):
+/// Simulated, TesteCF, CerteCF or eCF. Stores before TK-238 sent <c>Fiscal:Provider</c> (Simulated or Dgii).</param>
 public sealed record NodeFeaturesV1(bool OnAccount, bool? ScaleConfigured, bool? PrinterConfigured, string FiscalProvider);
 
 /// <summary>Whether the store finished its setup (the cloud gets no business profile event). Flags only: the RNC itself never goes.</summary>

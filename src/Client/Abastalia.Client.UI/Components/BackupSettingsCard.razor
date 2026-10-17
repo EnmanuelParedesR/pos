@@ -1,6 +1,6 @@
 @inject AbastaliaApi Api
 
-@* TK-238: when the automatic backup runs, how many are kept and the copy off this PC (USB or shared folder), with the last one and whether it was copied. *@
+@* TK-238: when the automatic backup runs, how many are kept and the copies off this PC (USB or shared folder, and the cloud), with the last one and whether it was copied. *@
 <form class="esc-card esc-setting" @onsubmit="SaveAsync" novalidate>
     <div class="esc-setting__about"><h2>Respaldo automático</h2><p>Se hace solo cada noche y al encender la PC si el último tiene más de 20 horas. Una copia fuera de la PC protege si esta se daña o se pierde.</p></div>
     <div class="esc-setting__body">
@@ -16,6 +16,12 @@
                 <dd>@if (i.CopyTo is null) { <span class="esc-pill esc-pill--neutral">Sin copia</span> }
                     else if (i.CopyProblem is { } copyProblem) { <span class="esc-pill esc-pill--warning">Falló</span> <span class="esc-muted">@copyProblem</span> }
                     else { <span class="esc-pill esc-pill--success">Al día</span> <span class="esc-muted">@i.CopyTo</span> }</dd>
+                @* TK-238: the same encrypted file, kept in the cloud (7 daily + 4 weekly); the owner downloads it from the panel. *@
+                <dt>Copia en la nube</dt>
+                <dd>@if (!i.Cloud) { <span class="esc-pill esc-pill--neutral">Apagada</span> }
+                    else if (i.CloudProblem is { } cloudProblem) { <span class="esc-pill esc-pill--warning">No se copió</span> <span class="esc-muted">@cloudProblem</span> }
+                    else if (i.CloudLast is { } cloud && cloud.FileName == i.Last?.FileName) { <span class="esc-pill esc-pill--success">Al día</span> <span class="esc-muted">Subido @Format.Date(cloud.DateUtc)</span> }
+                    else { <span class="esc-pill esc-pill--neutral">Pendiente</span> <span class="esc-muted">Se sube en los próximos minutos si la tienda está conectada a la nube.</span> }</dd>
                 <dt>Carpeta en esta PC</dt><dd class="esc-muted">@i.Folder</dd>
             </dl>
             <div class="esc-form-grid">
@@ -30,6 +36,8 @@
                 </Field>
             </div>
             <label class="esc-check"><input type="checkbox" role="switch" @bind="_automatic" /> Respaldar automáticamente</label>
+            <label class="esc-check"><input type="checkbox" role="switch" @bind="_cloud" /> Copiar también a la nube</label>
+            <p class="esc-muted">Va cifrado con la frase de los respaldos; solo el dueño lo descarga, desde el panel (Tiendas).</p>
             @if (_message is not null) { <p role="status" class="@(_error ? "esc-error" : "esc-muted")">@_message</p> }
             <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary" Disabled="_sending">Guardar</Button></div>
         }
@@ -46,7 +54,7 @@
     private TimeOnly? _time;
     private static readonly System.Globalization.CultureInfo Invariant = System.Globalization.CultureInfo.InvariantCulture;
     private int _keep;
-    private bool _automatic, _sending, _error;
+    private bool _automatic, _cloud, _sending, _error;
     private Dictionary<string, string> _errors = [];
 
     protected override Task OnInitializedAsync() => LoadAsync();
@@ -54,13 +62,13 @@
     private async Task LoadAsync()
     {
         _info = (await Api.GetAsync<BackupSettingsInfo>("/api/backups/settings")).Value;
-        if (_info is { } i) (_copyTo, _time, _keep, _automatic) = (i.CopyTo, TimeOnly.ParseExact(i.Time, "HH:mm", Invariant), i.Keep, i.Automatic);
+        if (_info is { } i) (_copyTo, _time, _keep, _automatic, _cloud) = (i.CopyTo, TimeOnly.ParseExact(i.Time, "HH:mm", Invariant), i.Keep, i.Automatic, i.Cloud);
     }
 
     private async Task SaveAsync()
     {
         _sending = true;
-        var r = await Api.PutAsync<Empty>("/api/backups/settings", new { CopyTo = _copyTo, Time = _time?.ToString("HH:mm", Invariant) ?? "", Keep = _keep, Automatic = _automatic });
+        var r = await Api.PutAsync<Empty>("/api/backups/settings", new { CopyTo = _copyTo, Time = _time?.ToString("HH:mm", Invariant) ?? "", Keep = _keep, Automatic = _automatic, Cloud = _cloud });
         _sending = false;
         _errors = r.Problem?.Errors?.ToDictionary(e => e.Key, e => e.Value.FirstOrDefault() ?? "", StringComparer.OrdinalIgnoreCase) ?? [];
         (_error, _message) = (r.Problem is not null, r.Problem is null ? "Guardado. Se aplica desde ya." : _errors.Count > 0 ? "Revise los campos marcados." : r.Problem.Message);

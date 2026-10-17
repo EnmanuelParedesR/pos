@@ -10,7 +10,7 @@ using Abastalia.SharedKernel;
 namespace Abastalia.Host.Cloud.Quotas;
 
 /// <summary>TK-248: what a business consumes of Abastalia's services that cost money or invite abuse, counted per store month (docs/cuotas.md).</summary>
-public enum Meter { AssistantQuestions, AssistantTokens, SupplierInvoices, Emails, ArchiveRetrievals, AccompanimentRequests, Invites }
+public enum Meter { AssistantQuestions, AssistantTokens, SupplierInvoices, Emails, ArchiveRetrievals, AccompanimentRequests, Invites, CloudBackups }
 
 /// <summary>One counter per business, store month (UTC−4) and meter. A month without a row is a month with nothing used.</summary>
 public sealed class TenantUsage
@@ -142,6 +142,7 @@ internal sealed class Quota(CloudDbContext db, PlanLimits limits, TimeProvider c
         [Meter.ArchiveRetrievals] = "consultas al archivo de comprobantes",
         [Meter.AccompanimentRequests] = "solicitudes de acompañamiento",
         [Meter.Invites] = "invitaciones",
+        [Meter.CloudBackups] = "respaldos copiados a la nube",
     };
 
     private DateOnly Month()

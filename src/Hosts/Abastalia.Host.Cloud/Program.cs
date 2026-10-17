@@ -9,6 +9,7 @@ using Scalar.AspNetCore;
 using Serilog;
 using Abastalia.Host.Cloud.Accounts;
 using Abastalia.Host.Cloud.Assistant;
+using Abastalia.Host.Cloud.Backups;
 using Abastalia.Host.Cloud.Billing;
 using Abastalia.Host.Cloud.Catalog;
 using Abastalia.Host.Cloud.Fe;
@@ -86,6 +87,8 @@ var assistantPerUserMinute = config.GetValue("Ai:AssistantQuestionsPerMinutePerU
 var managePerUserMinute = config.GetValue("Auth:ManagePerMinutePerUser", 10);
 var ingestPerNodeMinute = config.GetValue("Ingest:BatchesPerMinutePerNode", 60);
 var archivePerNodeMinute = config.GetValue("Archive:UploadsPerMinutePerNode", 120);
+// TK-238: a backup is hundreds of MB; a store makes one a night (and the odd manual one).
+var backupsPerNodeHour = config.GetValue("CloudBackup:UploadsPerHourPerNode", 4);
 // The e-CF receiver's limits (R9 #2) are the global limiter, set by AddFe.
 builder.Services.AddRateLimiter(o =>
 {
@@ -109,6 +112,8 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = ingestPerNodeMinute, Window = TimeSpan.FromMinutes(1) }));
     o.AddPolicy(EcfArchiveEndpoint.NodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = archivePerNodeMinute, Window = TimeSpan.FromMinutes(1) }));
+    o.AddPolicy(StoreBackupEndpoints.NodeRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.User.FindFirst(TenantClaims.NodeId)?.Value ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = backupsPerNodeHour, Window = TimeSpan.FromHours(1) }));
 });
 builder.Services.AddScoped<IQuota, Quota>();
 builder.Services.AddSingleton<LicenseCheck>();
@@ -121,6 +126,7 @@ builder.Services.AddScoped<PlatformQueries>();
 AcsEmailSender.AddEmail(builder.Services, config);
 builder.Services.AddScoped<Abastalia.Host.Cloud.Alerts.AlertNotifier>();
 builder.Services.AddColdArchive(config);
+builder.Services.AddStoreBackups(config);
 builder.Services.AddFe(config, builder.Environment);
 builder.Services.AddBilling(config, builder.Environment); // TK-249: off until Billing:Paddle is set
 
@@ -188,6 +194,7 @@ app.MapAssistant();
 app.MapSupplierInvoiceReader();
 app.MapEcfArchive();
 app.MapColdArchive();
+app.MapStoreBackups();
 app.MapPlatform();
 app.MapPublicCatalog();
 app.MapFe();

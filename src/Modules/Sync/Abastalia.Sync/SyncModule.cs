@@ -36,6 +36,8 @@ public static class SyncModule
         services.AddScoped<CloudUploader>();
         services.AddHostedService<CloudUploaderWorker>();
         services.AddHostedService<HeartbeatWorker>();
+        services.AddScoped<CloudBackupUploader>();
+        services.AddHostedService<CloudBackupWorker>(); // TK-238
         services.AddHealthChecks().AddCheck<SyncHealthCheck>("sync");
         return services;
     }
@@ -103,13 +105,6 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
 
     public async Task<HttpResponseMessage> SendAsync(CloudConnection connection, string path, HttpContent content, CancellationToken ct)
     {
-        string secret;
-        try { secret = Protector.Unprotect(connection.NodeSecret); }
-        catch (CryptographicException e)
-        {
-            throw new InvalidOperationException("La clave de la nube no se puede leer en esta PC: desconecte la tienda y conéctela con un código nuevo.", e);
-        }
-        using var request = new HttpRequestMessage(HttpMethod.Post, connection.CloudUrl + path) { Content = content };
         await content.LoadIntoBufferAsync(ct);
         var body = await content.ReadAsByteArrayAsync(ct);
         // TK-251: the cloud decompresses a gzip batch before it checks the signature, so the signature covers the JSON, not its gzip.
@@ -119,21 +114,49 @@ internal sealed class CloudClient(SyncDbContext db, IHttpClientFactory http, IDa
             using (var gzip = new System.IO.Compression.GZipStream(new MemoryStream(body), System.IO.Compression.CompressionMode.Decompress)) await gzip.CopyToAsync(inflated, ct);
             body = inflated.ToArray();
         }
-        request.Headers.Authorization = new AuthenticationHeaderValue("Node", Sign(connection.NodeId, Convert.FromBase64String(secret[KeyPrefix.Length..]), "POST", path, body));
-        var response = await http.CreateClient(HttpClientName).SendAsync(request, ct);
+        return await SendSignedAsync(connection, path, content, SHA256.HashData(body), http.CreateClient(HttpClientName), ct);
+    }
+
+    /// <summary>TK-238: streams a file (an encrypted backup of hundreds of MB) without loading it in memory: hashed first, then sent. No client
+    /// timeout (a slow shop line takes long); <paramref name="ct"/> bounds it.</summary>
+    public async Task<HttpResponseMessage> SendFileAsync(CloudConnection connection, string path, string file, CancellationToken ct)
+    {
+        byte[] hash;
+        await using (var read = File.OpenRead(file)) hash = await SHA256.HashDataAsync(read, ct);
+        await using var stream = File.OpenRead(file);
+        using var content = new StreamContent(stream);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        content.Headers.ContentLength = stream.Length;
+        var client = http.CreateClient(HttpClientName);
+        client.Timeout = Timeout.InfiniteTimeSpan;
+        return await SendSignedAsync(connection, path, content, hash, client, ct);
+    }
+
+    private async Task<HttpResponseMessage> SendSignedAsync(CloudConnection connection, string path, HttpContent content, byte[] bodyHash, HttpClient client,
+        CancellationToken ct)
+    {
+        string secret;
+        try { secret = Protector.Unprotect(connection.NodeSecret); }
+        catch (CryptographicException e)
+        {
+            throw new InvalidOperationException("La clave de la nube no se puede leer en esta PC: desconecte la tienda y conéctela con un código nuevo.", e);
+        }
+        using var request = new HttpRequestMessage(HttpMethod.Post, connection.CloudUrl + path) { Content = content };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Node", Sign(connection.NodeId, Convert.FromBase64String(secret[KeyPrefix.Length..]), "POST", path, bodyHash));
+        var response = await client.SendAsync(request, ct);
         if (response.Headers.Date is { } cloudNow) _skew = cloudNow - clock.GetUtcNow();
         return response;
     }
 
     /// <summary>TK-241 (ADR-0008): <c>nodeId.unixSeconds.nonce.signature</c>, the signature over <c>nodeId.unixSeconds.nonce.METHOD /path bodyHash</c>
     /// (ECDSA P-256, SHA-256), bodyHash = Base64Url(SHA-256(body)) (R10 #7). Same text as the cloud's NodeSignature.</summary>
-    internal string Sign(Guid nodeId, byte[] pkcs8, string method, string path, byte[] body)
+    internal string Sign(Guid nodeId, byte[] pkcs8, string method, string path, byte[] bodyHash)
     {
         using var key = ECDsa.Create();
         key.ImportPkcs8PrivateKey(pkcs8, out _);
         var seconds = (clock.GetUtcNow() + _skew).ToUnixTimeSeconds();
         var nonce = Base64Url(RandomNumberGenerator.GetBytes(16));
-        var signature = key.SignData(Encoding.UTF8.GetBytes($"{nodeId}.{seconds}.{nonce}.{method} {path} {Base64Url(SHA256.HashData(body))}"), HashAlgorithmName.SHA256);
+        var signature = key.SignData(Encoding.UTF8.GetBytes($"{nodeId}.{seconds}.{nonce}.{method} {path} {Base64Url(bodyHash)}"), HashAlgorithmName.SHA256);
         return $"{nodeId}.{seconds}.{nonce}.{Base64Url(signature)}";
     }
 

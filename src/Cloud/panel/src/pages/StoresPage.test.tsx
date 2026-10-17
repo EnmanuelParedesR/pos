@@ -32,7 +32,7 @@ it("TK-170: the list refreshes by itself when a register uses the connection cod
     vi.fn(async (url: string, init?: RequestInit) =>
       url.endsWith("/connection-codes") && init?.method === "POST"
         ? json(200, { code: "12345678", expiresUtc: new Date(Date.now() + 30 * 60_000).toISOString() })
-        : json(200, store(nodes)),
+        : json(200, url.endsWith("/backups") ? [] : store(nodes)),
     ),
   );
   const reloadStores = vi.fn();
@@ -88,7 +88,7 @@ it("TK-241: an Owner removes a register after confirming, and the list reloads w
         nodes = 0;
         return json(204);
       }
-      return json(200, store(nodes));
+      return json(200, url.endsWith("/backups") ? [] : store(nodes));
     }),
   );
   const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {}, canEdit: true };
@@ -108,4 +108,31 @@ it("TK-241: an Owner removes a register after confirming, and the list reloads w
   expect(await screen.findByText("Ninguna caja conectada")).toBeTruthy();
   expect(calls).toHaveLength(1);
   expect(calls[0]).toMatch("/api/panel/nodes/n0/revoke");
+});
+
+it("TK-238: an Owner sees the store's backups in the cloud and downloads one with the session", async () => {
+  const backup = { id: "b1", fileName: "abastalia-20261014-233000.abastalia-backup", bytes: 52_428_800, createdUtc: "2026-10-15T03:30:00Z", uploadedUtc: "2026-10-15T03:40:00Z" };
+  const fetch = vi.fn(async (url: string) =>
+    url.endsWith("/backups/b1") ? new Response(new Blob(["TOKIRSP2"]), { status: 200 }) : json(200, url.endsWith("/backups") ? [backup] : store(1)),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const createObjectURL = vi.fn(() => "blob:respaldo");
+  const revokeObjectURL = vi.fn();
+  vi.stubGlobal("URL", Object.assign(Object.create(URL), { createObjectURL, revokeObjectURL }));
+  const context: PanelContext = { stores: [], reloadStores: () => {}, storeId: "", setStoreId: () => {}, canEdit: true };
+  render(
+    <MemoryRouter>
+      <Routes>
+        <Route element={<Outlet context={context} />}>
+          <Route index element={<StoresPage />} />
+        </Route>
+      </Routes>
+    </MemoryRouter>,
+  );
+
+  expect(await screen.findByText("Respaldos en la nube")).toBeTruthy();
+  expect(await screen.findByText(/50 MB/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Descargar" }));
+  await vi.waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+  expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/stores/s1/backups/b1"))).toBe(true);
 });

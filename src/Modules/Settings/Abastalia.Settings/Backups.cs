@@ -18,6 +18,7 @@ using Abastalia.BuildingBlocks.Messaging;
 using Abastalia.CashRegister.Contracts;
 using Abastalia.BuildingBlocks.Persistence;
 using Abastalia.BuildingBlocks.Security;
+using Abastalia.Settings.Contracts;
 using Abastalia.SharedKernel;
 
 namespace Abastalia.Settings;
@@ -33,21 +34,23 @@ internal sealed class BackupStatus
     private CancellationTokenSource _changed = new();
 
     public string? CopyError { get; set; }
+    /// <summary>Why the last upload to the cloud did not happen (the Sync module reports it through <see cref="CloudBackups"/>).</summary>
+    public string? CloudError { get; set; }
     public CancellationToken Changed => _changed.Token;
     public void ScheduleChanged() => Interlocked.Exchange(ref _changed, new CancellationTokenSource()).Cancel();
 }
 
 /// <summary>TK-238: when and where the backups go. Each value saved on screen (<see cref="Business"/>) wins over appsettings
-/// (<c>Backup:CopyTo</c>, <c>Backup:Time</c> 23:30, <c>Backup:Keep</c> 14, <c>Backup:Automatic</c> true). An empty copy folder saved on screen means no copy.</summary>
-/// <remarks>shortcut: no copy to the cloud yet. The hook is <see cref="CopyTo"/>: a cloud copy would be one more target after the folder copy in
-/// <see cref="Backups.CreateAsync"/>, with its own status here; build it when stores ask for it.</remarks>
-internal sealed record BackupSchedule(string? CopyTo, TimeSpan Time, int Keep, bool Automatic)
+/// (<c>Backup:CopyTo</c>, <c>Backup:Time</c> 23:30, <c>Backup:Keep</c> 14, <c>Backup:Automatic</c> true, <c>Backup:Cloud</c> false).
+/// An empty copy folder saved on screen means no copy. <see cref="Cloud"/>: the Sync module also uploads the newest backup, encrypted as it is (<see cref="CloudBackups"/>).</summary>
+internal sealed record BackupSchedule(string? CopyTo, TimeSpan Time, int Keep, bool Automatic, bool Cloud = false)
 {
     public static BackupSchedule Of(Business b, IConfiguration config) => new(
         (b.BackupCopyTo ?? config["Backup:CopyTo"]) is { Length: > 0 } copy ? copy : null,
         b.BackupTime ?? config.GetValue("Backup:Time", new TimeSpan(23, 30, 0)),
         b.BackupKeep ?? config.GetValue("Backup:Keep", 14),
-        b.BackupAutomatic ?? config.GetValue("Backup:Automatic", true));
+        b.BackupAutomatic ?? config.GetValue("Backup:Automatic", true),
+        b.BackupCloud ?? config.GetValue("Backup:Cloud", false));
 }
 
 /// <summary>Backs up the whole database, encrypts it with the owner's passphrase and keeps the newest ones here and in the off-PC copy, if set.
@@ -150,6 +153,9 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
 
     /// <summary>Encrypted backups, newest first.</summary>
     public IEnumerable<FileInfo> List() => List(Folder);
+
+    /// <summary>The newest scheduled backup: one made before a restore is not copied off the PC, so the copies are judged on these.</summary>
+    public FileInfo? Newest() => List().FirstOrDefault(f => !f.Name.EndsWith("-antes-de-restaurar" + Extension, StringComparison.Ordinal));
 
     /// <summary>Replaces the whole database with a backup of this folder. The current data is backed up first (when the stored key works) as
     /// "…-antes-de-restaurar", so a wrong choice can be undone by restoring that file. The caller checks that the registers are closed.</summary>
@@ -437,7 +443,43 @@ internal sealed class NightlyBackup(IServiceScopeFactory scopes, BackupStatus st
     }
 }
 
-/// <summary>Degraded when there is no usable passphrase, the newest backup is older than 36 hours, or the off-PC copy failed.</summary>
+/// <summary>TK-238: what the Sync module uploads to the cloud. Only scheduled backups, encrypted as they are on disk: the passphrase never leaves the PC.
+/// The license check (<c>CloudBackup</c>) is the uploader's: the local backups never depend on the license.</summary>
+internal sealed class CloudBackups(SettingsDbContext db, Backups backups, BackupStatus status, IConfiguration config,
+    ICommandHandler<CloudBackups.Uploaded, Ok> uploaded) : ICloudBackups
+{
+    public async Task<CloudBackupFile?> PendingAsync(CancellationToken ct)
+    {
+        var b = await db.Business.AsNoTracking().SingleAsync(ct);
+        if (!BackupSchedule.Of(b, config).Cloud || backups.Newest() is not { } newest || newest.Name == b.BackupCloudFile) return null;
+        return new CloudBackupFile(newest.Name, newest.FullName);
+    }
+
+    public async Task UploadedAsync(string fileName, CancellationToken ct)
+    {
+        var r = await uploaded.Handle(new Uploaded(fileName), ct);
+        if (r.IsFailure) throw new InvalidOperationException(r.Error!.Description);
+        status.CloudError = null;
+    }
+
+    public void Failed(string? problem) => status.CloudError = problem;
+
+    /// <summary>Records (and audits) the newest backup the cloud keeps.</summary>
+    internal sealed record Uploaded(string FileName) : ICommand<Ok>;
+
+    internal sealed class Handler(SettingsDbContext db, IAuditLog audit, TimeProvider clock) : ICommandHandler<Uploaded, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Uploaded c, CancellationToken ct)
+        {
+            var b = await db.Business.SingleAsync(ct);
+            (b.BackupCloudFile, b.BackupCloudUtc) = (c.FileName, clock.GetUtcNow().UtcDateTime);
+            await audit.RecordAsync("settings.backup-cloud-copy", "Business", Guid.Empty, c, ct);
+            return Ok.Value;
+        }
+    }
+}
+
+/// <summary>Degraded when there is no usable passphrase, the newest backup is older than 36 hours, or the off-PC or cloud copy failed.</summary>
 internal sealed class BackupHealthCheck(Backups backups, BackupStatus status, TimeProvider clock) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
@@ -445,7 +487,7 @@ internal sealed class BackupHealthCheck(Backups backups, BackupStatus status, Ti
         if (await backups.KeyAsync(cancellationToken) is { IsFailure: true } key) return HealthCheckResult.Degraded(key.Error!.Description);
         var newest = backups.List().FirstOrDefault()?.LastWriteTimeUtc;
         if (newest is null || newest < clock.GetUtcNow().UtcDateTime.AddHours(-36)) return HealthCheckResult.Degraded("El último respaldo tiene más de 36 horas.");
-        return status.CopyError is { } error ? HealthCheckResult.Degraded(error) : HealthCheckResult.Healthy();
+        return (status.CopyError ?? status.CloudError) is { } error ? HealthCheckResult.Degraded(error) : HealthCheckResult.Healthy();
     }
 }
 
@@ -454,12 +496,17 @@ internal sealed class BackupHealthCheck(Backups backups, BackupStatus status, Ti
 internal static class BackupSettings
 {
     /// <param name="Time">Store time, "HH:mm".</param>
-    public sealed record Command(string? CopyTo, string Time, int Keep, bool Automatic) : ICommand<Ok>;
+    /// <param name="Cloud">TK-238: also copy each scheduled backup, encrypted, to the cloud (license feature <c>CloudBackup</c>, store connected).</param>
+    public sealed record Command(string? CopyTo, string Time, int Keep, bool Automatic, bool Cloud = false) : ICommand<Ok>;
 
     /// <param name="Saved">False while every value still comes from appsettings.</param>
     /// <param name="PassphraseProblem">Why backups cannot be made (no phrase, or a key this PC cannot read); null when they can.</param>
+    /// <param name="CloudLast">The newest backup the cloud confirmed it keeps.</param>
+    /// <param name="CloudProblem">Why the copy to the cloud is not happening (license, last upload); null when it works or is off.</param>
     public sealed record Response(string? CopyTo, string Time, int Keep, bool Automatic, bool Saved, string Folder, string? PassphraseProblem,
-        BackupFile? Last, string? CopyProblem);
+        BackupFile? Last, string? CopyProblem, bool Cloud, BackupFile? CloudLast, string? CloudProblem);
+
+    public const string CloudNotLicensed = "Su licencia no incluye el respaldo en la nube.";
 
     /// <summary>For the register's status bar and the Resumen: only the passphrase, cheap enough to ask every 15 seconds.</summary>
     public sealed record Warning(string? PassphraseProblem);
@@ -514,13 +561,15 @@ internal static class BackupSettings
             if (c.CopyTo is { } target && !string.IsNullOrWhiteSpace(target) && !CopyAllowed(target.Trim(), config)) return CopyNotAllowed;
             var b = await db.Business.SingleAsync(ct);
             var newCopy = c.CopyTo?.Trim() ?? "";
-            var before = new { CopyTo = b.BackupCopyTo, Time = b.BackupTime, Keep = b.BackupKeep, Automatic = b.BackupAutomatic };
+            var before = new { CopyTo = b.BackupCopyTo, Time = b.BackupTime, Keep = b.BackupKeep, Automatic = b.BackupAutomatic, Cloud = b.BackupCloud };
             b.BackupCopyTo = newCopy;
             b.BackupTime = TimeOnly.ParseExact(c.Time, "HH:mm").ToTimeSpan();
             b.BackupKeep = c.Keep;
             b.BackupAutomatic = c.Automatic;
+            b.BackupCloud = c.Cloud;
+            if (!c.Cloud) status.CloudError = null;
             await audit.RecordAsync("settings.backup-schedule", "Business", Guid.Empty,
-                new { before, after = new { CopyTo = b.BackupCopyTo, Time = b.BackupTime, Keep = b.BackupKeep, Automatic = b.BackupAutomatic } }, ct);
+                new { before, after = new { CopyTo = b.BackupCopyTo, Time = b.BackupTime, Keep = b.BackupKeep, Automatic = b.BackupAutomatic, Cloud = b.BackupCloud } }, ct);
             status.ScheduleChanged();
             return Ok.Value;
         }
@@ -530,16 +579,18 @@ internal static class BackupSettings
     {
         public void Map(IEndpointRouteBuilder app)
         {
-            app.MapGet("/api/backups/settings", async (Backups backups, SettingsDbContext db, IConfiguration config, CancellationToken ct) =>
+            app.MapGet("/api/backups/settings", async (Backups backups, SettingsDbContext db, IConfiguration config, IFeatureService license, BackupStatus status,
+                    CancellationToken ct) =>
                 {
                     var b = await db.Business.AsNoTracking().SingleAsync(ct);
                     var s = BackupSchedule.Of(b, config);
                     var key = await backups.KeyAsync(ct);
-                    // A backup made before a restore is not copied off the PC: the copy is judged on the scheduled ones.
-                    var newest = backups.List().FirstOrDefault(f => !f.Name.EndsWith("-antes-de-restaurar" + Backups.Extension, StringComparison.Ordinal));
+                    var newest = backups.Newest();
+                    var cloudProblem = !s.Cloud ? null : !license.IsEnabled(Feature.CloudBackup) ? CloudNotLicensed : status.CloudError;
                     return Results.Ok(new Response(s.CopyTo, $"{s.Time:hh\\:mm}", s.Keep, s.Automatic, b.BackupAutomatic is not null, backups.Folder,
                         key.Error?.Description, newest is null ? null : new BackupFile(newest.Name, newest.Length, backups.CreatedUtc(newest.Name)),
-                        backups.CopyProblem(s, newest)));
+                        backups.CopyProblem(s, newest), s.Cloud,
+                        b.BackupCloudFile is { } cloud ? new BackupFile(cloud, 0, b.BackupCloudUtc ?? backups.CreatedUtc(cloud)) : null, cloudProblem));
                 })
                 .RequirePermission(Permissions.BackupsManage).WithTags("Backups");
             app.MapPut("/api/backups/settings", async (Command c, ICommandHandler<Command, Ok> h, CancellationToken ct) => (await h.Handle(c, ct)).ToHttp(_ => Results.NoContent()))

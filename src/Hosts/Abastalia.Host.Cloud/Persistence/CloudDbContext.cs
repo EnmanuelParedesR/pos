@@ -66,6 +66,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
     public DbSet<Billing.Referral> Referrals => Set<Billing.Referral>();
     public DbSet<Certification.AccompanimentRequest> AccompanimentRequests => Set<Certification.AccompanimentRequest>();
     public DbSet<Platform.AppRelease> AppReleases => Set<Platform.AppRelease>();
+    public DbSet<Backups.StoreBackup> StoreBackups => Set<Backups.StoreBackup>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -314,6 +315,7 @@ public sealed class CloudDbContext(DbContextOptions<CloudDbContext> options) : I
             e.HasKey(u => new { u.TenantId, u.StoreId, u.Day });
         });
         Catalog.PublicCatalogEndpoints.Configure(builder);
+        Backups.StoreBackupEndpoints.Configure(builder);
         Fe.FeModel.Configure(builder);
         builder.Entity<ReplicaCertification>(e =>
         {

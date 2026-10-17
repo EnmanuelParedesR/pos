@@ -6,7 +6,7 @@ R11 C2. Qué hacer el mismo día, en orden. Lo hace el dueño con el técnico de
 
 - **Cifrado del disco en la PC principal.** BitLocker (Windows Pro) o Cifrado de dispositivo (Windows Home con TPM): Configuración de Windows → Privacidad y seguridad → Cifrado de dispositivo. El instalador avisa si falta y Configuración → Salud lo marca ("Cifrado del disco"). Sin cifrado, quien se lleva la PC puede leer la base de datos (ventas, clientes con RNC y cédula), los respaldos sin cifrar que haya en el disco y las llaves de `C:\ProgramData\Abastalia\keys`.
 - **La clave de recuperación de BitLocker** se guarda fuera de la PC: en la cuenta Microsoft del dueño o impresa con los papeles de la empresa. Nunca en la misma PC ni en una memoria que viva pegada a ella.
-- **Respaldos fuera de la PC** (Configuración → Respaldos → "Copiar también a"), con la frase guardada por el dueño. Sin respaldo reciente no hay cómo seguir en otra PC.
+- **Respaldos fuera de la PC** (Configuración → Respaldos → "Copiar también a" y "Copiar también a la nube"), con la frase guardada por el dueño. Sin respaldo reciente no hay cómo seguir en otra PC. La copia en la nube (TK-238) la descarga solo un Dueño desde el panel (Tiendas → "Respaldos en la nube"); va cifrada con la frase, que Abastalia no conoce.
 - La llave del certificado e-CF y la de cada caja quedan en el TPM cuando la PC lo tiene: no se pueden copiar a otra PC. Aun así, con la PC encendida o con la sesión de Windows abierta se pueden **usar**, por eso los pasos de abajo.
 
 ## Si robaron la PC principal

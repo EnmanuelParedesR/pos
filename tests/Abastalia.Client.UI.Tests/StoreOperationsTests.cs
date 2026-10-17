@@ -56,10 +56,13 @@ public sealed class StoreOperationsTests
 
         card.WaitForAssertion(() => card.Markup.ShouldContain("Los respaldos no se están haciendo"));
         card.Markup.ShouldContain("Sin copia");
+        card.Markup.ShouldContain("Apagada"); // TK-238: the cloud copy, off by default
         card.Find("input[maxlength='260']").Change(@"E:\Respaldos");
+        card.FindAll("input[type=checkbox]").Single(c => c.ParentElement!.TextContent.Contains("a la nube")).Change(true);
         card.Find("form").Submit();
         card.WaitForAssertion(() => api.Requests.Single(r => r.Method == "PUT").Body.ShouldContain("\"time\":\"23:30\"", Case.Insensitive));
         api.Requests.Single(r => r.Method == "PUT").Body.ShouldContain(@"E:\\Respaldos");
+        api.Requests.Single(r => r.Method == "PUT").Body.ShouldContain("\"cloud\":true", Case.Insensitive);
     }
 
     [Fact]
