@@ -79,6 +79,24 @@ code { font: 500 13px var(--mono); background: var(--counter); padding: 1px 5px;
 .ask { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; counter-reset: q; }
 .ask li { counter-increment: q; display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
 .ask li::before { content: counter(q); display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--brand); color: var(--on-brand); font-weight: 700; }
+/* e-CF flow mockup: always on the dark band, like the site. */
+.ecf { background: #14181D; color: #F1F3F5; border-radius: 12px; padding: 20px; display: grid; gap: 16px; margin: 12px 0; }
+.ecf__path { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 820px) { .ecf__path { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; } }
+.ecf__node { border: 1px solid #343B44; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ecf__node--ok { border-color: #5DD08A; }
+.ecf__node--ok b { color: #5DD08A; }
+.ecf__k { font: 500 11px/1 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: #A9B2BC; }
+.ecf__small { font-size: 13px; color: #A9B2BC; }
+.ecf__mono { font: 500 14px var(--mono); }
+.ecf__chip { align-self: flex-start; font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 4px; background: #22303F; color: #CFE3F7; }
+.ecf__chip--warn { background: #3A2A08; color: #F5B94A; flex: none; }
+.ecf__arrow { display: grid; place-items: center; color: #6DB3F5; font-size: 20px; transform: rotate(90deg); }
+@media (min-width: 820px) { .ecf__arrow { transform: none; } }
+.ecf__offline { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; font-size: 14px; color: #D3D9DF; border-top: 1px dashed #343B44; padding-top: 12px; }
+.ecf__offline span:last-child { flex: 1 1 260px; min-width: 0; }
+.ecf__none { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; }
+.ecf__none span::before { content: "✕ "; color: #F5B94A; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
 .chips span { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 14px; }
 </style>
@@ -178,6 +196,46 @@ code { font: 500 13px var(--mono); background: var(--counter); padding: 1px 5px;
         <dl><dt>Esfuerzo</dt><dd>1.5 días</dd><dt>LCP</dt><dd>La captura del hero pasa a ser el LCP: pesa ~20 KB, cabe</dd><dt>Riesgo</dt><dd>Alto en mensaje; mejor para un anuncio o una página <code>/talia</code></dd></dl>
       </article>
     </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>Tres pedidos del dueño (valen para A, B o C)</h2>
+
+    <h3>1 · «Hecho para el mostrador»: fuera la pesa analógica</h3>
+    <p>El video muestra una balanza colgante de aguja. Abastalia solo lee balanzas digitales por COM o USB (CAS, Mettler Toledo, A&amp;D) y etiquetas EAN-13 con peso, así que la escena promete algo que no hace y repite «pesar».</p>
+    <div class="tw"><table>
+      <thead><tr><th>Opción</th><th>Qué se ve</th><th>A favor</th><th>En contra</th></tr></thead>
+      <tbody>
+        <tr><td><b>1a · Recomendada</b>: lazo de 6 s de nuestro propio video</td><td>La caja real cobrando y el e-CF saliendo (los planos «Cada venta emite su e-CF» y «Vea su negocio desde el teléfono» del video del producto), sin texto encima</td><td>Es el producto de verdad y no hay licencia que revisar. Ya está en el sitio (sin bytes nuevos si se recorta del mismo archivo)</td><td>Menos «calle» que una foto de tienda</td></tr>
+        <tr><td>1b · Clip de Pexels de caja o mostrador</td><td>Una cajera cobrando o un cliente pagando; candidatos por revisar: <a href="https://www.pexels.com/video/people-at-the-cashier-counter-8421356/">8421356</a>, <a href="https://www.pexels.com/video/person-paying-groceries-via-credit-card-8421648/">8421648</a>, <a href="https://www.pexels.com/video/man-walking-into-a-store-6685167/">6685167</a></td><td>Gente real, da vida</td><td>Casi todo es de supermercado grande, no de colmado. Hay que verlos uno por uno y que no aparezca ninguna balanza de aguja</td></tr>
+        <tr><td>1c · Quitar la sección</td><td>Los seis beneficios y Talia ocupan su lugar</td><td>Página más corta</td><td>Se pierde la única imagen de una tienda en el inicio</td></tr>
+      </tbody>
+    </table></div>
+    <p class="muted">En cualquiera de las tres, el texto deja de hablar de libras. Propuesta: «Cobre, facture y cuadre en la misma pantalla.»</p>
+
+    <h3 style="margin-top:28px">2 · «e-CF sin intermediarios» más ilustrativo</h3>
+    <p>Hoy son cuatro cajas de texto. La propuesta muestra el camino real del comprobante con fragmentos verdaderos de la caja (verificado en <code>docs/ecf-propio.md</code> y <code>Frame.razor</code>).</p>
+    <div class="ecf" aria-label="Maqueta del nuevo bloque del e-CF">
+      <div class="ecf__path">
+        <div class="ecf__node"><span class="ecf__k">Su tienda</span><b>La caja cobra</b><span class="ecf__chip">e-CF en cola: 0</span></div>
+        <span class="ecf__arrow" aria-hidden="true">→</span>
+        <div class="ecf__node"><span class="ecf__k">En su PC</span><b>Firma con su certificado</b><span class="ecf__small">El certificado .p12 no sale de la PC principal</span></div>
+        <span class="ecf__arrow" aria-hidden="true">→</span>
+        <div class="ecf__node"><span class="ecf__k">Directo</span><b>DGII</b><span class="ecf__small">Sin proveedor en medio</span></div>
+        <span class="ecf__arrow" aria-hidden="true">→</span>
+        <div class="ecf__node ecf__node--ok"><span class="ecf__k">Respuesta</span><b>Aceptado</b><span class="ecf__mono">E320000000123</span></div>
+      </div>
+      <div class="ecf__offline"><span class="ecf__chip ecf__chip--warn">e-CF en cola: 3</span><span>Si se va el internet, la caja sigue cobrando y firmando. Los e-CF esperan en cola y salen solos al volver la conexión, dentro de las 72 horas que da la DGII.</span></div>
+      <div class="ecf__none"><b>Lo que no hay en medio:</b><span>ningún proveedor externo</span><span>ningún cupo de documentos al mes</span><span>nunca en solo lectura</span></div>
+    </div>
+    <p class="muted">Movimiento: un punto recorre el camino una vez al entrar en pantalla y el chip pasa de «en cola: 3» a «0». Nada se mueve con «reducir movimiento». En el teléfono, el camino va de arriba abajo. La factura de consumo menor de RD$250,000 va como resumen firmado (RFCE); eso queda en /e-cf, no en el inicio.</p>
+
+    <h3 style="margin-top:28px">3 · Sin «Lo que muestra el video»</h3>
+    <p>Se quita el desplegable visible. La descripción queda en la etiqueta del video y en su pista de descripciones, para lectores de pantalla. Junto al video van cuatro hitos que dicen qué hace Abastalia, no lo que pasa en el clip:</p>
+    <div class="chips"><span>Cobra por unidad o por código</span><span>Emite el e-CF de cada venta</span><span>Cuadra la caja al cerrar el turno</span><span>Le muestra el día en el celular</span></div>
+    <p class="muted">Se descartan frases que el producto no cumple: «cuadra la caja sola» (el cajero cuenta el efectivo) y «le avisa en el celular» (el panel no manda avisos al teléfono; los avisos son por correo). El reproductor es de TK-296: lo coordino con General POS Chat antes de tocarlo.</p>
   </div>
 </section>
 
