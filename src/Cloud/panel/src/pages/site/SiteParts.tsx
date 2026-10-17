@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
+import { Talia } from "../../ui";
 import { contactHref, site } from "./config";
 import { usePlanPrices } from "./livePrices";
 import productVideo from "./productVideo.json";
@@ -82,6 +83,7 @@ const paths = {
   meat: "M12.5 6a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M12.5 2a6.5 6.5 0 0 0-6.2 4.6c-1.1 3.1-.8 3.9-3.2 6.1A3 3 0 0 0 5 18c4 0 8.4-1.8 11.4-4.3A6.5 6.5 0 0 0 12.5 2z M18.5 6l2.2 4.5a6.5 6.5 0 0 1-2.3 7.2C15.4 20.2 11 22 7 22a3 3 0 0 1-2.7-1.7L2.4 16.5",
   basket: "M3 10h18l-2 10H5z M8 10l4-6 4 6 M9 14v3 M12 14v3 M15 14v3",
   cheese: "M3 19V11l13-7 5 5v10z M3 11h18 M8 15h.01 M15 14h.01 M12 17h.01",
+  chat: "M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z",
 };
 export type IconName = keyof typeof paths;
 
@@ -147,98 +149,96 @@ export function CtaBand({ title, text = "Sin cupo de e-CF. Sus datos y reportes 
   );
 }
 
-/** The e-CF flow on the dark band (home and /e-cf). */
+/** TK-312: the e-CF's real path on the dark band (home and /e-cf): the register, the signature with the business's certificate on its own PC, the
+ *  DGII directly and its answer; below, what happens without internet and what is not in the middle. The chips are the register's own text
+ *  (Frame.razor: "e-CF en cola: N"). With motion allowed, the steps light up in turn the first time the band comes on screen (.reveal). */
 export function EcfFlow({ children }: { children?: ReactNode }) {
   return (
-    <section className="night">
+    <section className="night ecf reveal">
       <div className="wrap">
         <h2>e-CF sin intermediarios</h2>
-        <p className="night__sub">Su caja firma y envía cada comprobante a la DGII. Sin cupo mensual.</p>
-        <Steps
-          accentLast
-          items={[
-            ["Vende", "Cobra como siempre."],
-            ["Firma", "Con su certificado digital."],
-            ["Envía", "Si no hay internet, espera en cola."],
-            ["Aceptado", "Y queda en su 607."],
-          ]}
-        />
+        <p className="night__sub">Su caja firma cada comprobante y lo envía directo a la DGII.</p>
+        <ol className="ecf__path">
+          <li className="ecf__node">
+            <span className="ecf__k">En su tienda</span>
+            <h3>Vende</h3>
+            <p>Cobra como siempre.</p>
+            <span className="ecf__chip">e-CF en cola: 0</span>
+          </li>
+          <li className="ecf__node">
+            <span className="ecf__k">En su PC</span>
+            <h3>Firma</h3>
+            <p>Con su certificado digital, que no sale de la PC principal.</p>
+          </li>
+          <li className="ecf__node">
+            <span className="ecf__k">Directo</span>
+            <h3>Envía a la DGII</h3>
+            <p>Sin un proveedor en medio.</p>
+          </li>
+          <li className="ecf__node ecf__node--ok">
+            <span className="ecf__k">Respuesta</span>
+            <h3>Aceptado</h3>
+            <p>
+              <span className="ecf__mono">E320000000123</span> y queda en su 607.
+            </p>
+          </li>
+        </ol>
+        <div className="ecf__offline">
+          <span className="ecf__chip ecf__chip--warn">e-CF en cola: 3</span>
+          <p>Si se va el internet, la caja sigue cobrando y firmando. Los e-CF esperan en cola y salen solos al volver la conexión, dentro de las 72 horas que da la DGII.</p>
+        </div>
+        <ul className="ecf__none" aria-label="Lo que no hay en medio">
+          <li>Ningún proveedor externo</li>
+          <li>Ningún cupo de documentos al mes</li>
+          <li>Ningún cobro por comprobante</li>
+        </ul>
         {children}
       </div>
     </section>
   );
 }
 
-const lines: [string, string, string][] = [
-  ["Arroz selecto 5 lb", "1 × 245.00", "245.00"],
-  ["Queso de freír", "1.250 lb × 220.00", "275.00"],
-  ["Aceite 1 L", "2 × 235.00", "470.00"],
-  ["Refresco 2 L", "3 × 95.00", "285.00"],
+/** TK-312: what Talia answers today with her read-only tools (Assistant.cs). The first answer is the one the product video captured from the panel
+ *  (TK-296); the rest are examples with sample data. The last item is the screen her «Ir a» button opens (TK-339, assistantRoutes.json). */
+const taliaAsks: [string, string, string][] = [
+  ["¿Qué se vendió más esta semana?", "Esta semana lo más vendido fue Huevos (30): RD$ 19,470.00. Le siguen Arroz selecto 5 lb (RD$ 16,530.00) y Café molido 1 lb (RD$ 15,300.00).", "Ventas"],
+  ["¿Qué cajera tuvo faltante esta semana?", "María tuvo un faltante de RD$ 150.00 al cerrar el turno del martes en la Caja 1. Los demás turnos cuadraron.", "Cuadres"],
+  ["¿Cuánto me deben y quién debe más?", "Hoy le deben RD$ 12,840.00 entre 9 clientes. Quien más debe es Pedro Gómez, con RD$ 3,200.00.", "Resumen"],
+  ["¿En qué paso va mi certificación?", "Va en el set de pruebas: Abastalia ya envió los comprobantes y espera la respuesta de la DGII. Después sigue la simulación.", "Certificación"],
 ];
 
-/** Hero art: the register screen (sample sale) overlapped by the owner's phone. Decorative: hidden from screen readers, captioned as an example. */
-export function ProductArt() {
+/** TK-312: hero art of the home. Talia as the panel shows her (same bubbles), all HTML: sharp at any size and no image to wait for (LCP). A question
+ *  button shows its answer here; nothing is sent anywhere. With motion allowed, the question and then the answer ease in. */
+export function TaliaDemo() {
+  const [at, setAt] = useState(0);
+  const [question, answer, go] = taliaAsks[at];
   return (
-    <figure className="art">
-      <div className="art__stage" aria-hidden="true">
-        <div className="mock">
-          <div className="mock__bar">
-            <span>Caja 1</span>
-            <span className="pill pill--amber">Sin internet · 3 e-CF en cola</span>
-          </div>
-          <div className="mock__body">
-            <div className="mock__cart">
-              {lines.map(([name, qty, total], i) => (
-                <div className={i === 1 ? "mock__line mock__line--on" : "mock__line"} key={name}>
-                  <span>
-                    <strong>{name}</strong>
-                    <small>{qty}</small>
-                  </span>
-                  <strong>{total}</strong>
-                </div>
-              ))}
-            </div>
-            <div className="mock__side">
-              <div className="mock__box">
-                <small className="label">Balanza</small>
-                <span className="mock__big">
-                  1.250 <small>lb</small>
-                </span>
-                <small className="ok">Estable</small>
-              </div>
-              <div className="mock__box mock__box--grow">
-                <small className="label">Total</small>
-                <span className="mock__big">1,275.00</span>
-                <small>RD$ · ITBIS incluido</small>
-              </div>
-              <div className="mock__pay">
-                Cobrar <kbd>F12</kbd>
-              </div>
-            </div>
-          </div>
+    <figure className="talia-demo">
+      <div className="talia-demo__phone">
+        <div className="talia-demo__head">
+          <Talia size={36} />
+          <span>
+            <strong>Talia</strong>
+            <small>Su asistente</small>
+          </span>
         </div>
-        <div className="phone">
-          <div className="phone__screen">
-            <small className="label">Ventas de hoy</small>
-            <span className="mock__big">18,450.00</span>
-            <svg className="bars" viewBox="0 0 160 48" width="100%" height="48">
-              {[30, 22, 14, 26, 8, 18].map((y, i) => (
-                <rect key={i} x={2 + i * 20} y={y} width="14" height={48 - y} rx="2" />
-              ))}
-              <rect className="bars__today" x="122" y="28" width="14" height="20" rx="2" />
-            </svg>
-            <span className="phone__row phone__row--top">
-              <span>Caja 1</span>
-              <span className="ok">Cuadró</span>
-            </span>
-            <span className="phone__row">
-              <span>e-CF</span>
-              <span>Todos aceptados</span>
-            </span>
+        <div className="talia-demo__chat" key={at} aria-live="polite">
+          <p className="talia-demo__q">{question}</p>
+          <div className="talia-demo__row">
+            <Talia size={28} />
+            <p className="talia-demo__a">{answer}</p>
           </div>
+          <span className="talia-demo__go">Ir a {go} →</span>
         </div>
       </div>
-      <figcaption>Pantallas de ejemplo; las cifras son ilustrativas.</figcaption>
+      <div className="talia-demo__asks" role="group" aria-label="Pregúntele a Talia">
+        {taliaAsks.map(([q], i) => (
+          <button type="button" key={q} aria-pressed={i === at} onClick={() => setAt(i)}>
+            {q}
+          </button>
+        ))}
+      </div>
+      <figcaption>Así responde Talia en el panel. Datos de ejemplo.</figcaption>
     </figure>
   );
 }
@@ -261,33 +261,6 @@ export function Photo({ name, alt, ratio, sizes, eager = false }: { name: string
       <source type="image/avif" srcSet={set("avif")} sizes={sizes} />
       <img src={`/img/site/${name}-800.webp`} srcSet={set("webp")} sizes={sizes} alt={alt} width={1200} height={Math.round(1200 / ratio)} loading={eager ? "eager" : "lazy"} decoding="async" />
     </picture>
-  );
-}
-
-/** TK-281: a short silent loop (ffmpeg, design/media/README.md). It starts only when it is on screen and never with "reduce motion": then the poster stays.
- *  TK-282: a video poster is never lazy, so it is set only when the video comes near the screen; a phone no longer fetches it with the hero. */
-export function LoopVideo({ name, poster, label }: { name: string; poster: string; label: string }) {
-  const ref = useRef<HTMLVideoElement>(null);
-  const [near, setNear] = useState(false);
-  useEffect(() => {
-    const video = ref.current;
-    if (!video) return;
-    if (typeof IntersectionObserver === "undefined") return setNear(true);
-    const soon = new IntersectionObserver(([e]) => e.isIntersecting && setNear(true), { rootMargin: "300px" });
-    soon.observe(video);
-    const moves = typeof matchMedia === "function" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const seen = new IntersectionObserver(([e]) => moves && (e.isIntersecting ? video.play().catch(() => {}) : video.pause()), { threshold: 0.25 });
-    seen.observe(video);
-    return () => {
-      soon.disconnect();
-      seen.disconnect();
-    };
-  }, []);
-  return (
-    <video ref={ref} className="loop" muted loop playsInline preload="none" poster={near ? poster : undefined} width={960} height={506} aria-label={label}>
-      <source src={`/media/${name}.mp4`} type="video/mp4" />
-      <source src={`/media/${name}.webm`} type="video/webm" />
-    </video>
   );
 }
 
@@ -341,7 +314,7 @@ export function ProductVideo() {
         )}
       </div>
       <details className="product-video__transcript" id={transcript}>
-        <summary>Lo que muestra el video (sin sonido)</summary>
+        <summary>Ver lo que muestra el video</summary>
         <ol>
           {lines.map((l) => (
             <li key={l.time}>
@@ -364,8 +337,8 @@ export const BusinessArt = ({ kind }: { kind: Business }) => (
 /** TK-281: the businesses on the home as icons (quick to scan, light on a phone); the photos live on each business page. */
 export function BusinessCards() {
   const cards: [Business, IconName, string, string, string][] = [
-    ["butcher", "meat", "/carniceria", "Carnicería", "Balanza, cortes por libra y fiado."],
-    ["grocery", "basket", "/colmado", "Colmado", "Escáner rápido, fiado y cuadre."],
+    ["butcher", "meat", "/carniceria", "Carnicería", "Etiquetas de balanza, encargos y cortes."],
+    ["grocery", "basket", "/colmado", "Colmado", "Escáner rápido, crédito y cuadre."],
     ["deli", "cheese", "/deli", "Deli", "Pedidos, encargos y catálogo con QR."],
   ];
   return (

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { App } from "../../App";
 import "../../Panel"; // TK-278: the panel is lazy in App; loading it here keeps the first findBy from waiting on the import.
@@ -144,17 +144,16 @@ it("TK-235: /certificacion lists everything the owner prepares before the first 
   expect(screen.getByText("Acompañamiento gratis con cualquier plan pagado antes del 31/12/2026.")).toBeTruthy(); // TK-313
 });
 
-it("TK-245: the home page shows the product: deadline banner, trial and contact calls to action, decorative art and no price placeholder", () => {
+it("TK-245: the home page shows the product: deadline banner, trial and contact calls to action, Talia's demo and no price placeholder", () => {
   renderAt("/");
-  expect(screen.getByRole("heading", { level: 1, name: "Venda, pese y facture. Aunque se vaya el internet." })).toBeTruthy();
+  expect(screen.getByRole("heading", { level: 1, name: "Pregúntele a su negocio." })).toBeTruthy();
   expect(screen.getByRole("link", { name: /15 de noviembre de 2026/ }).getAttribute("href")).toBe("/e-cf");
   const trials = screen.getAllByRole("link", { name: "Probar 14 días gratis" });
   expect(trials.length).toBe(3); // header, hero, price band
   for (const trial of trials) expect(trial.getAttribute("href")).toBe("/descargar");
   // The owner gave the WhatsApp number (17/10/2026): "Hablemos" became "Hablar por WhatsApp", straight to the chat.
   expect(screen.getByRole("link", { name: /Hablar por WhatsApp/ }).getAttribute("href")).toMatch(/^https:\/\/wa\.me\/18496313513\?text=/);
-  expect(document.querySelector(".art__stage")!.getAttribute("aria-hidden")).toBe("true");
-  expect(screen.getByText(/cifras son ilustrativas/)).toBeTruthy();
+  expect(screen.getByText(/Datos de ejemplo/)).toBeTruthy(); // TK-312: Talia's answers are examples
   expect(screen.queryByText("Precio por confirmar")).toBeNull(); // TK-274: no placeholder on the home
   expect(screen.getByRole("heading", { level: 2, name: "Desde RD$925 al mes" })).toBeTruthy(); // TK-293, TK-313: the provisional entry price
   expect(screen.getByText("Se cobra US$15 con tarjeta. Precio final. Precios provisionales.")).toBeTruthy();
@@ -209,7 +208,7 @@ it("TK-245: /e-cf keeps the date, the extension note and the legal disclaimer", 
   expect(screen.getByText(/no es asesoría legal/)).toBeTruthy();
 });
 
-it("TK-296: the home's video never loads or plays by itself, has a descriptions track and a visible transcript from the same script", () => {
+it("TK-296: the home's video never loads or plays by itself, has a descriptions track and a transcript one tap away from the same script (TK-312)", () => {
   renderAt("/");
   const video = screen.getByLabelText(/Video de 42 segundos/) as HTMLVideoElement;
   expect(video.getAttribute("preload")).toBe("none");
@@ -217,7 +216,7 @@ it("TK-296: the home's video never loads or plays by itself, has a descriptions 
   expect(video.querySelector("track")?.getAttribute("kind")).toBe("descriptions");
   expect(video.querySelector("track")?.getAttribute("srclang")).toBe("es");
   const transcript = document.getElementById(video.getAttribute("aria-describedby")!)!;
-  expect(within(transcript).getByText("Lo que muestra el video (sin sonido)")).toBeTruthy();
+  expect(within(transcript).getByText("Ver lo que muestra el video")).toBeTruthy();
   expect(within(transcript).getByText("Pregúntele a Talia.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Ver el video (0:42)" })).toBeTruthy();
 });
@@ -226,4 +225,46 @@ it.each(sitePages.map((p) => [p.path]))("TK-330: %s promises nothing the TK-279 
   renderAt(path);
   const text = document.body.textContent ?? "";
   for (const promise of [/solo lectura/i, /pago atrasado/i, /nunca se detiene/i]) expect(text).not.toMatch(promise);
+});
+
+it.each(sitePages.map((p) => [p.path]))("TK-312: %s never says \"fiado\" (ventas a crédito, cuentas por cobrar)", (path) => {
+  renderAt(path);
+  const page = sitePages.find((p) => p.path === path)!;
+  expect(`${document.body.textContent} ${page.title} ${page.description}`).not.toMatch(/fiad/i);
+});
+
+it("TK-312: the site is light unless dark was picked, and its switch has only claro and oscuro", async () => {
+  renderAt("/");
+  const toggle = await screen.findByRole("button", { name: "Tema: claro. Cambiar a oscuro" });
+  toggle.click();
+  expect(await screen.findByRole("button", { name: "Tema: oscuro. Cambiar a claro" })).toBeTruthy();
+  expect(localStorage.getItem("abastalia.theme")).toBe("dark");
+  expect(document.documentElement.dataset.choice).toBe("dark");
+});
+
+it("TK-312: the home opens with Talia answering what her tools answer today; a question button shows its answer and sends nothing", () => {
+  const fetch = renderAt("/");
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Pregúntele a su negocio.");
+  expect(screen.getByText(/lo más vendido fue Huevos/)).toBeTruthy();
+  expect(screen.getByText("Ir a Ventas →")).toBeTruthy(); // TK-339: her button to the screen with the detail
+  const calls = fetch.mock.calls.length;
+  fireEvent.click(screen.getByRole("button", { name: "¿Cuánto me deben y quién debe más?" }));
+  expect(screen.getByText(/Hoy le deben RD\$ 12,840\.00/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "¿Cuánto me deben y quién debe más?" }).getAttribute("aria-pressed")).toBe("true");
+  expect(fetch.mock.calls.length).toBe(calls);
+  expect(screen.getByText("Datos de ejemplo.", { exact: false })).toBeTruthy();
+});
+
+it("TK-312: the six main benefits are on the home, and weighing is not one of them", () => {
+  renderAt("/");
+  const tiles = [...document.querySelectorAll(".counter .tile h3")].map((h) => h.textContent);
+  expect(tiles).toEqual(["Sin internet, sigue vendiendo", "e-CF directo con la DGII", "La caja cuadra", "Talia, su asistente", "Su negocio en el celular", "Clientes y cuentas por cobrar"]);
+  expect(document.querySelector("video.loop")).toBeNull(); // the analog-scale loop is gone
+});
+
+it("TK-312: the e-CF band shows the real path and the register's own queue chip", () => {
+  renderAt("/e-cf");
+  expect(screen.getByRole("heading", { name: "Envía a la DGII" })).toBeTruthy();
+  expect(screen.getByText("e-CF en cola: 3")).toBeTruthy();
+  expect(within(screen.getByRole("list", { name: "Lo que no hay en medio" })).getAllByRole("listitem")).toHaveLength(3);
 });

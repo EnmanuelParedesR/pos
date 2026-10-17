@@ -176,7 +176,7 @@ function Privacy() {
         {company}, RNC {rnc}, República Dominicana, es responsable de los datos de las cuentas de Abastalia. Contacto: {contact}.
       </p>
       <p>
-        Los datos de los clientes y empleados de su tienda (por ejemplo, quién le debe en el fiado) son del negocio: usted es el responsable y Abastalia los trata por cuenta suya.
+        Los datos de los clientes y empleados de su tienda (por ejemplo, quién le debe en las ventas a crédito) son del negocio: usted es el responsable y Abastalia los trata por cuenta suya.
       </p>
 
       <H2>2. Qué datos guardamos y para qué</H2>
@@ -185,7 +185,7 @@ function Privacy() {
           <strong>Su cuenta:</strong> correo, contraseña (guardada de forma que nadie puede leerla) y, si la activa, la verificación en dos pasos. Para que entre al panel y le escribamos sobre su cuenta.
         </li>
         <li>
-          <strong>Lo que su tienda sube a la nube:</strong> ventas, pagos, devoluciones, turnos y cuadres, compras, movimientos de inventario, cambios de precio, nombres de cajeros y cajas, y clientes del fiado (nombre y saldo). Para mostrarle sus reportes en el panel.
+          <strong>Lo que su tienda sube a la nube:</strong> ventas, pagos, devoluciones, turnos y cuadres, compras, movimientos de inventario, cambios de precio, nombres de cajeros y cajas, y clientes con crédito (nombre y saldo). Para mostrarle sus reportes en el panel.
         </li>
         <li>
           <strong>e-CF:</strong> cada comprobante firmado, su resumen y la respuesta de la DGII, y los e-CF que le envían sus suplidores. Para cumplir con la conservación que exige la ley y para que los busque en el panel.

@@ -11,19 +11,11 @@ Tomadas el 16 oct 2026 con Edge sin interfaz (`capturas/capturas.mjs`) sobre una
 | Archivo | Uso | Fuente |
 |---|---|---|
 | `carniceria.jpg` | Portada de /carniceria | https://www.pexels.com/photo/woman-buying-sausages-20722688/ |
-| `colmado.jpg` | Portada de /colmado | https://www.pexels.com/photo/colorful-colombian-grocery-store-interior-38703834/ |
+| `colmado.jpg` | Portada de /colmado y escena del inicio (TK-312) | https://www.pexels.com/photo/colorful-colombian-grocery-store-interior-38703834/ |
 | `deli.jpg` | Portada de /deli | https://www.pexels.com/photo/market-scene-in-valencia-with-jamon-and-cheese-30811288/ |
 
 Reemplazar por fotos propias de las tiendas piloto cuando existan (con autorización firmada de la tienda y de las personas que salen).
 
-## Video (`src/Cloud/panel/public/media/pesando.*`)
+## Video
 
-"Shopkeeper Weighing Food in Store", Nathanael Arias, Pexels: https://www.pexels.com/video/shopkeeper-weighing-food-in-store-12511385/ (original 4K, 13 s). Recorte de 6 s sin audio:
-
-```
-ffmpeg -ss 2 -t 6 -i clip.mp4 -an -vf "scale=960:-2:flags=lanczos,fps=24" -c:v libx264 -preset slow -crf 30 -pix_fmt yuv420p -movflags +faststart pesando.mp4
-ffmpeg -ss 2 -t 6 -i clip.mp4 -an -vf "scale=960:-2:flags=lanczos,fps=24" -c:v libvpx-vp9 -b:v 0 -crf 40 -row-mt 1 pesando.webm
-ffmpeg -ss 2 -i clip.mp4 -frames:v 1 -vf scale=960:-2 -c:v libwebp -quality 72 pesando-portada.webp
-```
-
-En la página arranca solo cuando se ve, se pausa al salir de pantalla y no se mueve con "reducir movimiento" (`LoopVideo`).
+El lazo "pesando" (Pexels 12511385, balanza colgante de aguja) salió del sitio en TK-312: Abastalia solo lee balanzas digitales y etiquetas con peso. El único video del sitio es el del producto (`design/video/README.md`).

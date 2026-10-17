@@ -5,7 +5,7 @@ import { usePlanPrices, type SitePrice } from "./livePrices";
 import { useReferralLink } from "../../referral";
 import { legalPages } from "./LegalPages";
 import { Download } from "./DownloadPage";
-import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, IconTiles, LoopVideo, ProductArt, ProductVideo, Section, Steps, Tbd, Trial, type IconName } from "./SiteParts";
+import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, Photo, ProductVideo, Section, Steps, TaliaDemo, Tbd, Trial, type IconName } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
 export interface SitePage {
@@ -47,44 +47,56 @@ const switching: [string, ReactNode] = [
   </>,
 ];
 
+/** TK-312: what Abastalia does, next to the product video (declarative, never a narration of the clip; the transcript stays one tap away). */
+const milestones: [IconName, string][] = [
+  ["bolt", "Cobra por unidad o por código"],
+  ["ecf", "Emite el e-CF de cada venta"],
+  ["register", "Cuadra la caja al cerrar el turno"],
+  ["phone", "Le muestra el día en el celular"],
+];
+
+/** TK-312: Talia first (the owner's choice), then the six main benefits; weighing is one capability among others, not the headline. */
 function Home() {
   return (
     <>
       <Hero
-        eyebrow="Punto de venta con e-CF"
-        title="Venda, pese y facture. Aunque se vaya el internet."
-        sub="Cobre rápido, venda por libra o por unidad y emita el e-CF desde la PC de su tienda."
+        eyebrow="Punto de venta con e-CF y asistente"
+        title="Pregúntele a su negocio."
+        sub="Abastalia cobra, emite el e-CF y cuadra la caja, aunque se vaya el internet. Talia, su asistente, le dice cuánto vendió y quién le debe."
         cta={both}
         note="Sin tarjeta · Los 14 días empiezan con su primera venta"
-        art={<ProductArt />}
+        art={<TaliaDemo />}
       />
       <Section className="counter">
         <h2 className="esc-visually-hidden">Lo principal</h2>
         <IconTiles
+          cols={3}
           items={[
-            ["offline", "Sin internet, sigue vendiendo"],
-            ["scale", "Pesa por libra y lee etiquetas"],
-            ["ecf", "e-CF directo con la DGII"],
-            ["register", "La caja cuadra al cerrar"],
+            ["offline", "Sin internet, sigue vendiendo", "Las cajas cobran contra la PC de la tienda; los e-CF salen al volver la conexión."],
+            ["ecf", "e-CF directo con la DGII", "Firmado en su tienda, sin intermediarios, sin cupo ni cobro por factura."],
+            ["register", "La caja cuadra", "Cuadre ciego por billete, y cada descuento o anulación con su nombre."],
+            ["chat", "Talia, su asistente", "Pregúntele por las ventas, los cuadres, lo más vendido o quién le debe."],
+            ["phone", "Su negocio en el celular", "Lo vendido hoy, los cuadres y lo más vendido, desde donde esté."],
+            ["people", "Clientes y cuentas por cobrar", "Crédito con límite, abonos y el estado de cuenta listo para WhatsApp."],
           ]}
         />
       </Section>
-      <Section className="scene">
+      <Section className="scene reveal">
         <div className="scene__grid">
           <figure className="scene__media">
-            <LoopVideo name="pesando" poster="/media/pesando-portada.webp" label="Un comerciante pesa un producto en su tienda" />
+            <Photo name="colmado" alt="Estantes de una tienda de barrio llenos de productos" ratio={4 / 3} sizes="(min-width: 860px) 640px, 100vw" />
           </figure>
           <div className="scene__text">
-            <h2>Hecho para el mostrador</h2>
+            <h2>Cobre, facture y cuadre en la misma pantalla</h2>
             <ul className="checks">
-              <li>Por libra y por unidad en la misma venta.</li>
-              <li>El fiado y el cuadre, sin cuaderno.</li>
-              <li>El e-CF sale solo, con o sin internet.</li>
+              <li>Escanee o busque el producto y cobre con F12.</li>
+              <li>Ventas a crédito con límite y abonos, en la misma caja.</li>
+              <li>Cuadre ciego al cerrar el turno.</li>
             </ul>
           </div>
         </div>
       </Section>
-      <Section>
+      <Section className="reveal">
         <h2>Se adapta a su negocio</h2>
         <BusinessCards />
       </Section>
@@ -93,15 +105,25 @@ function Home() {
           ¿Necesita certificarse? Le acompañamos →
         </Link>
       </EcfFlow>
-      <Section className="how-it-works">
+      <Section className="how-it-works reveal">
         <h2>Cómo funciona</h2>
-        <ProductVideo />
+        <div className="watch">
+          <ProductVideo />
+          <ul className="milestones">
+            {milestones.map(([icon, text]) => (
+              <li key={text}>
+                <Icon name={icon} size={28} />
+                {text}
+              </li>
+            ))}
+          </ul>
+        </div>
         <h3 className="how-it-works__lead">Empiece hoy, en 3 pasos</h3>
         <HowItWorks
           items={[
             { title: "Instale Abastalia", text: <>En la PC de la tienda. <Link to="/descargar">Descargar</Link></>, time: "10 minutos" },
-            { title: "Cargue sus productos", text: "Por libra o por unidad, o los de ejemplo.", time: "El mismo día" },
-            { title: "Venda", text: "Escanee o pese y cobre con F12.", time: "Desde la primera venta" },
+            { title: "Cargue sus productos", text: "Los suyos o los de ejemplo, por unidad o por libra.", time: "El mismo día" },
+            { title: "Venda", text: "Escanee y cobre con F12.", time: "Desde la primera venta" },
           ]}
         />
       </Section>
@@ -148,13 +170,13 @@ function Butcher() {
 function Grocery() {
   return (
     <>
-      <Hero eyebrow="Colmado" title="El fiado claro y la caja al día." sub="Venta rápida, fiado sin cuaderno y el e-CF de cada venta." cta={both} art={<BusinessArt kind="grocery" />} />
+      <Hero eyebrow="Colmado" title="Las cuentas claras y la caja al día." sub="Venta rápida, ventas a crédito sin cuaderno y el e-CF de cada venta." cta={both} art={<BusinessArt kind="grocery" />} />
       <Section className="counter">
         <h2 className="esc-visually-hidden">Lo que hace por su colmado</h2>
         <IconTiles
           items={[
             ["bolt", "Venta rápida", "Escáner siempre listo y el total grande. Por libra también."],
-            ["people", "Fiado con límite", "Abonos, antigüedad y estado de cuenta para WhatsApp."],
+            ["people", "Crédito con límite", "Abonos, antigüedad y estado de cuenta para WhatsApp."],
             ["qr", "Pedidos por WhatsApp", "Catálogo con QR para el mostrador, sin costos ni existencias."],
             ["box", "Reponer a tiempo", "Mínimos, máximos y pedido sugerido con el último suplidor."],
           ]}
@@ -164,7 +186,7 @@ function Grocery() {
         items={[
           ["Tengo una sola caja. ¿Necesito una PC aparte?", "No. En una tienda de una caja, la misma PC es la caja y la principal."],
           ["¿Qué pasa si se va el internet o la luz?", "Sin internet sigue vendiendo y los e-CF salen al volver la conexión (la DGII da 72 horas). Si la PC no puede emitir e-CF (por ejemplo, se venció el certificado), Abastalia lo guía para declarar la contingencia, facturar con serie B y luego regularizar."],
-          ["¿El fiado sale en el cuadre de la caja?", "Sí. Lo vendido a crédito y lo cobrado de fiado salen separados en el cierre de cada turno."],
+          ["¿Las ventas a crédito salen en el cuadre de la caja?", "Sí. Lo vendido a crédito y los abonos cobrados salen separados en el cierre de cada turno."],
           ["¿Hay un límite de facturas al mes?", "No. Abastalia no cobra por documento ni detiene la facturación por volumen."],
           [
             "¿Cuándo me toca el e-CF?",
@@ -366,7 +388,7 @@ const versus: [IconName, string, ReactNode, ReactNode, string][] = [
   ["tag", "Costo", <>Mensual, por tamaño de tienda. <Link to="/precios">Ver precios</Link></>, "Gratis", "¿Cuánto cobra al mes? ¿Cobra por factura?"],
   ["ecf", "Pensado para", "Tiendas con mostrador, sin cupo ni cobro por documento", "Bajo volumen. Unas 150 facturas al mes, según la DGII (El Día, 12/05/2026)", "¿Tiene cupo o tope de facturas?"],
   ["offline", "Sin internet", <>{yes}: firma y envía al volver (72 horas)</>, "No emite", "¿Factura si se va el internet?"],
-  ["scale", "Caja, balanza, inventario y fiado", yes, "No: emite, recibe y consulta e-CF", "¿Lee la balanza y vende por libra?"],
+  ["scale", "Caja, balanza, inventario y crédito a clientes", yes, "No: emite, recibe y consulta e-CF", "¿Lee la balanza y vende por libra?"],
   ["pc", "Dónde se usa", "Programa en la PC de la tienda y panel en el celular", "Portal web de la DGII", "¿Funciona en la PC de la tienda o solo en la web?"],
   ["data", "Guarda sus e-CF", "10 años, en la tienda y en la nube", "Hasta 2 años en el portal; usted debe guardarlos 10", "¿Guarda los e-CF 10 años? ¿Me llevo mis datos si me voy?"],
   ["key", "Certificado digital", "Comprado a una entidad autorizada por INDOTEL", "El gratis de la DGII (solo sirve ahí) o uno comprado", "¿Está certificado ante la DGII?"],
@@ -618,7 +640,7 @@ function Pricing() {
             ["ecf", "e-CF sin cupo", "Consumo, crédito fiscal y notas de crédito, sin cobro por documento."],
             ["box", "Inventario completo", "Compras, mermas, conteos, mínimos y pedido sugerido."],
             ["register", "Cuadre ciego y cierre Z", "Autorización de supervisor con PIN."],
-            ["people", "Clientes y fiado", "Con límite y estado de cuenta."],
+            ["people", "Clientes y cuentas por cobrar", "Crédito con límite, abonos y estado de cuenta."],
             ["quote", "606, 607 y 608", "Para su contador."],
             ["lock", "Permisos por acción", "Usuarios, roles y registro de auditoría."],
             ["data", "Sus datos", "Respaldo y exportación completa cuando quiera."],
@@ -694,8 +716,8 @@ function WhatsNew() {
           <News title="Encargos y cotizaciones">Encargos con fecha, hora y abono, cobrados con el peso real. Cotizaciones con vigencia que se convierten en venta.</News>
           <News title="Catálogo con QR y pedido por WhatsApp">Sus productos y precios en una página pública, sin costos ni existencias, con un QR para el mostrador.</News>
           <News title="Pedido sugerido">Mínimos y máximos; Abastalia calcula cuánto pedir, a qué suplidor y crea la compra en borrador.</News>
-          <News title="Permisos más finos">Abrir caja, cerrar caja, cobrar fiado, ver costos y pagar a suplidores son permisos separados. Nadie da un permiso que no tiene.</News>
-          <News title="Reportes y documentos">Reporte 608, ventas por medio de pago y por hora, y el cierre Z y el estado de cuenta del fiado en una página para PDF.</News>
+          <News title="Permisos más finos">Abrir caja, cerrar caja, cobrar abonos de crédito, ver costos y pagar a suplidores son permisos separados. Nadie da un permiso que no tiene.</News>
+          <News title="Reportes y documentos">Reporte 608, ventas por medio de pago y por hora, y el cierre Z y el estado de cuenta de cada cliente en una página para PDF.</News>
           <News title="Panel del dueño">Quién le debe, lo más vendido, más de una persona con acceso por invitación y modo oscuro.</News>
         </ul>
       </Section>
@@ -726,8 +748,8 @@ export const sitePages: SitePage[] = [
   {
     path: "/",
     nav: "Inicio",
-    title: "Abastalia: punto de venta con e-CF para su negocio",
-    description: "Abastalia cobra rápido, vende por libra o por unidad, cuadra la caja y emite el e-CF con la DGII aunque se vaya el internet. Hecho en República Dominicana.",
+    title: "Abastalia: punto de venta con e-CF y asistente con IA",
+    description: "Abastalia cobra, cuadra la caja y emite el e-CF con la DGII aunque se vaya el internet. Talia, su asistente, le dice cuánto vendió y quién le debe.",
     element: <Home />,
   },
   {
@@ -740,8 +762,8 @@ export const sitePages: SitePage[] = [
   {
     path: "/colmado",
     nav: "Colmado",
-    title: "Abastalia para colmados · Fiado, venta rápida y e-CF",
-    description: "Punto de venta para colmados: venta rápida con escáner, fiado con límite y estado de cuenta, catálogo con pedido por WhatsApp y e-CF aunque se vaya el internet.",
+    title: "Abastalia para colmados · Crédito, venta rápida y e-CF",
+    description: "Punto de venta para colmados: venta rápida con escáner, crédito con límite y estado de cuenta, pedidos por WhatsApp y e-CF aunque se vaya el internet.",
     element: <Grocery />,
   },
   {
@@ -797,7 +819,7 @@ export const sitePages: SitePage[] = [
     path: "/precios",
     nav: "Precios",
     title: "Precios de Abastalia · Planes por tamaño de tienda",
-    description: "Planes de Abastalia según sus cajas y sucursales. Lo básico está en todos: balanza, e-CF sin cupo, inventario, cuadre ciego, fiado, 606/607/608 y respaldo.",
+    description: "Planes de Abastalia según sus cajas y sucursales. Lo básico está en todos: balanza, e-CF sin cupo, inventario, cuadre ciego, crédito, 606/607/608 y respaldo.",
     element: <Pricing />,
   },
   {
