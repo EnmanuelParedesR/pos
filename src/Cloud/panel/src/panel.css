@@ -80,7 +80,10 @@ html, body { background: #F6F5F2; }
   .esc-admin .esc-tabbar .esc-tabbar__sheet a { font-size: var(--t-15); padding: 0 12px; gap: 12px; }
   /* Room for the last row above the bar and Talia's button. */
   .esc-admin .esc-page { padding-bottom: calc(148px + env(safe-area-inset-bottom)); }
+  /* TK-300 critique: on the phone Talia's button is the way in; the bar would repeat it above every screen. */
+  .esc-admin .esc-ask { display: none; }
 }
+@media (min-width: 761px) { .esc-admin .esc-page { padding-bottom: 104px; } }
 
 /* TK-300: Talia's button and popup. Bottom-right; on the phone above the bottom bar, and the popup is a full-screen sheet. */
 .talia-fab { position: fixed; right: 24px; bottom: 24px; z-index: 19; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 999px;

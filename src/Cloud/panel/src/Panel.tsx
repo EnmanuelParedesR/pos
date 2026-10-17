@@ -313,7 +313,7 @@ function TaliaPopup({ open, onOpen, onClose, pending }: { open: boolean; onOpen:
             <Talia size={36} />
             <div>
               <h2 id="talia-title">Talia</h2>
-              <span>Contesto con los datos de sus tiendas</span>
+              <span>Su asistente</span>
             </div>
             <button type="button" className="esc-button esc-button--ghost esc-button--small talia-pop__close" aria-label="Cerrar" onClick={onClose}>
               <Icon name="x" size={20} />
