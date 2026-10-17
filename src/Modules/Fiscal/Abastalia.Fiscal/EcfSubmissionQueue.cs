@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Abastalia.BuildingBlocks.Messaging;
 using Abastalia.Fiscal.Domain;
 using Abastalia.Settings.Contracts;
 using Abastalia.Sync.Contracts;
@@ -32,7 +33,9 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
     {
         var now = clock.GetUtcNow().UtcDateTime;
         var documents = await db.Documents
-            .Where(d => (d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.Sent) && (d.NextAttemptUtc == null || d.NextAttemptUtc <= now))
+            // TK-156: one waiting for the clock (no security code yet) is signed first, by FiscalDocuments.SignWaitingAsync.
+            .Where(d => (d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.Sent) && (d.NextAttemptUtc == null || d.NextAttemptUtc <= now)
+                && d.SecurityCode != "")
             .OrderBy(d => d.SubmitDeadlineUtc).Take(BatchSize).ToListAsync(ct);
         var voids = await db.Voids.Where(v => v.Status == SubmissionStatus.Pending && (v.NextAttemptUtc == null || v.NextAttemptUtc <= now))
             .OrderBy(v => v.CreatedUtc).Take(BatchSize).ToListAsync(ct);
@@ -89,7 +92,7 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
     public async Task SendNowAsync(Guid documentId, TimeSpan pollFor, CancellationToken ct)
     {
         var d = await db.Documents.SingleOrDefaultAsync(x => x.Id == documentId, ct);
-        if (d is not { Status: SubmissionStatus.Pending, Attempts: 0 }) return;
+        if (d is not { Status: SubmissionStatus.Pending, Attempts: 0, AwaitingSignature: false }) return;
         var rnc = (await settings.GetBusinessProfileAsync(ct)).Rnc ?? "";
         var until = clock.GetUtcNow() + pollFor;
         while (await TryOneAsync(d, rnc, clock.GetUtcNow().UtcDateTime, ct) && d.Status == SubmissionStatus.Sent && clock.GetUtcNow() < until)
@@ -218,6 +221,13 @@ internal sealed class EcfSubmissionWorker(IServiceScopeFactory scopes, IConfigur
             try
             {
                 await using var scope = scopes.CreateAsyncScope();
+                // TK-156: the DGII's answer to the seed carries its time; then whatever waited for the clock is signed, before the queue sends.
+                if (scope.ServiceProvider.GetRequiredService<DgiiClock>().Stale)
+                    await scope.ServiceProvider.GetRequiredService<DgiiServiceStatus>().CheckAsync(stoppingToken);
+                var db = scope.ServiceProvider.GetRequiredService<FiscalDbContext>();
+                if (scope.ServiceProvider.GetRequiredService<FiscalDocuments>().ClockProblem is null
+                    && await db.Documents.AnyAsync(d => d.Status == SubmissionStatus.Pending && d.SecurityCode == "", stoppingToken))
+                    await scope.ServiceProvider.GetRequiredService<ICommandHandler<SignWaiting.Command, int>>().Handle(new SignWaiting.Command(), stoppingToken);
                 var queue = scope.ServiceProvider.GetRequiredService<EcfSubmissionQueue>();
                 while (await queue.ProcessAsync(stoppingToken) == EcfSubmissionQueue.BatchSize) { }
             }

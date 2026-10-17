@@ -17,3 +17,11 @@ internal sealed class FollowFiscalReplacement(SalesDbContext db) : IEventHandler
         await db.Returns.Where(r => r.ENcf == e.RejectedENcf).ExecuteUpdateAsync(r => r.SetProperty(x => x.ENcf, e.ENcf), ct);
     }
 }
+
+/// <summary>TK-156: the e-CF of a sale made while the store's clock was off was signed later: the sale takes its security code, QR and signing time.</summary>
+internal sealed class FollowFiscalSignature(SalesDbContext db) : IEventHandler<FiscalDocumentSignedV1>
+{
+    public Task HandleAsync(FiscalDocumentSignedV1 e, CancellationToken ct) =>
+        db.Sales.Where(s => s.Id == e.ReferenceId && s.ENcf == e.ENcf).ExecuteUpdateAsync(s => s
+            .SetProperty(x => x.SecurityCode, e.SecurityCode).SetProperty(x => x.QrUrl, e.QrUrl).SetProperty(x => x.SignedUtc, e.SignedUtc), ct);
+}

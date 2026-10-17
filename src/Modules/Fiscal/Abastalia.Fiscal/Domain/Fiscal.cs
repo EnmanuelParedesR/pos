@@ -48,8 +48,13 @@ internal sealed class FiscalDocument
     public string? BuyerName { get; set; }
     public decimal Itbis { get; set; }
     public decimal Total { get; set; }
+    /// <summary>When it was signed (TK-156: for one that waited for the clock, the issue time until it is signed).</summary>
     public DateTime SignedUtc { get; set; }
+    /// <summary>Empty while <see cref="AwaitingSignature"/>.</summary>
     public string SecurityCode { get; set; } = "";
+    /// <summary>TK-156: issued while the clock was off (<see cref="DgiiClock"/>): <see cref="SignedXml"/> holds the unsigned XML until the clock is
+    /// fixed. Every signature has a security code, so an empty one marks it (queries use <c>SecurityCode == ""</c>).</summary>
+    public bool AwaitingSignature => SecurityCode.Length == 0;
     /// <summary>GZip of the signed XML.</summary>
     public byte[] SignedXml { get; set; } = [];
     public SubmissionStatus Status { get; set; }

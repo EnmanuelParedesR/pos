@@ -34,7 +34,7 @@ internal sealed class EcfOperations(FiscalDbContext db, FiscalDocuments document
     /// <summary>How long an e-CF accepted with conditions stays in the list (TK-240).</summary>
     public const int ConditionalDays = 7;
 
-    /// <param name="Code">queue, dgii, certificate, sequences, contingency, regularize, conditional.</param>
+    /// <param name="Code">queue, dgii, certificate, clock, sequences, contingency, regularize, conditional.</param>
     public sealed record Item(string Level, string Code, string Title, string Detail);
 
     public sealed record Response(FiscalEnvironment Environment, DateTime? OldestPendingUtc, DateTime? LastDgiiContactUtc, DateTime? CertificateExpiresUtc,
@@ -83,6 +83,13 @@ internal sealed class EcfOperations(FiscalDbContext db, FiscalDocuments document
         else if (cert is not null && (cert.NotAfterUtc - now).TotalDays <= CertificateInfo.WarningDays)
             items.Add(new("warning", "certificate", $"El certificado digital vence el {Local(cert.NotAfterUtc):dd/MM/yyyy}",
                 "Renuévelo con la entidad certificadora e impórtelo antes de esa fecha: sin certificado no se puede facturar con e-CF."));
+
+        // TK-156 (D17): the DGII rejects a signature dated after its own time; sales go on and their e-CF wait unsigned.
+        if (documents.ClockProblem is { } clockOff)
+            items.Add(new("error", "clock", clockOff,
+                $"Se sigue vendiendo: {await pending.CountAsync(d => d.SecurityCode == "", ct)} comprobantes esperan sin firmar (el recibo sale sin código de "
+                + "seguridad y con la leyenda de contingencia) y se firman y envían solos en cuanto la hora esté bien. En Windows: Configuración → Hora e "
+                + "idioma → Fecha y hora → Sincronizar ahora."));
 
         foreach (var s in (await SequenceAlerts.ComputeAsync(db, env, BusinessDay.Of(now), ct)).Where(s => s.Alert))
             items.Add(new("warning", "sequences", $"Quedan {s.Available} números de {FiscalErrors.Name(s.Type)}",
@@ -133,33 +140,48 @@ internal sealed class EcfOperationsHealthCheck(EcfOperations operations) : IHeal
     }
 }
 
-/// <summary>TK-156: whether the DGII web services answer right now, asked on demand. The DGII "Estatus de servicios" endpoint is not known
-/// yet (docs/ecf-propio.md §11 #6): meanwhile the seed of the authentication service (public, no token) stands for "the DGII is up".</summary>
+/// <summary>TK-156: whether the DGII web services answer right now, asked on demand (and by the worker to measure the clock, <see cref="DgiiClock"/>).
+/// The seed of the authentication service (public, no token) stands for "the DGII is up". The DGII's own "FE Estatus Servicios API"
+/// (<see cref="StatusHost"/>, docs/ecf-propio.md §11 #6) needs an API key the DGII has not given, so it is not read; when the seed does not
+/// answer at all, any answer from that host (even its 401) only tells "the DGII is reachable, its e-CF service is not" from "this store is offline".</summary>
 internal sealed class DgiiServiceStatus(IEcfProvider provider, IServiceProvider services, TimeProvider clock)
 {
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+    public const string StatusHost = "https://statusecf.dgii.gov.do";
 
-    /// <param name="State"><c>Simulated</c> (nothing goes to the DGII), <c>Up</c> or <c>Down</c>.</param>
+    /// <param name="State"><c>Simulated</c> (nothing goes to the DGII), <c>Up</c>, <c>Down</c> (the DGII answers with an error or only its other
+    /// hosts answer: a DGII problem) or <c>Unreachable</c> (no DGII host answers: most likely this store's internet).</param>
     public sealed record Response(string State, string Message, DateTime CheckedUtc);
 
     public async Task<Response> CheckAsync(CancellationToken ct)
     {
         var now = clock.GetUtcNow().UtcDateTime;
         if (provider.IsSimulated) return new("Simulated", "La tienda está en modo simulado: no se envía nada a la DGII.", now);
-        var url = $"{new DgiiUrls(provider.Environment).Ecf}/autenticacion/api/autenticacion/semilla";
+        var http = services.GetRequiredService<IHttpClientFactory>().CreateClient(DgiiClient.HttpClientName);
+        var watch = Stopwatch.StartNew();
+        var seed = await AnswerAsync(http, $"{new DgiiUrls(provider.Environment).Ecf}/autenticacion/api/autenticacion/semilla", ct);
+        if (seed is >= 200 and < 300) return new("Up", $"La DGII respondió en {watch.ElapsedMilliseconds} ms.", now);
+        if (seed is not null)
+            return new("Down", $"La DGII respondió con un error ({seed}). Puede ser una ventana de mantenimiento: los comprobantes esperan en la cola.", now);
+        return await AnswerAsync(http, $"{StatusHost}/", ct) is not null
+            ? new("Down", "La DGII no responde en el servicio de comprobantes, pero su sitio sí: es una intermitencia de la DGII, no de esta tienda. "
+                + "Los comprobantes esperan en la cola (72 horas).", now)
+            : new("Unreachable", "No se llega a ningún servicio de la DGII. Revise el internet de la PC principal; los comprobantes esperan en la cola (72 horas).", now);
+    }
+
+    /// <returns>The HTTP status, or null when nothing answered within <see cref="Timeout"/>.</returns>
+    private static async Task<int?> AnswerAsync(HttpClient http, string url, CancellationToken ct)
+    {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(Timeout);
-        var watch = Stopwatch.StartNew();
         try
         {
-            using var response = await services.GetRequiredService<IHttpClientFactory>().CreateClient(DgiiClient.HttpClientName).GetAsync(url, timeout.Token);
-            return response.IsSuccessStatusCode
-                ? new("Up", $"La DGII respondió en {watch.ElapsedMilliseconds} ms.", now)
-                : new("Down", $"La DGII respondió con un error ({(int)response.StatusCode}). Puede ser una ventana de mantenimiento: los comprobantes esperan en la cola.", now);
+            using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            return (int)response.StatusCode;
         }
         catch (Exception) when (!ct.IsCancellationRequested)
         {
-            return new("Down", "No se pudo conectar con la DGII. Revise el internet de la PC principal; los comprobantes esperan en la cola (72 horas).", now);
+            return null;
         }
     }
 
