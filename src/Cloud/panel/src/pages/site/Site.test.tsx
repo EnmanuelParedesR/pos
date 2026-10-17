@@ -164,6 +164,20 @@ it("TK-263: the e-CF guide, the comparison and the glossary link to each other a
   for (const name of ["Guía e-CF", "Comparar", "Glosario"]) expect(footer.textContent).toContain(name);
 });
 
+it("TK-294: /comparar is a labelled carousel: one card per point with Abastalia, the Facturador Gratuito and what to ask another program", () => {
+  renderAt("/comparar");
+  const carousel = screen.getByRole("region", { name: "Lado a lado" });
+  expect(carousel.getAttribute("aria-roledescription")).toBe("carrusel");
+  const slides = within(carousel).getAllByRole("group").filter((g) => g.getAttribute("aria-roledescription") === "diapositiva");
+  expect(slides.map((s) => s.getAttribute("aria-label"))[0]).toBe("1 de 8: Costo");
+  expect(slides.length).toBe(8);
+  for (const slide of slides) for (const option of ["Abastalia", "Facturador Gratuito (DGII)", "Otro programa: pregunte"]) expect(within(slide).getByText(option)).toBeTruthy();
+  const track = document.getElementById(within(carousel).getByRole("button", { name: "Siguiente" }).getAttribute("aria-controls")!)!;
+  expect(track.tabIndex).toBe(0); // the arrow keys scroll it
+  expect((within(carousel).getByRole("button", { name: "Anterior" }) as HTMLButtonElement).disabled).toBe(true); // at the start
+  expect(screen.getByText(/Actualizado el/).textContent).toContain("16/10/2026"); // the dated sources stay
+});
+
 it("TK-245: /e-cf keeps the date, the extension note and the legal disclaimer", () => {
   renderAt("/e-cf");
   expect(screen.getByText("15/11/2026")).toBeTruthy();

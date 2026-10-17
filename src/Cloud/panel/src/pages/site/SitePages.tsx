@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { site } from "./config";
 import { usePlanPrices } from "./livePrices";
 import { useReferralLink } from "../../referral";
-import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, LoopVideo, ProductArt, Section, Steps, Tbd, Trial } from "./SiteParts";
+import { BusinessArt, BusinessCards, Carousel, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, LoopVideo, ProductArt, Section, Steps, Tbd, Trial, type IconName } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
 export interface SitePage {
@@ -342,54 +342,39 @@ function EcfGuide() {
 
 const yes = <span className="ok">Sí</span>;
 
-/** Row, Facturador Gratuito (DGII's own FAQ unless dated otherwise), Abastalia. On a phone each row stacks (.vs in site.css). */
-const versus: [string, ReactNode, ReactNode][] = [
-  ["Costo", "Gratis", <>Mensual, por tamaño de tienda. <Link to="/precios">Precios</Link></>],
-  ["Pensado para", "Bajo volumen. Unas 150 facturas al mes, según la DGII (El Día, 12/05/2026)", "Tiendas con mostrador, sin cupo ni cobro por documento"],
-  ["Sin internet", "No emite", <>{yes}: firma y envía al volver (72 horas)</>],
-  ["Caja, balanza, inventario y fiado", "No: emite, recibe y consulta e-CF", yes],
-  ["Dónde se usa", "Portal web de la DGII", "Programa en la PC de la tienda y panel en el celular"],
-  ["Guarda sus e-CF", "Hasta 2 años en el portal; usted debe guardarlos 10", "10 años, en la tienda y en la nube"],
-  ["Certificado digital", "El gratis de la DGII (solo sirve ahí) o uno comprado", "Comprado a una entidad autorizada por INDOTEL"],
-  ["Tipos de e-CF", "Todos", "Consumo, crédito fiscal y notas de crédito"],
+/** Criterion, Abastalia, Facturador Gratuito (the DGII's own FAQ unless dated otherwise), and what to ask any other program (TK-263, TK-294):
+ * no claims about other programs, only questions. */
+const versus: [IconName, string, ReactNode, ReactNode, string][] = [
+  ["tag", "Costo", <>Mensual, por tamaño de tienda. <Link to="/precios">Ver precios</Link></>, "Gratis", "¿Cuánto cobra al mes? ¿Cobra por factura?"],
+  ["ecf", "Pensado para", "Tiendas con mostrador, sin cupo ni cobro por documento", "Bajo volumen. Unas 150 facturas al mes, según la DGII (El Día, 12/05/2026)", "¿Tiene cupo o tope de facturas?"],
+  ["offline", "Sin internet", <>{yes}: firma y envía al volver (72 horas)</>, "No emite", "¿Factura si se va el internet?"],
+  ["scale", "Caja, balanza, inventario y fiado", yes, "No: emite, recibe y consulta e-CF", "¿Lee la balanza y vende por libra?"],
+  ["pc", "Dónde se usa", "Programa en la PC de la tienda y panel en el celular", "Portal web de la DGII", "¿Funciona en la PC de la tienda o solo en la web?"],
+  ["data", "Guarda sus e-CF", "10 años, en la tienda y en la nube", "Hasta 2 años en el portal; usted debe guardarlos 10", "¿Guarda los e-CF 10 años? ¿Me llevo mis datos si me voy?"],
+  ["key", "Certificado digital", "Comprado a una entidad autorizada por INDOTEL", "El gratis de la DGII (solo sirve ahí) o uno comprado", "¿Está certificado ante la DGII?"],
+  ["quote", "Tipos de e-CF", "Consumo, crédito fiscal y notas de crédito", "Todos", "¿Emite los tipos que usted usa?"],
 ];
 
-/** TK-263: Abastalia next to the DGII's free tool, only with facts the DGII publishes, and the questions to ask any other program. */
+/** TK-263, TK-294: Abastalia next to the DGII's free tool and any other program, one card per criterion in a carousel. */
 function Compare() {
   return (
     <>
       <Hero eyebrow="Comparar" title="¿Facturador Gratuito o un punto de venta?" sub="Los dos emiten e-CF válidos. Cambia lo que pasa en el mostrador." />
-      <Section>
-        <h2 className="esc-visually-hidden">Comparación</h2>
-        <div className="table-wrap vs">
-          <table>
-            <thead><tr><th></th><th>Facturador Gratuito (DGII)</th><th>Abastalia</th></tr></thead>
-            <tbody>
-              {versus.map(([row, free, ours]) => (
-                <tr key={row}>
-                  <th scope="row">{row}</th>
-                  <td data-label="Facturador Gratuito">{free}</td>
-                  <td data-label="Abastalia">{ours}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Section>
-      <Section className="counter">
-        <h2>Antes de elegir cualquier programa, pregunte</h2>
-        <IconTiles
-          cols={3}
-          items={[
-            ["ecf", "¿Cobra por factura o tiene cupo?"],
-            ["offline", "¿Factura si se va el internet?"],
-            ["scale", "¿Lee la balanza y vende por libra?"],
-            ["shield", "¿Está certificado ante la DGII?"],
-            ["data", "¿Guarda los e-CF 10 años?"],
-            ["key", "¿Me llevo mis datos si me voy?"],
-          ]}
-        />
-      </Section>
+      <Carousel
+        title="Lado a lado"
+        hint={<>{versus.length} puntos. Deslice o use las flechas.</>}
+        slides={versus.map(([icon, title, ours, free, ask]) => ({
+          icon,
+          title,
+          body: (
+            <dl className="vs">
+              <div className="vs__ours"><dt>Abastalia</dt><dd>{ours}</dd></div>
+              <div><dt>Facturador Gratuito (DGII)</dt><dd>{free}</dd></div>
+              <div className="vs__ask"><dt>Otro programa: pregunte</dt><dd>{ask}</dd></div>
+            </dl>
+          ),
+        }))}
+      />
       <Faq
         items={[
           ["¿El Facturador Gratuito es legal para mi colmado?", "Sí. Lo da la DGII a cualquier contribuyente, sobre todo de bajo volumen. Excluye a los grandes contribuyentes nacionales."],
@@ -651,7 +636,7 @@ function Pricing() {
       </Section>
       <Section>
         <h2>Adapte su plan</h2>
-        <div className="table-wrap">
+        <div className="table-wrap table-wrap--fit">
           <table>
             <thead><tr><th>Adicional</th><th>Incluye</th><th>Precio al mes</th></tr></thead>
             <tbody>
