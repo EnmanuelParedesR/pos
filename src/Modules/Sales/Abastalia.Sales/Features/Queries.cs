@@ -24,16 +24,20 @@ internal static class GetReceipt
     {
         public void Map(IEndpointRouteBuilder app) =>
             app.MapGet("/api/sales/{id:guid}/receipt", async (Guid id, SalesDbContext db, ISettingsQueries settings, IUserContext user,
-                    ICashRegisterReports cash, CancellationToken ct) =>
+                    ICashRegisterReports cash, TimeProvider clock, CancellationToken ct) =>
                 {
                     var s = await db.FullSaleAsync(id, ct);
                     if (s is null || !SaleAccess.MayRead(user, s)) return EndpointExtensions.Problem(SalesErrors.SaleNotFound);
                     var receipt = Receipt.From(s, await settings.GetBusinessProfileAsync(ct));
                     // R11 A2 (TK-268): like the sale detail, the reprint shows no payments nor change to its cashier while the shift is open.
-                    return Results.Ok(!SaleAccess.SeesAll(user) && await cash.IsOpenAsync(s.ShiftId, ct) ? receipt with { Payments = [], Change = 0 } : receipt);
+                    // R12: except the sale they just charged (an uncertain checkout recovers its change and receipt): they saw that money already.
+                    var justCharged = s.CashierId == user.UserId && clock.GetUtcNow().UtcDateTime - s.DateUtc < JustCharged;
+                    return Results.Ok(!SaleAccess.SeesAll(user) && !justCharged && await cash.IsOpenAsync(s.ShiftId, ct) ? receipt with { Payments = [], Change = 0 } : receipt);
                 })
                 .RequirePermission(Permissions.SalesCreate).WithTags("Sales");
     }
+
+    public static readonly TimeSpan JustCharged = TimeSpan.FromMinutes(10);
 }
 
 /// <summary>R11 A13: a cashier reads their own sales; other people's only with reports, Turnos y cuadres, or the right to void or return them

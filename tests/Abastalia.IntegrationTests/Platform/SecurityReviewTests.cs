@@ -108,8 +108,11 @@ public sealed class SecurityReviewTests(AbastaliaApp app) : IClassFixture<Abasta
         (mine.GetProperty("payments").GetArrayLength(), mine.GetProperty("change").GetDecimal()).ShouldBe((0, 0m));
         var owner = await (await Admin()).GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}");
         (owner.GetProperty("payments").GetArrayLength(), owner.GetProperty("change").GetDecimal()).ShouldBe((1, 400m));
-        // Nor does the reprinted receipt (TK-268).
+        // R12: the receipt of the sale just charged keeps them (an uncertain checkout recovers its change); later, nor does the reprint (TK-268).
         var receipt = await other.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}/receipt");
+        (receipt.GetProperty("payments").GetArrayLength(), receipt.GetProperty("change").GetDecimal()).ShouldBe((1, 400m));
+        app.Clock.Advance(Abastalia.Sales.Features.GetReceipt.JustCharged);
+        receipt = await other.Client.GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}/receipt");
         (receipt.GetProperty("payments").GetArrayLength(), receipt.GetProperty("change").GetDecimal()).ShouldBe((0, 0m));
         (await (await Admin()).GetFromJsonAsync<JsonElement>($"/api/sales/{saleId}/receipt")).GetProperty("payments").GetArrayLength().ShouldBe(1);
         (await other.Client.PostAsJsonAsync($"/api/cash/shifts/{other.ShiftId}/close", new { CashCount = new[] { new { Denomination = 100m, Quantity = 1 } } }))

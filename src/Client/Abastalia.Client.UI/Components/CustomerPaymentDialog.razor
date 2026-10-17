@@ -105,9 +105,13 @@
                         else
                         {
                             <label class="esc-field">
-                                <span>Referencia (opcional)</span>
-                                <input class="esc-input" maxlength="60" @bind="_reference" placeholder="@(_method == PaymentMethod.Card ? "Aprobación del verifone" : "Número de la transferencia")" />
+                                <span>@(_referenceRequired ? "Referencia" : "Referencia (opcional)")</span>
+                                <input class="esc-input" maxlength="60" @bind="_reference" @bind:event="oninput" aria-required="@(_referenceRequired ? "true" : "false")" placeholder="@(_method == PaymentMethod.Card ? "Aprobación del verifone" : "Número de la transferencia")" />
                             </label>
+                            @if (MissingReference)
+                            {
+                                <div class="esc-subtitle">Escriba el número de autorización para registrar el abono.</div>
+                            }
                         }
                     }
                 </div>
@@ -164,7 +168,14 @@
         : Amount > All(c.Debt) ? $"Es más de lo que debe ({Format.WithCurrency(c.Debt)})."
         : null;
 
-    private bool CanConfirm => _customer is { Debt: > 0 } && Amount > 0 && Problem is null;
+    private bool CanConfirm => _customer is { Debt: > 0 } && Amount > 0 && Problem is null && !MissingReference;
+
+    /// <summary>R11 A16 / R12: as the checkout: the store asks for the card authorization or transfer number unless the owner turned it off.</summary>
+    private bool _referenceRequired = true;
+    private bool MissingReference => _referenceRequired && _method is PaymentMethod.Card or PaymentMethod.Transfer && string.IsNullOrWhiteSpace(_reference);
+
+    protected override async Task OnInitializedAsync() =>
+        _referenceRequired = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value?.RequirePaymentReference ?? true;
 
     private IEnumerable<decimal> QuickAmounts(decimal debt) =>
         new[] { 100m, 500m, 1000m }.Where(v => v < All(debt)).Append(All(debt)).Distinct();
