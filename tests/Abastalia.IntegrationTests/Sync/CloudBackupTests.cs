@@ -85,6 +85,17 @@ public sealed class CloudBackupTests(AbastaliaApp app) : IClassFixture<Abastalia
         }
         finally { app.Cloud.Respond = null; }
 
+        // R12 #9: the hourly limit (a 429 with Retry-After) is tried again later, not refused until the next backup.
+        app.Cloud.Respond = path =>
+        {
+            if (!path.StartsWith(CloudBackupUploader.PathPrefix, StringComparison.Ordinal)) return null;
+            var limited = new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new ByteArrayContent([]) };
+            limited.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromMinutes(20));
+            return limited;
+        };
+        try { (await UploadAsync()).Outcome.ShouldBe(CloudBackupUploader.Outcome.Retry); }
+        finally { app.Cloud.Respond = null; }
+
         // Turned off: nothing more goes up and the problem is gone.
         (await admin.PutAsJsonAsync("/api/backups/settings", Schedule(cloud: false))).StatusCode.ShouldBe(HttpStatusCode.NoContent);
         (await UploadAsync()).Outcome.ShouldBe(CloudBackupUploader.Outcome.Nothing);

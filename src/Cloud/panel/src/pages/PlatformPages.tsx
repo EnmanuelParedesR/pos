@@ -40,7 +40,7 @@ export const stageNames: Record<FunnelStage, string> = {
 const featureNames: Record<string, string> = {
   onAccount: "Fiado",
   multipleRegisters: "Más de una caja",
-  ecfRelay: "e-CF por la nube",
+  ecfLive: "e-CF en producción",
   scale: "Balanza",
   printer: "Impresora",
 };

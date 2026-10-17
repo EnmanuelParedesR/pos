@@ -307,6 +307,11 @@ public sealed class CloudUploadThrottleTests(AbastaliaApp app) : IClassFixture<A
         dated.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(now.AddMinutes(5));
         CloudBackoff.RetryAfter(dated, now)!.Value.ShouldBeInRange(TimeSpan.FromMinutes(4.9), TimeSpan.FromMinutes(5));
         CloudBackoff.RetryAfter(new HttpResponseMessage(HttpStatusCode.TooManyRequests), now).ShouldBeNull();
+        // R12 #9: 0 or a date already past still waits a second (never a busy loop).
+        CloudBackoff.RetryAfter(TooMany(0), now).ShouldBe(CloudBackoff.Shortest);
+        var past = new HttpResponseMessage(HttpStatusCode.TooManyRequests);
+        past.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(now.AddMinutes(-5));
+        CloudBackoff.RetryAfter(past, now).ShouldBe(CloudBackoff.Shortest);
     }
 }
 
