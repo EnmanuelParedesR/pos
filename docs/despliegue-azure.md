@@ -14,7 +14,7 @@ Cómo se crea y se publica la nube de Abastalia (ADR-0008): la API `Abastalia.Ho
 | Azure OpenAI (S0) + despliegue `chat` | El asistente. El modelo se elige por precio. | Solo por uso |
 | Storage Account (StorageV2, LRS, Cool) + contenedor `ecf-archive` | Archivo frío de los e-CF firmados (TK-207): 10 años, escritura única, pasa a Archive a los 180 días. Solo la identidad de la API entra. | Centavos (ver abajo) |
 | Contenedor `store-backups` (misma cuenta) | Respaldos cifrados de las tiendas (TK-238): 7 diarios + 4 semanales por tienda | Centavos (ver abajo) |
-| Solo con `deployLite=true` (TK-320): Web App `app-abastalia-prod-lite-…` en el **mismo plan B1** + base `sqldb-abastalia-lite` Basic | El servidor del plan Ligero (`Abastalia.Host.Lite`, ADR-0013). Apagado por defecto: ver "Versión Ligera". | Web App 0 (mismo plan); base ~US$4.90 |
+| Solo con `deployLite=true` (TK-320): Web App `app-abastalia-prod-lite-…` en el **mismo plan, que sube a B2** + base `sqldb-abastalia-lite` Basic | El servidor del plan Ligero (`Abastalia.Host.Lite`, ADR-0013). Apagado por defecto: ver "Versión Ligera". | Plan B1 → B2 (~US$13 más; dos apps en un B1 dejaron la API caída el 17/10/2026); base ~US$4.90 |
 
 La API no consulta la base cuando no hay tiendas subiendo datos: el chequeo de salud de App Service (`/health`) no la toca y el aplicador del inbox solo trabaja cuando llega un lote. Así la base se pausa de noche. `/health/ready` sí prueba la base; desde R11 (TK-253) solo responde con el token de un administrador de la plataforma (con verificación en dos pasos): sin él, 401.
 

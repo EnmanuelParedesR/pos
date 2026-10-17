@@ -330,7 +330,7 @@ resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
   tags: tags
   kind: 'linux'
   // R12 B: exactly one instance, no autoscale: several in-memory guards (docs/despliegue-azure.md "Una sola instancia") assume it.
-  sku: { name: 'B1', tier: 'Basic', capacity: 1 }
+  sku: { name: deployLite ? 'B2' : 'B1', tier: 'Basic', capacity: 1 } // 17/10/2026: the API and Lite on one B1 starved its single vCPU (SQL logins reset) — two apps need B2
   properties: { reserved: true }
 }
 
