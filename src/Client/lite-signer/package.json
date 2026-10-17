@@ -1,9 +1,10 @@
 {
-  "name": "abastalia-lite-poc",
+  "name": "abastalia-lite-signer",
   "private": true,
-  "version": "0.0.0",
-  "description": "TK-317: e-CF signing in the browser (F0 proof of concept, not shipped)",
+  "version": "0.1.0",
+  "description": "TK-322: the Lite browser signer (.p12 to a non-extractable CryptoKey, allowlist, signing log, DGII client)",
   "type": "module",
+  "exports": "./index.js",
   "scripts": {
     "test": "node --test",
     "bench": "node bench.mjs"

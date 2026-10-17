@@ -12,9 +12,9 @@ using Abastalia.SharedKernel;
 
 namespace Abastalia.Cloud.Tests;
 
-/// <summary>TK-317 (F0 of the Lite plan): the browser signer (src/Cloud/lite-poc/signer.js, run by Node) signs a 31, a 32, its RFCE and a DGII seed
+/// <summary>TK-317/TK-322: the Lite browser signer (src/Client/lite-signer, its public API run by Node: import, allowlist, sign, log) signs a 31, a 32, its RFCE and a DGII seed
 /// with a .p12, and the result is byte for byte what the store's <see cref="CertificateEcfSigner"/> produces, passes the XSD and the cloud's
-/// verifier of received e-CF (<see cref="FeXml.Signer"/>). Needs <c>node</c> and <c>npm ci</c> in src/Cloud/lite-poc (CI does it); skips otherwise.</summary>
+/// verifier of received e-CF (<see cref="FeXml.Signer"/>). Needs <c>node</c> and <c>npm ci</c> in src/Client/lite-signer (CI does it); skips otherwise.</summary>
 public sealed class LiteBrowserSigningTests
 {
     public static TheoryData<string> Encryptions => ["Pbes2Aes256Sha256", "Pkcs12TripleDesSha1"];
@@ -47,6 +47,8 @@ public sealed class LiteBrowserSigningTests
         browser.RootElement.GetProperty("extractable").GetBoolean().ShouldBeFalse();
         var signed = browser.RootElement.GetProperty("signed").EnumerateArray().ToArray();
         signed.Length.ShouldBe(documents.Length);
+        var log = browser.RootElement.GetProperty("log").EnumerateArray().ToArray();
+        log.Length.ShouldBe(documents.Length);
         for (var i = 0; i < documents.Length; i++)
         {
             var (xml, schema) = documents[i];
@@ -54,6 +56,8 @@ public sealed class LiteBrowserSigningTests
             var (storeXml, storeCode) = store.Sign(xml);
             browserXml.ShouldBe(storeXml); // RSA PKCS#1 v1.5 is deterministic: same key, same bytes
             signed[i].GetProperty("securityCode").GetString().ShouldBe(storeCode);
+            // The log keeps the digest the server checks against the XML it built (ADR-0013 step 3).
+            log[i].GetProperty("digest").GetString().ShouldBe(XDocument.Parse(storeXml).Descendants(XName.Get("DigestValue", "http://www.w3.org/2000/09/xmldsig#")).Single().Value);
             EcfXml.Validate(XDocument.Parse(browserXml), schema).ShouldBeEmpty();
             FeXml.Signer(FeXml.Parse(browserXml)!, out _)!.Thumbprint.ShouldBe(certificate.Thumbprint);
         }
@@ -62,7 +66,7 @@ public sealed class LiteBrowserSigningTests
     [Fact]
     public async Task A_wrong_password_is_refused()
     {
-        Poc(); // skips before the throw assertion would swallow the skip
+        SignerDirectory(); // skips before the throw assertion would swallow the skip
         using var rsa = RSA.Create(2048);
         using var certificate = new CertificateRequest("CN=Firmante de Prueba", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1)
             .CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
@@ -72,18 +76,18 @@ public sealed class LiteBrowserSigningTests
 
     private static async Task<JsonDocument> NodeSignAsync(byte[] pfx, string password, string[] documents)
     {
-        var poc = Poc();
+        var directory = SignerDirectory();
 
         var start = new ProcessStartInfo("node", "sign-cli.mjs")
         {
-            WorkingDirectory = poc, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
+            WorkingDirectory = directory, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
         };
         Process node;
         try { node = Process.Start(start)!; }
         catch (System.ComponentModel.Win32Exception) { Assert.Skip("node is not installed."); throw; }
         using (node)
         {
-            await node.StandardInput.WriteAsync(JsonSerializer.Serialize(new { p12 = Convert.ToBase64String(pfx), password, documents }));
+            await node.StandardInput.WriteAsync(JsonSerializer.Serialize(new { p12 = Convert.ToBase64String(pfx), password, rnc = "131245678", types = new[] { "31", "32" }, documents }));
             node.StandardInput.Close();
             var output = node.StandardOutput.ReadToEndAsync();
             var error = await node.StandardError.ReadToEndAsync();
@@ -93,12 +97,12 @@ public sealed class LiteBrowserSigningTests
         }
     }
 
-    private static string Poc()
+    private static string SignerDirectory()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (!File.Exists(Path.Combine(root.FullName, "Abastalia.slnx"))) root = root.Parent!;
-        var poc = Path.Combine(root.FullName, "src", "Cloud", "lite-poc");
-        if (!Directory.Exists(Path.Combine(poc, "node_modules"))) Assert.Skip("Run npm ci in src/Cloud/lite-poc (CI does).");
-        return poc;
+        var directory = Path.Combine(root.FullName, "src", "Client", "lite-signer");
+        if (!Directory.Exists(Path.Combine(directory, "node_modules"))) Assert.Skip("Run npm ci in src/Client/lite-signer (CI does).");
+        return directory;
     }
 }
