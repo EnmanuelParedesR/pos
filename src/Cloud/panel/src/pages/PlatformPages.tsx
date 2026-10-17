@@ -40,7 +40,7 @@ export const stageNames: Record<FunnelStage, string> = {
 };
 
 const featureNames: Record<string, string> = {
-  onAccount: "Fiado",
+  onAccount: "Ventas a crédito",
   multipleRegisters: "Más de una caja",
   ecfLive: "e-CF en producción",
   scale: "Balanza",
@@ -652,7 +652,7 @@ export function PlatformStorePage() {
                 <Kv label="Licencia" value={licenseLabel(s.features.licenseStatus, s.features.licenseEndsUtc)} />
                 <Kv label="Cajas con turnos (30 días)" value={count(s.features.activeRegisters)} />
                 <Kv label="Turnos abiertos ahora" value={count(s.features.openShifts)} />
-                <Kv label="Fiado" value={s.features.onAccount ? "Lo usa" : "No"} />
+                <Kv label="Ventas a crédito" value={s.features.onAccount ? "Lo usa" : "No"} />
                 <Kv label="Balanza" value={yesNo(s.features.scaleConfigured)} />
                 <Kv label="Impresora" value={yesNo(s.features.printerConfigured)} />
               </ul>

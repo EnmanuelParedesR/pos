@@ -148,7 +148,7 @@ internal static class SalesErrors
         "Escriba el número de autorización de la tarjeta o el de la transferencia.");
 
     public static Error MethodExceeded(PaymentMethod method, decimal maximum) =>
-        Error.Validation("Sales.MethodExceeded", $"Por {PaymentMethodNames.Display(method)} se pueden devolver como máximo RD$ {maximum:N2} (lo que se cobró así).");
+        Error.Validation("Sales.MethodExceeded", $"Con «{PaymentMethodNames.Display(method)}» se pueden devolver como máximo RD$ {maximum:N2} (lo que se cobró así).");
 
     public static Error TotalChanged(decimal total) =>
         Error.Conflict("Sales.TotalChanged", $"El total cambió a RD$ {total:N2}. Revise la venta antes de cobrar.") with

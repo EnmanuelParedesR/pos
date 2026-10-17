@@ -114,7 +114,7 @@ public sealed class AdminGapsTests
         html.ShouldContain("Faltaron RD$ 50.00");
         html.ShouldContain("Ramón D.");
         // R8 #15: order deposits on their own line, apart from payments on credit.
-        html.ShouldContain("<tr><td>Abonos de fiado</td><td class=\"num\">100.00</td></tr>");
+        html.ShouldContain("<tr><td>Abonos de crédito</td><td class=\"num\">100.00</td></tr>");
         html.ShouldContain("<tr><td>Abonos de pedidos</td><td class=\"num\">300.00</td></tr>");
         html.ShouldContain("aria-label=\"Abastalia\""); // logo C5
         html.ShouldContain("@page { size: A4");

@@ -58,7 +58,7 @@ internal static class PaymentMethodNames
         PaymentMethod.Cash => "Efectivo",
         PaymentMethod.Card => "Tarjeta",
         PaymentMethod.Transfer => "Transferencia",
-        PaymentMethod.OnAccount => "Fiado",
+        PaymentMethod.OnAccount => "A crédito",
         PaymentMethod.CreditBalance => "Saldo a favor",
         _ => m.ToString(),
     };

@@ -63,7 +63,7 @@ public static class Printables
         b.Append("<table><tbody>");
         Row(b, "Fondo inicial", Format.Amount(z.OpeningFloat));
         Row(b, "Ventas", $"{z.SaleCount} ({z.VoidedCount} anuladas)");
-        Row(b, "Abonos de fiado", Format.Amount(z.CustomerPayments));
+        Row(b, "Abonos de crédito", Format.Amount(z.CustomerPayments));
         Row(b, "Abonos de pedidos", Format.Amount(z.OrderDeposits));
         Row(b, "Entradas de efectivo", Format.Amount(z.CashIn));
         Row(b, "Retiros", Format.Amount(z.Withdrawals));
@@ -98,7 +98,7 @@ public static class Printables
                 new("Turno",
                 [
                     new("Ventas", null, $"{z.SaleCount} ({z.VoidedCount} {(z.VoidedCount == 1 ? "anulada" : "anuladas")})"),
-                    L("Fondo inicial", z.OpeningFloat), L("Abonos de fiado", z.CustomerPayments), L("Abonos de pedidos", z.OrderDeposits),
+                    L("Fondo inicial", z.OpeningFloat), L("Abonos de crédito", z.CustomerPayments), L("Abonos de pedidos", z.OrderDeposits),
                     L("Entradas de efectivo", z.CashIn), L("Retiros", z.Withdrawals), L("Gastos pagados de la caja", z.Expenses), L("Redondeo", z.Rounding),
                     new("Aperturas de gaveta sin venta", null, z.DrawerOpenings.ToString(CultureInfo.InvariantCulture)),
                     new("Líneas quitadas antes de cobrar", null, $"{z.RemovedLines.ToString(CultureInfo.InvariantCulture)} ({Format.Amount(z.RemovedAmount)})"),

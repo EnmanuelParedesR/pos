@@ -400,7 +400,7 @@ export function RangePicker({ value, onChange }: { value: Range; onChange: (r: R
     <>
       <Segmented label="Periodo" options={[["7", "7 días"], ["30", "30 días"], ["month", "Este mes"], ["custom", "Fechas"]]} value={custom ? "custom" : preset} onChange={choose} />
       {custom && (
-        <div className="esc-row" style={{ flexWrap: "nowrap" }}>
+        <div className="esc-row esc-range">
           <input className="esc-input" type="date" aria-label="Desde" value={value.from} max={value.to} onChange={(e) => e.target.value && onChange({ ...value, from: e.target.value })} />
           <input className="esc-input" type="date" aria-label="Hasta" value={value.to} min={value.from} max={today} onChange={(e) => e.target.value && onChange({ ...value, to: e.target.value })} />
         </div>
