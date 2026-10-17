@@ -17,7 +17,7 @@
 #ifndef OutputDir
   #define OutputDir "..\..\artifacts\installer"
 #endif
-; Microsoft links. shortcut: verify the Express 2025 SSEI link and its silent parameters before the first real build (docs/instalador-web.md).
+; Microsoft links. The SQL Server 2025 Express SSEI (17.0) was checked on a clean VM (TK-160, docs/prueba-vm-2026-10-17.md); WebView2 was already there.
 #define WebView2Url "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
 #define SqlExpressUrl "https://go.microsoft.com/fwlink/p/?linkid=2216019"
 
@@ -72,7 +72,7 @@ Name: "{commonprograms}\Abastalia"; Filename: "{app}\app\Abastalia.exe"; Compone
 Name: "{commondesktop}\Abastalia"; Filename: "{app}\app\Abastalia.exe"; Components: app
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\install.ps1"" -Source ""{app}\server"" -Destination ""{app}\server"""; StatusMsg: "Instalando el servicio de Abastalia..."; Components: server; Flags: runhidden waituntilterminated
+; The service (install.ps1) is installed from CurStepChanged in [Code]: [Run] ignores exit codes, and a failed service must fail the setup.
 ; Hourly as SYSTEM: the server updates when the service says it may (no shift open, or outside business hours); a register while its app is closed.
 Filename: "schtasks.exe"; Parameters: "/Create /F /TN ""Abastalia\Actualizar"" /SC HOURLY /RU SYSTEM /RL HIGHEST /TR ""powershell.exe -NoProfile -ExecutionPolicy Bypass -File '{app}\scripts\update-service.ps1' -Role {code:Role}"""; Flags: runhidden waituntilterminated
 Filename: "{app}\app\Abastalia.exe"; Description: "Abrir Abastalia"; Components: app; Flags: postinstall nowait skipifsilent runasoriginaluser
@@ -84,6 +84,7 @@ Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Fil
 [Code]
 var
   DownloadPage: TDownloadWizardPage;
+  ServiceFailed: Boolean;
 
 function IsServerRole: Boolean;
 begin
@@ -158,8 +159,8 @@ begin
     'if ($s.Status -eq ''Valid'' -and $s.SignerCertificate.Subject -match ''(^|, )O=Microsoft Corporation(,|$)'') { exit 0 } else { exit 1 }"',
     '', SW_HIDE, ewWaitUntilTerminated, Code) and (Code = 0);
   if not Result then
-    MsgBox('El archivo descargado ' + ExtractFileName(FileName) + ' no tiene una firma válida de Microsoft y no se ejecutó.' + #13#10 +
-      'Intente de nuevo; si se repite, llame al técnico.', mbCriticalError, MB_OK);
+    SuppressibleMsgBox('El archivo descargado ' + ExtractFileName(FileName) + ' no tiene una firma válida de Microsoft y no se ejecutó.' + #13#10 +
+      'Intente de nuevo; si se repite, llame al técnico.', mbCriticalError, MB_OK, IDOK);
 end;
 
 procedure InitializeWizard;
@@ -172,14 +173,21 @@ begin
   Result := True;
   if not IsWin64 then
   begin
-    MsgBox('Abastalia necesita Windows 10 u 11 de 64 bits.', mbCriticalError, MB_OK);
+    SuppressibleMsgBox('Abastalia necesita Windows 10 u 11 de 64 bits.', mbCriticalError, MB_OK, IDOK);
     Result := False;
   end;
+end;
+
+{ Suppressible: a silent install (the update task, /VERYSILENT /SUPPRESSMSGBOXES) must never wait on a box nobody sees. }
+procedure SqlNotInstalled(const Code: String);
+begin
+  SuppressibleMsgBox('SQL Server Express no se instaló (código ' + Code + '). Llame al técnico.', mbCriticalError, MB_OK, IDOK);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   Code, Missing: Integer;
+  Media: String;
 begin
   Result := True;
   if CurPageID <> wpReady then exit;
@@ -203,7 +211,7 @@ begin
     try
       DownloadPage.Download;
     except
-      MsgBox('No se pudo descargar: ' + GetExceptionMessage + #13#10 + 'Revise la conexión a internet e intente de nuevo.', mbCriticalError, MB_OK);
+      SuppressibleMsgBox('No se pudo descargar: ' + GetExceptionMessage + #13#10 + 'Revise la conexión a internet e intente de nuevo.', mbCriticalError, MB_OK, IDOK);
       Result := False;
       exit;
     end;
@@ -216,8 +224,8 @@ begin
     if not SignedByMicrosoft(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe')) then begin Result := False; exit; end;
     if not Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
     begin
-      MsgBox('El componente WebView2 de Microsoft, que usa la app de caja, no se instaló (código ' + IntToStr(Code) + ').' + #13#10 +
-        'Intente de nuevo; si se repite, llame al técnico.', mbCriticalError, MB_OK);
+      SuppressibleMsgBox('El componente WebView2 de Microsoft, que usa la app de caja, no se instaló (código ' + IntToStr(Code) + ').' + #13#10 +
+        'Intente de nuevo; si se repite, llame al técnico.', mbCriticalError, MB_OK, IDOK);
       Result := False;
       exit;
     end;
@@ -227,14 +235,31 @@ begin
   begin
     if not SignedByMicrosoft(ExpandConstant('{tmp}\SQLServerExpressSetup.exe')) then begin Result := False; exit; end;
     WizardForm.StatusLabel.Caption := 'Instalando SQL Server Express (puede tardar varios minutos)...';
-    { The SSEI bootstrapper: Express only, its own instance ABASTALIA, listening on this PC only (no TCP, no named pipes), Windows logins only,
+    { TK-160 (VM test): the 2025 SSEI bootstrapper ends with -1 on /ACTION=Install /QUIET. It only downloads the Express package (/ACTION=Download),
+      which is extracted and its setup.exe run with SQL Server's own parameters. }
+    Media := ExpandConstant('{tmp}\sql');
+    if not Exec(ExpandConstant('{tmp}\SQLServerExpressSetup.exe'), '/ACTION=Download /MEDIATYPE=Core /LANGUAGE=en-US /QUIET /MEDIAPATH="' + Media + '"',
+         '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) or not FileExists(Media + '\SQLEXPR_x64_ENU.exe') then
+    begin
+      SqlNotInstalled('descarga ' + IntToStr(Code));
+      Result := False;
+      exit;
+    end;
+    if not SignedByMicrosoft(Media + '\SQLEXPR_x64_ENU.exe') then begin Result := False; exit; end;
+    if not Exec(Media + '\SQLEXPR_x64_ENU.exe', '/q /x:"' + Media + '\setup"', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    begin
+      SqlNotInstalled('extracción ' + IntToStr(Code));
+      Result := False;
+      exit;
+    end;
+    { Express only, its own instance ABASTALIA, listening on this PC only (no TCP, no named pipes), Windows logins only,
       sysadmin = the PC's administrators (R11 C1: never the current user, who would become SYSTEM through SQL Server). }
-    if not Exec(ExpandConstant('{tmp}\SQLServerExpressSetup.exe'),
-      '/ACTION=Install /QUIET /IACCEPTSQLSERVERLICENSETERMS /HIDEPROGRESSBAR /ENU ' +
-      '/INSTANCENAME=ABASTALIA /TCPENABLED=0 /NPENABLED=0 /SQLSYSADMINACCOUNTS="' + AdministratorsGroup + '"', '', SW_HIDE, ewWaitUntilTerminated, Code)
+    if not Exec(Media + '\setup\setup.exe',
+      '/Q /ACTION=Install /FEATURES=SQLEngine /IACCEPTSQLSERVERLICENSETERMS /ENU /UPDATEENABLED=0 /SQLSVCSTARTUPTYPE=Automatic ' +
+      '/INSTANCENAME=ABASTALIA /TCPENABLED=0 /NPENABLED=0 /ADDCURRENTUSERASSQLADMIN=False /SQLSYSADMINACCOUNTS="' + AdministratorsGroup + '"', '', SW_HIDE, ewWaitUntilTerminated, Code)
       or ((Code <> 0) and (Code <> 3010)) then
     begin
-      MsgBox('SQL Server Express no se instaló (código ' + IntToStr(Code) + '). Llame al técnico.', mbCriticalError, MB_OK);
+      SqlNotInstalled(IntToStr(Code));
       Result := False;
     end;
   end;
@@ -247,6 +272,28 @@ var
 begin
   Result := '';
   if IsServerRole then Exec('sc.exe', 'stop Abastalia', '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+{ The service, once the files are in place (install.ps1: service, prepare-service, firewall, start). TK-160: from [Run] a failure went
+  unnoticed (the setup ended with 0 and no service); now the setup ends with 10, which update-service.ps1 reports. }
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Code: Integer;
+begin
+  if (CurStep <> ssPostInstall) or not IsServerRole then exit;
+  WizardForm.StatusLabel.Caption := 'Instalando el servicio de Abastalia...';
+  if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\scripts\install.ps1') + '" -Source "' +
+       ExpandConstant('{app}\server') + '" -Destination "' + ExpandConstant('{app}\server') + '"', '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+  begin
+    Log('install.ps1 failed: ' + IntToStr(Code));
+    ServiceFailed := True;
+    SuppressibleMsgBox('El servicio de Abastalia no se instaló (código ' + IntToStr(Code) + '). Llame al técnico.', mbCriticalError, MB_OK, IDOK);
+  end;
+end;
+
+function GetCustomSetupExitCode: Integer;
+begin
+  if ServiceFailed then Result := 10 else Result := 0;
 end;
 
 { remove-data.ps1's exit code; -1 when PowerShell could not even start. }
@@ -278,7 +325,7 @@ begin
              'Se borran la base de datos Abastalia, los respaldos, la licencia y las llaves de C:\ProgramData\Abastalia. No se puede deshacer.' + #13#10 +
              'Si va a reinstalar o mudarse a otra PC, responda No.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES) then
   begin
-    { R10 #9: the script first copies the last backup (from Backup:Folder in {app}\server's settings) to the Public Desktop, which stays
+    { R10 #9: the script first copies the last backup (from Backup:Folder in the installed server's settings) to the Public Desktop, which stays
       whoever signs in next; exit 2 = no copy, nothing deleted; exit 3 = something could not be deleted. }
     Desktop := ExpandConstant('{commondesktop}');
     Saved := AddBackslash(Desktop) + 'Abastalia - ultimo respaldo';

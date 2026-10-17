@@ -59,12 +59,18 @@ if (-not $NoFinalBackup) {
 if (Get-Service $Service -ErrorAction SilentlyContinue) { Stop-Service $Service -Force }
 $account = "NT SERVICE\$Service"
 
+$dropSql = @'
+DECLARE @dropDb nvarchar(max) = N'ALTER DATABASE ' + QUOTENAME(@db) + N' SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ' + QUOTENAME(@db);
+DECLARE @dropLogin nvarchar(max) = N'DROP LOGIN ' + QUOTENAME(@account);
+IF DB_ID(@db) IS NOT NULL EXEC(@dropDb);
+IF SUSER_ID(@account) IS NOT NULL EXEC(@dropLogin);
+'@
 $sql = New-Object System.Data.SqlClient.SqlConnection "Server=$Server;Database=master;Integrated Security=True;TrustServerCertificate=True"
 try {
     $sql.Open()
     $cmd = $sql.CreateCommand()
-    $cmd.CommandText = "IF DB_ID(@db) IS NOT NULL EXEC('ALTER DATABASE ' + QUOTENAME(@db) + ' SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE ' + QUOTENAME(@db));" +
-        "IF SUSER_ID(@account) IS NOT NULL EXEC('DROP LOGIN ' + QUOTENAME(@account))"
+    # EXEC takes only literals and variables: each statement is built in a variable (TK-160).
+    $cmd.CommandText = $dropSql
     [void]$cmd.Parameters.AddWithValue('@db', $Database)
     [void]$cmd.Parameters.AddWithValue('@account', $account)
     [void]$cmd.ExecuteNonQuery()
@@ -89,8 +95,14 @@ foreach ($certificate in $certificates) {
 $sid = ((sc.exe showsid $Service) -match 'S-1-5-80-[\d-]+' | Select-Object -First 1) -replace '.*(S-1-5-80-[\d-]+).*', '$1'
 $serviceProfile = if ($sid) { Get-CimInstance Win32_UserProfile -ErrorAction SilentlyContinue | Where-Object SID -eq $sid }
 if ($serviceProfile) {
+    # TK-160 (clean VM): the profile stays loaded after the service stops (until a restart), so deleting it fails. The keys go first, on
+    # their own: CNG and TPM keys (Crypto), DPAPI master keys (Protect) and the account's certificate store (SystemCertificates).
+    foreach ($keys in 'Local\Microsoft\Crypto', 'Roaming\Microsoft\Crypto', 'Roaming\Microsoft\Protect', 'Roaming\Microsoft\SystemCertificates') {
+        try { Remove-Tree (Join-Path $serviceProfile.LocalPath "AppData\$keys") }
+        catch { Write-Warning "No se pudo borrar la llave de los comprobantes ($keys) de ${account}: $_"; $failed = $true }
+    }
     try { $serviceProfile | Remove-CimInstance -ErrorAction Stop }
-    catch { Write-Warning "No se pudo borrar el perfil de $account (llave de los comprobantes): $_"; $failed = $true }
+    catch { Write-Warning "El perfil de $account queda (ya sin llaves) hasta reiniciar la PC; después se puede borrar: $_" }
 }
 
 try { Remove-Tree $data } catch { Write-Warning "$_" }

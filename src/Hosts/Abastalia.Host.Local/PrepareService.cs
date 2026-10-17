@@ -11,6 +11,15 @@ namespace Abastalia.Host.Local;
 [SupportedOSPlatform("windows")]
 internal static class PrepareService
 {
+    /// <summary>The service's login, allowed to create the Abastalia database. EXEC('...' + QUOTENAME(...)) is a syntax error (EXEC takes only
+    /// literals and variables), found by the clean-VM test (TK-160): the statement is built in a variable first.</summary>
+    internal const string LoginSql = """
+        DECLARE @create nvarchar(max) = N'CREATE LOGIN ' + QUOTENAME(@account) + N' FROM WINDOWS';
+        DECLARE @role nvarchar(max) = N'ALTER SERVER ROLE dbcreator ADD MEMBER ' + QUOTENAME(@account);
+        IF SUSER_ID(@account) IS NULL EXEC(@create);
+        EXEC(@role);
+        """;
+
     public static async Task RunAsync(string account, string connectionString)
     {
         var identity = new NTAccount(account);
@@ -30,10 +39,7 @@ internal static class PrepareService
         await using var sql = new SqlConnection(server.ConnectionString);
         await sql.OpenAsync();
         await using var command = sql.CreateCommand();
-        command.CommandText = """
-            IF SUSER_ID(@account) IS NULL EXEC('CREATE LOGIN ' + QUOTENAME(@account) + ' FROM WINDOWS');
-            EXEC('ALTER SERVER ROLE dbcreator ADD MEMBER ' + QUOTENAME(@account));
-            """;
+        command.CommandText = LoginSql;
         command.Parameters.AddWithValue("@account", account);
         await command.ExecuteNonQueryAsync();
         Console.WriteLine($"Login de SQL Server listo para {account} en {server.DataSource}");

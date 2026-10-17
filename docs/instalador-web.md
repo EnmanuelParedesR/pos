@@ -49,6 +49,6 @@ Plan corto de lo que falta para que una persona baje Abastalia de la web y empie
 ## Pendiente antes de construirlo
 
 - Certificado de firma de código (Authenticode): para que SmartScreen no asuste en la primera descarga y para que las tiendas acepten actualizaciones (sección "Firma de código").
-- Parámetros exactos de la instalación silenciosa de Express 2025 y su tamaño (verificar).
+- ~~Parámetros de la instalación silenciosa de Express 2025~~: probados en una VM limpia (TK-160, `docs/prueba-vm-2026-10-17.md`): el SSEI solo descarga (`/ACTION=Download /MEDIATYPE=Core`, 750 MB) y se corre el `setup.exe` del paquete; unos 7 minutos en total.
 - Página de descarga en la web (TK-197) con el enlace al `.exe` y la explicación de la prueba.
 - Medir el embudo `instalada → primera venta` (`docs/metricas-producto.md`): el instalador no envía nada; la nube lo sabe cuando la tienda se conecta.
