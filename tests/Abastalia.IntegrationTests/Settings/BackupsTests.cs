@@ -76,6 +76,7 @@ public sealed class BackupGateTests(AbastaliaApp app) : IClassFixture<AbastaliaA
     [Fact]
     public async Task R12_two_backups_at_once_take_turns_and_both_are_complete()
     {
+        if (!TestSqlServer.BacksUpOnThisMachine) Assert.Skip("SQL Server writes the .bak on its own machine (the container).");
         var admin = app.Client(await app.AdminAsync());
         (await admin.PutAsJsonAsync("/api/backups/passphrase", new { Passphrase })).EnsureSuccessStatusCode();
         // Each clears the shared work folder when it starts: overlapping, one would delete the other's plain copy.

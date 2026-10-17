@@ -16,7 +16,7 @@
         "http://localhost:4173/novedades",
         "http://localhost:4173/privacidad"
       ],
-      "numberOfRuns": 1,
+      "numberOfRuns": 3,
       "settings": { "formFactor": "mobile", "chromeFlags": "--no-sandbox --headless=new" }
     },
     "assert": {
