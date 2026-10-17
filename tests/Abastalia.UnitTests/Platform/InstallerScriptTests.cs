@@ -40,6 +40,46 @@ public sealed class InstallerScriptTests
         Code.ShouldContain("RunSqlStep(Media + '\\SQLEXPR_x64_ENU.exe'");
         Code.ShouldNotContain("Exec(ExpandConstant('{tmp}\\SQLServerExpressSetup.exe')");
         Code.ShouldNotContain("Exec(Media + '\\SQLEXPR_x64_ENU.exe'");
+        // TK-305: the install itself has a time limit, and the usage and error reports are off under the instance's key on every install.
+        Code.ShouldContain("ExecWithTimeout(Media + '\\setup\\setup.exe'");
+        Code.ShouldNotContain(" Exec(Media + '\\setup\\setup.exe'");
+        Code.ShouldContain("RegWriteDWordValue(HKLM, Key, 'CustomerFeedback', 0)");
+        Code.ShouldContain("RegWriteDWordValue(HKLM, Key, 'EnableErrorReporting', 0)");
+        Code.Split("procedure CurStepChanged")[1].ShouldContain("SqlTelemetryOff;");
+    }
+
+    [Fact, Trait("Category", "Windows")]
+    public void TK305_remove_data_deletes_the_database_named_in_the_installed_connection_string()
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only: runs the script's lines with powershell.exe (the Windows CI job runs it).");
+        // The whole script needs an administrator; its lines that pick the server and the database run alone, on a temporary server folder.
+        var script = File.ReadAllText(Repo(@"deploy\installer\remove-data.ps1")).ReplaceLineEndings("\n");
+        var start = script.IndexOf("# Same order as the service", StringComparison.Ordinal);
+        var lines = script[start..script.IndexOf("\nif (-not $NoFinalBackup)", StringComparison.Ordinal)];
+        var dir = Directory.CreateTempSubdirectory("abastalia-remove-").FullName;
+        try
+        {
+            string Resolve()
+            {
+                File.WriteAllText(Path.Combine(dir, "lines.ps1"), $"$ServerDir = '{dir}'; $Server = ''; $Database = ''; $data = 'C:\\nowhere'\n{lines}\n\"$Server|$Database\"");
+                using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("powershell.exe")
+                {
+                    ArgumentList = { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Path.Combine(dir, "lines.ps1") }, RedirectStandardOutput = true,
+                })!;
+                var output = p.StandardOutput.ReadToEnd().Trim();
+                p.WaitForExit();
+                return output;
+            }
+
+            Resolve().ShouldBe(@".\ABASTALIA|Abastalia"); // nothing installed: the setup's defaults
+            File.WriteAllText(Path.Combine(dir, "appsettings.json"), """{"Database":{"ConnectionString":"Server=.\\ABASTALIA;Database=Abastalia;Trusted_Connection=True"}}""");
+            File.WriteAllText(Path.Combine(dir, "appsettings.Production.json"), """{"Database":{"ConnectionString":"Server=PC1\\ABASTALIA;Database=TiendaCentro;Trusted_Connection=True"}}""");
+            Resolve().ShouldBe(@"PC1\ABASTALIA|TiendaCentro");
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     private static string Repo(string relative)

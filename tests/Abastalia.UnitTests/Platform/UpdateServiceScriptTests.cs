@@ -95,6 +95,16 @@ public sealed class UpdateServiceScriptTests : IDisposable
     }
 
     [Fact, Trait("Category", "Windows")]
+    public void TK305_the_main_PC_does_not_update_while_its_register_app_is_open()
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Skip(WindowsOnly);
+        // A fresh marker that would otherwise be refused (no signer): with the app "open" (powershell, the script's own process) it just waits.
+        Run("1.2.3", Feed + "/AbastaliaSetup-1.2.3.exe", Hash, DateTime.UtcNow, appProcess: "powershell").Exit.ShouldBe(0);
+        File.Exists(Path.Combine(_root, "update.json")).ShouldBeTrue(); // left for the next hour
+        Run("1.2.3", Feed + "/AbastaliaSetup-1.2.3.exe", Hash, DateTime.UtcNow).Exit.ShouldBe(1);
+    }
+
+    [Fact, Trait("Category", "Windows")]
     public void TK254_a_register_waits_when_the_cloud_says_so_and_otherwise_goes_to_the_feed()
     {
         if (!OperatingSystem.IsWindows()) Assert.Skip(WindowsOnly);
@@ -133,7 +143,7 @@ public sealed class UpdateServiceScriptTests : IDisposable
     }
 
     private (int Exit, string Stderr) Run(string version, string setupUrl, string sha256, DateTime checkedUtc, string feed = Feed,
-        string[]? thumbprints = null, bool allowUnsigned = false, string installed = "1.0.0")
+        string[]? thumbprints = null, bool allowUnsigned = false, string installed = "1.0.0", string appProcess = "Abastalia")
     {
         File.WriteAllText(Path.Combine(_root, "update.json"), JsonSerializer.Serialize(new UpdateMarker(version, setupUrl, sha256, true, checkedUtc)));
         File.WriteAllText(Path.Combine(_root, "appsettings.json"), JsonSerializer.Serialize(new
@@ -145,7 +155,7 @@ public sealed class UpdateServiceScriptTests : IDisposable
             ArgumentList =
             {
                 "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Script(), "-DataRoot", _root, "-SettingsPath", Path.Combine(_root, "appsettings.json"),
-                "-InstalledVersion", installed,
+                "-InstalledVersion", installed, "-AppProcess", appProcess,
             },
             RedirectStandardError = true, RedirectStandardOutput = true,
         };

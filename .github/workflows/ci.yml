@@ -42,6 +42,17 @@ jobs:
       - run: dotnet build tests/Abastalia.UnitTests/Abastalia.UnitTests.csproj -c Release
       - run: dotnet build tests/Abastalia.IntegrationTests/Abastalia.IntegrationTests.csproj -c Release
       - run: dotnet test --project tests/Abastalia.UnitTests/Abastalia.UnitTests.csproj -c Release --no-build --filter-trait "Category=Windows"
+      # TK-305: InstallerSqlTests compiles the installer's SQL on a real SQL Server: the image's LocalDB when it has one (nothing is downloaded);
+      # without it that test skips and says why.
+      - name: LocalDB
+        shell: pwsh
+        run: |
+          $exe = (Get-Command SqlLocalDB.exe -ErrorAction SilentlyContinue).Source ??
+            (Get-ChildItem 'C:\Program Files\Microsoft SQL Server\*\Tools\Binn\SqlLocalDB.exe' -ErrorAction SilentlyContinue | Select-Object -Last 1).FullName
+          if ($exe) {
+            & $exe start MSSQLLocalDB
+            'ABASTALIA_TEST_SQLSERVER=Server=(localdb)\MSSQLLocalDB;Integrated Security=True;TrustServerCertificate=True' >> $env:GITHUB_ENV
+          } else { Write-Host '::notice::SQL Server LocalDB is not on this runner: InstallerSqlTests skips.' }
       - run: dotnet test --project tests/Abastalia.IntegrationTests/Abastalia.IntegrationTests.csproj -c Release --no-build --filter-trait "Category=Windows"
 
   web:
