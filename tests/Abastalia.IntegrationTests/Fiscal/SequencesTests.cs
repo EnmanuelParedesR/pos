@@ -24,6 +24,8 @@ public sealed class SequencesTests(AbastaliaApp app) : IClassFixture<AbastaliaAp
         await LoadRange(31, 2, 5, new DateOnly(2030, 12, 31));
         await LoadRange(32, 1, 10, today.AddDays(-1));
         await LoadRange(32, 11, 20, new DateOnly(2030, 12, 31));
+        // An expired credit-note range: the type was loaded, so Simulated does not load one by itself (TK-363).
+        await LoadRange(34, 1, 1, today.AddDays(-1));
 
         var cashier = await app.CashierWithShiftAsync(loadSequences: false);
         var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco", 59m, stock: 10);
@@ -44,7 +46,7 @@ public sealed class SequencesTests(AbastaliaApp app) : IClassFixture<AbastaliaAp
         consumer.GetProperty("eNcf").GetString().ShouldBe("E320000000011");
         var saleId = consumer.GetProperty("saleId").GetGuid();
 
-        // No credit-note range: the void fails whole (sale, stock and cash stay as they were).
+        // No usable credit-note range: the void fails whole (sale, stock and cash stay as they were).
         async Task<HttpResponseMessage> VoidSale() => await cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/void",
             new { Reason = "Error", SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.void", saleId) });
         (await (await VoidSale()).ErrorCode()).ShouldBe("Fiscal.NoSequence");
@@ -53,16 +55,37 @@ public sealed class SequencesTests(AbastaliaApp app) : IClassFixture<AbastaliaAp
 
         var alerts = await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/alerts");
         bool Alert(string type) => alerts.EnumerateArray().Single(a => a.GetProperty("type").GetString() == type).GetProperty("alert").GetBoolean();
-        Alert("CreditNote34").ShouldBeTrue(); // nothing loaded
+        Alert("CreditNote34").ShouldBeTrue(); // nothing usable
         Alert("Consumer32").ShouldBeFalse();
 
         // A range that expires within 30 days raises the alert; the credit note points to the sale it cancels.
-        await LoadRange(34, 1, 100, today.AddDays(20));
+        await LoadRange(34, 2, 100, today.AddDays(20));
         (await VoidSale()).EnsureSuccessStatusCode();
         alerts = await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/alerts");
         Alert("CreditNote34").ShouldBeTrue();
         var modified = await app.InScopeAsync(sp => sp.GetRequiredService<FiscalDbContext>().Documents
-            .Where(d => d.ENcf == "E340000000001").Select(d => d.ModifiedENcf).SingleAsync());
+            .Where(d => d.ENcf == "E340000000002").Select(d => d.ModifiedENcf).SingleAsync());
         modified.ShouldBe("E320000000011");
+    }
+}
+
+/// <summary>TK-363: a new store in Simulated sells and voids without loading anything; the owner is not asked for ranges it does not need yet.</summary>
+public sealed class SelfLoadingSequencesTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    [Fact]
+    public async Task In_simulated_mode_the_first_sale_loads_its_own_range_and_nothing_is_flagged_to_the_owner()
+    {
+        await app.SetUpBusinessAsync();
+        var admin = app.Client(await app.AdminAsync());
+        (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/alerts")).EnumerateArray().ShouldAllBe(a => !a.GetProperty("alert").GetBoolean());
+
+        var cashier = await app.CashierWithShiftAsync(loadSequences: false);
+        var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco", 59m, stock: 10);
+        var sale = await (await cashier.SellAsync(Sale(cashier.ShiftId, 59m, 59m, Line(soda, 1m)))).Json();
+        sale.GetProperty("eNcf").GetString().ShouldBe("E320000000001");
+        var saleId = sale.GetProperty("saleId").GetGuid();
+        (await cashier.Client.PostAsJsonAsync($"/api/sales/{saleId}/void",
+            new { Reason = "Error", SupervisorApprovalId = await cashier.Client.ApproveAsync("sales.void", saleId) })).EnsureSuccessStatusCode();
+        (await admin.GetFromJsonAsync<JsonElement>("/api/fiscal/alerts")).EnumerateArray().ShouldAllBe(a => !a.GetProperty("alert").GetBoolean());
     }
 }

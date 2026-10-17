@@ -125,7 +125,7 @@ internal static class ENcf
 internal static class FiscalErrors
 {
     public static Error NoSequence(EcfType type) =>
-        Error.Conflict("Fiscal.NoSequence", $"No hay números e-NCF disponibles para {Name(type)}. Cargue un rango nuevo.");
+        Error.Conflict("Fiscal.NoSequence", $"No hay números e-NCF disponibles para {Name(type)}. El dueño los carga en Administración → Configuración → Comprobantes, con la secuencia que autorizó la DGII en la OFV.");
 
     public static readonly Error OverlappingRange = Error.Conflict("Fiscal.OverlappingRange", "Ese rango se cruza con otro ya cargado.");
     public static readonly Error MissingIssuerRnc = Error.Conflict("Fiscal.MissingIssuerRnc", "Configure el RNC del negocio antes de emitir comprobantes.");

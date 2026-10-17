@@ -281,7 +281,10 @@
             {
                 "Inventory.OutOfStock" => "No hay existencia suficiente de un producto. Un supervisor puede permitir vender sin existencia en Productos.",
                 "Customers.CreditLimitExceeded" => "El cliente pasa su límite de crédito.",
-                "Fiscal.NoSequence" => "Se acabaron los comprobantes de este tipo. El dueño debe cargar una nueva secuencia.",
+                // TK-363: the cashier cannot load ranges; a 31 can still go out as consumer, a 32 waits for the owner.
+                "Fiscal.NoSequence" when Cart.DocumentType == EcfType.FiscalCredit31 =>
+                    "No quedan comprobantes de crédito fiscal. Si el cliente acepta, cambie el comprobante a Consumo (F6) y cobre. Avise al dueño.",
+                "Fiscal.NoSequence" => "No quedan comprobantes de consumo: no se puede facturar. La venta sigue abierta. Avise al dueño (Administración → Configuración → Comprobantes).",
                 "Fiscal.MissingIssuerRnc" => "Falta el RNC del negocio en Configuración.",
                 "Sales.RncRequired" => "Esta factura necesita el RNC o la cédula del cliente (F6).",
                 "Sales.ReferenceRequired" => "Escriba el número de autorización de la tarjeta o de la transferencia.",

@@ -145,8 +145,14 @@ internal sealed class FiscalModeChecks(FiscalDbContext db, FiscalDocuments docum
         if (target != FiscalEnvironment.TesteCF)
         {
             var today = BusinessDay.Of(now);
-            if (!await db.Sequences.AnyAsync(s => s.Environment == target && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today), ct))
-                blockers.Add($"Cargue las secuencias de e-NCF que la DGII le dio para {Name(target)} (Configuración → Comprobantes, eligiendo ese ambiente).");
+            // TK-363: every sale needs a 32 and every return or void a 34, so both are asked for before the switch, never at the register.
+            // The 31 is only for buyers with RNC: without it the cashier can still sell as consumer.
+            var loaded = await db.Sequences.Where(s => s.Environment == target && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today))
+                .Select(s => s.Type).Distinct().ToListAsync(ct);
+            var missing = new[] { EcfType.Consumer32, EcfType.CreditNote34 }.Where(t => !loaded.Contains(t)).Select(FiscalErrors.Name).ToList();
+            if (missing.Count > 0)
+                blockers.Add($"Cargue las secuencias de e-NCF que la DGII le dio en la OFV para {Name(target)}: falta {string.Join(" y ", missing)} " +
+                    "(Configuración → Comprobantes, eligiendo ese ambiente).");
         }
         if (target == FiscalEnvironment.eCF && !await db.Set<CertificationStep>().AnyAsync(s => s.Step == VerifiedStep && s.Done, ct))
             blockers.Add("Termine la certificación: marque \"Verificación del RNC por la DGII\" en el asistente de certificación cuando la DGII la confirme.");

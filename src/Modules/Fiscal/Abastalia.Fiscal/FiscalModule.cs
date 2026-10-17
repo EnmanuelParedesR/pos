@@ -400,14 +400,18 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
         return waiting.Count(d => !d.AwaitingSignature);
     }
 
+    /// <summary>Environments whose ranges load themselves on first use: no owner step and no alert for a type never used there.</summary>
+    internal static bool SelfLoads(FiscalEnvironment env) => env is FiscalEnvironment.Simulated or FiscalEnvironment.TesteCF;
+
     /// <summary>Takes the next number of the oldest valid range of the current environment. The update locks the range row until commit;
-    /// a rollback gives the number back. In TesteCF the DGII range (1 to 10,000,000; the 32 to 50,000,000) is loaded on first use.</summary>
+    /// a rollback gives the number back. In TesteCF the DGII range (1 to 10,000,000; the 32 to 50,000,000) is loaded on first use; TK-363: in
+    /// Simulated too (nothing leaves the store), so a new store sells from day one and the owner loads real ranges only to go to CerteCF or production.</summary>
     internal async Task<(long Number, DateOnly? ExpiresOn)?> ReserveAsync(EcfType type, DateOnly today, CancellationToken ct)
     {
         var env = Environment;
         var candidates = await db.Sequences.Where(s => s.Type == type && s.Environment == env && s.Next <= s.To && (s.ExpiresOn == null || s.ExpiresOn >= today))
             .OrderBy(s => s.From).Select(s => new { s.Id, s.ExpiresOn }).ToListAsync(ct);
-        if (candidates.Count == 0 && env == FiscalEnvironment.TesteCF && !await db.Sequences.AnyAsync(s => s.Type == type && s.Environment == env, ct))
+        if (candidates.Count == 0 && SelfLoads(env) && !await db.Sequences.AnyAsync(s => s.Type == type && s.Environment == env, ct))
         {
             // shortcut: two first sales at the same instant could both load it; harmless in a test environment.
             var range = new NcfSequence
