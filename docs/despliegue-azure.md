@@ -7,7 +7,7 @@ Cómo se crea y se publica la nube de Abastalia (ADR-0008): la API `Abastalia.Ho
 | Recurso | Para qué | Costo en reposo |
 |---|---|---|
 | App Service Linux B1 + Web App .NET 10 | La API (`Abastalia.Host.Cloud`). Siempre encendida, solo HTTPS, con identidad administrada. | ~13 USD/mes |
-| Azure SQL serverless (Gen5, 1 vCore, mínimo 0.5, pausa a los 60 min) | Esquemas `cloud`, `ingest` y `replica`. Solo cuentas de Entra ID: no hay usuario ni contraseña de SQL. | Casi nada mientras está en pausa; se cobra el almacenamiento |
+| Azure SQL Basic (5 DTU, 2 GB; ~US$5/mes fijo) | Esquemas `cloud`, `ingest` y `replica`. Solo cuentas de Entra ID: no hay usuario ni contraseña de SQL. | ~US$5/mes; subir a S0 (~US$15) en línea si la DTU pasa del 80 % |
 | Key Vault (RBAC) | La clave de Azure OpenAI. La API la lee con su identidad administrada (referencia `@Microsoft.KeyVault(...)`). Las copias de certificados e-CF (CloudCustody, TK-151) están apagadas desde TK-246. | Centavos |
 | Log Analytics + Application Insights | Logs y trazas de la API (agente automático de App Service). | Según el volumen |
 | Static Web App (Free) | El sitio público y el panel del dueño: una sola app React (TK-228). | Gratis |
@@ -60,7 +60,7 @@ Precios de pago por uso (GlobalStandard, eastus2, API pública de precios de Azu
 | Recurso | USD/mes |
 |---|---|
 | App Service B1 Linux (0.017/h) | ~12.40 |
-| SQL serverless pausada: solo almacenamiento (0.138/GB) | ~0.20–0.50 |
+| SQL Basic | ~4.90 |
 | SQL despierta: 0.626 por vCore-hora, mínimo 0.5 vCore (~0.31/h). Cada arranque de la API la despierta al menos 1 h | ~0.30 por despertar |
 | Key Vault, Log Analytics (5 GB/mes gratis), Static Web App Free | ~0 |
 | Azure OpenAI | Solo por uso (~0.0005 por pregunta) |
@@ -93,7 +93,7 @@ Los nonces de los nodos ya están en la base (R11 B-Low3). Al arrancar, la API d
 
 ### Tamaño de la base (R12 A)
 
-`databaseMaxGigabytes` (64 por defecto, aprobado por el dueño el 17/10/2026 para no pasar el crédito mensual de US$150; GP serverless con 1 vCore llega a 512). Lo que más crece sale de SQL: la bandeja borra lo aplicado a los 7 días (`InboxApplier.KeepApplied`) y el XML de los e-CF pasa al archivo frío a los 7 días (`Archive:HotDays`). Nada lee de SQL el XML de un e-CF más viejo: la búsqueda por e-NCF lo trae del archivo frío. **Costo:** si Azure cobra el almacenamiento por el máximo configurado y no por lo usado (~0.138 USD/GB-mes, ~34 USD con 250 GB), revisar la primera factura y bajarlo con el parámetro (64 GB ≈ 9 USD) hasta que haga falta; subirlo no requiere parar la base.
+**Base de datos (17/10/2026):** `databaseSku` = Basic y `databaseMaxGigabytes` = 2. La serverless nunca se pausaba porque la API la consulta a cada rato (medido: ~US$0.42/h, ~US$310/mes), y el dueño no quiere pasar del crédito mensual de US$150. Con Basic cuesta ~US$5 fijos. Si la DTU pasa del 80 % o se acerca a 2 GB, subir a Standard S0 (~US$15, hasta 250 GB) con `databaseSku=S0` sin parar la base. Lo que más crece sale de SQL: la bandeja borra lo aplicado a los 7 días y el XML de los e-CF pasa al archivo frío a los 7 días. Log Analytics tiene tope diario de 0.1 GB.
 
 ### Respaldos de las tiendas en la nube (TK-238)
 

@@ -38,10 +38,13 @@ param openAiApiVersion string = '2025-04-01-preview'
 @description('Deployment SKU: GlobalStandard is the cheapest pay-per-token option where available.')
 param openAiDeploymentSku string = 'GlobalStandard'
 
-@description('R12 A: the database\'s maximum size in GB (General Purpose serverless, 1 vCore: up to 512).')
-@minValue(32)
-@maxValue(512)
-param databaseMaxGigabytes int = 64
+@description('SQL database edition: Basic (2 GB max, ~US$5/month) or a Standard objective such as S0 (~US$15).')
+param databaseSku string = 'Basic'
+
+@description('The database\'s maximum size in GB (Basic allows up to 2; Standard S0 up to 250).')
+@minValue(1)
+@maxValue(250)
+param databaseMaxGigabytes int = 2
 
 @description('Thousands of tokens per minute for the deployment. R12 F: 50K, so a few owners asking at once and the invoice reader do not hit 429s; GlobalStandard gpt-5-nano quotas are far above it (check az cognitiveservices usage list).')
 param openAiCapacity int = 50
@@ -139,18 +142,15 @@ resource sqlAllowAzure 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' 
   properties: { startIpAddress: '0.0.0.0', endIpAddress: '0.0.0.0' }
 }
 
-// Serverless, smallest vCore, pauses after 60 minutes without connections (the API never polls it while idle).
+// Basic (5 DTU, 2 GB, ~US$5/month fixed): serverless never paused because the API polls it (measured 17/10/2026: ~US$310/month), and the owner
+// must stay under the US$150 monthly credit. Move up to Standard S0 (~US$15) online if DTU stays above 80 %.
 resource database 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: 'abastalia'
   location: sqlLocation
   tags: tags
-  sku: { name: 'GP_S_Gen5', tier: 'GeneralPurpose', family: 'Gen5', capacity: 1 }
+  sku: { name: databaseSku, tier: databaseSku == 'Basic' ? 'Basic' : 'Standard' }
   properties: {
-    autoPauseDelay: 60
-    minCapacity: json('0.5')
-    // R12 A: room to grow (the inbox and the e-CF XML leave SQL after 7 days, the replica stays). GP serverless with 1 vCore allows up to 512 GB;
-    // storage is billed on this maximum (about US$0.12 per GB-month: docs/despliegue-azure.md), so lower it with the parameter if the bill matters more.
     maxSizeBytes: databaseMaxGigabytes * 1024 * 1024 * 1024
     zoneRedundant: false
     requestedBackupStorageRedundancy: 'Local'
