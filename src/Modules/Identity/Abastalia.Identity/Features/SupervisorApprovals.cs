@@ -55,7 +55,10 @@ internal static class GrantSupervisorApproval
             }
             // R11 A14: whether the person may approve is checked before the PIN, with the same answer as a wrong PIN, so it never tells a right PIN apart.
             var permissions = (await db.Roles.AsNoTracking().SingleAsync(r => r.Id == supervisor.RoleId, ct)).Effective;
-            var pin = permissions.Contains(c.Permission) ? supervisor.TryPin(c.Pin, now, pepper.Value) : PinResult.Incorrect;
+            // R12: without the permission the PIN is still hashed (same time either way) but never counts against that person.
+            var pin = PinResult.Incorrect;
+            if (permissions.Contains(c.Permission)) pin = supervisor.TryPin(c.Pin, now, pepper.Value);
+            else _ = Pin.Verify(supervisor.PinHash, c.Pin, pepper.Value);
             if (pin != PinResult.Correct)
             {
                 limiter.Fail(AttemptLimiter.PinKey(deviceId));

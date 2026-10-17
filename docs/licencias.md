@@ -11,7 +11,7 @@ Una licencia es un **JWS compacto** (`encabezado.cuerpo.firma`, base64url) firma
 | `store` | Nombre de la tienda (como sale en el contrato) |
 | `plan` | Nombre del plan (`Esencial`, `Estándar`, `Pro`; antes `Varias sucursales`). `limits.Registers` 0 = solo la PC principal (Esencial) |
 | `features` | Funciones pagas: `ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant`, `SupplierInvoiceReading` (servicio adicional de lectura de facturas con IA, ver `docs/cuotas.md`) |
-| `limits` | Límites por nombre: `Registers` (cajas además de la PC principal) y, desde TK-277, `Cashiers` (cajeros habilitados: usuarios activos que pueden vender o abrir turno; el Administrador no cuenta). Sin `Cashiers`, la tienda no limita los cajeros |
+| `limits` | Límites por nombre: `Registers` (cajas además de la PC principal) y, desde TK-277, `Cashiers` (cajeros habilitados: usuarios activos que pueden vender o abrir turno, también los Administradores salvo uno, el dueño; R12). Sin `Cashiers`, la tienda no limita los cajeros |
 | `issuedUtc`, `expiresUtc` | Emisión y vencimiento, en UTC |
 | `tenantId` | Opcional. Id del negocio en la nube (consola de la plataforma). La tienda no lo mira; la nube solo deja que la licencia active el lector de facturas con IA de ese negocio (R11 B-Low8, TK-268). Sin él, la licencia no cuenta en la nube (el negocio usa su suscripción o la prueba) |
 | `blocked` | Opcional (TK-279). `true` = Abastalia bloqueó el negocio desde la consola: la tienda queda **Bloqueada** mientras sea su licencia instalada |

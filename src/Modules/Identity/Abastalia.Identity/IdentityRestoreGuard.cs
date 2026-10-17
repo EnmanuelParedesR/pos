@@ -28,6 +28,7 @@ internal sealed class IdentityRestoreGuard(IdentityDbContext db, PinPepper peppe
                 else db.Devices.Add(d);
             var restoredUsers = await db.Users.ToDictionaryAsync(u => u.Id, token);
             var foreign = restoredUsers.Values.Any(u => Pin.IsForeign(u.PinHash, pepper.Value));
+            var roles = await db.Roles.Select(r => r.Id).ToListAsync(token);
             foreach (var u in users)
             {
                 if (restoredUsers.TryGetValue(u.Id, out var r))
@@ -37,7 +38,10 @@ internal sealed class IdentityRestoreGuard(IdentityDbContext db, PinPepper peppe
                 }
                 else if (!foreign) continue;
                 else if (restoredUsers.Values.FirstOrDefault(x => x.Code == u.Code) is { } same)
+                {
                     (same.PinHash, same.FailedAttempts, same.LockedUntilUtc, same.IsActive) = (u.PinHash, 0, null, true);
+                    if (roles.Contains(u.RoleId)) same.RoleId = u.RoleId; // R12: the installer keeps their role (the owner is not left a Cajero)
+                }
                 else db.Users.Add(u);
             }
             await db.SaveChangesAsync(token);
