@@ -35,7 +35,7 @@ public sealed class RegisterAuditFixesTests
         // Typing a name shows the matches as tiles, to tap.
         sale.Find("input.sale__scanner").Input("jam");
         sale.WaitForAssertion(() => sale.FindAll(".sale__tiles .esc-tile__name").Select(t => t.TextContent).ShouldBe(["Jamón de pierna", "Jamón cocido"]));
-        sale.Find("[role=status]").TextContent.ShouldBe("Productos con “jam”");
+        sale.Find("[role=status]").TextContent.ShouldBe("Productos con “jam” · toque uno o siga escribiendo");
 
         // Enter: not a code, so a name; the only match goes into the sale.
         sale.Find("input.sale__scanner").Input("jamon");

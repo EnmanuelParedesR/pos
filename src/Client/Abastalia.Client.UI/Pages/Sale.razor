@@ -38,7 +38,7 @@
         @if (_search is { } s)
         {
             <div class="esc-row" style="justify-content:space-between;align-items:center">
-                <span role="status" style="font-weight:600">@(_products.Count == 0 ? $"Nada coincide con “{s}”." : $"Productos con “{s}”")</span>
+                <span role="status" style="font-weight:600">@(_products.Count == 0 ? $"Nada coincide con “{s}”." : $"Productos con “{s}” · toque uno o siga escribiendo")</span>
                 <Button Variant="Button.Variants.Ghost" OnClick="BackToCategoryAsync"><Icon Name="x" /> Volver a las categorías</Button>
             </div>
         }
@@ -53,7 +53,7 @@
             }
             @if (_products.Count == 0)
             {
-                <div class="esc-muted">@(_search is not null ? "Pruebe con otra palabra o escanee el código." : _categories.Count == 0 ? "No hay productos todavía. Agréguelos en Administración → Productos." : "Esta categoría no tiene productos.")</div>
+                <div class="esc-muted" style="grid-column:1/-1">@(_search is not null ? "Pruebe con otra palabra o escanee el código." : _categories.Count == 0 ? "No hay productos todavía. Agréguelos en Administración → Productos." : "Esta categoría no tiene productos.")</div>
             }
             @if (_products.Count == _page * PageSize)
             {
