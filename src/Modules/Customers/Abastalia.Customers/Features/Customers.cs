@@ -258,7 +258,7 @@ internal static class CustomerStatement
                     var entries = new List<(DateTime Date, string Type, string? Doc, decimal Charge, decimal Payment, Guid? PaymentId)>();
                     foreach (var x in await db.Charges.Where(x => x.CustomerId == id).AsNoTracking().ToListAsync(ct))
                     {
-                        entries.Add((x.DateUtc, "Fiado", x.Document, x.Amount, 0, null));
+                        entries.Add((x.DateUtc, "Venta a crédito", x.Document, x.Amount, 0, null));
                         if (x.VoidedUtc is not { } voided) continue;
                         entries.Add((voided, "Venta anulada", x.Document, 0, x.Amount, null));
                         if (x.PaidAtVoid > 0) entries.Add((voided, "Lo pagado de la venta anulada", x.Document, x.PaidAtVoid, 0, null));

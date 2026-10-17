@@ -189,7 +189,7 @@ public sealed class ClientContractTests(AbastaliaApp app) : IClassFixture<Abasta
         var statement = await Send<C.CustomerStatement>(api, HttpMethod.Get, $"/api/customers/{customer}/statement");
         (statement.Debt, statement.Lines.Length).ShouldBe((150m, 2));
         statement.Lines.Single(l => l.Type == "Abono").PaymentId.ShouldBe(paid.CustomerPaymentId);
-        statement.Lines.Single(l => l.Type == "Fiado").Document.ShouldBe(onAccount.ENcf);
+        statement.Lines.Single(l => l.Type == "Venta a crédito").Document.ShouldBe(onAccount.ENcf);
         await Send<C.Empty>(api, HttpMethod.Post, $"/api/customers/payments/{paid.CustomerPaymentId}/void", new { Reason = "Monto equivocado", SupervisorApprovalId = (Guid?)null });
         (await Send<C.CustomerStatement>(api, HttpMethod.Get, $"/api/customers/{customer}/statement")).Lines.ShouldAllBe(l => l.PaymentId == null);
 

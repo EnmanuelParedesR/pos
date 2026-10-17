@@ -67,3 +67,17 @@ public interface ICloudSnapshot
 {
     Task EnqueueAsync(CancellationToken ct);
 }
+
+/// <summary>TK-342: a question to Talia from the store app (POST /api/nodes/assistant/ask, signed as the node). The PIN never goes: the user is who the
+/// store's session says, sent as data for the answer's wording and the screens offered; the store keeps checking every permission itself.</summary>
+/// <param name="History">The chat so far, user and assistant turns only.</param>
+/// <param name="Today">The store's business day.</param>
+public sealed record StoreAssistantRequest(string? Question, IReadOnlyList<StoreAssistantTurn>? History, StoreAssistantUser? User, DateOnly? Today);
+
+public sealed record StoreAssistantTurn(string? Role, string? Content);
+
+/// <param name="Role">"Administrador" when the user has every permission; null otherwise (the permissions say what they can do).</param>
+public sealed record StoreAssistantUser(string? Name, string? Role, IReadOnlyList<string>? Permissions);
+
+/// <param name="Screen">A route of the store app's screen list (storeScreens.json) Talia suggests opening; the person clicks "Abrir …". Null when none.</param>
+public sealed record StoreAssistantAnswer(string Answer, string? Screen = null);

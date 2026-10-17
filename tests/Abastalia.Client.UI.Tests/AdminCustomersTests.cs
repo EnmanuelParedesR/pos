@@ -28,7 +28,7 @@ public sealed class AdminCustomersTests
             customerId = Ana, name = "Ana Pérez", debt = 1_500.50m, creditBalance = 0m, creditLimit = 5_000m,
             lines = new object[]
             {
-                new { dateUtc = DateTime.UtcNow.AddDays(-40), type = "Fiado", document = "E320000000010", charge = 2_000.50m, payment = 0m, debt = 2_000.50m, paymentId = (Guid?)null },
+                new { dateUtc = DateTime.UtcNow.AddDays(-40), type = "Venta a crédito", document = "E320000000010", charge = 2_000.50m, payment = 0m, debt = 2_000.50m, paymentId = (Guid?)null },
                 new { dateUtc = DateTime.UtcNow.AddHours(-1), type = "Abono", document = (string?)null, charge = 0m, payment = 500m, debt = 1_500.50m, paymentId = (Guid?)PaymentId },
             },
         })

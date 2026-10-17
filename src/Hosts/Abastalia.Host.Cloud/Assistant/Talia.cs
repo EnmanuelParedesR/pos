@@ -86,6 +86,18 @@ public static class TaliaTools
             : Serialize(new { results = hits.Select(h => new { h.Title, h.Section, h.Text, h.Links }) }); // no article id: the model took it for a path
     }
 
+    /// <summary>The first messages of a question. TK-348: the rules first and the same for everyone, so Azure caches them (a cached token costs a
+    /// tenth); the rest of <paramref name="systemPrompt"/> (the day, the stores) after, then the history and the question.</summary>
+    public static List<ChatMessage> Conversation(string rules, string systemPrompt, IReadOnlyList<AssistantTurn> history, int maxHistory, string question)
+    {
+        List<ChatMessage> messages = systemPrompt.StartsWith(rules, StringComparison.Ordinal)
+            ? [new("system", rules), new("system", systemPrompt[rules.Length..].Trim())]
+            : [new("system", systemPrompt)];
+        messages.AddRange(History(history, maxHistory, 2000));
+        messages.Add(new("user", question));
+        return messages;
+    }
+
     /// <summary>The last <paramref name="max"/> user and assistant turns, each cut at <paramref name="maxLength"/> letters; anything else is dropped.</summary>
     public static IEnumerable<ChatMessage> History(IReadOnlyList<AssistantTurn> history, int max, int maxLength) =>
         history.Where(h => h.Role is "user" or "assistant" && !string.IsNullOrWhiteSpace(h.Content)).TakeLast(max)

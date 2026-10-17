@@ -13,7 +13,7 @@ Pedido del dueño (15 de octubre de 2026): el dueño maneja sus propios usuarios
 
 | # | Problema | Ejemplo real |
 |---|---|---|
-| 1 | `register.operate` junta abrir turno, cerrar turno, entradas de efectivo y cobrar abonos de fiado. | No se puede tener un cajero que venda pero no abra ni cierre la caja (la abre el encargado en la mañana). |
+| 1 | `register.operate` junta abrir turno, cerrar turno, entradas de efectivo y cobrar abonos de crédito. | No se puede tener un cajero que venda pero no abra ni cierre la caja (la abre el encargado en la mañana). |
 | 2 | Cerrar el turno siempre pide `register.approve-close`, que además deja ver y cerrar turnos de otras cajas. | El cajero que hace su propio cierre ciego necesita al supervisor aunque no haya diferencia. |
 | 3 | `settings.manage` junta datos del negocio, cajas, respaldos, auditoría, licencia, nube y la política de autorizaciones. | Para dejar que el encargado haga respaldos hay que darle también la licencia y la nube. |
 | 4 | `purchasing.manage` junta compras, suplidores, gastos y pagos a suplidores (que sacan dinero). | El que recibe mercancía puede también pagar facturas. |
@@ -34,7 +34,7 @@ Pedido del dueño (15 de octubre de 2026): el dueño maneja sus propios usuarios
 | `register.withdraw` | Retiros y gastos de caja | igual |
 | `register.open-drawer` | Abrir la gaveta sin venta | igual |
 | `register.approve-close` | Autorizar cierres con diferencia y cerrar turnos de otras cajas | se queda, más estrecho |
-| `credit.collect` | Cobrar abonos de fiado en la caja | parte de `register.operate` |
+| `credit.collect` | Cobrar abonos de crédito en la caja | parte de `register.operate` |
 
 `sales.create` sigue siendo "vender". La política de autorizaciones (TK-210) gana una entrada "Cerrar turno con diferencia" en lugar de "Cerrar turno".
 
@@ -81,7 +81,7 @@ Plantillas que el dueño puede usar tal cual o copiar y ajustar:
 |---|---|
 | Cajero | vender, cerrar su turno, entradas de efectivo, cobrar abonos, agregar clientes en la caja (`customers.quick-add`) |
 | Cajero con apertura | lo de Cajero + abrir turno |
-| Supervisor | todo lo de caja y ventas, autorizar cierres, clientes y fiado (`credit.sell`), ver inventario, compras sin pagar, Turnos y cuadres, reportes |
+| Supervisor | todo lo de caja y ventas, autorizar cierres, clientes y crédito (`credit.sell`), ver inventario, compras sin pagar, Turnos y cuadres, reportes |
 | Inventario | productos, existencias, ajustes, conteos, transferencias, compras (sin pagar) |
 | Contador | reportes, reportes de la DGII, costos, Turnos y cuadres; solo lectura |
 | Administrador | todo (no se edita) |

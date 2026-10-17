@@ -112,7 +112,7 @@ it("shows the day's numbers, payment methods in Spanish and what to review", asy
   expect(await screen.findByText("15,234.50")).toBeTruthy();
   expect(screen.getByText("42")).toBeTruthy();
   expect(screen.getByText("Efectivo")).toBeTruthy();
-  expect(screen.getByText("Fiado")).toBeTruthy();
+  expect(screen.getByText("A crédito")).toBeTruthy();
   // What to review comes in words, with the amount.
   expect(screen.getByText((_, el) => el?.className === "esc-alert__title" && el.textContent === "Faltaron RD$ 200.00 en Caja 2")).toBeTruthy();
   expect(screen.getByText(/^Yudelka Martínez · Centro · cierre de/)).toBeTruthy();

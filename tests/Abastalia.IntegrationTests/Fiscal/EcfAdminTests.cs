@@ -112,7 +112,7 @@ public sealed class EcfAdminTests(DgiiAbastaliaApp app) : IClassFixture<DgiiAbas
 
         var statement = await admin.GetFromJsonAsync<JsonElement>($"/api/customers/{customer}/statement");
         var charge = statement.GetProperty("lines").EnumerateArray().Single();
-        (charge.GetProperty("type").GetString(), charge.GetProperty("document").GetString(), charge.GetProperty("charge").GetDecimal()).ShouldBe(("Fiado", replacement, 100m));
+        (charge.GetProperty("type").GetString(), charge.GetProperty("document").GetString(), charge.GetProperty("charge").GetDecimal()).ShouldBe(("Venta a crédito", replacement, 100m));
         statement.GetProperty("debt").GetDecimal().ShouldBe(100m);
     }
 

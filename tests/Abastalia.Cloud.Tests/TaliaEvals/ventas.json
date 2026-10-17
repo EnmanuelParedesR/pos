@@ -88,7 +88,7 @@
     },
     "script": [
       { "toolCalls": [ { "tool": "payment_mix", "args": { "from": "2026-10-15", "to": "2026-10-15" } } ] },
-      { "content": "Hoy: efectivo RD$ 11,000.00, tarjeta RD$ 6,000.00 y fiado RD$ 1,350.50." }
+      { "content": "Hoy: efectivo RD$ 11,000.00, tarjeta RD$ 6,000.00 y a crédito RD$ 1,350.50." }
     ]
   },
   {

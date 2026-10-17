@@ -25,7 +25,7 @@ internal static class Export
         ["Day"] = "Dia", ["SaleCount"] = "Ventas", ["SalesWithItbis"] = "VentasConItbis", ["Discount"] = "Descuento", ["Returns"] = "Devoluciones",
         ["NetWithoutItbis"] = "NetoSinItbis", ["Cost"] = "Costo", ["Profit"] = "Utilidad",
         ["ProductId"] = "ProductoId", ["CategoryId"] = "CategoriaId", ["Product"] = "Producto", ["Category"] = "Categoria", ["Quantity"] = "Cantidad",
-        ["CashierId"] = "CajeroId", ["Cashier"] = "Cajero", ["VoidedCount"] = "Anuladas", ["SoldWithItbis"] = "VendidoConItbis", ["SoldOnCredit"] = "VendidoFiado",
+        ["CashierId"] = "CajeroId", ["Cashier"] = "Cajero", ["VoidedCount"] = "Anuladas", ["SoldWithItbis"] = "VendidoConItbis", ["SoldOnCredit"] = "VendidoACredito",
         // sales by payment method (Method values too) and by hour
         ["Method"] = "MedioPago", ["Paid"] = "Pagado", ["Refunded"] = "Devuelto", ["Net"] = "Neto", ["Hour"] = "Hora",
         ["Transfer"] = "Transferencia", ["OnAccount"] = "Credito", ["CreditBalance"] = "SaldoAFavor",

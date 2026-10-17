@@ -750,6 +750,17 @@ function Pricing() {
           ]}
         />
       </Section>
+      {/* TK-330: the honest timeline (docs/licencias.md "Estados", /terminos §4), the same for a late payment and a cancellation. */}
+      <Faq
+        items={[
+          [
+            "¿Qué pasa si dejo de pagar o cancelo?",
+            <>
+              Los primeros 15 días después del vencimiento, todo sigue igual. Los 15 siguientes se apagan las funciones pagas y queda una caja además de la PC principal: todavía vende y factura, y la pantalla dice el día en que se detiene la venta. Después ya no se puede vender, abrir turnos, anular ni devolver. Siempre puede entrar, cerrar el turno abierto, ver sus reportes, exportar el 606, 607 y 608, respaldar sus datos y enviar a la DGII los e-CF ya emitidos. Ningún dato se borra, y al instalar una licencia nueva todo vuelve a funcionar al momento. Vea los <Link to="/terminos#si-la-licencia-vence">términos</Link>.
+            </>,
+          ],
+        ]}
+      />
       <Section id="contacto">
         <h2>Hablemos</h2>
         <p>Díganos qué vende y cuántas cajas tiene, y le preparamos una propuesta.</p>

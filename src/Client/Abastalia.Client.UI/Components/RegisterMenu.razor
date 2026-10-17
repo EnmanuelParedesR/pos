@@ -36,7 +36,7 @@ else
                 }
                 @if (Session.Can("credit.collect"))
                 {
-                    <Button Wide="true" OnClick="() => (_customerPayment, _message) = (true, null)" style="justify-content:space-between"><span>Abono de cliente (paga su fiado)</span></Button>
+                    <Button Wide="true" OnClick="() => (_customerPayment, _message) = (true, null)" style="justify-content:space-between"><span>Abono de cliente (paga lo que debe)</span></Button>
                 }
                 <Button Wide="true" OnClick='() => Nav.NavigateTo("shift-sales")' style="justify-content:space-between"><span>Ventas de este turno · anular y devolver</span></Button>
                 @* Without register.close a supervisor authorizes the closing with their PIN (TK-212). *@

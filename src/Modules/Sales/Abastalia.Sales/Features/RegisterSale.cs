@@ -62,7 +62,7 @@ internal static class RegisterSale
             RuleFor(c => c.CustomerName).NotEmpty().When(c => c.DocumentType == EcfType.FiscalCredit31 && c.CustomerId is null);
             RuleFor(c => c.CustomerName).MaximumLength(150);
             RuleFor(c => c.CustomerId).NotNull().When(c => c.Payments.Any(p => p.Method is PaymentMethod.OnAccount or PaymentMethod.CreditBalance))
-                .WithMessage("El fiado y el saldo a favor necesitan un cliente.");
+                .WithMessage("La venta a crédito y el saldo a favor necesitan un cliente.");
             RuleFor(c => c.PriceLevel).IsInEnum();
         }
     }
@@ -170,7 +170,7 @@ internal static class RegisterSale
             var summary = string.Join(" · ", new[]
                 {
                     $"Venta de {ApprovalErrors.Money(t.Total)}" + (c.PriceLevel == SalePriceLevel.Wholesale ? " a precio por mayor" : ""),
-                    onAccount > 0 ? $"fiado {ApprovalErrors.Money(onAccount)} a {customer!.Name}" : null,
+                    onAccount > 0 ? $"a crédito {ApprovalErrors.Money(onAccount)} a {customer!.Name}" : null,
                     creditBalance > 0 ? $"saldo a favor {ApprovalErrors.Money(creditBalance)} de {customer!.Name}" : null,
                     otherRnc ? $"crédito fiscal a {rnc} ({registered ?? "no está en el padrón cargado"})" : null,
                 }

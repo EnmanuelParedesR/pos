@@ -14,7 +14,10 @@ public sealed record EvalCase(string Name, string Question, EvalExpect Expect, I
     EvalContext? Context = null, Dictionary<string, JsonNode?>? ToolData = null, IReadOnlyList<EvalReply>? Script = null);
 
 /// <param name="Role">owner or readonly (TK-338: readonly gets no Owner-only screen or action). Plan is informative: every plan has the actions in the pilot.</param>
-public sealed record EvalContext(string? Role = null, string? Plan = null, DateOnly? Today = null, Dictionary<Guid, string>? Stores = null);
+/// <param name="Bot">TK-342: <c>store</c> for the store app's Talia (Administración); empty for the panel's.</param>
+/// <param name="Permissions">TK-342, store only: the store user's permissions (every one when empty).</param>
+public sealed record EvalContext(string? Role = null, string? Plan = null, DateOnly? Today = null, Dictionary<Guid, string>? Stores = null,
+    string? Bot = null, IReadOnlyList<string>? Permissions = null);
 
 /// <param name="Calls">Each must match one call the model made: same tool and every listed argument
 /// (text equal ignoring case and accents; "*" any value; "~x" contains x; null absent or empty). Other arguments are not checked.</param>
@@ -68,8 +71,11 @@ public static class TaliaEval
         var assistant = For(recorder, c); // the tools read the case's data, never a replica
         var calls = new List<ChatToolCall>();
         var failures = new List<string>();
-        var prompt = OwnerAssistant.SystemPrompt(c.Context?.Today ?? DefaultToday,
-            c.Context?.Stores ?? new() { [DefaultStoreId] = "Carnicería La Central" }, isOwner: c.Context?.Role is not "readonly");
+        var stores = c.Context?.Stores ?? new() { [DefaultStoreId] = "Carnicería La Central" };
+        var prompt = IsStore(c)
+            ? StoreAssistant.SystemPrompt(c.Context?.Today ?? DefaultToday, stores.Values.First(),
+                new Sync.Contracts.StoreAssistantUser("Ana Pérez", c.Context?.Permissions is null ? "Administrador" : null, [.. StorePermissions(c)]))
+            : OwnerAssistant.SystemPrompt(c.Context?.Today ?? DefaultToday, stores, isOwner: c.Context?.Role is not "readonly");
         string answer;
         try
         {
@@ -106,16 +112,26 @@ public static class TaliaEval
 
     /// <summary>The assistant as the case's user gets it: a readonly member has no Owner-only screen or action. TK-338: a proposal the closed schema
     /// accepts gets a card whose summary is the action and its arguments (the real summary reads the database, which the harness never touches).</summary>
-    public static OwnerAssistant For(IChatModel model, EvalCase c)
+    /// <remarks>TK-342: a <c>store</c> case gets the store app's Talia, with the case's permissions (every one when it lists none).</remarks>
+    public static ITalia For(IChatModel model, EvalCase c)
     {
+        if (IsStore(c)) return new StoreAssistant(model, StorePermissions(c));
         var owner = c.Context?.Role is not "readonly";
         return new OwnerAssistant(model, null!, isOwner: owner,
             actions: [.. AssistantActionTypes.Builtin.Where(a => owner || !a.Policies.Contains(Nodes.CloudAuth.OwnerPolicy))],
             propose: (a, args) => Task.FromResult<SharedKernel.Result<ProposalCard>>(new ProposalCard(Guid.Empty, $"{a.Type} {args.ToJsonString()}", DefaultToday.ToDateTime(TimeOnly.MinValue))));
     }
 
-    private static async Task<string> ToolResultAsync(OwnerAssistant assistant, EvalCase c, ChatToolCall call, CancellationToken ct)
+    private static bool IsStore(EvalCase c) => c.Context?.Bot == "store";
+
+    private static HashSet<string> StorePermissions(EvalCase c) => [.. c.Context?.Permissions ?? BuildingBlocks.Security.Permissions.All];
+
+    private static async Task<string> ToolResultAsync(ITalia assistant, EvalCase c, ChatToolCall call, CancellationToken ct)
     {
+        if (IsStore(c))
+            return call.Name == "open_screen" ? await assistant.RunToolAsync(Guid.Empty, call, ct) // checks its screen list
+                : c.ToolData?.TryGetValue(call.Name, out var found) == true ? found?.ToJsonString(CaseJson) ?? "null"
+                : assistant.Offered.Any(t => t.Name == call.Name) ? "[]" : OwnerAssistant.Failure($"No existe la herramienta {call.Name}.");
         if (assistant.Offered.Any(t => t.Name == call.Name && t.Name.StartsWith("propose_", StringComparison.Ordinal)))
             return await assistant.RunToolAsync(Guid.Empty, call, ct); // the closed schema and one per answer, as in the panel
         if (c.ToolData?.TryGetValue(call.Name, out var data) == true) return data?.ToJsonString(CaseJson) ?? "null";

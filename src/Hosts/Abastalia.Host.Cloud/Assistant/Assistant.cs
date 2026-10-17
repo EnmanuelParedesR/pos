@@ -182,6 +182,7 @@ public static class PanelRoutes
 /// <param name="propose">TK-338: stores a proposal the schema accepted and returns its card (or why not, which the model reads).</param>
 public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool showCosts = true, bool isOwner = true, ChatTuning? tuning = null,
     TaliaKnowledge? knowledge = null, IReadOnlyList<AssistantActionType>? actions = null, Func<AssistantActionType, JsonObject, Task<Result<ProposalCard>>>? propose = null)
+    : ITalia
 {
     public const int MaxDays = 92;
     public const int MaxRounds = 5;
@@ -194,10 +195,10 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
         Tool("top_products", "Productos más vendidos en el rango, por monto vendido (con cantidad, su unidad: Pound = libras, Unit = unidades, y ganancia estimada).", withLimit: true),
         Tool("shift_differences", "Turnos cerrados (cierres Z) con efectivo esperado, contado y diferencia (negativa = faltante, positiva = sobrante), por cajero y caja."),
         Tool("sales_by_cashier", "Ventas por cajero: cantidad, total y anuladas."),
-        Tool("payment_mix", "Cómo pagaron los clientes: efectivo, tarjeta, transferencia, fiado o saldo a favor, con cantidad y monto."),
+        Tool("payment_mix", "Cómo pagaron los clientes: efectivo, tarjeta, transferencia, a crédito o saldo a favor, con cantidad y monto."),
         new("sync_status", "Hora del último dato recibido de cada tienda y si hay datos pendientes de procesar.",
             new JsonObject { ["type"] = "object", ["properties"] = new JsonObject() }),
-        new("receivables", "Cuentas por cobrar (fiado) de hoy: total que deben los clientes, cuántos deben y los que más deben, con su nombre (customerName) cuando la tienda lo envió.",
+        new("receivables", "Cuentas por cobrar (ventas a crédito) de hoy: total que deben los clientes, cuántos deben y los que más deben, con su nombre (customerName) cuando la tienda lo envió.",
             new JsonObject
             {
                 ["type"] = "object",
@@ -266,14 +267,8 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
     public async Task<string> ConverseAsync(string systemPrompt, string question, IReadOnlyList<AssistantTurn> history,
         Func<ChatToolCall, Task<string>> runTool, CancellationToken ct)
     {
-        // TK-348: the rules first and the same for everyone, so Azure caches them (a cached token costs a tenth); the day and the stores after.
-        List<ChatMessage> messages = systemPrompt.StartsWith(Rules, StringComparison.Ordinal)
-            ? [new("system", Rules), new("system", systemPrompt[Rules.Length..].Trim())]
-            : [new("system", systemPrompt)];
-        messages.AddRange(TaliaTools.History(history, MaxHistory, 2000));
-        messages.Add(new("user", question));
-
-        LastReply = await TaliaLoop.RunAsync(model, tuning ?? new ChatTuning(), messages, Offered, runTool, MaxRounds, ct, spent => TokensUsed += spent.Total);
+        LastReply = await TaliaLoop.RunAsync(model, tuning ?? new ChatTuning(), TaliaTools.Conversation(Rules, systemPrompt, history, MaxHistory, question),
+            Offered, runTool, MaxRounds, ct, spent => TokensUsed += spent.Total);
         return LastReply.Answer;
     }
 
@@ -349,13 +344,14 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
         Cómo contestar:
         - En español, de "usted", claro y breve: de una a cuatro frases, o una lista corta con guiones. Ve directo a la respuesta, sin repetir la pregunta.
           Nunca tutees: no escribas "usa", "puedes", "quieres", "mira"; escribe "use", "puede", "quiere", "vea".
+        - No uses la palabra "fiado", aunque la persona la use: di "ventas a crédito" o "cuentas por cobrar" (TK-353).
         - Solo texto simple: nada de Markdown (ni asteriscos, ni almohadillas, ni tablas, ni enlaces con corchetes). Una ruta va tal cual, por ejemplo /app/billing.
         - Montos así: RD$ 1,234.50. Un faltante o un sobrante se dice en positivo: "faltante de RD$ 150.00". Fechas así: jueves 15 de octubre.
         - Rutas: solo las que vienen en los resultados de las herramientas (links, el texto o panel_help). Nunca inventes una ruta ni muestres ids.
         - Si pide ir a una pantalla, o lo que pregunta se hace en una, usa navigate: el panel le muestra un botón «Ir a …» que la persona toca; tú no la llevas.
 
         De dónde sale lo que dices:
-        - Números del negocio (ventas, cuadres, cajeros, productos, formas de pago, fiado, sincronización, certificación): solo de las herramientas de datos.
+        - Números del negocio (ventas, cuadres, cajeros, productos, formas de pago, cuentas por cobrar, sincronización, certificación): solo de las herramientas de datos.
           Nunca inventes ni estimes cifras. Si una herramienta no trae datos, dilo ("no hay ventas registradas ese día") y, si puede ser falta de conexión, revisa sync_status.
         - Cómo funciona Abastalia, dónde se hace algo, planes, precios, licencia, e-CF, DGII, equipos, instalación o un problema: usa search_knowledge
           (y panel_help para el mapa de pantallas) antes de contestar. Contesta solo con lo que encuentres; si no está, di que no lo sabes y ofrece el

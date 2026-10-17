@@ -18,7 +18,7 @@ El panel de Abastalia tiene estas secciones:
 En el celular, la barra de abajo muestra Resumen, Ventas, Cuadres, Tiendas y "Más".
 
 ## ¿Dónde veo los cuadres de caja y el cierre Z en el panel?
-En el panel de Abastalia, en Cuadres (/app/shifts), está cada cierre de turno con la tienda, el cajero, la caja, el efectivo esperado, el contado y la diferencia (faltante o sobrante). Puede ver solo los cierres con diferencias. Toque uno para ver e imprimir su Z: fondo inicial, ventas por forma de pago, anuladas, devoluciones, entradas y salidas de efectivo, «Abonos de fiado» (cobros a clientes a crédito) y aperturas de gaveta sin venta. Los cierres aparecen cuando una caja conectada cierra su turno.
+En el panel de Abastalia, en Cuadres (/app/shifts), está cada cierre de turno con la tienda, el cajero, la caja, el efectivo esperado, el contado y la diferencia (faltante o sobrante). Puede ver solo los cierres con diferencias. Toque uno para ver e imprimir su Z: fondo inicial, ventas por forma de pago, anuladas, devoluciones, entradas y salidas de efectivo, «Abonos de crédito» (lo que pagaron los clientes que compraron a crédito) y aperturas de gaveta sin venta. Los cierres aparecen cuando una caja conectada cierra su turno.
 
 ## ¿Cómo busco o descargo un comprobante electrónico (e-CF)?
 En el panel de Abastalia, en Ventas (/app/sales), use «Buscar un comprobante electrónico»: escriba el e-NCF (por ejemplo E310000000001) y descargue el XML firmado. Abastalia guarda el XML de cada e-CF 10 años en la nube. Los comprobantes de hace más de 90 días pueden tardar en estar disponibles, y las consultas al archivo cuentan en el Consumo del mes.

@@ -190,9 +190,11 @@
 .esc-page-head p { margin-top: 4px; color: var(--text-2); font-size: var(--t-15); }
 .esc-page-head__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 @media (max-width: 760px) {
-  .esc-page-head { align-items: stretch; flex-direction: column; }
+  /* nowrap: a wrapping column is sized by its widest child (a long store name in the select), not by the phone (TK-354). */
+  .esc-page-head { align-items: stretch; flex-direction: column; flex-wrap: nowrap; }
   .esc-page-head h1 { font-size: var(--t-24); }
-  .esc-page-head__actions > * { flex: 1 1 auto; }
+  /* TK-354: min-width 0 so a select sized by its longest store name, or the period buttons, shrink to the phone instead of widening the page. */
+  .esc-page-head__actions > * { flex: 1 1 auto; min-width: 0; max-width: 100%; }
 }
 .esc-section-title { font-size: var(--t-17); font-weight: 650; letter-spacing: -0.01em; }
 
@@ -218,7 +220,7 @@
 .esc-hero__compare { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; color: var(--text-2); font-size: var(--t-15); }
 .esc-hero__spark { color: var(--brand-500); align-self: center; }
 @media (max-width: 760px) {
-  .esc-admin { --t-hero: 38px; }
+  .esc-admin { --t-hero: min(38px, 9vw); } /* TK-354: "RD$ 1,234,567.89" fits a 320 px phone */
   .esc-hero { grid-template-columns: 1fr; padding: 20px; }
   .esc-hero__spark { order: 3; width: 100%; }
   .esc-hero__spark svg { width: 100%; }
@@ -239,7 +241,9 @@
 @media (max-width: 600px) {
   .esc-stats { grid-template-columns: 1fr 1fr; }
   .esc-stat:nth-child(3) { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); }
-  .esc-stat__value { font-size: var(--t-20); }
+  /* TK-354: a big amount in a half-width column wraps after "RD$" and shrinks with its column, instead of running into the next one. */
+  .esc-stat { container-type: inline-size; }
+  .esc-stat__value { font-size: min(var(--t-20), 13cqi); white-space: normal; }
 }
 
 /* ---------- "Para revisar" ---------- */
@@ -288,6 +292,14 @@
 .esc-chart__col:first-child .esc-chart__tip { left: 0; transform: none; }
 .esc-chart__col:last-child .esc-chart__tip { left: auto; right: 0; transform: none; }
 .esc-chart__col:hover .esc-chart__tip, .esc-chart__col:focus-visible .esc-chart__tip { opacity: 1; visibility: visible; }
+/* TK-354: on a phone a tip centered on a column ran past the screen (hidden, it still widened the page to ~405 px at 390): it sits
+   above the plot instead, as wide as the plot, whichever column is touched. */
+@media (max-width: 760px) {
+  .esc-chart__col { position: static; }
+  .esc-chart__col .esc-chart__tip, .esc-chart__col:first-child .esc-chart__tip, .esc-chart__col:last-child .esc-chart__tip {
+    left: 48px; right: 0; bottom: calc(100% + 8px); transform: none; min-width: 0; white-space: normal;
+  }
+}
 .esc-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--t-13); color: var(--text-2); }
 .esc-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .esc-legend i { width: 10px; height: 10px; border-radius: 3px; background: var(--brand-500); }
@@ -321,6 +333,12 @@
 .esc-barlist__track { height: 8px; margin-top: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
 .esc-barlist__track > div { height: 100%; border-radius: 999px; background: var(--brand-500); min-width: 4px; }
 .esc-barlist__share { font-size: var(--t-13); color: var(--text-3); min-width: 40px; text-align: right; }
+/* TK-354: name and amount on the first line, the detail (quantity, profit) under them, so the row fits a phone. */
+@media (max-width: 760px) {
+  .esc-barlist__row { flex-wrap: wrap; }
+  .esc-barlist__name { flex-basis: 0; } /* shrinks (ellipsis) instead of pushing the amount to its own line */
+  .esc-barlist__qty { order: 3; flex-basis: 100%; }
+}
 
 /* Stacked share bar (payment mix) */
 .esc-stack { display: flex; gap: 2px; height: 12px; border-radius: 999px; overflow: hidden; margin-bottom: 16px; }
@@ -373,7 +391,7 @@
 }
 .esc-segmented button:hover { color: var(--text); }
 .esc-segmented button[aria-pressed="true"], .esc-segmented button[aria-selected="true"] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(40, 34, 24, 0.12), 0 0 0 1px rgba(40, 34, 24, 0.04); }
-@media (max-width: 600px) { .esc-segmented { display: flex; } .esc-segmented button { flex: 1 1 auto; padding: 0 10px; min-height: 40px; } }
+@media (max-width: 600px) { .esc-segmented { display: flex; } .esc-segmented button { flex: 1 1 auto; min-width: 0; padding: 0 8px; min-height: 40px; } }
 
 /* Underline tabs (sections of a page) */
 .esc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line-strong); overflow-x: auto; scrollbar-width: none; }
@@ -455,6 +473,8 @@
 .esc-dl dd { margin: 0; font-weight: 600; }
 /* One column when the card itself is narrow (sidebar open on a tablet), not only on a narrow window. */
 @container (max-width: 700px) { .esc-setting { grid-template-columns: 1fr; padding: 20px; } }
+/* TK-354: a setting card outside .esc-settings (no container to ask) still goes to one column on a phone. */
+@media (max-width: 760px) { .esc-setting { grid-template-columns: minmax(0, 1fr); padding: 20px; } }
 
 .esc-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 16px 20px; border-radius: 14px; background: var(--brand-50); }
 .esc-code__digits { font-size: 40px; font-weight: 700; letter-spacing: 0.12em; color: var(--brand-800); font-variant-numeric: tabular-nums; }

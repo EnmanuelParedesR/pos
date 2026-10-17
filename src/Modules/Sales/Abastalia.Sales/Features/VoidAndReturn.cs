@@ -183,7 +183,7 @@ internal static class ReturnSale
             string? summary = null;
             if (!user.Has(Permissions.SalesReturn) && await policy.RequiresSupervisorAsync(Permissions.SalesReturn, ct))
             {
-                summary = $"Devolver {ApprovalErrors.Money(saleReturn.Total)} por {PaymentMethodNames.Display(c.Method)} de la venta {sale.Number}: " + string.Join(", ",
+                summary = $"Devolver {ApprovalErrors.Money(saleReturn.Total)} ({PaymentMethodNames.Display(c.Method)}) de la venta {sale.Number}: " + string.Join(", ",
                     from l in saleReturn.Lines join s in sale.Lines on l.SaleLineId equals s.Id orderby s.Position
                     select $"{ApprovalErrors.Quantity(l.Quantity)} × {s.Description}");
                 if (c.SupervisorApprovalId is not { } id) return ApprovalErrors.Required(Permissions.SalesReturn, summary);

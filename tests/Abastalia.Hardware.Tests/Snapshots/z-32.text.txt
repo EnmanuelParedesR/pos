@@ -9,12 +9,12 @@ Cierre        15/10/2026 6:04 PM
 Por forma de pago (neto)
 Efectivo               18,450.25
 Tarjeta                 6,320.00
-Fiado                   1,200.00
+A crédito               1,200.00
 --------------------------------
 Turno
 Ventas            84 (1 anulada)
 Fondo inicial           2,000.00
-Abonos de fiado           500.00
+Abonos de crédito         500.00
 Abonos de pedidos           0.00
 Entradas de efectivo      300.00
 Retiros                10,000.00

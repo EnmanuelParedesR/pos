@@ -91,12 +91,12 @@ internal static class CustomersErrors
         "Escriba el número de autorización de la tarjeta o el de la transferencia.");
     public static readonly Error DuplicateTaxId = Error.Conflict("Customers.DuplicateTaxId", "Ya hay un cliente con ese RNC o cédula.");
     public static readonly Error CreditPermissionRequired = Error.Forbidden("Customers.CreditPermissionRequired",
-        "Dar crédito, precio mayorista o reactivar un cliente necesita el permiso de fiado.");
+        "Dar crédito, precio mayorista o reactivar un cliente necesita el permiso de crédito.");
     public static readonly Error PaymentNotFound = Error.NotFound("Customers.PaymentNotFound", "El abono no existe o no se cobró en caja.");
     public static readonly Error PaymentAlreadyVoided = Error.Conflict("Customers.PaymentAlreadyVoided", "El abono ya está anulado.");
     public static readonly Error PaymentOnVoidedSale = Error.Conflict("Customers.PaymentOnVoidedSale",
         "Ese abono pagó una venta que ya se anuló; su dinero ya se movió. Corrija con un nuevo movimiento.");
 
     public static Error CreditLimitExceeded(decimal available) =>
-        Error.Forbidden("Customers.CreditLimitExceeded", $"El fiado pasa del límite del cliente (disponible RD$ {available:N2}). Necesita un supervisor.");
+        Error.Forbidden("Customers.CreditLimitExceeded", $"La venta a crédito pasa del límite del cliente (disponible RD$ {available:N2}). Necesita un supervisor.");
 }

@@ -106,10 +106,10 @@ public sealed class EscPosTests
     internal static readonly ShiftReport SampleZ = new("Carnicería La Peña", "131000001", "Cierre Z #12", "Caja 1", "Yudelka Martínez",
         new DateTime(2026, 10, 15, 7, 58, 0), new DateTime(2026, 10, 15, 18, 4, 0),
         [
-            new("Por forma de pago (neto)", [new("Efectivo", 18450.25m), new("Tarjeta", 6320m), new("Fiado", 1200m)]),
+            new("Por forma de pago (neto)", [new("Efectivo", 18450.25m), new("Tarjeta", 6320m), new("A crédito", 1200m)]),
             new("Turno",
             [
-                new("Ventas", null, "84 (1 anulada)"), new("Fondo inicial", 2000m), new("Abonos de fiado", 500m), new("Abonos de pedidos", 0m),
+                new("Ventas", null, "84 (1 anulada)"), new("Fondo inicial", 2000m), new("Abonos de crédito", 500m), new("Abonos de pedidos", 0m),
                 new("Entradas de efectivo", 300m), new("Retiros", 10000m), new("Gastos pagados de la caja", 150m), new("Redondeo", 3.75m),
                 new("Aperturas de gaveta sin venta", null, "2"),
             ]),

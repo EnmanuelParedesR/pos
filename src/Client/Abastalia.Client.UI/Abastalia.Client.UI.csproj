@@ -9,6 +9,10 @@
     <ProjectReference Include="..\..\Hardware\Abastalia.Hardware\Abastalia.Hardware.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- TK-342: the screens Talia may suggest; the cloud embeds the same file for open_screen. -->
+    <EmbeddedResource Include="Talia\storeScreens.json" LogicalName="Abastalia.StoreScreens.json" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="Abastalia.Client.UI.Tests" />
   </ItemGroup>
 </Project>

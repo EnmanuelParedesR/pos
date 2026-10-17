@@ -310,3 +310,10 @@ it("TK-316: /terminos has the e-CF fair use: 50,000 a month per business, we cal
   const clause = document.getElementById("uso-justo")!.textContent!;
   for (const part of ["50,000 e-CF al mes por negocio", "le contactamos para revisar su plan", "No hay cobro automático", "sin cobro por documento"]) expect(clause).toContain(part);
 });
+
+it("TK-330: /precios answers what happens on a late payment or a cancellation, with the same stages as the terms", () => {
+  renderAt("/precios");
+  expect(screen.getByText("¿Qué pasa si dejo de pagar o cancelo?")).toBeTruthy();
+  expect(screen.getByText(/Los primeros 15 días después del vencimiento, todo sigue igual/)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "términos" }).getAttribute("href")).toBe("/terminos#si-la-licencia-vence");
+});

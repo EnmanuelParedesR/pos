@@ -26,6 +26,8 @@
     <EmbeddedResource Include="..\..\Modules\Fiscal\Abastalia.Fiscal\Schemas\e-CF 3*.xsd;..\..\Modules\Fiscal\Abastalia.Fiscal\Schemas\A?ECF*.xsd" LogicalName="Abastalia.Fe.Schemas.%(Filename)%(Extension)" Link="Fe\Schemas\%(Filename)%(Extension)" />
     <!-- TK-339: the screens Talia's navigate tool may name, one list shared with the panel's chat. -->
     <EmbeddedResource Include="..\..\Cloud\panel\src\pages\assistantRoutes.json" LogicalName="Abastalia.PanelRoutes.json" Link="Assistant\assistantRoutes.json" />
+    <!-- TK-342: the store app's screens for open_screen, one list shared with the store's Talia window. -->
+    <EmbeddedResource Include="..\..\Client\Abastalia.Client.UI\Talia\storeScreens.json" LogicalName="Abastalia.StoreScreens.json" Link="Assistant\storeScreens.json" />
   </ItemGroup>
   <ItemGroup>
     <!-- Read-only: the event payloads the stores upload (deserialized with the same JSON options as the node outbox). -->

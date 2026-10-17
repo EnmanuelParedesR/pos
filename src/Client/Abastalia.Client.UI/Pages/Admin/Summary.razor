@@ -175,7 +175,7 @@
                 @if (_debts.Count > 0)
                 {
                     <section class="esc-card esc-card--padded esc-span-12" aria-labelledby="debts-title">
-                        <div class="esc-card__head"><h2 id="debts-title" class="esc-card__title">Le deben (fiado)</h2><span class="esc-card__aside">@Format.WithCurrency(_debts.Sum(d => d.Total)) · @_debts.Count @(_debts.Count == 1 ? "cliente" : "clientes")</span></div>
+                        <div class="esc-card__head"><h2 id="debts-title" class="esc-card__title">Le deben (cuentas por cobrar)</h2><span class="esc-card__aside">@Format.WithCurrency(_debts.Sum(d => d.Total)) · @_debts.Count @(_debts.Count == 1 ? "cliente" : "clientes")</span></div>
                         <ul class="esc-barlist">
                             @foreach (var d in _debts.OrderByDescending(d => d.Total).Take(4))
                             {
