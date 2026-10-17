@@ -79,3 +79,32 @@
   font: var(--t-13)/1.5 ui-monospace, Consolas, monospace; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-small); }
 .audit-chevron { display: inline-flex; transition: transform .15s; }
 .audit-chevron--open { transform: rotate(90deg); }
+
+/* TK-342: Talia's window in Administración, the panel's popup (src/Cloud/panel/src/panel.css .talia-pop) as a drawer on the right. Back office only. */
+.talia-drawer { position: fixed; inset: 0; z-index: 40; display: flex; justify-content: flex-end; padding: 16px; }
+.talia-drawer__backdrop { position: absolute; inset: 0; background: rgba(25, 22, 18, 0.25); }
+.talia-drawer__box { position: relative; display: flex; flex-direction: column; width: 420px; max-width: 100%; height: 100%; background: var(--surface);
+  border-radius: 20px; box-shadow: var(--elev-pop); overflow: hidden; outline: none; }
+.talia-drawer__head { display: flex; align-items: center; gap: 12px; padding: 12px 8px 12px 16px; border-bottom: 1px solid var(--line); }
+.talia-drawer__head > div { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.talia-drawer__head h2 { margin: 0; font-size: var(--t-17); font-weight: 650; }
+.talia-drawer__head span { font-size: var(--t-13); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.esc-admin .talia-drawer__close { width: 44px; min-height: 44px; padding: 0; justify-content: center; }
+.talia-drawer__chat { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.talia-drawer__chat .esc-bubble { max-width: 100%; margin: 0; }
+.talia-drawer__chat .esc-bubble-row { align-items: flex-start; } /* the avatar beside the answer, not beside its "Abrir …" */
+.talia-drawer__answer { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 85%; }
+.esc-bubble-row--user .talia-drawer__answer { align-items: flex-end; }
+.esc-admin .talia-drawer__go { align-self: flex-start; }
+.talia-drawer__empty { margin: auto 0; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.talia-drawer__empty p { margin: 0; font-size: var(--t-17); font-weight: 650; }
+.talia-drawer__chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 4px; }
+.talia-drawer__box > .esc-notice { margin: 0 16px 8px; }
+.talia-drawer__composer { position: static; margin: 0; border-radius: 0; box-shadow: none; border-top: 1px solid var(--line); padding: 8px; }
+.talia-drawer__composer input { font-size: var(--t-17); min-height: 44px; padding: 0 12px; border-radius: 10px; background: var(--surface-2); }
+.talia-drawer__composer input:focus-visible { box-shadow: var(--ring); }
+.talia-drawer__note { margin: 0; padding: 0 16px 12px; font-size: var(--t-13); color: var(--text-2); }
+@media (max-width: 760px) {
+  .talia-drawer { padding: 0; }
+  .talia-drawer__box { width: 100%; border-radius: 0; }
+}

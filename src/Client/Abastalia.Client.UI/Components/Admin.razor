@@ -32,6 +32,10 @@
         </nav>
         <div class="esc-side__foot">
             <a href="sale" class="esc-side__sell" title="Ir a vender (F2)"><Icon Name="cart" /><span class="esc-side__label">Ir a vender</span><span class="esc-spacer"></span><Keycap>F2</Keycap></a>
+            @if (Session.IsBackOffice)
+            {
+                <button type="button" class="esc-side__item" title="Pregúntele a Talia" aria-haspopup="dialog" @onclick="() => BackOffice.TaliaOpen = true"><TaliaAvatar Size="20" /><span class="esc-side__label">Talia</span></button>
+            }
             <button type="button" class="esc-side__item esc-side__sell" title="Ayuda de esta pantalla (F1)" @onclick="() => Frame?.ShowHelp()"><Icon Name="info" /><span class="esc-side__label">Ayuda</span><span class="esc-spacer"></span><Keycap>F1</Keycap></button>
             <div class="esc-side__user">
                 <span class="esc-avatar" aria-hidden="true">@Names.Initials(Session.Name)</span>
@@ -45,6 +49,10 @@
     <header class="esc-topbar">
         <Logo Size="26" />
         <span class="esc-topbar__store">@BackOffice.BusinessName</span>
+        @if (Session.IsBackOffice)
+        {
+            <button type="button" class="esc-button esc-button--ghost esc-button--small" aria-label="Pregúntele a Talia" aria-haspopup="dialog" @onclick="() => BackOffice.TaliaOpen = true"><TaliaAvatar Size="22" /></button>
+        }
         <a href="sale" class="esc-button esc-button--small"><Icon Name="cart" Size="16" /> Vender</a>
         <ThemeToggle Class="esc-button esc-button--ghost esc-button--small" ShowLabel="false" Size="18" />
         <a href="" class="esc-button esc-button--ghost esc-button--small" aria-label="Salir" @onclick="SignOutAsync" @onclick:preventDefault="true"><Icon Name="sign-out" Size="18" /></a>
@@ -95,6 +103,12 @@
             }
         }
     </nav>
+
+    @* TK-342: only here, in the back office: the register's screens never show Talia over the sale or the charge. Inside the shell for its styles. *@
+    @if (BackOffice.TaliaOpen && Session.IsBackOffice)
+    {
+        <TaliaWindow OnClose="() => BackOffice.TaliaOpen = false" />
+    }
 </div>
 
 @if (_leaving)
@@ -136,6 +150,7 @@
     protected override async Task OnInitializedAsync()
     {
         Session.Changed += OnSessionChanged;
+        BackOffice.Talia(Session.UserId); // another user signed in: their own empty chat, closed
         BackOffice.BusinessName ??= (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value?.Name;
     }
 

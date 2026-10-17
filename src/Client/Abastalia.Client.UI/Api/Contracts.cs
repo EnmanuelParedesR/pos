@@ -130,3 +130,7 @@ public sealed record UpdatesInfo(bool Configured, string ServerVersion, string? 
     DateTime? RequestedUtc, string? NotesUrl, List<RegisterUpdate> Registers);
 /// <summary>TK-254: the server's answer to a register's version report.</summary>
 public sealed record RegisterUpdateAnswer(string Channel, string? AllowedVersion, string? PendingVersion, bool RestartRequested);
+
+/// <summary>TK-342: Talia's answer through the store server. <paramref name="Screen"/> is a route of storeScreens.json for the "Abrir …" button.</summary>
+public sealed record TaliaAnswer(string Answer, string? Screen);
+public sealed record TaliaTurn(string Role, string Content);
