@@ -160,6 +160,28 @@ public sealed class RegisterSafetyTests
         page.WaitForAssertion(() => api.Requests.Single(r => r.Method == "POST").Body.ShouldContain("\"openingFloat\":2000"));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void TK281_with_no_registers_the_first_day_is_not_a_dead_end(bool canManageRegisters)
+    {
+        var (ctx, api) = canManageRegisters ? ScreenContext.Create("register.open", "registers.manage") : ScreenContext.Create("register.open");
+        using var _ = ctx;
+        api.Json("GET", "/api/cash/denominations", Denominations)
+           .Json("GET", "/api/cash/registers", Array.Empty<RegisterInfo>())
+           .Json("GET", "/api/cash/shifts/current", ScreenContext.Shift);
+        var page = ctx.Render<OpenRegister>();
+
+        page.WaitForAssertion(() => page.Markup.ShouldContain("No hay cajas libres."));
+        if (canManageRegisters)
+            page.Find("a[href='admin/settings?section=registers']").TextContent.ShouldBe("Crear una caja");
+        else
+        {
+            page.FindAll("a[href='admin/settings?section=registers']").ShouldBeEmpty();
+            page.Markup.ShouldContain("Pídale al dueño");
+        }
+    }
+
     [Fact]
     public void A_close_retried_after_it_was_saved_shows_its_Z()
     {

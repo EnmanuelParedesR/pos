@@ -130,6 +130,8 @@
 .esc-side a.active { background: var(--surface); color: var(--brand-700); font-weight: 600; box-shadow: var(--elev-1); }
 .esc-side a.active svg { color: var(--brand-600); }
 .esc-side__foot { margin-top: auto; display: flex; flex-direction: column; gap: 4px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* TK-281: on short screens (1366x768 with the taskbar) the 12 sections and the foot fit without scrolling. */
+@media (max-height: 820px) { .esc-side { gap: 2px; padding-block: 10px; } .esc-side__nav { gap: 0; } .esc-side a, .esc-side__item { min-height: 34px; } .esc-side__foot { gap: 0; } .esc-side__brand { padding-bottom: 8px; } .esc-side__store { padding-bottom: 8px; } .esc-side__foot { padding-top: 8px; } }
 .esc-side__sell { justify-content: space-between; }
 .esc-side__user { display: flex; align-items: center; gap: 10px; padding: 8px 10px; min-width: 0; }
 .esc-side__user > div { min-width: 0; display: flex; flex-direction: column; font-size: var(--t-13); color: var(--text-3); }
@@ -440,18 +442,19 @@
 @media (prefers-reduced-motion: reduce) { .esc-skeleton { animation: none; } .esc-chart__tip { transition: none; } }
 
 /* ---------- Settings layout: description left, form right ---------- */
-.esc-settings { display: flex; flex-direction: column; gap: 16px; max-width: 980px; }
+.esc-settings { display: flex; flex-direction: column; gap: 16px; max-width: 980px; container-type: inline-size; }
 .esc-setting { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px 32px; padding: 24px; }
 .esc-setting__about h2 { font-size: var(--t-17); font-weight: 650; }
 .esc-setting__about p { margin-top: 6px; color: var(--text-2); font-size: var(--t-15); }
 .esc-setting__body { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
-.esc-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+.esc-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 16px; }
 .esc-form-grid .esc-wide { grid-column: 1 / -1; }
 .esc-form-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .esc-dl { display: grid; grid-template-columns: max-content 1fr; gap: 10px 24px; margin: 0; }
 .esc-dl dt { color: var(--text-2); }
 .esc-dl dd { margin: 0; font-weight: 600; }
-@media (max-width: 760px) { .esc-setting { grid-template-columns: 1fr; padding: 20px; } }
+/* One column when the card itself is narrow (sidebar open on a tablet), not only on a narrow window. */
+@container (max-width: 700px) { .esc-setting { grid-template-columns: 1fr; padding: 20px; } }
 
 .esc-code { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 16px 20px; border-radius: 14px; background: var(--brand-50); }
 .esc-code__digits { font-size: 40px; font-weight: 700; letter-spacing: 0.12em; color: var(--brand-800); font-variant-numeric: tabular-nums; }
@@ -462,7 +465,7 @@
 .esc-admin .esc-dialog__header { border-bottom: 0; padding: 22px 24px 4px; }
 .esc-admin .esc-dialog__body { padding: 16px 24px 20px; }
 .esc-admin .esc-dialog__footer { position: sticky; bottom: 0; border-top: 1px solid var(--line); background: var(--surface-2); border-radius: 0 0 20px 20px; padding: 14px 24px; }
-.esc-admin .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.esc-admin .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 12px; }
 .esc-admin .kpi { padding: 14px 16px; border-radius: 14px; box-shadow: none; background: var(--surface-2); display: flex; flex-direction: column; gap: 4px; }
 .esc-admin .kpi__value { font-size: var(--t-24); font-weight: 700; letter-spacing: -0.02em; }
 /* Phone: two per row, so a dialog's figures do not push its content below the fold */

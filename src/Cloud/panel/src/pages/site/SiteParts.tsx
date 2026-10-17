@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { Link } from "react-router";
 import { contactHref, site } from "./config";
 import { usePlanPrices } from "./livePrices";
@@ -78,6 +78,9 @@ const paths = {
   download: "M12 3v12 M7 10l5 5 5-5 M4 21h16",
   pc: "M3 4h18v12H3z M8 21h8 M12 16v5",
   data: "M12 8c5 0 8-1.3 8-3s-3-3-8-3-8 1.3-8 3 3 3 8 3z M4 5v14c0 1.7 3 3 8 3s8-1.3 8-3V5 M4 12c0 1.7 3 3 8 3s8-1.3 8-3",
+  meat: "M12.5 6a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z M12.5 2a6.5 6.5 0 0 0-6.2 4.6c-1.1 3.1-.8 3.9-3.2 6.1A3 3 0 0 0 5 18c4 0 8.4-1.8 11.4-4.3A6.5 6.5 0 0 0 12.5 2z M18.5 6l2.2 4.5a6.5 6.5 0 0 1-2.3 7.2C15.4 20.2 11 22 7 22a3 3 0 0 1-2.7-1.7L2.4 16.5",
+  basket: "M3 10h18l-2 10H5z M8 10l4-6 4 6 M9 14v3 M12 14v3 M15 14v3",
+  cheese: "M3 19V11l13-7 5 5v10z M3 11h18 M8 15h.01 M15 14h.01 M12 17h.01",
 };
 export type IconName = keyof typeof paths;
 
@@ -239,41 +242,95 @@ export function ProductArt() {
 
 export type Business = "butcher" | "grocery" | "deli";
 
-/** TK-274: Blender renders (design/blender/escenas.py) for each business and the counter. Decorative; width and height are set so nothing shifts while they load. */
-export const Render = ({ name, eager = false }: { name: Business | "counter"; eager?: boolean }) => (
-  <img className="render" src={`/img/site/${name}.webp`} alt="" width={960} height={600} loading={eager ? "eager" : "lazy"} decoding="async" />
-);
+const photoAlt: Record<Business, string> = {
+  butcher: "Clienta comprando en el mostrador de una carnicería, con embutidos colgados",
+  grocery: "Estantes de una tienda de barrio llenos de productos",
+  deli: "Mostrador de un deli con jamones, quesos y balanza",
+};
+const photoName: Record<Business, string> = { butcher: "carniceria", grocery: "colmado", deli: "deli" };
+const widths = [480, 800, 1200];
 
-/** Hero art for a business page: its render on its tinted panel. */
+/** TK-281: a real photo or screenshot from scripts/images.mjs (AVIF and WebP at three widths). Width and height are set so nothing shifts while it loads. */
+export function Photo({ name, alt, ratio, sizes, eager = false }: { name: string; alt: string; ratio: number; sizes: string; eager?: boolean }) {
+  const set = (ext: string) => widths.map((w) => `/img/site/${name}-${w}.${ext} ${w}w`).join(", ");
+  return (
+    <picture className="photo">
+      <source type="image/avif" srcSet={set("avif")} sizes={sizes} />
+      <img src={`/img/site/${name}-800.webp`} srcSet={set("webp")} sizes={sizes} alt={alt} width={1200} height={Math.round(1200 / ratio)} loading={eager ? "eager" : "lazy"} decoding="async" />
+    </picture>
+  );
+}
+
+/** TK-281: a short silent loop (ffmpeg, design/media/README.md). It starts only when it is on screen and never with "reduce motion": then the poster stays. */
+export function LoopVideo({ name, poster, label }: { name: string; poster: string; label: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const video = ref.current;
+    if (!video || typeof IntersectionObserver === "undefined" || typeof matchMedia !== "function" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const seen = new IntersectionObserver(([e]) => (e.isIntersecting ? video.play().catch(() => {}) : video.pause()), { threshold: 0.25 });
+    seen.observe(video);
+    return () => seen.disconnect();
+  }, []);
+  return (
+    <video ref={ref} className="loop" muted loop playsInline preload="none" poster={poster} width={960} height={506} aria-label={label}>
+      <source src={`/media/${name}.mp4`} type="video/mp4" />
+      <source src={`/media/${name}.webm`} type="video/webm" />
+    </video>
+  );
+}
+
+/** Hero art for a business page: a real photo of that kind of counter. */
 export const BusinessArt = ({ kind }: { kind: Business }) => (
   <div className={`biz-art biz--${kind}`}>
-    <Render name={kind} eager />
+    <Photo name={photoName[kind]} alt={photoAlt[kind]} ratio={4 / 3} sizes="(min-width: 900px) 480px, 100vw" eager />
   </div>
 );
 
+/** TK-281: the businesses on the home as icons (quick to scan, light on a phone); the photos live on each business page. */
 export function BusinessCards() {
-  const cards: [Business, string, string, string][] = [
-    ["butcher", "/carniceria", "Carnicería", "Balanza, cortes por libra y fiado."],
-    ["grocery", "/colmado", "Colmado", "Escáner rápido, fiado y cuadre."],
-    ["deli", "/deli", "Deli", "Pedidos, encargos y catálogo con QR."],
+  const cards: [Business, IconName, string, string, string][] = [
+    ["butcher", "meat", "/carniceria", "Carnicería", "Balanza, cortes por libra y fiado."],
+    ["grocery", "basket", "/colmado", "Colmado", "Escáner rápido, fiado y cuadre."],
+    ["deli", "cheese", "/deli", "Deli", "Pedidos, encargos y catálogo con QR."],
   ];
   return (
     <div className="biz">
-      {cards.map(([kind, to, name, text]) => (
+      {cards.map(([kind, icon, to, name, text]) => (
         <Link className={`biz__card biz--${kind}`} to={to} key={to}>
-          <span className="biz__pic">
-            <Render name={kind} />
+          <span className="biz__icon">
+            <Icon name={icon} />
           </span>
           <span className="biz__text">
             <strong>{name}</strong>
             <span>{text}</span>
           </span>
+          <span className="biz__go" aria-hidden="true">→</span>
         </Link>
       ))}
     </div>
   );
 }
 
+/** TK-281: how it works, each step with a real screenshot of the register, what it takes and how long. A vertical timeline on a phone, three columns on a wide screen. */
+export function HowItWorks({ items }: { items: { title: string; text: ReactNode; time: string; shot: string; alt: string }[] }) {
+  return (
+    <ol className="how">
+      {items.map((s, i) => (
+        <li key={s.title} className="how__step">
+          <span className="how__num" aria-hidden="true">{i + 1}</span>
+          <div className="how__shot">
+            <Photo name={s.shot} alt={s.alt} ratio={16 / 10} sizes="(min-width: 900px) 360px, 100vw" />
+          </div>
+          <div className="how__text">
+            <h3>{s.title}</h3>
+            <p>{s.text}</p>
+            <span className="how__time"><Icon name="clock" /> {s.time}</span>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
 export function Faq({ items }: { items: [string, ReactNode][] }) {
   return (
     <Section className="faq">

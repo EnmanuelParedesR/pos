@@ -61,7 +61,7 @@
                 <div style="font-size:var(--t-20);font-weight:700">Tienda nueva</div>
                 <div class="esc-subtitle">Esta PC queda como la principal y usted como administrador. Después agrega cajeros y cajas.</div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr));gap:12px">
                 <label class="esc-field"><span>Su nombre</span><input class="esc-input" @bind="_name" maxlength="100" autocomplete="name" /></label>
                 <label class="esc-field"><span>Su código para entrar</span><input class="esc-input" @bind="_userCode" maxlength="20" autocomplete="off" /></label>
                 <label class="esc-field"><span>PIN (4 a 8 dígitos)</span><input class="esc-input" type="password" inputmode="numeric" @bind="_pin" maxlength="8" autocomplete="new-password" /></label>
@@ -69,7 +69,7 @@
             </div>
             @* TK-238: the business data goes on every receipt; saved at the owner's first sign-in (it needs the session). *@
             <div style="font-size:var(--t-16);font-weight:700">Su negocio</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px, 100%), 1fr));gap:12px">
                 <label class="esc-field"><span>Nombre del negocio</span><input class="esc-input" @bind="_businessName" maxlength="150" /></label>
                 <label class="esc-field"><span>RNC o cédula (9 u 11 números)</span><input class="esc-input" inputmode="numeric" @bind="_rnc" maxlength="13" aria-invalid="@(RncError is not null ? "true" : "false")" /></label>
                 <label class="esc-field"><span>Teléfono</span><input class="esc-input" @bind="_phone" maxlength="30" autocomplete="tel" /></label>
