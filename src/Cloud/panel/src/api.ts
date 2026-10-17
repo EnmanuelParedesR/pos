@@ -276,6 +276,9 @@ export interface CreatedInvite { invite: Invite; link: string | null }
 export interface InvitePreview { tenantName: string; email: string; role: MemberRole; expiresUtc: string }
 export interface Store { id: string; name: string; createdUtc: string; lastEventUtc: string | null; lastSyncUtc: string | null; nodes: number }
 export interface ConnectionCode { code: string; expiresUtc: string }
+/** TK-321: a selling device of a business the cloud serves; `allowed` = how many its plan allows at a time (TK-347). */
+export interface SellingDevice { id: string; name: string; createdUtc: string }
+export interface SellingDevices { allowed: number; devices: SellingDevice[] }
 /** TK-238: a store backup kept in the cloud, encrypted with the owner's passphrase (the cloud cannot open it). `createdUtc`: when the store made it. */
 export interface StoreBackup { id: string; fileName: string; bytes: number; createdUtc: string; uploadedUtc: string }
 

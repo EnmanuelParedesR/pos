@@ -8,6 +8,7 @@ using Abastalia.BuildingBlocks.Endpoints;
 using Abastalia.BuildingBlocks.Messaging;
 using Abastalia.BuildingBlocks.Persistence;
 using Abastalia.BuildingBlocks.Security;
+using Abastalia.Identity.Contracts;
 using Abastalia.Identity.Domain;
 using Abastalia.Identity.Persistence;
 using Abastalia.SharedKernel;
@@ -117,10 +118,7 @@ internal static class PairDevice
                 limiter.Fail(WindowKey);
                 return IdentityErrors.InvalidPairingCode;
             }
-            // The main PC (paired at setup) is not a register.
-            // shortcut: two pairings at the same instant may pass the limit by one; pairing is rare and done by the owner.
-            if (await db.Devices.CountAsync(d => !d.IsRevoked, ct) - 1 >= license.LimitOf(Limit.Registers))
-                return Error.Forbidden("Identity.RegisterLimitReached", $"La licencia permite {license.LimitOf(Limit.Registers)} cajas. Revoque una que no use o amplíe el plan.");
+            if (await RegisterLimitAsync(db, license, ct) is { } full) return full;
 
             var device = new Device { Id = Guid.CreateVersion7(), Name = code.DeviceName, CreatedUtc = now };
             var (token, certificate, storeCa) = DeviceCredentials.Issue(device, c.CertificateRequest, ca);
@@ -129,6 +127,13 @@ internal static class PairDevice
             return new Response(device.Id, device.Name, token, certificate, storeCa);
         }
     }
+
+    /// <summary>The main PC (paired at setup) is not a register; the Lite host has none, so its <c>Registers</c> is the selling devices less one.</summary>
+    /// <remarks>shortcut: two pairings at the same instant may pass the limit by one; pairing is rare and done by the owner.</remarks>
+    internal static async Task<Error?> RegisterLimitAsync(IdentityDbContext db, IFeatureService license, CancellationToken ct) =>
+        await db.Devices.CountAsync(d => !d.IsRevoked, ct) - 1 >= license.LimitOf(Limit.Registers)
+            ? Error.Forbidden("Identity.RegisterLimitReached", $"La licencia permite {license.LimitOf(Limit.Registers)} cajas. Revoque una que no use o amplíe el plan.")
+            : null;
 
     internal sealed class Endpoint : IEndpoint
     {
@@ -224,6 +229,43 @@ internal static class RevokeDevice
             app.MapPost("/api/identity/devices/{id:guid}/revoke", async (Guid id, ICommandHandler<Command, Ok> h, CancellationToken ct) =>
                     (await h.Handle(new Command(id), ct)).ToHttp(_ => Results.NoContent()))
                 .RequirePermission(Permissions.DevicesManage).WithTags("Identity");
+    }
+}
+
+/// <summary>TK-321: a Lite selling device. No secret and no certificate: the host proves it by its signed requests (<see cref="VerifiedDevice"/>);
+/// the column gets the hash of a secret nobody receives.</summary>
+internal static class AddSellingDevice
+{
+    public sealed record Command(Guid Id, string Name) : ICommand<Ok>;
+
+    internal sealed class Validator : AbstractValidator<Command>
+    {
+        public Validator()
+        {
+            RuleFor(c => c.Id).NotEmpty();
+            RuleFor(c => c.Name).NotEmpty().MaximumLength(100);
+        }
+    }
+
+    internal sealed class Handler(IdentityDbContext db, IFeatureService license, IAuditLog audit, StoreCertificateAuthority ca, TimeProvider clock)
+        : ICommandHandler<Command, Ok>
+    {
+        public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
+        {
+            if (await PairDevice.RegisterLimitAsync(db, license, ct) is { } full) return full;
+            var device = new Device { Id = c.Id, Name = c.Name.Trim(), CreatedUtc = clock.GetUtcNow().UtcDateTime };
+            DeviceCredentials.Issue(device, null, ca);
+            db.Devices.Add(device);
+            await audit.RecordAsync("identity.pair", "Device", device.Id, new { device.Name }, ct);
+            return Ok.Value;
+        }
+    }
+
+    internal sealed class SellingDevices(ICommandHandler<Command, Ok> add, ICommandHandler<RevokeDevice.Command, Ok> revoke) : ISellingDevices
+    {
+        public async Task<Result> AddAsync(Guid id, string name, CancellationToken ct) => await add.Handle(new Command(id, name), ct);
+
+        public async Task<Result> RevokeAsync(Guid id, CancellationToken ct) => await revoke.Handle(new RevokeDevice.Command(id), ct);
     }
 }
 

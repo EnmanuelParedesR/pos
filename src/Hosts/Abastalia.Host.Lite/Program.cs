@@ -1,9 +1,12 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Serilog;
 using Abastalia.BuildingBlocks;
 using Abastalia.BuildingBlocks.Endpoints;
 using Abastalia.BuildingBlocks.Persistence;
+using Abastalia.BuildingBlocks.Security;
 using Abastalia.CashRegister;
 using Abastalia.Customers;
 using Abastalia.Purchasing;
@@ -56,6 +59,19 @@ builder.Services.AddPurchasingModule();
 builder.Services.AddCustomersModule();
 builder.Services.AddSyncModule();
 
+// TK-321: the plan Lite's limits over each business's license (Settings registers it as a factory).
+var license = builder.Services.Last(d => d.ServiceType == typeof(IFeatureService));
+builder.Services.Remove(license);
+builder.Services.AddScoped<IFeatureService>(sp => new LitePlan((IFeatureService)license.ImplementationFactory!(sp), sp.GetRequiredService<IConfiguration>()));
+// shortcut: per IP only; a global cap on wrong codes (as the cloud's FailedCodes) comes with TK-328.
+var pairPerMinute = builder.Configuration.GetValue("Lite:PairPerMinutePerIp", 10);
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.AddPolicy(SellingDevices.PairRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(http.Connection.RemoteIpAddress?.ToString() ?? "",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = pairPerMinute, Window = TimeSpan.FromMinutes(1) }));
+});
+
 // Only the workers that go over every business. The store's others would run as no business (RLS shows them nothing) or do what Lite does
 // elsewhere: backups to a folder and their cloud copy (Azure SQL keeps point-in-time backups), the nightly audit check, the server-signed e-CF
 // queue and the receiver (the browser signs and sends: TK-323, TK-326) and the fiscal mode loaded once per process (each business reads its own).
@@ -76,6 +92,7 @@ app.UseSerilogRequestLogging();
 app.Use(DeviceTenant.ResolveAsync); // before authentication: Identity reads the devices and sessions of that business only
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
 app.MapEndpoints(modules);

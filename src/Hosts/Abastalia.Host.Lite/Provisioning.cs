@@ -13,7 +13,7 @@ namespace Abastalia.Host.Lite;
 
 /// <summary>TK-320 (ADR-0013): a new Lite business. In order, each step safe to run again with the same tenant id:
 /// 1. the business's own rows (<see cref="Command"/>, one transaction: the tenant and what a store's migrations seed);
-/// 2. the owner and the first device (Identity's setup, <see cref="IFirstRun"/>), and the device's entry in <see cref="TenantDevice"/>;
+/// 2. the owner (Identity's setup, <see cref="IFirstRun"/>; TK-321: the selling device pairs later, <see cref="SellingDevices"/>);
 /// 3. with a connection code from the panel, the business's own node in the cloud (<see cref="ICloudConnector"/>: its own key, ADR-0008).</summary>
 /// <remarks>TODO TK-325: the cloud calls this when an owner picks the plan Lite (it creates the tenant and the code). Until then only Abastalia's
 /// staff call it, with <c>Lite:ProvisioningKey</c>.</remarks>
@@ -24,11 +24,10 @@ internal static class ProvisionBusiness
 
     /// <param name="TenantId">The cloud tenant's id (never chosen here: it is the business everywhere).</param>
     /// <param name="ConnectionCode">Optional: a code from the panel's Tiendas, to register the business as a node.</param>
-    public sealed record Request(Guid TenantId, string OwnerName, string OwnerCode, string Pin, string DeviceName, string? ConnectionCode = null);
+    public sealed record Request(Guid TenantId, string OwnerName, string OwnerCode, string Pin, string? ConnectionCode = null);
 
-    /// <param name="DeviceSecret">Proves the first device on every request; shown once.</param>
     /// <param name="CloudError">Why the node could not be registered (the business works anyway; retry with a new code).</param>
-    public sealed record Response(Guid TenantId, Guid OwnerId, Guid DeviceId, string DeviceSecret, string? CloudError);
+    public sealed record Response(Guid TenantId, Guid OwnerId, string? CloudError);
 
     internal sealed record Command(Guid TenantId) : ICommand<Ok>;
 
@@ -58,23 +57,14 @@ internal static class ProvisionBusiness
         var rows = await sp.GetRequiredService<ICommandHandler<Command, Ok>>().Handle(new Command(r.TenantId), ct);
         if (rows.IsFailure) return rows.Error!;
 
-        var first = await sp.GetRequiredService<IFirstRun>().SetUpAsync(r.OwnerName, r.OwnerCode, r.Pin, r.DeviceName, ct);
-        if (first.IsFailure) return first.Error!;
-        var device = first.Value;
-        var lite = sp.GetRequiredService<LiteDbContext>();
-        lite.Devices.Add(new TenantDevice
-        {
-            SecretHash = TenantDevice.Hash(device.DeviceSecret), BusinessId = r.TenantId, DeviceId = device.DeviceId,
-            CreatedUtc = sp.GetRequiredService<TimeProvider>().GetUtcNow().UtcDateTime,
-        });
-        await lite.SaveChangesAsync(ct); // one row, on its own: the device exists in Identity already
-
+        var owner = await sp.GetRequiredService<IFirstRun>().SetUpAsync(r.OwnerName, r.OwnerCode, r.Pin, ct);
+        if (owner.IsFailure) return owner.Error!;
         var cloud = string.IsNullOrWhiteSpace(r.ConnectionCode) ? null : await sp.GetRequiredService<ICloudConnector>().ConnectAsync(r.ConnectionCode, ct);
-        return new Response(r.TenantId, device.OwnerId, device.DeviceId, device.DeviceSecret, cloud?.Code);
+        return new Response(r.TenantId, owner.Value, cloud?.Code);
     }
 
     /// <summary>The key never compared as text (timing); no key configured = the route does not exist.</summary>
-    private static bool Allowed(IConfiguration config, HttpContext http) =>
+    internal static bool Allowed(IConfiguration config, HttpContext http) =>
         config["Lite:ProvisioningKey"] is { Length: >= 32 } key
         && CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(key)),
             SHA256.HashData(Encoding.UTF8.GetBytes(http.Request.Headers[KeyHeader].ToString())));

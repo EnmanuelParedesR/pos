@@ -6,6 +6,7 @@ using System.Text;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;
+using Abastalia.BuildingBlocks.Security;
 using Abastalia.Host.Cloud.Nodes;
 
 namespace Abastalia.Cloud.Tests;

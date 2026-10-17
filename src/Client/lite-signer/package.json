@@ -2,7 +2,7 @@
   "name": "abastalia-lite-signer",
   "private": true,
   "version": "0.1.0",
-  "description": "TK-322: the Lite browser signer (.p12 to a non-extractable CryptoKey, allowlist, signing log, DGII client)",
+  "description": "TK-322: the Lite browser signer (.p12 to a non-extractable CryptoKey, allowlist, signing log, DGII client); TK-321: the selling device key and signed requests",
   "type": "module",
   "exports": "./index.js",
   "scripts": {

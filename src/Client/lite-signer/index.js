@@ -6,6 +6,7 @@ import { checkAllowed } from './allowlist.js';
 export { SignRefused } from './allowlist.js';
 export { indexedDbStore, memoryStore } from './store.js';
 export { dgiiClient, DgiiError } from './dgii.js';
+export { pairDevice, signRequest, deviceFetch, forgetDevice, DeviceMissing, PairingFailed } from './device.js';
 
 /** The key is not on this device: never imported, removed, or the browser evicted it (Safari after 7 days unused, private mode). */
 export class KeyMissing extends Error {

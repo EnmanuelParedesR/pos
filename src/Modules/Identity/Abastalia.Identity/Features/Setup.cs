@@ -19,7 +19,11 @@ internal static class Setup
 {
     /// <param name="CertificateRequest">PEM CSR of the main PC's own register (TK-091); none over plain http (development).</param>
     public sealed record Command(string AdministratorName, string AdministratorCode, string Pin, string DeviceName, string? CertificateRequest = null)
-        : ICommand<Response>;
+        : ICommand<Response>
+    {
+        /// <summary>TK-321: the Lite host's first run, the owner alone (no main PC there). Never bound from a request.</summary>
+        internal bool OwnerOnly { get; init; }
+    }
 
     public sealed record Response(Guid UserId, Guid DeviceId, string? DeviceToken, string? Certificate, string? StoreCa);
 
@@ -30,7 +34,7 @@ internal static class Setup
             RuleFor(c => c.AdministratorName).NotEmpty().MaximumLength(100);
             RuleFor(c => c.AdministratorCode).NotEmpty().MaximumLength(20);
             RuleFor(c => c.Pin).Must(Domain.Pin.IsValid).WithMessage("El PIN debe tener de 4 a 8 dígitos.");
-            RuleFor(c => c.DeviceName).NotEmpty().MaximumLength(100);
+            RuleFor(c => c.DeviceName).NotEmpty().MaximumLength(100).When(c => !c.OwnerOnly);
             RuleFor(c => c.CertificateRequest).ValidCertificateRequest();
         }
     }
@@ -46,26 +50,31 @@ internal static class Setup
 
             var admin = new User { Id = Guid.CreateVersion7(), Name = c.AdministratorName.Trim(), Code = User.NormalizeCode(c.AdministratorCode), RoleId = Role.AdministratorId };
             admin.ChangePin(c.Pin, pepper.Value);
+            db.Users.Add(admin);
+            outbox.Add(new UserProfileChangedV1(admin.Id, admin.Name, admin.IsActive));
+            if (c.OwnerOnly)
+            {
+                await audit.RecordAsync("identity.setup", "User", admin.Id, new { admin.Name, admin.Code }, ct);
+                return new Response(admin.Id, Guid.Empty, null, null, null);
+            }
             var device = new Device
             {
                 Id = Guid.CreateVersion7(), Name = c.DeviceName.Trim(), CreatedUtc = clock.GetUtcNow().UtcDateTime,
             };
             var (token, certificate, storeCa) = DeviceCredentials.Issue(device, c.CertificateRequest, ca);
-            db.Users.Add(admin);
             db.Devices.Add(device);
-            outbox.Add(new UserProfileChangedV1(admin.Id, admin.Name, admin.IsActive));
             await audit.RecordAsync("identity.setup", "User", admin.Id, new { admin.Name, admin.Code, Device = device.Name }, ct);
             return new Response(admin.Id, device.Id, token, certificate, storeCa);
         }
     }
 
-    /// <summary>TK-320: the Lite host's provisioning. No certificate request: Lite devices prove themselves with the secret (TK-321 replaces it).</summary>
+    /// <summary>TK-320: the Lite host's provisioning: the owner only (TK-321: its selling device pairs with a code from the panel).</summary>
     internal sealed class FirstRun(ICommandHandler<Command, Response> setup) : IFirstRun
     {
-        public async Task<Result<FirstDevice>> SetUpAsync(string ownerName, string ownerCode, string pin, string deviceName, CancellationToken ct)
+        public async Task<Result<Guid>> SetUpAsync(string ownerName, string ownerCode, string pin, CancellationToken ct)
         {
-            var r = await setup.Handle(new Command(ownerName, ownerCode, pin, deviceName), ct);
-            return r.IsFailure ? r.Error! : new FirstDevice(r.Value.UserId, r.Value.DeviceId, r.Value.DeviceToken!);
+            var r = await setup.Handle(new Command(ownerName, ownerCode, pin, "") { OwnerOnly = true }, ct);
+            return r.IsFailure ? r.Error! : r.Value.UserId;
         }
     }
 

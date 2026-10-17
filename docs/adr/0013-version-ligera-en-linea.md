@@ -110,7 +110,7 @@ Si la DGII no responde, el documento ya firmado queda en el navegador y en el se
 | | Ligero (`Lite`) |
 |---|---|
 | Precio | **US$9 al mes** (decidido). Anual US$90, con la regla de 10 × mensual |
-| Dispositivos | 1 que vende (registrar otro revoca el anterior; el dueño también lo puede revocar en el panel) |
+| Dispositivos | 1 que vende a la vez (TK-321: para unir otro, el dueño revoca el anterior en el panel; unirlo sin revocar se rechaza, así un código filtrado no saca al dispositivo bueno) |
 | Usuarios | Dueño + 1 cajero con PIN (`cashiers` 1, `registers` 0), 1 usuario del panel (`Invites` 0) |
 | e-CF | 1,500 al mes de **uso justo**: nunca se frena la venta. Si se pasa, alerta como en TK-286; dos meses seguidos, se sugiere el Esencial |
 | Productos | 1,000 (solo impide crear más) |
@@ -119,6 +119,14 @@ Si la DGII no responde, el documento ya firmado queda en el navegador y en el se
 
 - **Reutilización:** el producto de Paddle lleva `custom_data.abastalia` con `plan: "Lite"`, `cashiers`, `registers` y `quotas` (`docs/cobro-paddle.md`). También van `Quotas:Lite:*` y `Billing:Plans:Lite` en appsettings, y la licencia firmada por la nube con `plan: "Ligero"`. `Host.Lite` la pide por el nodo del negocio y `Settings` aplica los límites igual que en la tienda. El conteo de ventas llega por el latido (`DailyUsage`).
 - **Subir a Esencial:** `Host.Lite` exporta todas las filas del negocio, tabla por tabla, siguiendo el modelo de EF: un paquete comprimido, firmado por la nube, que el instalador de la PC principal importa sobre una base recién migrada. El `TenantId` de la nube no cambia, así que el historial del panel sigue. Las secuencias e-NCF continúan donde quedaron. El Ligero queda en solo lectura y el `.p12` se vuelve a importar en la PC.
+
+## El dispositivo de venta (TK-321)
+
+- **Unir:** el Dueño pide un código en el panel (Tiendas → Dispositivo de venta → Unir un dispositivo). La nube lo pide a `Host.Lite` (`POST /internal/tenants/{tenantId}/device-codes`, con `Lite:ProvisioningKey`; el `tenantId` sale del token del panel; un negocio que el Ligero no sirve recibe 404 y el panel no muestra la tarjeta). Son 8 dígitos, 10 minutos, un solo uso, uno a la vez por negocio; `Host.Lite` guarda solo su SHA-256 en `lite.DeviceCodes`.
+- El navegador crea su llave ECDSA P-256 **no exportable** (WebCrypto) y manda `POST /lite/devices/pair { code, publicKey, name }` (SubjectPublicKeyInfo en Base64; límite por IP). `Host.Lite` guarda la pública en `lite.TenantDevices` y el dispositivo en `identity.Devices` **en la misma transacción**, y responde `{ deviceId }`. La privada queda en IndexedDB como objeto `CryptoKey` (`src/Client/lite-signer/device.js`).
+- **Cada pedido** va firmado con el formato de nodo de ADR-0008: `X-Device-Signature: <deviceId>.<segundosUnix>.<nonce>.<firma>`, firma ECDSA (SHA-256, P1363, Base64Url) sobre `<deviceId>.<segundosUnix>.<nonce>.<MÉTODO> <ruta?consulta> <hashDelCuerpo>`, y `X-Body-Sha256` (obligatorio) con Base64Url(SHA-256(cuerpo)). Se acepta ±15 minutos, cada nonce una vez (`lite.DeviceNonces`, en la base) y el cuerpo se lee solo después de verificar la firma. El negocio sale de esa fila, antes de la autenticación; Identity recibe el dispositivo ya verificado y valida la sesión (PIN) como siempre. El secreto `X-Device` ya no sirve en el Ligero.
+- **Límites por plan** (TK-347: el host sirve todos los planes, cada uno con sus topes; config de `Host.Lite`, contados de los datos): `Lite:Plans:<Plan>:SellingDevices` y `:Cashiers` (además del dueño), 1 y 1 si no están (los del Ligero). El plan del negocio es `Lite:DefaultPlan` hasta que TK-325 lo lea de la licencia. Pasado el tope de dispositivos: 409 `Lite.DeviceLimit` con el tope del plan y cómo subir (plan mayor o instalación en una PC), y el código no se gasta; el de cajeros es el mismo `Identity.CashierLimitReached` de la tienda.
+- **Revocar** desde el panel: la nube llama a `Host.Lite` (`POST /internal/tenants/{tenantId}/devices/{id}/revoke`). Se eligió que la nube llame al Ligero, y no al revés, porque los dispositivos viven solo en `Host.Lite`: no hay una copia que se desfase, la revocación es inmediata (sin sondeo) y no hace falta un secreto nuevo (la nube ya tendrá la clave de alta para TK-325). Borra la fila de `lite.TenantDevices` y revoca en Identity (cierra sus sesiones) en una transacción; el siguiente pedido recibe 401.
 
 ## Seguridad
 
