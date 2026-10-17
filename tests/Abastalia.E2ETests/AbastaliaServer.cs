@@ -30,7 +30,8 @@ public sealed class AbastaliaServer : IAsyncDisposable
         (_dll, _environment, Base, _container, _sqliteFile) = (dll, environment, @base, container, sqliteFile);
     }
 
-    public static async Task<AbastaliaServer> StartAsync()
+    /// <param name="extra">More settings for the process (TK-296: <c>Cloud__Url</c> for the product video).</param>
+    public static async Task<AbastaliaServer> StartAsync(Dictionary<string, string>? extra = null)
     {
         MsSqlContainer? container = null;
         string? file = null, externalDatabase = null;
@@ -67,6 +68,7 @@ public sealed class AbastaliaServer : IAsyncDisposable
             ["Backup__Folder"] = Path.Combine(Path.GetTempPath(), $"abastalia_e2e_backups_{Guid.NewGuid():N}"),
             ["Abastalia__KeysFolder"] = Path.Combine(Path.GetTempPath(), $"abastalia_e2e_keys_{Guid.NewGuid():N}"),
         };
+        foreach (var (k, v) in extra ?? []) environment[k] = v;
         var server = new AbastaliaServer(FindDll(), environment, new Uri($"http://127.0.0.1:{port}"), container, file) { _externalDatabase = externalDatabase };
         environment["License__PublicKey"] = server.LicenseKey.ExportSubjectPublicKeyInfoPem();
         await server.LaunchAsync();

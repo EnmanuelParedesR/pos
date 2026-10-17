@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- TK-296: the video's text and frames as transparent 1280×720 PNGs, in the brand's font and colors (Escuadra).
+     ProductVideoTests renders each one with render(kind, data); montaje.py lays them over the captures. -->
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="../../src/Client/Abastalia.Escuadra/wwwroot/escuadra.css" />
+<style>
+  html, body { background: transparent !important; margin: 0; width: 1280px; height: 720px; overflow: hidden; }
+  body { font-family: "Abastalia Sans", system-ui, sans-serif; color: #fff; }
+  .layer { position: absolute; inset: 0; }
+
+  /* A caption: bottom left, white on near-black, readable over any screen. */
+  .caption { position: absolute; left: 48px; bottom: 44px; max-width: 760px; padding: 14px 22px 16px; border-radius: 10px;
+    background: rgba(20, 24, 29, .9); font-size: 32px; line-height: 1.22; font-weight: 600; letter-spacing: -.005em; text-wrap: balance; }
+  /* Next to the phone: a big line on the brand background, no box. */
+  .caption--phone { left: 80px; bottom: auto; top: 50%; transform: translateY(-50%); max-width: 520px; padding: 0; background: none;
+    font-size: 52px; line-height: 1.12; font-weight: 700; letter-spacing: -.015em; }
+
+  /* "Datos de ejemplo" during the whole video. */
+  .sample { position: absolute; right: 20px; top: 18px; padding: 5px 12px; border-radius: 999px; background: rgba(20, 24, 29, .78);
+    font-size: 17px; font-weight: 500; letter-spacing: .01em; }
+
+  /* The opening title over the (blurred) register. */
+  .title { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 18px; background: rgba(11, 34, 60, .55); }
+  .title__brand { text-transform: lowercase; display: flex; align-items: center; gap: 22px; font-size: 92px; font-weight: 700; letter-spacing: -.02em; }
+  .title__sub { font-size: 40px; font-weight: 500; }
+
+  /* The phone: a dark body with a rounded hole where montaje.py puts the panel. */
+  .phone-bg { position: absolute; inset: 0; background: linear-gradient(135deg, #0B5CAD 0%, #094C90 55%, #0A3F78 100%); }
+
+  /* The closing card. */
+  .end { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 22px; background: #0B5CAD; }
+  .end__brand { display: flex; align-items: center; gap: 22px; font-size: 84px; font-weight: 700; letter-spacing: -.02em; }
+  .end__cta { font-size: 46px; font-weight: 600; }
+  .end__url { font-size: 34px; font-weight: 500; color: #E4EEF8; }
+</style>
+</head>
+<body>
+<div id="root" class="layer"></div>
+<script>
+  const logo = (size, tag, mark) => `<svg width="${size}" height="${size}" viewBox="0 0 120 120" aria-hidden="true">
+    <path d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="${tag}" fill-rule="evenodd" stroke="${tag}" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M54.2 51.2 Q57.8 44 68.6 44 Q83 44 83 58.4 V92 M83 68 H67.4 Q53 68 53 80 Q53 92 67.4 92 Q78.2 92 83 82.4" fill="none" stroke="${mark}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+  /** kind: caption | sample | title | phone | end. phone: { x, y, w, h } is the screen's hole in px. */
+  window.render = (kind, d) => {
+    const root = document.getElementById("root");
+    if (kind === "caption") root.innerHTML = `<div class="caption${d.phone ? " caption--phone" : ""}">${esc(d.text)}</div>`;
+    if (kind === "sample") root.innerHTML = `<div class="sample">Datos de ejemplo</div>`;
+    if (kind === "title") root.innerHTML = `<div class="title"><div class="title__brand">${logo(104, "#FFFFFF", "#0B5CAD")}<span>${esc(d.title)}</span></div><div class="title__sub">${esc(d.text)}</div></div>`;
+    if (kind === "phone-bg") root.innerHTML = `<div class="phone-bg"></div>`;
+    if (kind === "phone") {
+      const b = 12; // bezel
+      root.innerHTML = `<svg class="layer" width="1280" height="720"><defs><mask id="m"><rect width="1280" height="720" fill="#fff"/>
+        <rect x="${d.x}" y="${d.y}" width="${d.w}" height="${d.h}" rx="34" fill="#000"/></mask></defs>
+        <rect x="${d.x - b}" y="${d.y - b}" width="${d.w + 2 * b}" height="${d.h + 2 * b}" rx="${34 + b}" fill="#14181D" mask="url(#m)"/>
+        <rect x="${d.x + d.w / 2 - 38}" y="${d.y + 9}" width="76" height="20" rx="10" fill="#14181D"/></svg>`;
+    }
+    if (kind === "end") root.innerHTML = `<div class="end"><div class="end__brand">${logo(96, "#FFFFFF", "#0B5CAD")}<span>abastalia</span></div><div class="end__cta">${esc(d.title)}</div><div class="end__url">${esc(d.text)}</div></div>`;
+    return document.fonts.ready.then(() => true);
+  };
+</script>
+</body>
+</html>
