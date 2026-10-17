@@ -70,9 +70,53 @@ html, body { background: #F6F5F2; }
 .z-sheet__grid dt { color: var(--text-3); }
 .z-sheet__grid dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 
+/* TK-299: the phone's bottom bar, five tabs at most (the fifth is "Más"). Labels never wrap; 56 px tall, 64 px wide at 320 px. */
+@media (max-width: 760px) {
+  .esc-admin .esc-tabbar a, .esc-admin .esc-tabbar > .esc-tabbar__more { min-height: 56px; gap: 2px; padding: 0 2px; font-size: 11.5px; }
+  .esc-tabbar__label { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .esc-admin .esc-tabbar a.active svg { padding: 2px 12px; }
+  .esc-admin .esc-tabbar > .esc-tabbar__more.active svg, .esc-admin .esc-tabbar > .esc-tabbar__more[aria-expanded="true"] svg { background: var(--brand-50); border-radius: 999px; box-sizing: content-box; padding: 2px 12px; }
+  .esc-admin .esc-tabbar__sheet { max-height: calc(100vh - 160px); overflow-y: auto; }
+  .esc-admin .esc-tabbar .esc-tabbar__sheet a { font-size: var(--t-15); padding: 0 12px; gap: 12px; }
+  /* Room for the last row above the bar and Talia's button. */
+  .esc-admin .esc-page { padding-bottom: calc(148px + env(safe-area-inset-bottom)); }
+  /* TK-300 critique: on the phone Talia's button is the way in; the bar would repeat it above every screen. */
+  .esc-admin .esc-ask { display: none; }
+}
+@media (min-width: 761px) { .esc-admin .esc-page { padding-bottom: 104px; } }
+
+/* TK-300: Talia's button and popup. Bottom-right; on the phone above the bottom bar, and the popup is a full-screen sheet. */
+.talia-fab { position: fixed; right: 24px; bottom: 24px; z-index: 19; width: 56px; height: 56px; padding: 0; border: 0; border-radius: 999px;
+  background: transparent; box-shadow: var(--elev-pop); cursor: pointer; transition: transform 120ms; }
+.talia-fab:hover { transform: translateY(-2px); }
+.talia-fab:focus-visible { outline: none; box-shadow: var(--elev-pop), var(--ring); }
+.talia-fab svg { display: block; }
+.talia-fab[hidden], .talia-pop[hidden] { display: none; }
+.talia-pop { position: fixed; inset: 0; z-index: 40; display: flex; align-items: flex-end; justify-content: flex-end; padding: 24px; }
+.talia-pop__backdrop { position: absolute; inset: 0; background: rgba(25, 22, 18, 0.25); }
+.talia-pop__box { position: relative; display: flex; flex-direction: column; width: 400px; height: min(640px, 100%); background: var(--surface);
+  border-radius: 20px; box-shadow: var(--elev-pop); overflow: hidden; outline: none; }
+.talia-pop__head { display: flex; align-items: center; gap: 12px; padding: 12px 8px 12px 16px; border-bottom: 1px solid var(--line); }
+.talia-pop__head > div { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.talia-pop__head h2 { margin: 0; font-size: var(--t-17); font-weight: 650; }
+.talia-pop__head span { font-size: var(--t-13); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.esc-admin .talia-pop__close { width: 44px; min-height: 44px; padding: 0; justify-content: center; }
+.talia-pop__chat { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 16px; }
+.talia-pop__chat .esc-bubble { max-width: 85%; }
+.talia-pop__box > .esc-notice { margin: 0 16px 8px; }
+.talia-pop__box > .esc-composer { position: static; margin: 0; border-radius: 0; box-shadow: none; border-top: 1px solid var(--line); padding: 8px 8px 8px 8px; }
+.talia-pop__box > .esc-composer input { font-size: var(--t-16); }
+@media (max-width: 760px) {
+  .talia-fab { right: 16px; bottom: calc(56px + 16px + env(safe-area-inset-bottom)); }
+  .talia-pop { padding: 0; }
+  .talia-pop__backdrop { display: none; }
+  .talia-pop__box { width: 100%; height: 100%; border-radius: 0; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+}
+@media (prefers-reduced-motion: reduce) { .talia-fab { transition: none; } .talia-fab:hover { transform: none; } }
+
 @media print {
   @page { size: A4; margin: 15mm; }
-  .esc-side, .esc-topbar, .esc-tabbar, .esc-ask, .esc-no-print { display: none !important; }
+  .esc-side, .esc-topbar, .esc-tabbar, .esc-ask, .esc-no-print, .talia-fab, .talia-pop { display: none !important; }
   .esc-shell { display: block !important; }
   .esc-main { padding: 0 !important; overflow: visible !important; }
   .z-sheet { box-shadow: none; border: none; max-width: none; }

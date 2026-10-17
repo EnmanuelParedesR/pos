@@ -1,5 +1,5 @@
 // TK-278: the owner's panel, in its own chunk so the public pages do not download it (App.tsx loads it lazily).
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { NavLink, Outlet, Route, Routes, useLocation, useNavigate } from "react-router";
 import { api, hasSession, renewSession, setOnSignedOut, signOut, useApi, roleNames, type Me, type Store } from "./api";
 import { Icon, Logo, Talia, ThemeToggle, type IconName } from "./ui";
@@ -11,7 +11,7 @@ import { SalesPage } from "./pages/SalesPage";
 import { ShiftsPage } from "./pages/ShiftsPage";
 import { ShiftReportPage } from "./pages/ShiftReportPage";
 import { StoresPage } from "./pages/StoresPage";
-import { AssistantPage } from "./pages/AssistantPage";
+import { AssistantChat, AssistantPage, type PendingQuestion } from "./pages/AssistantPage";
 import { BillingPage } from "./pages/BillingPage";
 import { PlatformAccompanimentPage, PlatformDelegationsPage, PlatformMetricsPage, PlatformReleasesPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage } from "./pages/PlatformPages";
 import { SecurityPage } from "./pages/SecurityPage";
@@ -115,6 +115,13 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
     navigate("/app");
   };
   const onPlatform = pathname.startsWith("/app/platform");
+  const onAssistant = pathname === "/app/assistant";
+  const [taliaOpen, setTaliaOpen] = useState(false);
+  const [pending, setPending] = useState<PendingQuestion | null>(null);
+  const openTalia = (question: string) => {
+    if (question) setPending({ text: question, id: Date.now() });
+    setTaliaOpen(true);
+  };
 
   const toggle = () => {
     setCollapsed(!collapsed);
@@ -193,30 +200,140 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
       <main className="esc-main">
         <div className="esc-page">
           <ConfirmEmailBanner me={me} />
-          {pathname !== "/app/assistant" && !onPlatform && <AskBar />}
+          {!onAssistant && !onPlatform && <AskBar onAsk={openTalia} />}
           <Outlet context={context} />
         </div>
       </main>
 
-      <nav className="esc-tabbar" aria-label="Secciones">
-        {nav.map((s) => (
-          <NavLink key={s.to} to={s.to} end={s.to === "/app"}>
-            <Icon name={s.icon} size={22} />
-            {s.label}
-          </NavLink>
-        ))}
-      </nav>
+      <TabBar nav={nav} />
+      {/* Every panel member may use the assistant (the API's panel policy); on its own page the popup would be the same chat twice. */}
+      {!onAssistant && <TaliaPopup open={taliaOpen} onOpen={() => setTaliaOpen(true)} onClose={() => setTaliaOpen(false)} pending={pending} />}
     </div>
   );
 }
 
-/** "Pregúntale a Talia…": the assistant one tap away from every screen (JTBD 7). The question travels in router state, not in the URL. */
-function AskBar() {
-  const navigate = useNavigate();
+/** TK-299: the phone's bottom bar fits five tabs; past that the fifth is "Más", a sheet with the rest (like Escuadra's Admin.razor). */
+function TabBar({ nav }: { nav: { to: string; label: string; icon: IconName }[] }) {
+  const { pathname } = useLocation();
+  const [open, setOpen] = useState(false);
+  const bar = useRef<HTMLElement>(null);
+  const tabs = nav.length > 5 ? nav.slice(0, 4) : nav;
+  const rest = nav.slice(tabs.length);
+  const inRest = rest.some((s) => pathname.startsWith(s.to));
+
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => bar.current?.contains(e.target as Node) || setOpen(false);
+    const esc = (e: globalThis.KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  return (
+    <nav className="esc-tabbar" aria-label="Secciones" ref={bar}>
+      {tabs.map((s) => (
+        <NavLink key={s.to} to={s.to} end={s.to === "/app"}>
+          <Icon name={s.icon} size={22} />
+          <span className="esc-tabbar__label">{s.label}</span>
+        </NavLink>
+      ))}
+      {rest.length > 0 && (
+        <>
+          <button type="button" className={`esc-tabbar__more${inRest ? " active" : ""}`} aria-expanded={open} aria-controls="more-sections" onClick={() => setOpen(!open)}>
+            <Icon name="menu" size={22} />
+            <span className="esc-tabbar__label">Más</span>
+          </button>
+          {open && (
+            <div className="esc-tabbar__sheet" id="more-sections">
+              {rest.map((s) => (
+                <NavLink key={s.to} to={s.to}>
+                  <Icon name={s.icon} />
+                  {s.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </nav>
+  );
+}
+
+/** TK-300: Talia one tap away on every screen. The popup stays mounted while closed, so the conversation survives moving between screens. */
+function TaliaPopup({ open, onOpen, onClose, pending }: { open: boolean; onOpen: () => void; onClose: () => void; pending: PendingQuestion | null }) {
+  const fab = useRef<HTMLButtonElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+  const wasOpen = useRef(false);
+
+  useEffect(() => {
+    if (open) {
+      // A computer can type at once; on a phone the keyboard would cover the suggestions, so focus goes to the dialog.
+      const wide = window.matchMedia?.("(min-width: 761px)").matches;
+      (wide ? box.current?.querySelector<HTMLElement>("input") : box.current)?.focus();
+      const overflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      wasOpen.current = true;
+      return () => {
+        document.body.style.overflow = overflow;
+      };
+    }
+    if (wasOpen.current) fab.current?.focus();
+  }, [open]);
+
+  // Esc closes; Tab and Shift+Tab stay inside the dialog.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") return (e.stopPropagation(), onClose());
+    if (e.key !== "Tab") return;
+    const items = [...box.current!.querySelectorAll<HTMLElement>("button:not([disabled]), input, a[href]")];
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === box.current)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
+
+  return (
+    <>
+      <button ref={fab} type="button" className="talia-fab" hidden={open} aria-label="Pregúntale a Talia" title="Pregúntale a Talia" aria-haspopup="dialog" onClick={onOpen}>
+        <Talia size={56} />
+      </button>
+      <div className="talia-pop" hidden={!open}>
+        <div className="talia-pop__backdrop" onClick={onClose} />
+        <div ref={box} className="talia-pop__box" role="dialog" aria-modal="true" aria-labelledby="talia-title" tabIndex={-1} onKeyDown={onKeyDown}>
+          <header className="talia-pop__head">
+            <Talia size={36} />
+            <div>
+              <h2 id="talia-title">Talia</h2>
+              <span>Su asistente</span>
+            </div>
+            <button type="button" className="esc-button esc-button--ghost esc-button--small talia-pop__close" aria-label="Cerrar" onClick={onClose}>
+              <Icon name="x" size={20} />
+            </button>
+          </header>
+          {/* A link in an answer (TK-301): on the phone the sheet covers the screen, so it closes to show where it went. */}
+          <AssistantChat pending={pending} inputId="talia-question" inPopup onNavigate={() => window.matchMedia?.("(max-width: 760px)").matches && onClose()} />
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** "Pregúntale a Talia…": the assistant one tap away from every screen (JTBD 7). The question goes to Talia's popup. */
+function AskBar({ onAsk }: { onAsk: (question: string) => void }) {
   const [question, setQuestion] = useState("");
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    navigate("/app/assistant", { state: question.trim() ? { question: question.trim() } : null });
+    onAsk(question.trim());
+    setQuestion("");
   };
   return (
     <form className="esc-ask" onSubmit={submit} role="search">
