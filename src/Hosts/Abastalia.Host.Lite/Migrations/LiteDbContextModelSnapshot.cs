@@ -23,6 +23,41 @@ namespace Abastalia.Host.Lite.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Abastalia.Host.Lite.DeviceCode", b =>
+                {
+                    b.Property<byte[]>("CodeHash")
+                        .HasMaxLength(32)
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<Guid>("BusinessId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("CodeHash");
+
+                    b.HasIndex("BusinessId");
+
+                    b.ToTable("DeviceCodes", "lite");
+                });
+
+            modelBuilder.Entity("Abastalia.Host.Lite.DeviceNonce", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(110)
+                        .HasColumnType("nvarchar(110)");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("ExpiresUtc");
+
+                    b.ToTable("DeviceNonces", "lite");
+                });
+
             modelBuilder.Entity("Abastalia.Host.Lite.Tenant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -38,9 +73,8 @@ namespace Abastalia.Host.Lite.Migrations
 
             modelBuilder.Entity("Abastalia.Host.Lite.TenantDevice", b =>
                 {
-                    b.Property<byte[]>("SecretHash")
-                        .HasMaxLength(32)
-                        .HasColumnType("varbinary(32)");
+                    b.Property<Guid>("DeviceId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("BusinessId")
                         .HasColumnType("uniqueidentifier");
@@ -48,10 +82,17 @@ namespace Abastalia.Host.Lite.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<Guid>("DeviceId")
-                        .HasColumnType("uniqueidentifier");
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
-                    b.HasKey("SecretHash");
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varbinary(200)");
+
+                    b.HasKey("DeviceId");
 
                     b.HasIndex("BusinessId");
 

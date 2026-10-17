@@ -44,6 +44,7 @@ public static class IdentityModule
         services.AddScoped<IUserDirectory, UserDirectory>();
         services.AddScoped<IDevicePeripherals, DevicePeripherals>();
         services.AddScoped<IFirstRun, Features.Setup.FirstRun>();
+        services.AddScoped<ISellingDevices, Features.AddSellingDevice.SellingDevices>();
         services.AddAuthentication(Scheme).AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>(Scheme, null);
         // Secure by default: an endpoint that forgets its authorization call still requires a session.
         services.AddAuthorizationBuilder().SetFallbackPolicy(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
@@ -81,13 +82,16 @@ internal sealed class DevicePeripherals(IdentityDbContext db) : IDevicePeriphera
 }
 
 /// <summary>Which paired device sent a request: by its client certificate (TK-091, issued by the store CA and checked by Kestrel), or by
-/// its secret where <see cref="IdentityModule.AcceptsDeviceSecrets"/> allows it. A revoked device is not found either way.</summary>
+/// its secret where <see cref="IdentityModule.AcceptsDeviceSecrets"/> allows it, or (TK-321, the Lite host) by its signed request. A revoked device
+/// is not found either way.</summary>
 internal static class PairedDevices
 {
     public static Task<Guid?> IdOfAsync(this IdentityDbContext db, HttpContext http, IConfiguration config, CancellationToken ct)
     {
         IQueryable<Device> devices = db.Devices.Where(d => !d.IsRevoked);
-        if (http.Connection.ClientCertificate is { } certificate)
+        if (http.Features.Get<VerifiedDevice>() is { } verified)
+            devices = devices.Where(d => d.Id == verified.Id); // TK-321: the Lite host checked its signature
+        else if (http.Connection.ClientCertificate is { } certificate)
         {
             // A certificate decides alone: an unknown or revoked one never falls back to a secret sent next to it.
             var thumbprint = StoreCertificateAuthority.Thumbprint(certificate);

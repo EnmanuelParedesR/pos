@@ -454,6 +454,10 @@ resource apiSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Billing__Paddle__ClientToken: paddleClientToken
     Billing__Paddle__ApiKey: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Billing--Paddle--ApiKey)'
     Billing__Paddle__WebhookSecret: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Billing--Paddle--WebhookSecret)'
+  }, !deployLite ? {} : {
+    // TK-321: the panel pairs and revokes Lite selling devices on Host.Lite with the same key as provisioning (made by hand in the vault).
+    Lite__Url: 'https://${liteApp!.properties.defaultHostName}'
+    Lite__ProvisioningKey: '@Microsoft.KeyVault(VaultName=${vault.name};SecretName=Lite--ProvisioningKey)'
   }, empty(licenseKeyName) ? {} : {
     // TK-249: the API signs store licenses with this key (Key Vault Crypto User above); the private half never leaves the vault.
     Billing__License__KeyId: '${vault.properties.vaultUri}keys/${licenseKeyName}'

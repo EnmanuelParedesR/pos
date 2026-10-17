@@ -281,7 +281,7 @@ internal static class IdentityErrors
     public static Error CashierLimitReached(int limit, bool restricted) => Error.Forbidden("Identity.CashierLimitReached", restricted
         ? $"Sin licencia vigente, Abastalia permite {limit} cajeros activos y ya los tiene. Desactive a uno que no trabaje aquí (su historial se guarda) " +
           "o renueve la licencia en Configuración → Licencia."
-        : $"Su plan incluye {limit} cajeros activos y ya los tiene. Desactive a uno que no trabaje aquí (su historial se guarda) " +
+        : $"Su plan incluye {(limit == 1 ? "1 cajero activo y ya lo tiene" : $"{limit} cajeros activos y ya los tiene")}. Desactive a uno que no trabaje aquí (su historial se guarda) " +
           "o agregue un cajero adicional en el panel de Abastalia, en Plan y facturación.");
     public static readonly Error RoleInUse =Error.Conflict("Identity.RoleInUse", "Ese rol tiene usuarios. Cámbieles el rol antes de borrarlo.");
 

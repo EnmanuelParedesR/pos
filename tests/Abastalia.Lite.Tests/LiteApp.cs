@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -11,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using Shouldly;
 using Testcontainers.MsSql;
+using Abastalia.BuildingBlocks.Security;
 
 [assembly: AssemblyFixture(typeof(Abastalia.Lite.Tests.TestSqlServer))]
 
@@ -79,6 +82,7 @@ public class LiteApp : WebApplicationFactory<Program>
         builder.UseSetting("Database:CreateOnStartup", "true");
         builder.UseSetting("Database:MultiTenant", "true");
         builder.UseSetting("Lite:ProvisioningKey", Key);
+        builder.UseSetting("Lite:PairPerMinutePerIp", "1000"); // every test request comes from no address
         builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
         builder.UseSetting("Outbox:Process", Workers.ToString());
         builder.UseSetting("Sync:Enabled", Workers.ToString());
@@ -93,33 +97,57 @@ public class LiteApp : WebApplicationFactory<Program>
         });
     }
 
-    /// <summary>Provisions a business as the cloud will (TK-325) and signs its owner in on its first device.</summary>
+    /// <summary>Provisions a business as the cloud will (TK-325), pairs its selling device with a code from the panel (TK-321) and signs its
+    /// owner in there.</summary>
     public async Task<Owner> BusinessAsync(string ownerName, string? connectionCode = null)
     {
         var tenantId = Guid.CreateVersion7();
-        var r = await Provision(new { TenantId = tenantId, OwnerName = ownerName, OwnerCode = "dueno", Pin, DeviceName = "Celular", ConnectionCode = connectionCode });
+        var r = await Provision(new { TenantId = tenantId, OwnerName = ownerName, OwnerCode = "dueno", Pin, ConnectionCode = connectionCode });
         r.StatusCode.ShouldBe(HttpStatusCode.Created, await r.Content.ReadAsStringAsync());
         var created = await r.Content.ReadFromJsonAsync<JsonElement>();
-        var device = created.GetProperty("deviceSecret").GetString()!;
-        var session = await Device(device).PostAsJsonAsync("/api/identity/sessions", new { Code = "dueno", Pin });
-        session.EnsureSuccessStatusCode();
-        var token = (await session.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+        var device = await PairAsync(await CodeAsync(tenantId));
+        var token = await SignInAsync(device, "dueno", Pin);
         return new Owner(tenantId, device, token, created.TryGetProperty("cloudError", out var e) ? e.GetString() : null);
     }
 
-    public Task<HttpResponseMessage> Provision(object body, string? key = Key)
+    public Task<HttpResponseMessage> Provision(object body, string? key = Key) => Panel(key).PostAsJsonAsync("/internal/tenants", body);
+
+    /// <summary>What the cloud's panel calls (Host.Cloud LiteDevices), with the provisioning key.</summary>
+    public HttpClient Panel(string? key = Key)
     {
         var c = CreateClient();
         if (key is not null) c.DefaultRequestHeaders.Add("X-Provisioning-Key", key);
-        return c.PostAsJsonAsync("/internal/tenants", body);
-    }
-
-    public HttpClient Device(string? device)
-    {
-        var c = CreateClient();
-        if (device is not null) c.DefaultRequestHeaders.Add("X-Device", device);
         return c;
     }
+
+    public async Task<string> CodeAsync(Guid tenantId)
+    {
+        var r = await Panel().PostAsync($"/internal/tenants/{tenantId}/device-codes", null);
+        r.StatusCode.ShouldBe(HttpStatusCode.OK, await r.Content.ReadAsStringAsync());
+        return (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString()!;
+    }
+
+    public Task<HttpResponseMessage> PairAsync(string code, TestDevice key) =>
+        CreateClient().PostAsJsonAsync("/lite/devices/pair", new { code, publicKey = key.PublicKey, name = "Celular" });
+
+    public async Task<TestDevice> PairAsync(string code)
+    {
+        var device = new TestDevice();
+        var r = await PairAsync(code, device);
+        r.StatusCode.ShouldBe(HttpStatusCode.OK, await r.Content.ReadAsStringAsync());
+        device.Id = (await r.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("deviceId").GetGuid();
+        return device;
+    }
+
+    public async Task<string> SignInAsync(TestDevice device, string code, string pin)
+    {
+        var session = await Device(device).PostAsJsonAsync("/api/identity/sessions", new { Code = code, Pin = pin });
+        session.StatusCode.ShouldBe(HttpStatusCode.OK, await session.Content.ReadAsStringAsync());
+        return (await session.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+    }
+
+    /// <summary>Every request signed by <paramref name="device"/> (none: unsigned), as the browser's lite-signer does.</summary>
+    public HttpClient Device(TestDevice? device) => device is null ? CreateClient() : CreateDefaultClient(new SigningHandler(device, Clock));
 
     public HttpClient Client(Owner o, string? token = null)
     {
@@ -153,7 +181,37 @@ public class LiteApp : WebApplicationFactory<Program>
     }
 }
 
-public sealed record Owner(Guid TenantId, string Device, string Token, string? CloudError);
+public sealed record Owner(Guid TenantId, TestDevice Device, string Token, string? CloudError);
+
+/// <summary>A selling device's P-256 key, as the browser makes it (TK-321). <see cref="Id"/> once paired; an unpaired one is unknown to the host.</summary>
+public sealed class TestDevice
+{
+    private readonly ECDsa _key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public string PublicKey => Convert.ToBase64String(_key.ExportSubjectPublicKeyInfo());
+
+    /// <summary>The <c>X-Device-Signature</c> value over <c>id.seconds.nonce.METHOD /path?query bodyHash</c> (ADR-0008's node format).</summary>
+    public string Sign(string method, string pathAndQuery, string bodyHash, long seconds, string nonce)
+    {
+        var payload = NodeSignature.Payload(Id, seconds, nonce, method, pathAndQuery, bodyHash);
+        return $"{Id}.{seconds}.{nonce}.{NodeSignature.Base64Url(_key.SignData(Encoding.UTF8.GetBytes(payload), HashAlgorithmName.SHA256))}";
+    }
+
+    public static string NewNonce() => NodeSignature.Base64Url(RandomNumberGenerator.GetBytes(16));
+}
+
+/// <summary>Signs every request with the device's key at the host's (fake) time.</summary>
+public sealed class SigningHandler(TestDevice device, TimeProvider clock) : DelegatingHandler
+{
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var hash = NodeSignature.BodyHash(request.Content is null ? [] : await request.Content.ReadAsByteArrayAsync(cancellationToken));
+        request.Headers.Add("X-Device-Signature", device.Sign(request.Method.Method, request.RequestUri!.PathAndQuery, hash, clock.GetUtcNow().ToUnixTimeSeconds(), TestDevice.NewNonce()));
+        request.Headers.Add(NodeSignature.BodyHashHeader, hash);
+        return await base.SendAsync(request, cancellationToken);
+    }
+}
 
 /// <summary>The cloud of ADR-0008, in memory: every 8-digit code registers a new node, and each request is kept with the node that signed it
 /// (<c>Authorization: Node nodeId.…</c>). Gzip bodies are inflated.</summary>

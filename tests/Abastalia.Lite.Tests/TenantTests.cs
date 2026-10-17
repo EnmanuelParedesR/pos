@@ -54,7 +54,7 @@ public sealed class TenantTests(LiteApp app) : IClassFixture<LiteApp>
         // The store's anonymous first run would create an owner in no business: Lite provisions instead.
         (await app.Device(null).PostAsJsonAsync("/api/identity/setup", new { AdministratorName = "X", AdministratorCode = "x", Pin = "1234", DeviceName = "PC" }))
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
-        (await app.Device("not-a-device").PostAsJsonAsync("/api/identity/sessions", new { Code = "dueno", Pin = LiteApp.Pin }))
+        (await app.Device(new TestDevice()).PostAsJsonAsync("/api/identity/sessions", new { Code = "dueno", Pin = LiteApp.Pin }))
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await app.CreateClient().GetAsync("/health")).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
@@ -62,7 +62,7 @@ public sealed class TenantTests(LiteApp app) : IClassFixture<LiteApp>
     [Fact]
     public async Task Provisioning_needs_the_key_and_runs_once_per_business()
     {
-        var body = new { TenantId = Guid.CreateVersion7(), OwnerName = "Dueña", OwnerCode = "dueno", Pin = LiteApp.Pin, DeviceName = "Celular" };
+        var body = new { TenantId = Guid.CreateVersion7(), OwnerName = "Dueña", OwnerCode = "dueno", Pin = LiteApp.Pin };
         (await app.Provision(body, key: null)).StatusCode.ShouldBe(HttpStatusCode.NotFound);
         (await app.Provision(body, key: "wrong-key-wrong-key-wrong-key-wrong")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
         (await app.Provision(body)).StatusCode.ShouldBe(HttpStatusCode.Created);
