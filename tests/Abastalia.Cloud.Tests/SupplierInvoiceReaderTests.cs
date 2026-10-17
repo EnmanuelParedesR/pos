@@ -17,6 +17,9 @@ public sealed class FakeInvoiceModel : IChatModel
     /// <summary>The model call fails (R12 #11).</summary>
     public bool Fail { get; set; }
 
+    /// <summary>Runs while the model "thinks" (R13: the clock crosses midnight meanwhile).</summary>
+    public Action? During { get; set; }
+
     public string Arguments { get; set; } = """
         {"supplierRnc":"101234567","supplierName":"Granja Los Pinos","ncf":"E310000000123","date":"2026-10-14",
          "lines":[{"description":"Pierna de cerdo","quantity":"50","unitCost":95.5,"itbisPercent":0},{"quantity":1}],
@@ -26,6 +29,7 @@ public sealed class FakeInvoiceModel : IChatModel
     public Task<ChatMessage> CompleteAsync(IReadOnlyList<ChatMessage> messages, IReadOnlyList<ChatTool> tools, CancellationToken ct)
     {
         lock (Calls) Calls.Add(messages);
+        During?.Invoke();
         if (Fail) throw new HttpRequestException("model down"); // R12 #11
         return Task.FromResult(new ChatMessage("assistant", null, [new ChatToolCall("call_1", SupplierInvoiceReader.ToolName, Arguments)]));
     }
@@ -88,6 +92,33 @@ public sealed class SupplierInvoiceReaderTests(InvoiceReaderApp app) : IClassFix
         (await app.InDbAsync(db => db.TenantUsage.Where(u => u.TenantId == owner.TenantId && u.Meter == Abastalia.Host.Cloud.Quotas.Meter.SupplierInvoices)
             .Select(u => u.Count).SingleAsync())).ShouldBe(0);
         (await app.InDbAsync(db => db.AiUsage.Where(u => u.TenantId == owner.TenantId).Select(u => u.SupplierInvoices).SingleAsync())).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task R13_an_unreadable_invoice_answers_422_so_the_store_goes_on_with_its_batch()
+    {
+        var node = await app.StoreWithNodeAsync(await app.OwnerAsync());
+        var arguments = app.Model.Arguments;
+        app.Model.Arguments = "no es JSON";
+        try
+        {
+            var r = await node.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo());
+            r.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity); // a 5xx stops the store's whole batch (Purchasing.AiUnavailable)
+            (await r.ErrorCode()).ShouldBe("Ai.Unreadable");
+        }
+        finally { app.Model.Arguments = arguments; }
+    }
+
+    [Fact]
+    public async Task R13_a_failed_call_across_midnight_gives_the_read_back_to_the_day_it_was_taken()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner);
+        var day = Abastalia.SharedKernel.BusinessDay.Of(app.Clock.GetUtcNow().UtcDateTime);
+        (app.Model.Fail, app.Model.During) = (true, () => app.Clock.Advance(TimeSpan.FromDays(1)));
+        try { (await node.Client.PostAsJsonAsync("/ai/v1/supplier-invoice", Photo())).StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable); }
+        finally { (app.Model.Fail, app.Model.During) = (false, null); }
+        (await app.InDbAsync(db => db.AiUsage.Where(u => u.TenantId == owner.TenantId && u.Day == day).Select(u => u.SupplierInvoices).SingleAsync())).ShouldBe(0);
     }
 
     [Fact]

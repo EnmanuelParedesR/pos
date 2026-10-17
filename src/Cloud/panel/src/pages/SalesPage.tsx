@@ -5,6 +5,9 @@ import { addDays, cashierLabel, dayName, money, quantity, rangeLabel, storeDay }
 import { EcfLookup } from "./EcfLookup";
 import { BarChart, BarList, Card, Delta, EmptyState, Legend, LoadError, PageHead, RangePicker, SkeletonRows, StoreSelect, lastDays, previousRange } from "../ui";
 
+/** R13: the API reads at most the last 92 days of the range for the top products (PanelQueries.TopProductsMaxDays); the card says so. */
+const topProductsMaxDays = 92;
+
 export function SalesPage() {
   const { stores, storeId, setStoreId } = usePanel();
   const [range, setRange] = useState(lastDays(7));
@@ -88,7 +91,11 @@ export function SalesPage() {
       </Card>
 
       <div className="esc-grid">
-        <Card title="Lo más vendido" aside={products.data?.some((p) => p.profit !== null) ? "Con ITBIS · ganancia sin ITBIS" : "Con ITBIS"} className="esc-span-6">
+        <Card
+          title="Lo más vendido"
+          aside={(products.data?.some((p) => p.profit !== null) ? "Con ITBIS · ganancia sin ITBIS" : "Con ITBIS") + (length > topProductsMaxDays ? ` · últimos ${topProductsMaxDays} días` : "")}
+          className="esc-span-6"
+        >
           {products.data?.length === 0 ? (
             <EmptyState icon="package" title="Sin ventas en estas fechas" />
           ) : (

@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import type { ProductSales, ShiftReport } from "../api";
 import { json, renderPage } from "../testing";
 import { SalesPage } from "./SalesPage";
@@ -48,4 +48,15 @@ it("TK-201: without permission to see costs, top products show no profit", async
   expect(await screen.findByText("Bistec de res")).toBeTruthy();
   expect(screen.queryByText(/gana/)).toBeNull();
   expect(screen.queryByText(/ganancia/)).toBeNull();
+  expect(screen.queryByText(/últimos 92 días/)).toBeNull();
+});
+
+it("R13: a range longer than 92 days says the top products cover only its last 92", async () => {
+  const products: ProductSales[] = [{ productId: "p1", description: "Bistec de res", quantity: 2, total: 500, profit: null, unit: "Pound" }];
+  renderApp(<SalesPage />, "/sales", "sales", { "/api/panel/sales/top-products": products });
+  await screen.findByText("Bistec de res");
+
+  fireEvent.click(screen.getByRole("button", { name: "Fechas" }));
+  fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2025-01-01" } });
+  expect(await screen.findByText("Con ITBIS · últimos 92 días")).toBeTruthy();
 });

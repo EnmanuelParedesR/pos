@@ -51,6 +51,10 @@ public sealed class StoreBackupTests(CloudApp app) : IClassFixture<CloudApp>
         (await download.Content.ReadAsByteArrayAsync()).ShouldBe(Encrypted());
         download.Content.Headers.ContentDisposition!.FileName.ShouldBe(name);
         (await app.InDbAsync(db => db.StoreBackups.SingleAsync(b => b.Id == id))).LastDownloadedUtc.ShouldNotBeNull();
+        (await (await app.CreateClient().GetAsync(link)).ErrorCode()).ShouldBe("Backup.LinkExpired"); // R13: one download per link
+        app.Clock.Advance(TimeSpan.FromSeconds(1));
+        var again = (await (await owner.Client.PostAsync($"/api/stores/{node.StoreId}/backups/{id}/link", null)).Json()).GetProperty("url").GetString()!;
+        (await app.CreateClient().GetAsync(again)).StatusCode.ShouldBe(HttpStatusCode.OK); // a new link works
 
         // Another business, a ReadOnly member, no session, or the node itself: nothing.
         var stranger = await app.OwnerAsync();

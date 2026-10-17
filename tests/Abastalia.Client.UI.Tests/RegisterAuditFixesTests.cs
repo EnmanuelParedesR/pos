@@ -110,11 +110,11 @@ public sealed class RegisterAuditFixesTests
 
         // Ana's session expired; Luis signs in: he starts empty.
         cart.HandOver(luis, "Luis").ShouldBe(Cart.HandOverResult.SetAside);
-        (cart.IsEmpty, cart.SetAsideFor).ShouldBe((true, "Ana"));
+        (cart.IsEmpty, cart.SetAsideFor, cart.HasSetAside).ShouldBe((true, "Ana", true)); // R13: an update restart waits for it
 
         // Luis leaves (the cart is empty), Ana comes back: her sale is there, with its id.
         cart.HandOver(ana, "Ana").ShouldBe(Cart.HandOverResult.Restored);
-        (cart.Lines.Single().Name, cart.SaleId).ShouldBe(("Salami 1 lb", saleId));
+        (cart.Lines.Single().Name, cart.SaleId, cart.HasSetAside).ShouldBe(("Salami 1 lb", saleId, false));
         cart.HandOver(ana, "Ana").ShouldBe(Cart.HandOverResult.Kept); // the same cashier again: nothing moves
         cart.LineCount.ShouldBe(1);
     }

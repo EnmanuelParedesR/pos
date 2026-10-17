@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Shouldly;
 using Abastalia.IntegrationTests.Infra;
 
@@ -208,6 +210,15 @@ public sealed class InventoryTests(AbastaliaApp app) : IClassFixture<AbastaliaAp
         // The store keeps selling after the shelf was counted: 3 lb of jamón go out before the count is applied.
         (await app.CommandAsync(new MoveStock(a, 3m, Inbound: false))).IsSuccess.ShouldBeTrue();
 
+        Task<int> FlaggedAsync(bool? set = null) => app.InScopeAsync(async sp =>
+        {
+            var db = sp.GetRequiredService<Abastalia.Inventory.Persistence.InventoryDbContext>();
+            var warehouse = await db.StockCounts.Where(x => x.Id == countId).Select(x => x.WarehouseId).SingleAsync();
+            var rows = db.Stock.Where(e => (e.ProductId == a || e.ProductId == b) && e.WarehouseId == warehouse);
+            return set is { } value ? await rows.ExecuteUpdateAsync(s => s.SetProperty(e => e.NeedsCount, value)) : await rows.CountAsync(e => e.NeedsCount);
+        });
+        (await FlaggedAsync(set: true)).ShouldBe(2);
+
         var noSupervisor = await counter.PostAsJsonAsync($"/api/inventory/stock-counts/{countId}/apply", new { });
         noSupervisor.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
         (await noSupervisor.ErrorCode()).ShouldBe("Approval.Required");
@@ -223,6 +234,8 @@ public sealed class InventoryTests(AbastaliaApp app) : IClassFixture<AbastaliaAp
         result.GetProperty("differences")[0].GetProperty("value").ValueKind.ShouldBe(JsonValueKind.Null);
 
         (await admin.StockAsync(a)).ShouldBe(6.5m); // counted 9.5 minus the 3 sold after counting
+        // Counted clears the "needs a count" flag, with or without a difference (R13: in chunks).
+        (await FlaggedAsync()).ShouldBe(0);
         (await app.KardexMismatchesAsync()).ShouldBeEmpty();
 
         // The approval is single-use.

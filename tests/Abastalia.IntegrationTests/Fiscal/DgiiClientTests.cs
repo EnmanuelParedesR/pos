@@ -136,5 +136,8 @@ public sealed class DgiiClientTests : IDisposable
         // The DGII's own refusal stays a rejection.
         next = new(System.Net.HttpStatusCode.BadRequest) { Content = System.Net.Http.Json.JsonContent.Create(new { trackId = (string?)null, error = "XML inválido", mensaje = "Firma" }) };
         (await _client.SendEcfAsync("131245678", "E310000000001", xml, default)).ShouldBe(new DgiiAnswer(DgiiState.Rejected, Messages: "XML inválido: Firma"));
+        // R13: for an RFCE too (it has no codigo nor estado: read as "not found" it would stay Sent, polled for good).
+        next = new(System.Net.HttpStatusCode.BadRequest) { Content = System.Net.Http.Json.JsonContent.Create(new { error = "XML inválido", mensaje = "Firma" }) };
+        (await _client.SendRfceAsync("131245678", "E320000000001", xml, default)).ShouldBe(new DgiiAnswer(DgiiState.Rejected, Messages: "XML inválido: Firma"));
     }
 }

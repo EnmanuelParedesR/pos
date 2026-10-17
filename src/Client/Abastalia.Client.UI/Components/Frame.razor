@@ -249,9 +249,9 @@
         if (a.RestartRequested && a.PendingVersion is not null && await IdleAsync()) _updater.CloseToUpdate();
     }
 
-    /// <summary>TK-304: closing to update loses nothing: no sale, a screen without a form in progress, and no dialog open (a payment, a count).</summary>
+    /// <summary>TK-304: closing to update loses nothing: no sale (nor one set aside for its cashier, R13), a screen without a form in progress, and no dialog open (a payment, a count).</summary>
     private async Task<bool> IdleAsync() =>
-        Cart.IsEmpty && Route is "sale" or "sign-in" or "admin" && !await JS.InvokeAsync<bool>("escuadra.hasDialog");
+        Cart.IsEmpty && !Cart.HasSetAside && Route is "sale" or "sign-in" or "admin" && !await JS.InvokeAsync<bool>("escuadra.hasDialog");
 
     private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(async () =>
     {

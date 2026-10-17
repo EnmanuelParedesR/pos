@@ -258,7 +258,7 @@ function Privacy() {
           <strong>e-CF:</strong> 10 años desde que se emiten, como exige la ley. No se pueden borrar antes, ni a pedido.
         </li>
         <li>
-          <strong>Respaldos en la nube:</strong> el último de cada uno de los 7 días anteriores y de las 4 semanas anteriores; nada pasa de 60 días.
+          <strong>Respaldos en la nube:</strong> el último de cada uno de los 7 días anteriores y de las 4 semanas anteriores. Si la tienda deja de enviarlos (por ejemplo, le robaron la PC), guardamos los últimos hasta 400 días para que pueda recuperar sus datos.
         </li>
         <li>
           <strong>Registros técnicos:</strong> 30 días.

@@ -135,10 +135,11 @@ internal static class ApplyStockCount
             var products = await db.Products.Where(p => ids.Contains(p.Id)).Select(p => new { p.Id, p.Name, p.Cost }).ToDictionaryAsync(p => p.Id, ct);
 
             // TK-304: one statement clears the count flag of every counted product; only the lines that differ touch their stock row one by one,
-            // so a count of thousands of products keeps the registers' stock rows locked for as short as possible.
-            await db.Stock.Where(e => e.WarehouseId == count.WarehouseId
-                    && db.Set<StockCountLine>().Any(l => l.StockCountId == count.Id && l.Counted != null && l.ProductId == e.ProductId))
-                .ExecuteUpdateAsync(s => s.SetProperty(e => e.NeedsCount, false), ct);
+            // so a count of thousands of products keeps the registers' stock rows locked for as short as possible. R13: in chunks under SQL Server's
+            // lock escalation (5,000 locks in one statement), which would lock the whole stock table until the count commits.
+            foreach (var chunk in ids.Order().Chunk(1000))
+                await db.Stock.Where(e => e.WarehouseId == count.WarehouseId && chunk.Contains(e.ProductId))
+                    .ExecuteUpdateAsync(s => s.SetProperty(e => e.NeedsCount, false), ct);
             var differences = new List<CountDifference>();
             foreach (var l in counted.Where(l => l.Counted!.Value != (l.SystemAtCount ?? 0)).OrderBy(l => l.ProductId))
             {

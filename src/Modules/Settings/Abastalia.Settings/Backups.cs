@@ -278,10 +278,16 @@ internal sealed class Backups(SettingsDbContext db, DatabaseOptions options, IDa
     private static IEnumerable<FileInfo> List(string folder) =>
         Directory.Exists(folder) ? new DirectoryInfo(folder).GetFiles("*" + Extension).OrderByDescending(f => f.Name) : [];
 
-    /// <summary>R12: a backup made before a restore is neither counted nor deleted here: several restores in a row never push out the daily history.</summary>
+    /// <summary>R13: the backups made before a restore kept on the PC (the newest); each is the whole database.</summary>
+    public const int KeepBeforeRestore = 3;
+
+    /// <summary>R12: a backup made before a restore is not counted with the daily ones: several restores in a row never push out the daily history.
+    /// R13: they have their own count (<see cref="KeepBeforeRestore"/>).</summary>
     private static void Prune(string folder, int keep, bool makeRoom = false)
     {
-        foreach (var old in List(folder).Where(f => !f.Name.EndsWith("-antes-de-restaurar" + Extension, StringComparison.Ordinal)).Skip(makeRoom ? keep - 1 : keep))
+        var all = List(folder).ToList();
+        static bool BeforeRestore(FileInfo f) => f.Name.EndsWith("-antes-de-restaurar" + Extension, StringComparison.Ordinal);
+        foreach (var old in all.Where(f => !BeforeRestore(f)).Skip(makeRoom ? keep - 1 : keep).Concat(all.Where(BeforeRestore).Skip(KeepBeforeRestore)))
             old.Delete();
     }
 

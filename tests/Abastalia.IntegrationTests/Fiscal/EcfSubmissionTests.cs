@@ -271,6 +271,12 @@ public sealed class EcfArchiveTests(AbastaliaApp app) : IClassFixture<AbastaliaA
             (await app.DocumentAsync(bad)).ArchivedUtc.ShouldBeNull();
             (await app.DocumentAsync(good)).ArchivedUtc.ShouldNotBeNull();
 
+            // R13: the refused one waits a day before it is offered again, so twenty of them never hold up the newer ones.
+            var asked = app.Cloud.To(EcfSubmissionQueue.ArchivePath).Count();
+            await app.ProcessAsync(dgii);
+            app.Cloud.To(EcfSubmissionQueue.ArchivePath).Count().ShouldBe(asked);
+            app.Clock.Advance(EcfSubmissionQueue.RetryRefusedAfter);
+
             // A 503: the pass stops at the first one and tries again next time.
             status = "503";
             var before = app.Cloud.To(EcfSubmissionQueue.ArchivePath).Count();
