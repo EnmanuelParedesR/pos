@@ -20,7 +20,8 @@
   -RequireSigned refuses to build a release without both (use it for every release that leaves the office).
   -AllowUnsignedUpdates (pilot only, before the certificate exists) writes Updates:AllowUnsignedUpdates = true into both appsettings: the
   pilot PCs then accept the feed's SHA-256 instead of a signature. It goes in the build because every update replaces the installed
-  appsettings (TK-292: set by hand on a PC, it was lost with the first update). Refused with -RequireSigned or a signer thumbprint.
+  appsettings (TK-292: set by hand on a PC, it was lost with the first update). Refused with -RequireSigned, a signer thumbprint or a channel
+  other than pilot (R12 #13).
 .EXAMPLE
   .\deploy\installer\build.ps1 -Version 1.0.0 -Channel pilot -FeedUrl https://abastaliareleases.blob.core.windows.net/releases -RequireSigned
 #>
@@ -38,6 +39,8 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "La versión tiene que ser x.y
 if ($FeedUrl -and -not $FeedUrl.StartsWith('https://', [StringComparison]::OrdinalIgnoreCase)) { throw 'El feed tiene que ser https.' }
 if ($RequireSigned -and -not ($env:ABASTALIA_SIGNTOOL -and $env:ABASTALIA_SIGN_THUMBPRINT)) { throw 'Falta ABASTALIA_SIGNTOOL o ABASTALIA_SIGN_THUMBPRINT: no se arma una versión sin firma.' }
 if ($AllowUnsignedUpdates -and ($RequireSigned -or $env:ABASTALIA_SIGN_THUMBPRINT)) { throw '-AllowUnsignedUpdates es solo para el piloto sin certificado.' }
+# R12 #13: never on the stable channel, so a store outside the pilot never accepts an unsigned update.
+if ($AllowUnsignedUpdates -and $Channel -ne 'pilot') { throw '-AllowUnsignedUpdates solo va con -Channel pilot.' }
 $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 $publish = Join-Path $root 'artifacts\publish'
 Remove-Item $publish -Recurse -Force -ErrorAction SilentlyContinue

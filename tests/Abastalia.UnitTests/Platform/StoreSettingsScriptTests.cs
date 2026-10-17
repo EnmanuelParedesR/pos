@@ -46,6 +46,24 @@ public sealed class StoreSettingsScriptTests : IDisposable
         }
     }
 
+    [Fact, Trait("Category", "Windows")]
+    public void R12_13_the_build_refuses_unsigned_updates_outside_the_pilot_channel()
+    {
+        if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only: runs build.ps1 with pwsh.");
+        // Refused before anything is published: the check is at the top of build.ps1.
+        var info = new ProcessStartInfo("pwsh")
+        {
+            ArgumentList = { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", Repo(@"deploy\installer\build.ps1"), "-Version", "1.0.0", "-Channel", "stable", "-AllowUnsignedUpdates" },
+            RedirectStandardError = true, RedirectStandardOutput = true,
+        };
+        info.Environment.Remove("ABASTALIA_SIGN_THUMBPRINT");
+        using var p = Process.Start(info)!;
+        var output = p.StandardError.ReadToEnd() + p.StandardOutput.ReadToEnd();
+        p.WaitForExit();
+        p.ExitCode.ShouldNotBe(0);
+        output.ShouldContain("-AllowUnsignedUpdates solo va con -Channel pilot.");
+    }
+
     private (string App, string Server) Run(string arguments)
     {
         if (!OperatingSystem.IsWindows()) Assert.Skip("Windows only: runs store-settings.ps1 with powershell.exe (the Windows CI job runs it).");
