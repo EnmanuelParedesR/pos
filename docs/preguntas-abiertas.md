@@ -162,7 +162,7 @@ Fuentes: `backlog/BACKLOG.md`, `docs/ecf-propio.md` §11, `docs/servicio-certifi
 - **Respuesta:**
 
 ### D22 · Límites por IP de la puerta de nodos (R13)
-- **Pregunta:** 8 conexiones a la vez y 300 por minuto por IP. Con operadoras móviles que comparten IP, unas 15 tiendas detrás de una IP recibirían "demasiadas solicitudes" (solo se retrasan). ¿Subirlos o vigilarlos en el piloto? (, ).
+- **Pregunta:** 8 conexiones a la vez y 300 por minuto por IP. Con operadoras móviles que comparten IP, unas 15 tiendas detrás de una IP recibirían "demasiadas solicitudes" (solo se retrasan). ¿Subirlos o vigilarlos en el piloto? (`Nodes:ConcurrentPerIp`, `Nodes:RequestsPerMinutePerIp`).
 - **Respuesta:**
 
 ---
