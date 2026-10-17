@@ -32,12 +32,17 @@ public static class PlatformAuth
         && (!needsTwoFactor || await db.Users.AnyAsync(u => u.Id == userId && u.TwoFactorEnabled, ct));
 }
 
-/// <summary><c>grant-platform-admin &lt;email&gt;</c> / <c>revoke-platform-admin &lt;email&gt;</c>: run by Abastalia staff against the cloud database.
+/// <summary><c>grant-platform-admin &lt;email&gt;</c> / <c>revoke-platform-admin &lt;email&gt;</c> / <c>reset-2fa &lt;email&gt;</c>: run by Abastalia staff
+/// against the cloud database (audited).
 /// The account must exist (registered in the panel); the change counts from its next sign-in.</summary>
 internal static class PlatformCli
 {
     public const string Grant = "grant-platform-admin";
     public const string Revoke = "revoke-platform-admin";
+
+    /// <summary>TK-298: the owner lost the phone and the backup codes. Staff check who asks first (docs/despliegue-azure.md); this turns 2FA off,
+    /// throws the old key away and closes every session (new security stamp). The owner signs in with the password and turns it on again.</summary>
+    public const string ResetTwoFactor = "reset-2fa";
 
     public static async Task<int> RunAsync(IServiceProvider services, string command, string email)
     {
@@ -54,9 +59,12 @@ internal static class PlatformCli
 
         var role = new Claim(PlatformAuth.RoleClaim, PlatformAuth.Admin);
         var has = (await users.GetClaimsAsync(user)).Any(c => c.Type == role.Type && c.Value == role.Value);
-        var result = command == Grant
-            ? has ? IdentityResult.Success : await users.AddClaimAsync(user, role)
-            : has ? await users.RemoveClaimAsync(user, role) : IdentityResult.Success;
+        var result = command switch
+        {
+            Grant => has ? IdentityResult.Success : await users.AddClaimAsync(user, role),
+            Revoke => has ? await users.RemoveClaimAsync(user, role) : IdentityResult.Success,
+            _ => await ResetTwoFactorAsync(users, user),
+        };
         if (!result.Succeeded)
         {
             await Console.Error.WriteLineAsync(string.Join(" ", result.Errors.Select(e => e.Description)));
@@ -68,10 +76,22 @@ internal static class PlatformCli
             Method = "CLI", Path = $"{command} {email}", TenantId = user.TenantId,
         });
         await db.SaveChangesAsync();
-        Console.WriteLine(command == Grant
-            ? $"{email} ya es administrador de la plataforma. Debe volver a entrar al panel."
-            : $"{email} ya no es administrador de la plataforma.");
+        Console.WriteLine(command switch
+        {
+            Grant => $"{email} ya es administrador de la plataforma. Debe volver a entrar al panel.",
+            Revoke => $"{email} ya no es administrador de la plataforma.",
+            _ => $"{email} ya no tiene la verificación en dos pasos y sus sesiones se cerraron. Puede entrar con su contraseña y activarla de nuevo en Seguridad.",
+        });
         return 0;
+    }
+
+    /// <summary>Off, no backup codes left (turning it on again makes new ones) and a new key; the key reset also rotates the security stamp.</summary>
+    private static async Task<IdentityResult> ResetTwoFactorAsync(UserManager<CloudUser> users, CloudUser user)
+    {
+        var off = await users.SetTwoFactorEnabledAsync(user, false);
+        if (!off.Succeeded) return off;
+        await users.GenerateNewTwoFactorRecoveryCodesAsync(user, 0);
+        return await users.ResetAuthenticatorKeyAsync(user);
     }
 }
 

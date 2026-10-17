@@ -94,7 +94,10 @@ internal sealed class IdentityEmailCap(IConfiguration config) : IDisposable
 public sealed record ConfirmEmailRequest(string? UserId, string? Code, string? ChangedEmail);
 
 /// <param name="FirstConfirmation">The account had never confirmed its e-mail: the panel warns to change the password if they did not create it.</param>
-public sealed record ConfirmEmailResponse(bool FirstConfirmation);
+/// <param name="AlreadyConfirmed">TK-297: the link was used before (a second tab, the mail app's preview, a link scanner): the address is
+/// confirmed, nothing changed now.</param>
+/// <param name="Email">TK-297: the confirmed address, only when this request's code was valid; the panel fills it in on Entrar.</param>
+public sealed record ConfirmEmailResponse(bool FirstConfirmation, bool AlreadyConfirmed = false, string? Email = null);
 
 internal static class AccountSecurityEndpoints
 {
@@ -103,7 +106,7 @@ internal static class AccountSecurityEndpoints
 
     public static void MapAccountSecurity(this IEndpointRouteBuilder app) =>
         // R11 B-Low1: Identity's GET confirmEmail takes the code in the query string, which request telemetry keeps. Same checks, from the body.
-        app.MapPost("/api/auth/confirm", async (ConfirmEmailRequest r, UserManager<CloudUser> users) =>
+        app.MapPost("/api/auth/confirm", async (ConfirmEmailRequest r, UserManager<CloudUser> users, CloudDbContext db) =>
         {
             if (r.UserId is not { Length: > 0 and <= 450 } || r.Code is not { Length: > 0 and <= 2000 } || await users.FindByIdAsync(r.UserId) is not { } user)
                 return Results.Unauthorized();
@@ -119,8 +122,32 @@ internal static class AccountSecurityEndpoints
                 result = await users.ChangeEmailAsync(user, r.ChangedEmail, code);
                 if (result.Succeeded) result = await users.SetUserNameAsync(user, r.ChangedEmail);
             }
-            return result.Succeeded ? Results.Ok(new ConfirmEmailResponse(first)) : Results.Unauthorized();
+            if (result.Succeeded) return Results.Ok(new ConfirmEmailResponse(first, Email: user.Email));
+            // TK-297: the first confirmation rotates the security stamp, so the same link opened again, or twice at once (one request then loses
+            // Identity's concurrency check), failed although the address was confirmed. Read the database again, not the tracked user: the other
+            // request may have just saved it. It tells only "confirmed", to whoever holds the account id from the link.
+            var target = string.IsNullOrEmpty(r.ChangedEmail) ? null : users.NormalizeEmail(r.ChangedEmail);
+            var confirmed = await db.Users.AsNoTracking().AnyAsync(u => u.Id == user.Id && u.EmailConfirmed && (target == null || u.NormalizedEmail == target));
+            return confirmed ? Results.Ok(new ConfirmEmailResponse(false, AlreadyConfirmed: true)) : Results.Unauthorized();
         }).AllowAnonymous().RequireRateLimiting(Quotas.QuotaRateLimits.Auth);
+
+    /// <summary>TK-298: with 2FA on, Identity's <c>/manage/2fa</c> turns it off, changes the key or makes new backup codes with the session alone.
+    /// Those three now need the app's current code or one backup code (used up), so a stolen session cannot remove the second step. The same
+    /// 400 as Identity's own wrong code. Abastalia staff reset a lost phone with <c>reset-2fa</c> (<see cref="Platform.PlatformCli"/>).</summary>
+    public static async ValueTask<object?> CodeToWeakenTwoFactor(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
+    {
+        var request = context.Arguments.OfType<Microsoft.AspNetCore.Identity.Data.TwoFactorRequest>().SingleOrDefault();
+        if (request is null || request is not { Enable: false } and not { ResetSharedKey: true } and not { ResetRecoveryCodes: true }) return await next(context);
+        var users = context.HttpContext.RequestServices.GetRequiredService<UserManager<CloudUser>>();
+        if (await users.GetUserAsync(context.HttpContext.User) is not { TwoFactorEnabled: true } user) return await next(context);
+        var code = request.TwoFactorCode?.Replace(" ", "", StringComparison.Ordinal).Trim() ?? "";
+        var valid = code.Length == 6 && code.All(char.IsAsciiDigit)
+            ? await users.VerifyTwoFactorTokenAsync(user, users.Options.Tokens.AuthenticatorTokenProvider, code)
+            : code.Length is > 0 and <= 20 && (await users.RedeemTwoFactorRecoveryCodeAsync(user, code.ToUpperInvariant())).Succeeded;
+        return valid
+            ? await next(context)
+            : TypedResults.ValidationProblem(new Dictionary<string, string[]> { ["InvalidTwoFactorCode"] = ["The current 2fa code or a recovery code is required."] });
+    }
 
     /// <summary>R11 B-Low5: /register answers the same for an e-mail that already has an account (no enumeration); the person gets the confirmation
     /// e-mail only if the account is new, and signs in after confirming.</summary>

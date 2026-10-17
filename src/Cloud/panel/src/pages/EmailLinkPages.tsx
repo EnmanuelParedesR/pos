@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useLocation } from "react-router";
-import { ApiError, confirmEmail, identityMessages, resetPassword } from "../api";
+import { Link, useLocation, useNavigate } from "react-router";
+import { ApiError, confirmEmail, identityMessages, resetPassword, type ConfirmedEmail } from "../api";
 import { Notice, Skeleton } from "../ui";
 import { AuthFrame, PasswordChecklist, PasswordField } from "./AuthFrame";
+import type { SignInArrival } from "./SignIn";
 
 /** The values after "#" of an e-mailed link: like the invite (R8 #12), the code never travels in a page address a server logs. */
 const useHashParams = () => new URLSearchParams(useLocation().hash.slice(1));
@@ -85,43 +86,92 @@ export function ResetPasswordPage() {
   );
 }
 
-/** TK-230: /app/confirmar#userId=…&code=… from the sign-up e-mail. A confirmed address can later get a "¿La olvidó?" e-mail. */
+/** TK-230: /app/confirmar#userId=…&code=… from the sign-up e-mail; it activates the account (R11 B-High1: only a confirmed address signs in).
+ * TK-297: it says so in plain words and hands the address to Entrar, so only the password is left. It does not sign in by itself: the link
+ * would then be a key to the account for anyone who opens it (a forwarded e-mail, a link scanner), and the password stays the proof. */
 export function ConfirmEmailPage() {
   const params = useHashParams();
   const userId = params.get("userId") ?? "";
   const code = params.get("code") ?? "";
   const changedEmail = params.get("changedEmail") ?? undefined;
-  const [state, setState] = useState<{ done?: boolean; first?: boolean; error?: ApiError }>({});
+  const complete = userId !== "" && code !== "";
+  const [state, setState] = useState<{ result?: ConfirmedEmail; error?: ApiError }>({});
+  const navigate = useNavigate();
 
   useEffect(() => {
+    if (!complete) return;
     let live = true;
     confirmEmail(userId, code, changedEmail).then(
-      (r) => live && setState({ done: true, first: r.firstConfirmation }),
+      (result) => live && setState({ result }),
       (err) => live && setState({ error: toApiError(err) }),
     );
     return () => {
       live = false;
     };
-  }, [userId, code, changedEmail]);
+  }, [complete, userId, code, changedEmail]);
+
+  const { result, error } = state;
+  const arrival: SignInArrival = { activated: result !== undefined, email: result?.email ?? undefined };
+  const enter = (
+    <button type="button" className="esc-button esc-button--primary auth-submit" onClick={() => navigate("/app", { state: arrival })}>
+      Entrar
+    </button>
+  );
 
   return (
     <AuthFrame title="Sus tiendas, aunque no esté en el mostrador.">
-      <div className="auth-form">
-        <div className="auth-form__head">
-          <h2>Confirmar su correo</h2>
-        </div>
-        {!state.done && !state.error && <Skeleton height={56} />}
-        {state.done && <Notice kind="success" title="Listo, su correo quedó confirmado." />}
-        {/* R11 B-High1: someone else may have created the account with this e-mail; what they added before is gone, but not their password. */}
-        {state.first && (
-          <Notice kind="warning" title="Si usted no creó esta cuenta, cambie la contraseña ahora.">
-            Entre → ¿La olvidó? y le enviamos un enlace. Quitamos del negocio a las personas e invitaciones que se agregaron antes de confirmar.
-          </Notice>
+      <div className="auth-form" aria-live="polite">
+        {!complete ? (
+          <>
+            <div className="auth-form__head">
+              <h2>El enlace está incompleto</h2>
+              <p>Ábralo de nuevo desde el correo «Confirme su correo de Abastalia».</p>
+            </div>
+            {enter}
+          </>
+        ) : result ? (
+          <>
+            <div className="auth-form__head">
+              <h2>{changedEmail ? "Su correo nuevo quedó confirmado" : result.alreadyConfirmed ? "Su cuenta ya estaba activada" : "Su cuenta quedó activada"}</h2>
+              <p>
+                {result.email ? (
+                  <>
+                    Ya puede entrar con <b className="auth-email">{result.email}</b> y la contraseña que eligió.
+                  </>
+                ) : (
+                  "Ya puede entrar con su correo y la contraseña que eligió."
+                )}
+              </p>
+            </div>
+            {/* R11 B-High1: someone else may have created the account with this e-mail; what they added before is gone, but not their password. */}
+            {result.firstConfirmation && (
+              <Notice kind="warning" title="¿No creó usted esta cuenta?">
+                Cambie la contraseña ahora: en Entrar, toque «¿La olvidó?» y le mandamos un enlace. Ya quitamos del negocio a las personas e
+                invitaciones que se agregaron antes de activar la cuenta.
+              </Notice>
+            )}
+            {enter}
+          </>
+        ) : error ? (
+          <>
+            <div className="auth-form__head">
+              <h2>{error.offline ? "Sin conexión" : "No pudimos activar la cuenta"}</h2>
+            </div>
+            <Notice kind={error.offline ? "warning" : "error"} title={error.detail}>
+              {error.offline
+                ? "Vuelva a abrir el enlace cuando tenga internet."
+                : "Entre con su correo y su contraseña: si la cuenta todavía no está activada, ahí puede pedir otro enlace."}
+            </Notice>
+            {enter}
+          </>
+        ) : (
+          <>
+            <div className="auth-form__head">
+              <h2>Activando su cuenta…</h2>
+            </div>
+            <Skeleton height={56} />
+          </>
         )}
-        {state.error && <Notice kind={state.error.offline ? "warning" : "error"} title={state.error.detail} />}
-        <Link className="esc-button esc-button--primary auth-submit" to="/app">
-          Ir al panel
-        </Link>
       </div>
     </AuthFrame>
   );

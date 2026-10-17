@@ -125,9 +125,11 @@ export async function download(path: string, fileName: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** `twoFactorCode`: the authenticator app's code, for an account with 2FA on (R11 B-Med6); without it such an account gets "Auth.RequiresTwoFactor". */
-export async function signIn(email: string, password: string, twoFactorCode?: string) {
-  const response = await send("/api/auth/login", "POST", { email, password, twoFactorCode: twoFactorCode || undefined }, false);
+/** `twoFactorCode`: the authenticator app's code, for an account with 2FA on (R11 B-Med6); without it such an account gets "Auth.RequiresTwoFactor".
+ * TK-298: a backup code (lost phone) goes as `twoFactorRecoveryCode` instead; each works once. */
+export async function signIn(email: string, password: string, twoFactorCode?: string, recoveryCode?: string) {
+  const second = recoveryCode ? { twoFactorRecoveryCode: recoveryCode } : { twoFactorCode: twoFactorCode || undefined };
+  const response = await send("/api/auth/login", "POST", { email, password, ...second }, false);
   if (response.status === 401) {
     const problem = await response.json().catch(() => ({}));
     // R11 B-High1: an unconfirmed e-mail answers "NotAllowed", as a business disabled by Abastalia staff (TK-189) does.
@@ -135,7 +137,15 @@ export async function signIn(email: string, password: string, twoFactorCode?: st
       throw new ApiError(401, "Auth.NotAllowed", "No puede entrar todavía: confirme su correo con el enlace que le enviamos. Si ya lo confirmó, comuníquese con Abastalia.");
     if (problem.detail === "RequiresTwoFactor") throw new ApiError(401, "Auth.RequiresTwoFactor", "Escriba el código de 6 dígitos de su aplicación de autenticación.");
     if (problem.detail === "LockedOut") throw new ApiError(401, "Auth.LockedOut", "Demasiados intentos. Espere 15 minutos e intente de nuevo.");
-    throw new ApiError(401, "Auth.Failed", twoFactorCode ? "El código no es válido. Revise la hora del teléfono e intente de nuevo." : "El correo o la contraseña no coinciden.");
+    throw new ApiError(
+      401,
+      "Auth.Failed",
+      recoveryCode
+        ? "Ese código de respaldo no es válido o ya se usó."
+        : twoFactorCode
+          ? "El código no es válido. Revise la hora del teléfono e intente de nuevo."
+          : "El correo o la contraseña no coinciden.",
+    );
   }
   if (!response.ok) throw await toError(response);
   saveTokens(await response.json());
@@ -183,15 +193,17 @@ export async function resetPassword(email: string, resetCode: string, newPasswor
 
 /** TK-230: the link of the confirmation e-mail sent on sign-up (/app/confirmar#…); only a confirmed address signs in and gets a reset e-mail.
  * R11 B-Low1: the code goes in the body, never in a URL that telemetry keeps. `firstConfirmation`: the account had never confirmed (the page
- * warns to change the password if the person did not create it). The link works once: the same promise for the same link (React's double effect). */
-const confirmations = new Map<string, Promise<{ firstConfirmation: boolean }>>();
+ * warns to change the password if the person did not create it). The link works once: the same promise for the same link (React's double effect).
+ * TK-297: `alreadyConfirmed` = the link was used before (another tab, the mail app); `email` comes only with a valid code, to fill in Entrar. */
+export interface ConfirmedEmail { firstConfirmation: boolean; alreadyConfirmed?: boolean; email?: string | null }
+const confirmations = new Map<string, Promise<ConfirmedEmail>>();
 export function confirmEmail(userId: string, code: string, changedEmail?: string) {
   const key = `${userId}|${code}|${changedEmail ?? ""}`;
   let pending = confirmations.get(key);
   if (!pending) {
     pending = send("/api/auth/confirm", "POST", { userId, code, changedEmail }, false).then(async (response) => {
-      if (!response.ok) throw new ApiError(response.status, "Auth.ConfirmFailed", "El enlace no es válido o ya se usó. Si ya confirmó su correo, no tiene que hacer nada más.");
-      return (await response.json()) as { firstConfirmation: boolean };
+      if (!response.ok) throw new ApiError(response.status, "Auth.ConfirmFailed", "El enlace no es válido o venció.");
+      return (await response.json()) as ConfirmedEmail;
     });
     confirmations.set(key, pending);
   }
