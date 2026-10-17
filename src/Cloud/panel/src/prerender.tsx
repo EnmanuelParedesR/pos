@@ -4,6 +4,7 @@ import { renderToString } from "react-dom/server";
 import { StaticRouter } from "react-router";
 import { App, movedToApp } from "./App";
 import { site } from "./pages/site/config";
+import { siteGate } from "./pages/site/SiteGate";
 import { notFound, sitePages } from "./pages/site/SitePages";
 
 export { movedToApp, site };
@@ -25,8 +26,14 @@ export const ogImage = `${site.url}/og/abastalia.png`;
 
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
+/** TK-285: with the site gate on, every page is the gate screen (render), nothing is indexed and the build writes no sitemap. */
+export const gated = () => siteGate() !== "";
+export const gatedRobots = "User-agent: *\nDisallow: /\n";
+const gatedHead = [`<title>Abastalia</title>`, `<meta name="description" content="Sitio en preparación." />`, `<meta name="robots" content="noindex, nofollow" />`];
+
 /** Title, description, canonical, Open Graph and Twitter card for one page; the 404 gets noindex instead of a canonical. */
 export function head(page: Page) {
+  if (gated()) return gatedHead.join("\n    ");
   const tags = [
     `<title>${escape(page.title)}</title>`,
     `<meta name="description" content="${escape(page.description)}" />`,
@@ -59,7 +66,7 @@ const text = (html: string) =>
 /** Schema.org data for one page, from what the rendered page already shows (`html` is render(page.path)). Organization and the app on the
  * home page, the breadcrumb on the others, FAQPage where the page has "Preguntas frecuentes". No offers: prices come live from Paddle. */
 export function jsonLd(page: Page, html: string): object[] {
-  if (!indexed(page)) return [];
+  if (!indexed(page) || gated()) return [];
   const context = "https://schema.org";
   const blocks: object[] = [];
   if (page.path === "/") {

@@ -2,10 +2,10 @@ import { act } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router";
 import robots from "../public/robots.txt?raw";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { json } from "./testing";
-import { canonical, head, indexed, jsonLd, jsonLdTags, pages, render, site, sitemap } from "./prerender";
+import { canonical, gated, gatedRobots, head, indexed, jsonLd, jsonLdTags, pages, render, site, sitemap } from "./prerender";
 
 it.each(pages.map((p) => [p.path]))("TK-261: the prerendered %s hydrates without React throwing it away", async (path) => {
   vi.stubGlobal("fetch", vi.fn(async () => json(404)));
@@ -101,5 +101,52 @@ describe("TK-260: JSON-LD", () => {
       },
     });
     for (const path of ["/carniceria", "/colmado", "/deli", "/guia-e-cf", "/comparar", "/glosario"]) expect(blocksOf(path).map((b) => b["@type"]), path).toContain("FAQPage");
+  });
+});
+
+describe("TK-285: with the site gate on, the prerendered pages show only the gate", () => {
+  beforeEach(() => vi.stubEnv("VITE_SITE_GATE", "0".repeat(64)));
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(pages.map((p) => [p.path, p]))("%s: gate screen, generic noindex head, no JSON-LD", (path, page) => {
+    const body = render(path);
+    expect(body).toContain("Sitio en preparación");
+    expect(body).toContain("Código de acceso");
+    for (const leak of [page.title, "e-CF", "<details", "Precios", "Saltar al contenido"]) expect(body, leak).not.toContain(leak);
+    const tags = head(page);
+    expect(tags).toContain('<meta name="robots" content="noindex, nofollow" />');
+    expect(tags).toContain("<title>Abastalia</title>");
+    expect(tags).not.toContain(page.description);
+    expect(tags).not.toContain("canonical");
+    expect(tags).not.toContain("og:");
+    expect(jsonLd(page, body)).toEqual([]);
+  });
+
+  it("the gated page hydrates without React throwing it away", async () => {
+    const root = document.body.appendChild(document.createElement("div"));
+    root.innerHTML = render("/precios");
+    const errors: unknown[] = [];
+    await act(async () => {
+      hydrateRoot(
+        root,
+        <MemoryRouter initialEntries={["/precios"]}>
+          <App />
+        </MemoryRouter>,
+        { onRecoverableError: (e) => errors.push(e) },
+      );
+    });
+    expect(errors).toEqual([]);
+    root.remove();
+  });
+
+  it("robots.txt disallows everything and names no sitemap", () => {
+    expect(gated()).toBe(true);
+    expect(gatedRobots).toBe("User-agent: *\nDisallow: /\n");
+  });
+
+  it("is off when the hash is empty (today's build)", () => {
+    vi.stubEnv("VITE_SITE_GATE", "");
+    expect(gated()).toBe(false);
+    expect(render("/")).not.toContain("Sitio en preparación");
   });
 });

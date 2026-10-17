@@ -145,6 +145,7 @@ html, body { background: #F6F5F2; }
 .auth-field__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 .auth-field label, .auth-label { font-size: var(--t-13); font-weight: 600; color: var(--text-2); }
 .auth-hint { font-size: var(--t-13); color: var(--text-2); }
+.auth-error { margin: 0; font-size: var(--t-13); font-weight: 600; color: var(--error); }
 .auth-input, .auth-password { min-height: 52px; border: 1px solid var(--control-border); border-radius: var(--r-control); background: var(--surface); color: var(--text); transition: border-color 120ms, box-shadow 120ms; }
 .auth-input { padding: 0 14px; font-size: var(--t-17); }
 .auth-input:focus, .auth-password:focus-within { outline: 0; border-color: var(--brand-500); box-shadow: var(--ring); }

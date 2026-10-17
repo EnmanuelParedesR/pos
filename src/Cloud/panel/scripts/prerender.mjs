@@ -11,7 +11,7 @@ import { swaConfig } from "./swa-config.mjs";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
 const ssr = join(root, ".ssr");
-const { render, pages, movedToApp, head, jsonLd, jsonLdTags, sitemap } = await import(pathToFileURL(join(ssr, "prerender.js")).href);
+const { render, pages, movedToApp, head, jsonLd, jsonLdTags, sitemap, gated, gatedRobots } = await import(pathToFileURL(join(ssr, "prerender.js")).href);
 
 const shell = readFileSync(join(dist, "index.html"), "utf8");
 const noindex = shell.replace(/(<title>.*?<\/title>)/, '$1\n    <meta name="robots" content="noindex" />');
@@ -32,7 +32,9 @@ for (const page of pages) {
   writeFileSync(join(dist, file(page.path)), html);
 }
 
-writeFileSync(join(dist, "sitemap.xml"), sitemap(new Date().toISOString().slice(0, 10)));
+// TK-285: behind the site gate nothing may be crawled: no sitemap, robots.txt disallows everything.
+if (gated()) writeFileSync(join(dist, "robots.txt"), gatedRobots);
+else writeFileSync(join(dist, "sitemap.xml"), sitemap(new Date().toISOString().slice(0, 10)));
 
 // Static Web Apps: public pages, the app's own addresses and a real 404 for everything else.
 const configPath = join(dist, "staticwebapp.config.json");
@@ -41,4 +43,4 @@ const apiUrl = process.env.VITE_API_URL || "http://localhost:5100";
 writeFileSync(configPath, JSON.stringify(swaConfig(JSON.parse(readFileSync(configPath, "utf8")), pages, movedToApp, apiUrl), null, 2));
 
 rmSync(ssr, { recursive: true, force: true });
-console.log(`Prerendered ${pages.length} public pages and sitemap.xml`);
+console.log(gated() ? `Prerendered ${pages.length} public pages behind the site gate (no sitemap, robots Disallow: /)` : `Prerendered ${pages.length} public pages and sitemap.xml`);
