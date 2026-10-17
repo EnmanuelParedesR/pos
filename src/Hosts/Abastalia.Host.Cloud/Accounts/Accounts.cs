@@ -77,12 +77,19 @@ internal sealed class CloudSignInManager(UserManager<CloudUser> users, IHttpCont
     }
 
     /// <summary>The same count for the authenticator code of an account with 2FA (R11 B-Med6).</summary>
-    public override async Task<SignInResult> TwoFactorAuthenticatorSignInAsync(string code, bool isPersistent, bool rememberClient)
+    public override Task<SignInResult> TwoFactorAuthenticatorSignInAsync(string code, bool isPersistent, bool rememberClient) =>
+        CountedAsync(() => base.TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient));
+
+    /// <summary>TK-298: a backup code instead of the app's code (lost phone) counts the same.</summary>
+    public override Task<SignInResult> TwoFactorRecoveryCodeSignInAsync(string recoveryCode) =>
+        CountedAsync(() => base.TwoFactorRecoveryCodeSignInAsync(recoveryCode));
+
+    private async Task<SignInResult> CountedAsync(Func<Task<SignInResult>> signIn)
     {
         var user = await GetTwoFactorAuthenticationUserAsync();
         var key = user is null ? null : LoginThrottle.Key(Context, user);
         if (key is not null && throttle.IsBlocked(key)) return SignInResult.LockedOut;
-        var result = await base.TwoFactorAuthenticatorSignInAsync(code, isPersistent, rememberClient);
+        var result = await signIn();
         if (key is not null && result == SignInResult.Failed) throttle.Fail(key);
         else if (key is not null && result.Succeeded) throttle.Succeeded(key);
         return result;

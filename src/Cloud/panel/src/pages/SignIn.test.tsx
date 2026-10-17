@@ -73,28 +73,80 @@ it("TK-230: creating an account checks the server's password rules while typing"
   expect(state().every(([, met]) => met)).toBe(true);
 });
 
-it("R11: creating an account asks to confirm the e-mail first and switches to Entrar keeping the e-mail", async () => {
-  const { fetch, onSignedIn } = renderSignIn((path) => (path === "/api/auth/register" || path === "/api/auth/resendConfirmationEmail" ? json(200) : undefined));
+it("R11, TK-297: creating an account shows Revise su correo with the address, a resend and what to do if it does not arrive", async () => {
+  let resends = 0;
+  const { fetch, onSignedIn } = renderSignIn((path) =>
+    path === "/api/auth/register" ? json(200) : path === "/api/auth/resendConfirmationEmail" ? (++resends === 1 ? json(200) : json(429)) : undefined,
+  );
   fireEvent.click(tab("Crear cuenta"));
-  fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "dueno@carniceria.com" } });
+  fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "dueno@minimercado.com" } });
   fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
   fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
 
-  expect(await screen.findByText("Confirme su correo para entrar.")).toBeTruthy();
-  expect(tab("Entrar").getAttribute("aria-selected")).toBe("true");
-  expect((screen.getByLabelText("Correo") as HTMLInputElement).value).toBe("dueno@carniceria.com");
+  expect(await screen.findByRole("heading", { name: "Revise su correo" })).toBeTruthy();
+  expect(screen.getByText("dueno@minimercado.com")).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "¿No le llegó?" })).toBeTruthy();
   expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/auth/login"))).toBe(false); // it cannot sign in yet
-  fireEvent.click(screen.getByRole("button", { name: "pida otro" }));
-  await vi.waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/auth/resendConfirmationEmail"))).toBe(true));
+  fireEvent.click(screen.getByRole("button", { name: "Mandar el correo otra vez" }));
+  expect(await screen.findByText(/Listo, le mandamos otro/)).toBeTruthy();
   expect(onSignedIn).not.toHaveBeenCalled();
+
+  // "Ya la activé" goes to Entrar with the address kept; a wrong address goes back to Crear cuenta to fix it.
+  fireEvent.click(screen.getByRole("button", { name: "Ya la activé: entrar" }));
+  expect(tab("Entrar").getAttribute("aria-selected")).toBe("true");
+  expect((screen.getByLabelText("Correo") as HTMLInputElement).value).toBe("dueno@minimercado.com");
 });
 
-it("R11: an unconfirmed e-mail is told to confirm it", async () => {
-  renderSignIn((path) => (path === "/api/auth/login" ? json(401, { detail: "NotAllowed" }) : undefined));
+it("TK-297: the resend says so when the API limits it", async () => {
+  renderSignIn((path) => (path === "/api/auth/register" ? json(200) : path === "/api/auth/resendConfirmationEmail" ? json(429) : undefined));
+  fireEvent.click(tab("Crear cuenta"));
+  fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "x@example.com" } });
+  fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
+  fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Mandar el correo otra vez" }));
+  expect(await screen.findByText(/Ya pedimos varios correos/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Corríjalo" }));
+  expect(tab("Crear cuenta").getAttribute("aria-selected")).toBe("true");
+});
+
+it("R11: an unconfirmed e-mail is told to activate the account and can ask for the e-mail again", async () => {
+  const { fetch } = renderSignIn((path) =>
+    path === "/api/auth/login" ? json(401, { detail: "NotAllowed" }) : path === "/api/auth/resendConfirmationEmail" ? json(200) : undefined,
+  );
   fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "dueno@carniceria.com" } });
   fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
   fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
-  expect(await screen.findByText("Confirme su correo para entrar.")).toBeTruthy();
+  expect(await screen.findByText("Active su cuenta desde el correo.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Mandar el correo otra vez" }));
+  await vi.waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).endsWith("/api/auth/resendConfirmationEmail"))).toBe(true));
+});
+
+it("TK-297: arriving from the activation link, the e-mail is filled in and the password has the focus", () => {
+  vi.stubGlobal("fetch", vi.fn());
+  render(
+    <MemoryRouter initialEntries={[{ pathname: "/app", state: { activated: true, email: "duena@minimercado.com" } }]}>
+      <SignIn onSignedIn={async () => {}} />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText("Su cuenta quedó activada.")).toBeTruthy();
+  expect((screen.getByLabelText("Correo") as HTMLInputElement).value).toBe("duena@minimercado.com");
+  expect(document.activeElement).toBe(screen.getByLabelText("Contraseña"));
+});
+
+it("TK-298: without the phone, a backup code signs in instead of the app's code", async () => {
+  let calls = 0;
+  const { fetch, onSignedIn } = renderSignIn((path) =>
+    path === "/api/auth/login" ? (++calls === 1 ? json(401, { detail: "RequiresTwoFactor" }) : json(200, { accessToken: "a", refreshToken: "r" })) : undefined,
+  );
+  fireEvent.change(screen.getByLabelText("Correo"), { target: { value: "duena@minimercado.com" } });
+  fireEvent.change(screen.getByLabelText("Contraseña"), { target: { value: "Carne2026" } });
+  fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+  fireEvent.click(await screen.findByRole("button", { name: "¿No tiene el teléfono? Use un código de respaldo" }));
+  fireEvent.change(screen.getByLabelText("Código de respaldo"), { target: { value: " ABCDE-12345 " } });
+  fireEvent.click(screen.getByRole("button", { name: "Entrar" }));
+  await vi.waitFor(() => expect(onSignedIn).toHaveBeenCalled());
+  const [, init] = fetch.mock.calls.filter(([url]) => String(url).endsWith("/api/auth/login"))[1] as unknown as [string, RequestInit];
+  expect(JSON.parse(String(init.body))).toEqual({ email: "duena@minimercado.com", password: "Carne2026", twoFactorRecoveryCode: "ABCDE-12345" });
 });
 
 it("R11: an account with two-step verification asks for the app's code and sends it with the password", async () => {

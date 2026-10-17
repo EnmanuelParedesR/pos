@@ -125,7 +125,7 @@ Roles de partida (M16): Administrador, Supervisor, Cajero, Cajero con apertura, 
 
 - Encabezado del equipo: `X-Device` (antes `X-Dispositivo`).
 - Códigos de error: `Modulo.Motivo` en inglés, por ejemplo `Sales.TotalChanged` (antes `Ventas.TotalCambio`) y `Approval.Required` (antes `Autorizacion.Requerida`).
-- Comandos de consola: `prepare-service` y `decrypt-backup` (tienda); `grant-platform-admin` y `revoke-platform-admin` (nube).
+- Comandos de consola: `prepare-service` y `decrypt-backup` (tienda); `grant-platform-admin`, `revoke-platform-admin` y `reset-2fa` (nube).
 - Equipo de Abastalia en la nube (TK-189): superadministrador = `PlatformAdmin` (claim `platform_role`), consola = `/api/platform`, cliente = `Tenant`, desactivar = `disable`, revocar caja = `revoke`. Latido del nodo (TK-190) = `NodeHeartbeatV1`.
 - Miembros del panel en la nube (TK-217): miembro = `TenantMember`, rol = `MemberRole` (Dueño = `Owner`, Solo lectura = `ReadOnly`), invitación = `TenantInvite` (enlace de un solo uso, `/invite#{token}` en el panel), equipo = `/api/members`, cambiar de negocio = `POST /api/me/tenant`, política de escritura = `PanelOwner`. Correo saliente = `IEmailSender`.
 - Datos que ve el dueño, como los nombres de los roles sembrados (Administrador, Supervisor, Cajero), siguen en español: son contenido, no código. En el código, las constantes que los identifican van en inglés (`RoleIds.Administrator`).

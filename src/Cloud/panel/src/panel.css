@@ -219,4 +219,32 @@ html, body { background: #F6F5F2; }
   border: 1px solid var(--line-strong); border-radius: 4px; padding: 2px 6px; }
 .auth-expiry { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r-control); background: var(--warning-bg); color: var(--warning); }
 .auth-expiry span { font-size: var(--t-13); line-height: 1.4; color: var(--text); }
+/* TK-297: "Revise su correo" after Crear cuenta. */
+.auth-email { color: var(--text); overflow-wrap: anywhere; }
+.auth-help-box { padding: 14px 16px; border: 1px solid var(--line-strong); border-radius: var(--r-control); background: var(--surface-2); }
+.auth-help-box h3 { margin: 0 0 4px; font-size: var(--t-15); font-weight: 700; }
+.auth-help-box ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; font-size: var(--t-15); line-height: 1.45; color: var(--text-2); }
+.auth-help-box li .auth-link { min-height: 40px; }
+/* TK-298: Seguridad (two-step verification). */
+.sec-card { display: flex; flex-direction: column; gap: 16px; max-width: 720px; }
+.sec-steps { display: flex; flex-direction: column; gap: 14px; }
+.sec-steps ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 18px; line-height: 1.5; }
+.sec-steps ol > li > label { display: block; margin-bottom: 8px; }
+.sec-title { margin: 0; font-size: var(--t-20); font-weight: 700; }
+.sec-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.sec-code { width: 12em; max-width: 100%; font-size: var(--t-17); letter-spacing: 0.08em; }
+.sec-qr { margin-top: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px; }
+.sec-qr img { flex: none; border-radius: 8px; background: #fff; }
+.sec-key { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.sec-key code { font-size: var(--t-17); letter-spacing: 0.06em; overflow-wrap: anywhere; }
+.sec-codes { margin: 0; padding: 12px 16px; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5em, 1fr)); gap: 8px 16px;
+  background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: var(--r-control); }
+.sec-codes code { font-size: var(--t-17); letter-spacing: 0.04em; }
+.sec-check { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 600; }
+.sec-check input { width: 20px; height: 20px; }
+.sec-left { margin: 0; }
+.sec-left--low { color: var(--warning); font-weight: 600; }
+.sec-lost { padding-top: 14px; border-top: 1px solid var(--line); }
+.sec-lost h3 { margin: 0 0 4px; font-size: var(--t-15); font-weight: 700; }
+.sec-lost p { margin: 0; color: var(--text-2); line-height: 1.5; }
 @media (prefers-reduced-motion: reduce) { .auth *, .auth *::before, .auth *::after { transition: none !important; } }

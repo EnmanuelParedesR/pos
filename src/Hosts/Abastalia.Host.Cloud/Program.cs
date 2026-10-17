@@ -155,7 +155,7 @@ builder.Services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("database", tag
 var app = builder.Build();
 
 // Abastalia staff only (TK-189), never self-service: dotnet run --project src/Hosts/Abastalia.Host.Cloud -- grant-platform-admin <email>
-if (args is [PlatformCli.Grant or PlatformCli.Revoke, var email])
+if (args is [PlatformCli.Grant or PlatformCli.Revoke or PlatformCli.ResetTwoFactor, var email])
 {
     Environment.ExitCode = await PlatformCli.RunAsync(app.Services, args[0], email);
     return;
@@ -187,6 +187,7 @@ auth.MapIdentityApi<CloudUser>().Add(e =>
     else if (route.Contains("/manage/", StringComparison.Ordinal)) e.Metadata.Add(new EnableRateLimitingAttribute(AccountSecurityEndpoints.ManageRateLimit));
     else if (QuotaRateLimits.AuthRoutes.Any(r => route.EndsWith(r, StringComparison.Ordinal))) e.Metadata.Add(new EnableRateLimitingAttribute(QuotaRateLimits.Auth));
     if (route.EndsWith("/register", StringComparison.Ordinal)) endpoint.FilterFactories.Add((_, next) => c => AccountSecurityEndpoints.SameAnswerForTakenEmail(c, next));
+    if (route.EndsWith("/manage/2fa", StringComparison.Ordinal)) endpoint.FilterFactories.Add((_, next) => c => AccountSecurityEndpoints.CodeToWeakenTwoFactor(c, next));
 });
 app.MapAccountSecurity();
 app.MapQuotas();

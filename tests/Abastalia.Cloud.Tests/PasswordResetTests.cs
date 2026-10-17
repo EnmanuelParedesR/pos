@@ -93,8 +93,26 @@ public sealed class PasswordResetTests(MailingCloudApp app) : IClassFixture<Mail
 
         var owner = await app.SignInAsync(email);
         (await owner.Client.GetFromJsonAsync<JsonElement>("/api/me")).GetProperty("emailConfirmed").GetBoolean().ShouldBeTrue();
-        (await ConfirmAsync(email)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized); // the same link again: the first confirmation rotated the stamp
+        // TK-297: the same link again (the first confirmation rotated the stamp, so its code no longer validates) says "already confirmed", no address.
+        var again = await (await ConfirmAsync(email)).Json();
+        (again.GetProperty("firstConfirmation").GetBoolean(), again.GetProperty("alreadyConfirmed").GetBoolean()).ShouldBe((false, true));
+        again.GetProperty("email").ValueKind.ShouldBe(JsonValueKind.Null);
         (await app.CreateClient().PostAsJsonAsync("/api/auth/confirm", new { userId = "nadie", code = "x" })).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task TK297_the_link_opened_twice_at_once_confirms_both_times_and_gives_the_address_to_fill_in()
+    {
+        var email = await RegisterAsync();
+        var userId = await app.InDbAsync(db => db.Users.Where(u => u.Email == email).Select(u => u.Id).SingleAsync());
+        // A wrong code for an unconfirmed account still fails.
+        (await app.CreateClient().PostAsJsonAsync("/api/auth/confirm", new { userId, code = "QUJD" })).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+
+        var both = await Task.WhenAll(ConfirmAsync(email), ConfirmAsync(email));
+        both.Select(r => r.StatusCode).ShouldAllBe(s => s == HttpStatusCode.OK);
+        var bodies = await Task.WhenAll(both.Select(r => r.Json()));
+        bodies.Count(b => b.GetProperty("email").GetString() == email).ShouldBeGreaterThanOrEqualTo(1);
+        (await LoginAsync(email)).StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Fact]
