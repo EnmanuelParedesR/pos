@@ -1,14 +1,14 @@
-# White-Label POS for Dominican Retail: Project Context
+# Abastalia POS for Dominican Retail: Project Context
 
-> Handoff document summarizing decisions, research and open questions to date (October 12, 2026).
+> Handoff document summarizing decisions, research and open questions to date (October 12, 2026). **Historical:** later decisions win. Abastalia is our own brand, sold directly: no white-label, no resellers, one fixed brand. The e-CF path, plans and architecture as built are in `docs/arquitectura-v1.md`, `docs/ecf-propio.md` and `docs/v1-alcance.md`.
 > Prices and regulatory details were checked in October 2026; re-verify before relying on them.
 
 ---
 
 ## 1. The idea
 
-- **Product:** a white-label desktop **POS + inventory + cash management** system for Dominican retail food businesses (butcher shops first, then delis, groceries, colmados).
-- **Business model:** monthly subscription with a base plan plus paid feature add-ons (cloud sync, multi-branch, AI, etc.). Resellers can rebrand it.
+- **Product:** our own-brand desktop **POS + inventory + cash management** system for Dominican retail food businesses (butcher shops first, then delis, groceries, colmados).
+- **Business model:** monthly subscription with a base plan plus paid feature add-ons (cloud sync, multi-branch, AI, etc.), sold under one brand.
 - **Market thesis:** local DR desktop POS software is generally poor (VB6/Access-era UX). Win on modern UX, offline reliability, vertical features and local support.
 - **Developer profile:** C#/.NET and Azure background; main developer, AI-assisted.
 
@@ -19,7 +19,7 @@
 | Layer | Choice | Notes |
 |---|---|---|
 | Desktop shell | **WPF + BlazorWebView** (Blazor Hybrid) | Windows-only, mature. MAUI avoided (Windows desktop reputation). |
-| UI | MudBlazor or Fluent UI Blazor | HTML/CSS, so white-label theming = CSS variables. |
+| UI | MudBlazor or Fluent UI Blazor | HTML/CSS, themed with CSS variables (one fixed brand). |
 | Local backend | **ASP.NET Core** as a Windows service on the main PC | Registers talk to this API, never to SQL directly. |
 | Local DB | **SQL Server Express** + EF Core | Free, 10 GB per DB. Listens on localhost only. |
 | Cloud | Azure (Azure SQL multi-tenant, API, dashboard) | Paid tiers only. |
@@ -132,7 +132,6 @@ Add-ons: extra register $8, extra branch $25, setup fee $100–150.
 - Variable cost per client: ~$8–15/month (e-CF, cloud, payment fees).
 - Fixed: ~$1,300/month (support person, servers, code-signing, marketing), excluding founder salary.
 - Average $40/client → break-even ≈ 45 clients; 100 clients ≈ $2,500–3,000/month profit.
-- Resellers expect 20–30%.
 - Many DR SMBs pay by bank transfer: plan manual confirmation + grace periods.
 - Your own subscription invoices to clients also need e-CF + ITBIS (decide if prices include ITBIS).
 
@@ -197,7 +196,7 @@ Add-ons: extra register $8, extra branch $25, setup fee $100–150.
 - e-CF printed representation: e-NCF, security code, QR (from `ImpresionUrl`), contingency note when offline.
 - Cheap clones may fail on QR/accents: fallback = render receipt as image and print bitmap.
 - Drawer opens via printer command. Weighed labels: separate printer (Zebra ZPL or scale's own).
-- Configurable template (logo/header/footer/width) = white-label feature.
+- Configurable template (the business’s logo/header/footer, width).
 
 **Scales:** serial/USB via `System.IO.Ports`; one driver per brand behind `IScale`.
 
@@ -230,17 +229,16 @@ Rule: products/prices flow **down** from cloud; sales/movements flow **up**.
 
 - Entitlements per business (active modules); one `IFeatureService`.
 - **Signed license file cached locally** with 7–15 day grace period.
-- Branding per reseller from config (logo, colors, name).
 
 ---
 
 ## 13. Open questions / next actions
 
 **Ask ECF SSD**
-- [ ] Plan per RNC or per account? Integrator/reseller pricing for many companies?
+- [ ] Plan per RNC or per account? Integrator pricing for many companies?
 - [ ] Can one account manage many client companies via API (create company, **upload .p12 via API**)?
 - [ ] Do they accept **pre-signed XML** (needed for local signing/offline)?
-- [ ] Contingency handling, e-NCF sequence management, white-label options.
+- [ ] Contingency handling, e-NCF sequence management.
 - [ ] If no pre-signed XML: compare Grodtech (accepts XML) or sending directly to DGII.
 
 **Ask Azul / CardNet**

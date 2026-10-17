@@ -162,7 +162,7 @@ Diseño: canvas "Abastalia" (pantallas) y `docs/critica-diseno.md`. Decisión: A
 | TK-123 | Pruebas de punta a punta de la interfaz (Playwright) contra la API real; incluye las de R7 #5 (escaneo ignorado en efectivo/PIN) y #8 (el foco nunca se pierde) | ✅ `tests/Abastalia.UiTests` (Playwright, job `ui` de CI): un día de caja con teclado contra la API real y un humo del panel; arregló el foco que `focusFirst` robaba (checkbox de imprimir, PIN del supervisor) |
 | TK-124 | Prueba de contratos en `Abastalia.IntegrationTests`: llamar a los endpoints reales y deserializar cada respuesta con `AbastaliaApi.Json` en los records de `Contracts.cs` (R7 #13b) | ✅ `ClientContractTests`: el flujo de la caja de punta a punta con los records del cliente; falla si llega un campo no anulable vacío (también en registros anidados) |
 | TK-125 | Crítica de diseño (`docs/critica-diseno.md`) y canvas actualizado: logo C5, marca fija, 7 pantallas nuevas, fase 2 marcada | ✅ |
-| TK-126 | Reescribir todo el código en inglés (UI en español): glosario `docs/glosario-codigo.md`, mapas `docs/rename-map*.md`, migraciones nuevas | ✅ |
+| TK-126 | Reescribir todo el código en inglés (UI en español): glosario `docs/glosario-codigo.md`, mapas de renombres (borrados en TK-305), migraciones nuevas | ✅ |
 | TK-127 | Pruebas contra SQL Server Express local (`ABASTALIA_TEST_SQLSERVER`) y arreglo de `AbonosFiado.Origen` (columna corta) con prueba de guarda | ✅ |
 | TK-171 | Investigación de usuarios y crítica de la administración (`docs/investigacion-admin.md`, `docs/critica-admin.md`) | ✅ |
 | TK-172 | Validar con 6 dueños reales (entrevistas y prueba de usabilidad en el celular) | ⬜ Con el piloto |

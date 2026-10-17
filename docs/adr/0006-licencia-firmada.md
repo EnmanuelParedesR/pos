@@ -5,7 +5,7 @@
 
 ## Contexto
 
-El sistema viejo traía un generador de licencias dentro del programa. `arquitectura-v1-vsa.md` §9 pide una licencia firmada por la nube, verificada con una clave pública embebida, con 15 días de gracia sin conexión, y que vender, facturar, exportar y respaldar nunca dependan de ella (`planes.md` §6).
+El sistema viejo traía un generador de licencias dentro del programa. `arquitectura-v1-vsa.md` §9 pide una licencia firmada por la nube, verificada con una clave pública embebida, con 15 días de gracia sin conexión, y que vender, facturar, exportar y respaldar nunca dependan de ella (*planes* (doc. privado) §6).
 
 ## Decisión
 

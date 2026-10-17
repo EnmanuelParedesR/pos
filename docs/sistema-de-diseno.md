@@ -125,8 +125,7 @@ La caja se opera; la administración se **revisa**. Por eso la administración d
 
 ## Pendientes
 
-- Nombre del producto (afecta el nombre del paquete y la galería).
-- Color de marca propio del producto (la interfaz usa azul por defecto).
+- Nombre y color de marca: decididos (Abastalia, Azul Abastalia #0B5CAD; TK-267). Logo: Etiqueta 2.0 (TK-273, abajo).
 - Validar el tema claro con luz fuerte en una tienda real y en una pantalla barata.
 
 ### Marca Abastalia (TK-267, 16 oct 2026)

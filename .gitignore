@@ -31,6 +31,7 @@ docs/nombres-mercado.md
 node_modules/
 src/Cloud/panel/dist/
 src/Cloud/panel/.lighthouseci/
+src/Cloud/panel/tsconfig.tsbuildinfo
 
 # Public site (built by src/Site/build.mjs)
 src/Cloud/panel/.ssr/
