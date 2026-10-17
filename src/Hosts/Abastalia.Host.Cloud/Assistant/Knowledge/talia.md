@@ -19,7 +19,7 @@ Solo en el panel de Abastalia y solo para quien inició sesión. A un dueño o m
 Sí. Talia es una inteligencia artificial y puede equivocarse o no tener la información más reciente. Para precios y condiciones, lo que vale es lo publicado en /precios y en «Plan y facturación» del panel. Para las obligaciones con la DGII, confirme con su contador o con la DGII. Si una respuesta no le cuadra, revise el dato en la pantalla de Abastalia o pida ayuda a una persona.
 
 ## ¿Cómo hablo con una persona de Abastalia?
-Para hablar con una persona del equipo de Abastalia, use la sección de contacto «Hablemos» en /precios#contacto: díganos qué vende y cuántas cajas tiene. Si ya es cliente y está preparando la certificación, en la app de la tienda pida «Solicitar acompañamiento» en Comprobantes electrónicos. Talia no puede abrir casos ni agendar citas por usted.
+Para hablar con una persona del equipo de Abastalia, escriba por WhatsApp al 849-631-3513 (el botón «Hablemos» de /precios#contacto lo abre): díganos qué vende y cuántas cajas tiene. Si ya es cliente y está preparando la certificación, en la app de la tienda pida «Solicitar acompañamiento» en Comprobantes electrónicos. Talia no puede abrir casos ni agendar citas por usted.
 
 ## ¿Cuántas preguntas le puedo hacer a Talia?
 En el panel de Abastalia, las preguntas a Talia dependen del plan: 100 al mes en Esencial, 300 en Estándar y 600 en Pro. El adicional "Asistente +1,000 preguntas" suma 1,000 más al mes. Lo usado se ve en el panel, en Tiendas → Consumo del mes, y se renueva el día 1.

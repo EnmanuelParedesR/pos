@@ -149,7 +149,7 @@ Búsqueda (determinista, en CI): recall@3 = 96.1 % (98/102). Las que fallan: «�
 
 Preguntas que la gente hará y que el repositorio todavía no contesta (Talia dirá «no lo sé con seguridad» y ofrecerá contacto):
 
-- Un canal de contacto real (WhatsApp, teléfono o correo), horario de soporte y qué significa «soporte más rápido» del Pro. Hoy `/precios#contacto` dice «Canal de contacto por confirmar».
+- Horario de soporte y qué significa «soporte más rápido» del Pro. (El canal ya está: WhatsApp 849-631-3513, 17/10/2026.)
 - La URL del instalador (`/descargar`, TK-303) y si se publica la zona de visitas y el precio de la sesión remota extra.
 - Razón social y RNC de Abastalia, plazo de borrado de datos (borradores legales).
 - Si la suscripción da NCF / crédito fiscal y si se puede pagar en pesos o por transferencia.
