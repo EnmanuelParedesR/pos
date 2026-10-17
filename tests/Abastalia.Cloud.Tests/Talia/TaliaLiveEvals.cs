@@ -94,7 +94,7 @@ public sealed class TaliaLiveEvals
             else
             {
                 await using var services = app.Services.CreateAsyncScope();
-                var owner = new OwnerAssistant(model, services.ServiceProvider.GetRequiredService<PanelQueries>(), showCosts: true, tuning);
+                var owner = new OwnerAssistant(model, services.ServiceProvider.GetRequiredService<PanelQueries>(), showCosts: true, tuning: tuning);
                 await owner.AskAsync(store.TenantId, c.Q, c.History ?? [], CancellationToken.None);
                 reply = owner.LastReply!;
             }

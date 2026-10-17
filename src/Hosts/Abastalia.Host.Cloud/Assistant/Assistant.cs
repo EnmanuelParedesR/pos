@@ -157,12 +157,28 @@ internal sealed class AzureOpenAIChatModel(HttpClient http, AzureOpenAIOptions o
 public sealed record AssistantTurn(string? Role, string? Content);
 /// <param name="Page">TK-315: the site page the visitor is on (only the site's Talia reads it).</param>
 public sealed record AskRequest(string? Question, IReadOnlyList<AssistantTurn>? History, string? Page = null);
-public sealed record AskResponse(string Answer);
+/// <param name="Navigation">TK-339: a route of <see cref="PanelRoutes"/> Talia suggests opening ("Ir a …"); null when none.</param>
+public sealed record AskResponse(string Answer, string? Navigation = null);
+
+/// <param name="OwnerOnly">Only offered to an Owner (the panel has no such route for a ReadOnly member).</param>
+public sealed record PanelRoute(string Route, string Label, bool OwnerOnly = false);
+
+/// <summary>TK-339: the screens Talia may send the user to. One list, src/Cloud/panel/src/pages/assistantRoutes.json, embedded here and imported by the
+/// chat for the button's label; tests on both sides compare it with Panel.tsx and the site's pages.</summary>
+public static class PanelRoutes
+{
+    public static readonly IReadOnlyList<PanelRoute> All = JsonSerializer.Deserialize<List<PanelRoute>>(
+        typeof(PanelRoutes).Assembly.GetManifestResourceStream("Abastalia.PanelRoutes.json")!, JsonSerializerOptions.Web)!;
+
+    public static IReadOnlyList<string> For(bool isOwner) => [.. All.Where(r => isOwner || !r.OwnerOnly).Select(r => r.Route)];
+}
 
 /// <summary>Answers the owner's questions with read-only tools over the replica and the knowledge base (TK-347). The tenant comes from the token
 /// and is never a tool argument.</summary>
 /// <param name="showCosts">TK-201: false for a member who may not see costs; top_products then has no profit.</param>
-public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool showCosts = true, ChatTuning? tuning = null, TaliaKnowledge? knowledge = null)
+/// <param name="isOwner">TK-339: false for a ReadOnly member; navigate then has no Owner-only screens.</param>
+public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool showCosts = true, bool isOwner = true, ChatTuning? tuning = null,
+    TaliaKnowledge? knowledge = null)
 {
     public const int MaxDays = 92;
     public const int MaxRounds = 5;
@@ -210,6 +226,22 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
         TaliaTools.SearchKnowledge,
     ];
 
+    private readonly IReadOnlyList<string> routes = PanelRoutes.For(isOwner);
+
+    /// <summary>TK-339: the read tools plus navigate, whose enum is the screens this user can open. The model never writes a free-form URL.</summary>
+    public IReadOnlyList<ChatTool> Offered => [.. Tools, new("navigate",
+        "Deja al usuario un botón para abrir una pantalla del panel o una página del sitio (él decide si la abre). Úsala cuando pida ir a una pantalla " +
+        "o cuando lo que pregunta se hace en una de ellas.",
+        new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject { ["route"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. routes.Select(r => (JsonNode)r)]) } },
+            ["required"] = new JsonArray("route"),
+        })];
+
+    /// <summary>TK-339: the last valid route navigate got in this question; a route outside the enum is dropped and never reaches the panel.</summary>
+    public string? Navigation { get; private set; }
+
     /// <summary>TK-248: tokens the model reported for every round of the questions asked so far.</summary>
     public int TokensUsed { get; private set; }
 
@@ -222,7 +254,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
         return await ConverseAsync(SystemPrompt(queries.Today, stores, showCosts), question, history, call => RunToolAsync(tenantId, call, ct), ct);
     }
 
-    /// <summary>The rounds of one question with any tool runner (the evaluation harnesses run it on their own data).</summary>
+    /// <summary>The rounds of one question with any tool runner: TK-337's harness (<see cref="TaliaEval"/>) and TK-348's live evals run it on their own data.</summary>
     public async Task<string> ConverseAsync(string systemPrompt, string question, IReadOnlyList<AssistantTurn> history,
         Func<ChatToolCall, Task<string>> runTool, CancellationToken ct)
     {
@@ -233,7 +265,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
         messages.AddRange(TaliaTools.History(history, MaxHistory, 2000));
         messages.Add(new("user", question));
 
-        LastReply = await TaliaLoop.RunAsync(model, tuning ?? new ChatTuning(), messages, Tools, runTool, MaxRounds, ct, spent => TokensUsed += spent.Total);
+        LastReply = await TaliaLoop.RunAsync(model, tuning ?? new ChatTuning(), messages, Offered, runTool, MaxRounds, ct, spent => TokensUsed += spent.Total);
         return LastReply.Answer;
     }
 
@@ -250,6 +282,14 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
         JsonElement args;
         try { args = JsonDocument.Parse(string.IsNullOrWhiteSpace(call.Arguments) ? "{}" : call.Arguments).RootElement; }
         catch (JsonException) { return Failure("Los argumentos no son JSON válido."); }
+
+        if (call.Name == "navigate")
+        {
+            if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty("route", out var r) || r.ValueKind != JsonValueKind.String || !routes.Contains(r.GetString()!))
+                return Failure("Esa pantalla no existe o este usuario no la puede abrir: use una ruta de la lista de navigate.");
+            Navigation = r.GetString();
+            return Serialize(new { shown = $"Botón «Ir a {PanelRoutes.All.First(p => p.Route == Navigation).Label}»" });
+        }
 
         if (call.Name == TaliaTools.SearchKnowledge.Name) return TaliaTools.Search(_knowledge, args, includePanel: true);
         if (call.Name == "panel_help")
@@ -287,6 +327,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
         - Solo texto simple: nada de Markdown (ni asteriscos, ni almohadillas, ni tablas, ni enlaces con corchetes). Una ruta va tal cual, por ejemplo /app/billing.
         - Montos así: RD$ 1,234.50. Un faltante o un sobrante se dice en positivo: "faltante de RD$ 150.00". Fechas así: jueves 15 de octubre.
         - Rutas: solo las que vienen en los resultados de las herramientas (links, el texto o panel_help). Nunca inventes una ruta ni muestres ids.
+        - Si pide ir a una pantalla, o lo que pregunta se hace en una, usa navigate: el panel le muestra un botón «Ir a …» que la persona toca; tú no la llevas.
 
         De dónde sale lo que dices:
         - Números del negocio (ventas, cuadres, cajeros, productos, formas de pago, fiado, sincronización, certificación): solo de las herramientas de datos.
@@ -363,13 +404,14 @@ internal static class AssistantEndpoints
                 await quota.AddAsync(tenantId, Meter.AssistantTokens, -1, ct);
                 return questions.Problem();
             }
-            var assistant = new OwnerAssistant(model, services.GetRequiredService<PanelQueries>(),
-                await PanelAccess.CanViewCostsAsync(user, services.GetRequiredService<CloudDbContext>(), ct), options.Panel, store.Current);
+            var db = services.GetRequiredService<CloudDbContext>();
+            var assistant = new OwnerAssistant(model, services.GetRequiredService<PanelQueries>(), await PanelAccess.CanViewCostsAsync(user, db, ct),
+                await PanelAccess.IsOwnerAsync(user, db, ct), options.Panel, store.Current);
             try
             {
                 var answer = await assistant.AskAsync(tenantId, question, request.History ?? [], ct);
                 PublicAssistantEndpoints.Log(log, "panel", assistant.LastReply!, store.Current);
-                return Results.Ok(new AskResponse(answer));
+                return Results.Ok(new AskResponse(answer, assistant.Navigation));
             }
             catch (Exception ex) when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
             {

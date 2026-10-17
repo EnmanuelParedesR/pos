@@ -1,0 +1,18 @@
+[
+  { "route": "/app", "label": "Resumen" },
+  { "route": "/app/sales", "label": "Ventas" },
+  { "route": "/app/shifts", "label": "Cuadres" },
+  { "route": "/app/stores", "label": "Tiendas" },
+  { "route": "/app/received", "label": "Recibidos" },
+  { "route": "/app/notifications", "label": "Avisos" },
+  { "route": "/app/security", "label": "Seguridad" },
+  { "route": "/app/members", "label": "Equipo", "ownerOnly": true },
+  { "route": "/app/billing", "label": "Plan y facturación", "ownerOnly": true },
+  { "route": "/precios", "label": "Precios" },
+  { "route": "/e-cf", "label": "Plazo del e-CF" },
+  { "route": "/guia-e-cf", "label": "Guía del e-CF" },
+  { "route": "/certificacion", "label": "Certificación" },
+  { "route": "/comparar", "label": "Comparar opciones" },
+  { "route": "/glosario", "label": "Glosario" },
+  { "route": "/descargar", "label": "Descargar" }
+]

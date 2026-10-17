@@ -2,8 +2,13 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { Link, useLocation, useNavigate } from "react-router";
 import { api, ApiError, publicApi } from "../api";
 import { Icon, Notice, PageHead, Talia } from "../ui";
+import assistantRoutes from "./assistantRoutes.json";
 
-interface Turn { role: "user" | "assistant"; content: string; rated?: "up" | "down" }
+/** TK-339: `navigation` is a route Talia suggests opening; the server only sends one of assistantRoutes.json. */
+interface Turn { role: "user" | "assistant"; content: string; rated?: "up" | "down"; navigation?: string | null }
+
+/** The button's label for a route Talia suggested; anything outside the shared list gets no button. */
+export const routeLabel = (route?: string | null) => assistantRoutes.find((r) => r.route === route)?.label;
 
 /** A question asked from outside the chat (the "Pregúntale a Talia" bar). `id` tells two equal questions apart. */
 export interface PendingQuestion { text: string; id: number }
@@ -36,14 +41,14 @@ export type TaliaBot = "panel" | "public";
 
 const bots = {
   panel: {
-    ask: (body: unknown) => api<{ answer: string }>("/api/assistant/ask", "POST", body),
+    ask: (body: unknown) => api<{ answer: string; navigation?: string | null }>("/api/assistant/ask", "POST", body),
     rate: (body: unknown) => api<void>("/api/assistant/feedback", "POST", body),
     suggestions: ["¿Cuánto vendí hoy?", "¿Qué cajera tuvo faltante esta semana?", "¿Qué fue lo más vendido este mes?"],
     title: "¿Qué quiere saber hoy?",
     busy: "Buscando en sus datos…",
   },
   public: {
-    ask: (body: unknown) => publicApi<{ answer: string }>("/api/public/assistant/ask", "POST", body),
+    ask: (body: unknown) => publicApi<{ answer: string; navigation?: string | null }>("/api/public/assistant/ask", "POST", body),
     rate: (body: unknown) => publicApi<void>("/api/public/assistant/feedback", "POST", body),
     suggestions: ["¿Cuánto cuesta?", "¿Funciona sin internet?", "¿Me sirve para un colmado?", "¿Qué necesito para el e-CF?"],
     title: "Hola, soy Talia. ¿En qué le ayudo?",
@@ -86,8 +91,8 @@ export function AssistantChat({ pending, inputId = "question", inPopup = false, 
     try {
       const body = { question: q, history: history.map(({ role, content }) => ({ role, content })) };
       // TK-315: the site's Talia is told which page the visitor is on ("¿cuánto cuesta esto?" on /carniceria).
-      const { answer } = await config.ask(bot === "public" ? { ...body, page: window.location.pathname } : body);
-      setHistory((h) => [...h, { role: "assistant", content: answer }]);
+      const { answer, navigation } = await config.ask(bot === "public" ? { ...body, page: window.location.pathname } : body);
+      setHistory((h) => [...h, { role: "assistant", content: answer, navigation }]);
     } catch (err) {
       setError(err as ApiError);
       setQuestion(q);
@@ -150,6 +155,12 @@ export function AssistantChat({ pending, inputId = "question", inPopup = false, 
             <div className="talia-answer">
               {/* Plain text: React escapes it, so an answer can never inject HTML. Only known in-app paths become links (TK-301). */}
               <p className={`esc-bubble esc-bubble--${t.role}`}>{t.role === "assistant" ? withLinks(t.content, onNavigate) : t.content}</p>
+              {/* TK-339: Talia suggests, the person goes: never an automatic navigation. Under the answer, above its rating. */}
+              {t.role === "assistant" && routeLabel(t.navigation) && (
+                <Link className="esc-button talia-go" to={t.navigation!} onClick={onNavigate}>
+                  Ir a {routeLabel(t.navigation)} <Icon name="chevron-right" size={18} />
+                </Link>
+              )}
               {/* TK-349: once rated both buttons stay (aria-disabled, the chosen one pressed), so the focus is not lost; the thanks follows them. */}
               {t.role === "assistant" && (
                 <span className="talia-rate">

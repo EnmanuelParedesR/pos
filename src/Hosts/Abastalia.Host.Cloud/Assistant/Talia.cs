@@ -102,6 +102,9 @@ public static partial class TaliaLoop
 {
     public const string NoAnswer = "No tengo una respuesta para eso.";
 
+    /// <summary>The last round still asked for tools (the model ignored tool_choice none) and said nothing (TK-337's round-limit case).</summary>
+    public const string GaveUp = "No pude completar la respuesta. Intente con una pregunta más concreta.";
+
     public static async Task<TaliaReply> RunAsync(IChatModel model, ChatTuning tuning, List<ChatMessage> messages, IReadOnlyList<ChatTool> tools,
         Func<ChatToolCall, Task<string>> runTool, int maxRounds, CancellationToken ct, Action<ChatUsage>? spent = null)
     {
@@ -117,7 +120,8 @@ public static partial class TaliaLoop
             if (reply.ToolCalls is not { Count: > 0 } || round == maxRounds)
             {
                 var answer = Clean(reply.Content);
-                return new(answer.Length == 0 ? NoAnswer : answer, usage, round, called, watch.ElapsedMilliseconds);
+                if (answer.Length == 0) answer = reply.ToolCalls is { Count: > 0 } ? GaveUp : NoAnswer;
+                return new(answer, usage, round, called, watch.ElapsedMilliseconds);
             }
             messages.Add(reply);
             foreach (var call in reply.ToolCalls)

@@ -1,0 +1,72 @@
+[
+  {
+    "name": "certification_status.paso",
+    "question": "¿En qué paso va la certificación con la DGII?",
+    "toolData": {
+      "certification_status": [ { "storeName": "Carnicería La Central", "certified": false, "stepsDone": 3, "totalSteps": 9, "currentStep": 4,
+        "stepTitle": "Set de pruebas", "who": "Abastalia", "nextAction": "Suba el Excel del set de pruebas en la app de la tienda.", "help": null, "daysOnStep": 2 } ]
+    },
+    "expect": {
+      "calls": [ { "tool": "certification_status" } ],
+      "answerContains": [ "set de pruebas" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "certification_status", "args": {} } ] },
+      { "content": "Carnicería La Central va en el paso 4 de 9, el set de pruebas: suba el Excel del set de pruebas en la app de la tienda." }
+    ]
+  },
+  {
+    "name": "certification_faq.clave-ofv",
+    "question": "¿Ustedes necesitan mi clave de la OFV?",
+    "expect": {
+      "calls": [ { "tool": "certification_faq" } ],
+      "answerAnyOf": [ "nunca", "no necesita", "no la pide", "no pide" ],
+      "answerNotContains": [ "envíeme la clave", "dime la clave" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "certification_faq", "args": {} } ] },
+      { "content": "No. Abastalia nunca pide, guarda ni ve la clave de la OFV." }
+    ]
+  },
+  {
+    "name": "panel_help.planes",
+    "question": "¿Dónde activo los adicionales del plan?",
+    "expect": {
+      "calls": [ { "tool": "panel_help" } ],
+      "answerContains": [ "/app/billing" ],
+      "answerNotContains": [ "US$" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "panel_help", "args": { "topic": "planes" } } ] },
+      { "content": "En Plan y facturación (/app/billing), en «Adapte su plan». Solo el Dueño puede hacerlo." }
+    ]
+  },
+  {
+    "name": "panel_help.equipo",
+    "question": "¿Cómo invito a mi hermano al panel?",
+    "expect": {
+      "calls": [ { "tool": "panel_help" } ],
+      "answerContains": [ "/app/members" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "panel_help", "args": { "topic": "panel" } } ] },
+      { "content": "En Equipo (/app/members) el Dueño lo invita como Dueño o Solo lectura." }
+    ]
+  },
+  {
+    "name": "search_knowledge.sin-internet",
+    "question": "¿Puedo seguir facturando si se va el internet?",
+    "toolData": {
+      "search_knowledge": { "results": [ { "title": "Sin internet, sin luz y contingencia del e-CF", "section": "¿Puedo vender sin internet?",
+        "text": "Sí. Abastalia sigue vendiendo y facturando sin internet; los e-CF quedan en cola y se envían a la DGII cuando vuelve la conexión.", "links": [ "/e-cf" ] } ] }
+    },
+    "expect": {
+      "calls": [ { "tool": "search_knowledge" } ],
+      "answerContains": [ "sin internet" ]
+    },
+    "script": [
+      { "toolCalls": [ { "tool": "search_knowledge", "args": { "query": "facturar sin internet" } } ] },
+      { "content": "Sí: Abastalia sigue vendiendo y facturando sin internet y envía los e-CF a la DGII cuando vuelve la conexión." }
+    ]
+  }
+]

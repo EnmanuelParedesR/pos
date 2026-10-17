@@ -162,6 +162,13 @@ internal static class PanelAccess
         return db.TenantMembers.AnyAsync(m => m.TenantId == tenantId && m.UserId == userId && (m.Role == MemberRole.Owner || m.CanViewCosts), ct);
     }
 
+    /// <summary>TK-339: Talia offers the Owner-only screens (Equipo, Facturación) only to an Owner.</summary>
+    public static Task<bool> IsOwnerAsync(ClaimsPrincipal user, CloudDbContext db, CancellationToken ct)
+    {
+        var (tenantId, userId) = (user.GetTenantId(), user.FindFirstValue(ClaimTypes.NameIdentifier));
+        return db.TenantMembers.AnyAsync(m => m.TenantId == tenantId && m.UserId == userId && m.Role == MemberRole.Owner, ct);
+    }
+
     private static async Task<bool> HasRoleAsync(AuthorizationHandlerContext context, bool ownerOnly)
     {
         if (context.Resource is not HttpContext http || context.User.FindFirstValue(TenantClaims.TenantId) is not { } value || !Guid.TryParse(value, out var tenantId)
