@@ -200,7 +200,8 @@ internal static class ReceivedDocuments
 /// cannot change once signed.</summary>
 /// <remarks>shortcut: no automatic retry; the admin presses again and only the missing leg goes.</remarks>
 internal sealed class CommercialApprovals(FiscalDbContext db, CertificateEcfSigner signer, IEcfProvider provider, ISettingsQueries settings, IHttpClientFactory http,
-    ICommandHandler<CommercialApprovals.Decided, ReceivedDocuments.Item> record, TimeProvider clock, ILogger<CommercialApprovals> log)
+    ICommandHandler<CommercialApprovals.Decided, ReceivedDocuments.Item> record, DgiiClock dgiiClock, TimeProvider clock,
+    ILogger<CommercialApprovals> log)
 {
     /// <param name="DecidedBy">TK-250: "panel: {e-mail}" when an owner decided it in the panel; null when decided at this PC (the audit has the user).</param>
     internal sealed record Decided(Guid Id, string Approval, string? Reason, DateTime ApprovalUtc, byte[] XmlGzip, DateTime? DeliveredUtc, DateTime? DgiiUtc,
@@ -250,6 +251,7 @@ internal sealed class CommercialApprovals(FiscalDbContext db, CertificateEcfSign
         {
             if (signer.CannotSign(now) is { } why)
                 return Error.Conflict("Fiscal.ApprovalCannotSign", $"No se puede firmar la aprobación: {why}. Importe el certificado en Configuración → Comprobantes.");
+            if (dgiiClock.Problem is { } clockOff) return OperationsErrors.ClockOff(clockOff); // TK-283: it carries this PC's time
             var acecf = new XDocument(new XElement("ACECF", new XElement("DetalleAprobacionComercial",
                 new XElement("Version", "1.0"), new XElement("RNCEmisor", d.IssuerRnc), new XElement("eNCF", d.ENcf),
                 new XElement("FechaEmision", d.IssuedOn.ToString("dd-MM-yyyy", CultureInfo.InvariantCulture)),

@@ -23,11 +23,11 @@ namespace Abastalia.Fiscal;
 /// is signed here when the store itself sends it, never because the cloud asked (a signed seed is a DGII token for the RNC). Every request,
 /// signed or refused, goes to the audit log.</summary>
 internal sealed class RemoteSigning(ICloudClient cloud, CertificateEcfSigner signer, ISettingsQueries settings, ICommandHandler<RemoteSigning.Recorded, Ok> record,
-    TimeProvider clock, ILogger<RemoteSigning> log)
+    DgiiClock dgiiClock, TimeProvider clock, ILogger<RemoteSigning> log)
 {
     public const string NextPath = "/fiscal/v1/receiver/sign-requests/next";
     public static readonly IReadOnlySet<string> AllowedRoots = new HashSet<string>(StringComparer.Ordinal) { "ARECF" };
-    /// <summary>Not connected, no certificate, or the cloud failed: asked again after this.</summary>
+    /// <summary>Not connected, no certificate, the clock off, or the cloud failed: asked again after this.</summary>
     public static readonly TimeSpan Idle = TimeSpan.FromMinutes(1);
     /// <summary>The cloud says this PC does not sign for the receiver (404 <c>Fe.NotSigningNode</c>: not activated, or another PC activated it).
     /// Polling every minute would keep the serverless database awake for nothing; activating here wakes the poll at once
@@ -51,7 +51,9 @@ internal sealed class RemoteSigning(ICloudClient cloud, CertificateEcfSigner sig
     /// <summary>One poll: answers the request that came, if any. Returns how long to wait before the next one.</summary>
     public async Task<TimeSpan> PollOnceAsync(CancellationToken ct)
     {
-        if (signer.CannotSign(clock.GetUtcNow().UtcDateTime) is not null) return Idle;
+        // TK-283: no ARECF with the clock off (DgiiClock). Not polling makes the cloud take this PC as off: the supplier gets 503 + Retry-After at
+        // once, and FeLateAcknowledger signs what waited when the clock is right and the poll is back.
+        if (signer.CannotSign(clock.GetUtcNow().UtcDateTime) is not null || dgiiClock.IsOff) return Idle;
         HttpResponseMessage response;
         try { response = await cloud.PostAsJsonAsync(NextPath, new { }, ct); }
         catch (InvalidOperationException) { return Idle; } // not connected to the cloud
