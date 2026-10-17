@@ -39,6 +39,7 @@ public static class SettingsModule
         services.AddSingleton<LicenseService>();
         services.AddSingleton<IFeatureService>(sp => sp.GetRequiredService<LicenseService>());
         services.AddScoped<IStoreLicense, StoreLicense>();
+        services.AddScoped<Abastalia.Sync.Contracts.ICloudSnapshot, LogoSnapshot>();
         services.AddHostedService<NightlyBackup>();
         return services;
     }
@@ -81,8 +82,13 @@ internal sealed class Business
     public string? UpdateNotesUrl { get; set; }
     /// <summary>R11 A16: card and transfer payments at the register need their authorization or transfer number.</summary>
     public bool RequirePaymentReference { get; set; } = true;
+    /// <summary>TK-280: the logo as <see cref="LogoImage"/> wrote it (PNG, at most 600 px a side, under 48 KB); null = none.</summary>
+    public byte[]? Logo { get; set; }
+    /// <summary>TK-280: when the logo was last uploaded or removed: its cache key (<see cref="BusinessLogo.Version"/>).</summary>
+    public DateTime? LogoChangedUtc { get; set; }
 
-    public BusinessProfile ToProfile() => new(Name, Rnc, Address, Phone, ReceiptFooter, DiscountCapPercent, RequirePaymentReference);
+    public BusinessProfile ToProfile() => new(Name, Rnc, Address, Phone, ReceiptFooter, DiscountCapPercent, RequirePaymentReference,
+        Logo is null ? null : BusinessLogo.Version(LogoChangedUtc));
 }
 
 internal sealed class SettingsDbContext(DbContextOptions<SettingsDbContext> options) : ModuleDbContext(options)
@@ -118,6 +124,8 @@ internal sealed class SettingsQueries(SettingsDbContext db) : ISettingsQueries
 {
     public async Task<BusinessProfile> GetBusinessProfileAsync(CancellationToken ct) =>
         (await db.Business.AsNoTracking().SingleAsync(ct)).ToProfile();
+
+    public async Task<byte[]?> GetLogoAsync(CancellationToken ct) => await db.Business.AsNoTracking().Select(b => b.Logo).SingleAsync(ct);
 }
 
 internal static class GetBusinessProfile

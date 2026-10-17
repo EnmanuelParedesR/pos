@@ -1,8 +1,14 @@
 @* The invoice as the thermal printer prints it, and Imprimir to print it again (no drawer: a reprint takes no cash). *@
 @inject Peripherals Peripherals
+@inject BusinessLogo Logo
 <Dialog Title="@($"Factura {Receipt.ENcf}")" Subtitle="@(Receipt.IsVoided ? "ANULADA" : null)" OnClose="OnClose">
     <ChildContent>
         <div class="receipt" aria-label="Factura">
+            @if (_logo is { } logo)
+            {
+                @* TK-280: the dots this printer gets, at their share of the paper (576 dots on 80 mm, 384 on 58 mm). *@
+                <img class="receipt__logo" src="@BusinessLogo.BmpDataUrl(logo)" alt="Logo del negocio" style="width:@(logo.Width * 100 / Dots)%" />
+            }
             <div class="center" style="font-weight:700">@Receipt.BusinessName</div>
             @if (Receipt.Rnc is not null) { <div class="center">RNC @Receipt.Rnc</div> }
             @if (Receipt.Address is not null) { <div class="center">@Receipt.Address</div> }
@@ -68,12 +74,18 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     private bool _printing;
+    private ReceiptLogo? _logo;
+    private int Width => Peripherals.Settings.Printer?.Width == 58 ? 58 : 80;
+    private int Dots => Width == 58 ? 384 : 576;
+
+    protected override async Task OnParametersSetAsync() => _logo = Peripherals.Settings.PrintLogo ? await Logo.RasterAsync(Receipt.LogoVersion, Width) : null;
     private string? _message;
 
     private async Task PrintAsync()
     {
         _printing = true;
-        var ok = await Peripherals.TryAsync(p => p.PrintAsync(Receipt, false, CancellationToken.None));
+        var receipt = await Logo.ForPrinterAsync(Receipt, Peripherals.Settings);
+        var ok = await Peripherals.TryAsync(p => p.PrintAsync(receipt, false, CancellationToken.None));
         (_printing, _message) = (false, ok ? "Factura enviada a la impresora." : "No se pudo imprimir. Revise el papel y que la impresora esté encendida.");
     }
 }

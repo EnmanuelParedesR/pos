@@ -23,6 +23,7 @@ public static class Services
         services.AddScoped<Approver>();
         services.AddScoped<Cart>();
         services.AddScoped<BackOffice>();
+        services.AddScoped<BusinessLogo>();
         return services;
     }
 

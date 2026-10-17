@@ -44,6 +44,43 @@ public sealed class PublicCatalogTests(CloudApp app) : IClassFixture<CloudApp>
     }
 
     [Fact]
+    public async Task TK280_the_store_logo_is_served_as_a_PNG_the_newest_wins_and_a_removed_one_goes()
+    {
+        var owner = await app.OwnerAsync();
+        var node = await app.StoreWithNodeAsync(owner, "Colmado El Sol");
+        var anonymous = app.CreateClient();
+        var now = app.Clock.GetUtcNow().UtcDateTime;
+        byte[] png = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4];
+        (await anonymous.GetFromJsonAsync<JsonElement>($"/api/public/catalog/{node.StoreId}")).GetProperty("logoVersion").ValueKind.ShouldBe(JsonValueKind.Null);
+
+        (await node.SendAsync(
+            Events.Envelope(new Abastalia.Settings.Contracts.BusinessLogoChangedV1(png), now),
+            Events.Envelope(new Abastalia.Settings.Contracts.BusinessLogoChangedV1(null), now.AddHours(-1)), // an older removal arrives late
+            Events.Envelope(new CatalogSettingsChangedV1("18095550101"), now.AddMinutes(1)))).StatusCode.ShouldBe(HttpStatusCode.OK);
+        await app.ApplyAsync();
+
+        var page = await anonymous.GetFromJsonAsync<JsonElement>($"/api/public/catalog/{node.StoreId}");
+        var version = page.GetProperty("logoVersion").GetString().ShouldNotBeNull();
+        page.GetProperty("whatsApp").GetString().ShouldBe("18095550101"); // the WhatsApp and the logo share the row, not their times
+        var logo = await anonymous.GetAsync($"/api/public/catalog/{node.StoreId}/logo?v={version}");
+        logo.StatusCode.ShouldBe(HttpStatusCode.OK);
+        logo.Content.Headers.ContentType!.MediaType.ShouldBe("image/png");
+        logo.Headers.GetValues("X-Content-Type-Options").ShouldBe(["nosniff"]);
+        (await logo.Content.ReadAsByteArrayAsync()).ShouldBe(png);
+
+        // Something that is not a PNG never becomes an image/png of the catalog; removing it takes it off the page.
+        (await node.SendAsync(Events.Envelope(new Abastalia.Settings.Contracts.BusinessLogoChangedV1("<svg/>"u8.ToArray()), now.AddMinutes(2)))).EnsureSuccessStatusCode();
+        await app.ApplyAsync();
+        (await anonymous.GetAsync($"/api/public/catalog/{node.StoreId}/logo")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await node.SendAsync(Events.Envelope(new Abastalia.Settings.Contracts.BusinessLogoChangedV1(png), now.AddMinutes(3)),
+            Events.Envelope(new Abastalia.Settings.Contracts.BusinessLogoChangedV1(null), now.AddMinutes(4)))).EnsureSuccessStatusCode();
+        await app.ApplyAsync();
+        (await anonymous.GetFromJsonAsync<JsonElement>($"/api/public/catalog/{node.StoreId}")).GetProperty("logoVersion").ValueKind.ShouldBe(JsonValueKind.Null);
+        (await anonymous.GetAsync($"/api/public/catalog/{node.StoreId}/logo")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await anonymous.GetAsync($"/api/public/catalog/{Guid.NewGuid()}/logo")).StatusCode.ShouldBe(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task A_disabled_business_has_no_public_catalog()
     {
         var owner = await app.OwnerAsync();

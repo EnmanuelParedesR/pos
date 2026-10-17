@@ -3,6 +3,7 @@
 @inject Session Session
 @inject Peripherals Peripherals
 @inject NodeCertificatePin Pin
+@inject BusinessLogo Logo
 
 <Admin Title="Configuración" Subtitle="Los datos del negocio, las cajas, los comprobantes y quién puede entrar.">
     <div class="esc-tabs" role="tablist" aria-label="Secciones">
@@ -47,6 +48,33 @@
                     <div class="esc-form-actions"><Button Type="submit" Variant="Button.Variants.Primary">Guardar cambios</Button></div>
                 </div>
             </form>
+            @* TK-280: the logo goes on its own card: it is saved as soon as it is picked, not with "Guardar cambios". *@
+            <section class="esc-card esc-setting" aria-labelledby="logo-title">
+                <div class="esc-setting__about"><h2 id="logo-title">Logo</h2><p>Sale arriba en la factura impresa, en la representación impresa de los comprobantes electrónicos y en su catálogo en línea.</p></div>
+                <div class="esc-setting__body">
+                    @if (_logoUrl is not null)
+                    {
+                        <div class="esc-logo-preview">
+                            <figure><img src="@_logoUrl" alt="Logo de @_business.Name" /><figcaption>Así se ve en la pantalla y en el catálogo</figcaption></figure>
+                            @if (_logoRaster is { } raster)
+                            {
+                                <figure class="esc-logo-preview__paper"><img src="@BusinessLogo.BmpDataUrl(raster)" alt="El logo como sale en la impresora" style="width:@(raster.Width * 100 / 576)%" /><figcaption>Así sale en el rollo de 80 mm (un solo color)</figcaption></figure>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="esc-muted">Todavía no hay logo. La factura sale con el nombre del negocio arriba.</p>
+                    }
+                    <Field Label="@(_logoUrl is null ? "Imagen (PNG o JPG)" : "Cambiar el logo (PNG o JPG)")" Error="@Err("logo")" Hint="Se guarda al elegirla. Hasta 512 KB, mejor en fondo blanco o transparente y con buen contraste: la impresora térmica imprime en un solo color.">
+                        <Microsoft.AspNetCore.Components.Forms.InputFile class="esc-input" accept=".png,.jpg,.jpeg,image/png,image/jpeg" OnChange="UploadLogoAsync" disabled="@_sending" />
+                    </Field>
+                    @if (_logoUrl is not null)
+                    {
+                        <div class="esc-form-actions"><Button Disabled="_sending" OnClick="RemoveLogoAsync"><Icon Name="x" Size="16" /> @(_removingLogo ? "¿Quitar el logo? Toque otra vez" : "Quitar el logo")</Button></div>
+                    }
+                </div>
+            </section>
             @* The approval policy is settings.manage (TK-213), so it lives with the business data, not with Cajas (registers.manage). *@
             <form class="esc-card esc-setting" @onsubmit="SaveApprovalsAsync" novalidate>
                 <div class="esc-setting__about"><h2>Autorizaciones</h2><p>Pedir autorización de supervisor para… Si nadie supervisa (por ejemplo, un colmado de una persona), apáguelas: quien atiende lo hace solo y queda igual en la auditoría.</p></div>
@@ -283,6 +311,7 @@
                         </Field>
                     </div>
                     <label class="esc-row" style="gap:8px"><input type="checkbox" style="width:22px;height:22px" @bind="_hardware.PrintAfterSale" /> Imprimir la factura al cobrar</label>
+                    <label class="esc-row" style="gap:8px"><input type="checkbox" style="width:22px;height:22px" @bind="_hardware.PrintLogo" /> Imprimir el logo del negocio arriba de la factura</label>
                     <div class="esc-form-actions">
                         <Button Disabled="_sending" OnClick="TestPrinterAsync"><Icon Name="printer" /> Imprimir prueba</Button>
                         <Button Disabled="_sending" OnClick="TestScaleAsync">Leer balanza</Button>
@@ -588,6 +617,7 @@
                 var b = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value;
                 _business = b is null ? new() : new() { Name = b.Name, Rnc = b.Rnc, Address = b.Address, Phone = b.Phone, ReceiptFooter = b.ReceiptFooter, DiscountCap = b.DiscountCapPercent.ToString("0.##"), RequireReference = b.RequirePaymentReference };
                 _approvals = (await Api.GetAsync<List<ApprovalRule>>("/api/settings/approvals")).Value ?? [];
+                (_logoUrl, _logoRaster) = (await Logo.DataUrlAsync(b?.LogoVersion), await Logo.RasterAsync(b?.LogoVersion, 80));
                 break;
             case Section.Registers:
                 _registers = (await Api.GetAsync<List<RegisterInfo>>("/api/cash/registers")).Value ?? [];
@@ -621,18 +651,18 @@
         public string? Printer, ScalePort;
         public int Width = 80, PrinterBaud = 9600, ScaleBaud = 9600;
         public ScaleProtocol Protocol = ScaleProtocol.Cas;
-        public bool PrintAfterSale = true;
+        public bool PrintAfterSale = true, PrintLogo = true;
 
         public static HardwareForm From(HardwareSettings s) => new()
         {
-            Printer = s.Printer?.Port, Width = s.Printer?.Width ?? 80, PrinterBaud = s.Printer?.BaudRate ?? 9600, PrintAfterSale = s.PrintAfterSale,
+            Printer = s.Printer?.Port, Width = s.Printer?.Width ?? 80, PrinterBaud = s.Printer?.BaudRate ?? 9600, PrintAfterSale = s.PrintAfterSale, PrintLogo = s.PrintLogo,
             ScalePort = s.Scale?.Port, Protocol = s.Scale?.Protocol ?? ScaleProtocol.Cas, ScaleBaud = s.Scale?.BaudRate ?? 9600,
         };
 
         public HardwareSettings ToSettings() => new(
             string.IsNullOrWhiteSpace(Printer) ? null : new PrinterSettings(Printer.Trim(), Width == 58 ? 58 : 80, PrinterBaud > 0 ? PrinterBaud : 9600),
             string.IsNullOrWhiteSpace(ScalePort) ? null : new ScaleSettings(ScalePort.Trim().ToUpperInvariant(), Protocol, ScaleBaud > 0 ? ScaleBaud : 9600),
-            PrintAfterSale);
+            PrintAfterSale, PrintLogo);
     }
 
     private HardwareForm _hardware = new();
@@ -649,7 +679,10 @@
         await Peripherals.SaveAsync(_hardware.ToSettings());
         if (Peripherals.Printer is null) { (_messageKind, _message) = (Notice.Kinds.Warning, "Escriba primero el nombre o el puerto de la impresora."); return; }
         _sending = true;
-        var ok = await Peripherals.TryAsync(p => p.PrintAsync(TestReceipt, true, CancellationToken.None));
+        // TK-280: with the business logo, if there is one, so the test shows how it prints.
+        var version = (await Api.GetAsync<BusinessProfile>("/api/settings/business")).Value?.LogoVersion;
+        var test = await Logo.ForPrinterAsync(TestReceipt with { LogoVersion = version }, Peripherals.Settings);
+        var ok = await Peripherals.TryAsync(p => p.PrintAsync(test, true, CancellationToken.None));
         _sending = false;
         (_messageKind, _message) = ok
             ? (Notice.Kinds.Success, "Prueba enviada: debe salir una factura de prueba con ñ y acentos, el código QR, el corte, y abrirse la gaveta.")
@@ -743,6 +776,47 @@
     }
 
     // TK-277: the plan's cashier limit is a limit to act on, not a failure.
+    private string? _logoUrl;
+    private ReceiptLogo? _logoRaster;
+
+    /// <summary>TK-280: saved as soon as it is picked; the server checks the type by its bytes and writes it again as a PNG.</summary>
+    private async Task UploadLogoAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        Clear("logo");
+        byte[] file;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(512 * 1024);
+            using var copy = new MemoryStream();
+            await stream.CopyToAsync(copy);
+            file = copy.ToArray();
+        }
+        catch (IOException)
+        {
+            _errors["logo"] = "La imagen pasa de 512 KB. Use una más liviana.";
+            return;
+        }
+        _sending = true;
+        var r = await Api.PutAsync<Empty>("/api/settings/business/logo", new { File = Convert.ToBase64String(file) });
+        _sending = false;
+        if (r.Problem is { Status: 400 } p) { _errors["logo"] = p.Message; return; }
+        await GoAsync(Section.Business);
+        ShowResult(r.Problem, "Logo guardado. Sale en las facturas desde ahora.");
+    }
+
+    private bool _removingLogo;
+
+    /// <summary>Same inline double-tap confirmation as disconnecting from the cloud: the owner may not have the original file at hand.</summary>
+    private async Task RemoveLogoAsync()
+    {
+        if (!_removingLogo) { _removingLogo = true; return; }
+        (_removingLogo, _sending) = (false, true);
+        var r = await Api.DeleteAsync<Empty>("/api/settings/business/logo");
+        _sending = false;
+        await GoAsync(Section.Business);
+        ShowResult(r.Problem, "Logo quitado. La factura sale con el nombre del negocio arriba.");
+    }
+
     private void ShowResult(Problem? p, string success) => (_messageKind, _message) = p is null ? (Notice.Kinds.Success, success)
         : (p.Code == "Identity.CashierLimitReached" ? Notice.Kinds.Warning : p.Kind, p.Message);
 

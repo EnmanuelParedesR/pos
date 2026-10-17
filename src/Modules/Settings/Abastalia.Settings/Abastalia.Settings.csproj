@@ -6,6 +6,12 @@
     <ProjectReference Include="..\..\Sales\Abastalia.Sales.Contracts\Abastalia.Sales.Contracts.csproj" />
     <ProjectReference Include="..\..\Fiscal\Abastalia.Fiscal.Contracts\Abastalia.Fiscal.Contracts.csproj" />
     <ProjectReference Include="..\..\Inventory\Abastalia.Inventory.Contracts\Abastalia.Inventory.Contracts.csproj" />
+    <ProjectReference Include="..\..\Sync\Abastalia.Sync.Contracts\Abastalia.Sync.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- TK-280: decodes, resizes and re-encodes the business logo (MIT). The Linux natives are for CI and tests; stores run Windows. -->
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Abastalia.UnitTests" />

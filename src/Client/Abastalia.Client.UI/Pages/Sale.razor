@@ -5,6 +5,7 @@
 @inject Cart Cart
 @inject NavigationManager Nav
 @inject Peripherals Peripherals
+@inject BusinessLogo Logo
 @inject Approver Approver
 
 <div class="sale" data-keys @onkeydown="KeyAsync">
@@ -466,6 +467,7 @@
                 print = false; // the drawer still opens for the cash
             }
         }
+        if (print) receipt = await Logo.ForPrinterAsync(receipt, Peripherals.Settings);
         if (!await Peripherals.TryAsync(p => print ? p.PrintAsync(receipt, cash, CancellationToken.None) : p.OpenDrawerAsync(CancellationToken.None)))
             _notice = new(Notice.Kinds.Warning, print ? "No se pudo imprimir la factura." : "No se pudo abrir la gaveta.",
                 "La venta sí se guardó. Revise que la impresora tenga papel y esté encendida; después reimprima con Ver factura.");

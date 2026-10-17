@@ -32,7 +32,7 @@ public sealed record RoleList(Role[] Roles, string[] AvailablePermissions);
 
 // Settings
 public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent,
-    bool RequirePaymentReference = true);
+    bool RequirePaymentReference = true, string? LogoVersion = null);
 /// <param name="TrialEndsUtc">TK-196: null until the first sale starts the 14 days (and once a license is installed).</param>
 /// <param name="Warning">TK-220: null, "Soon" (trial day 10 on), "Last" (day 13 on) or "Ended" (Restricted).</param>
 public sealed record LicenseFeatures(string Status, string? Plan, DateTime? ExpiresUtc, string[] Enabled, int Registers,

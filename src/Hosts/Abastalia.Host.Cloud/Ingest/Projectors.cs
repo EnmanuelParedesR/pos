@@ -11,6 +11,7 @@ using Abastalia.Identity.Contracts;
 using Abastalia.Inventory.Contracts;
 using Abastalia.Purchasing.Contracts;
 using Abastalia.Sales.Contracts;
+using Abastalia.Settings.Contracts;
 using Abastalia.Sync.Contracts;
 
 namespace Abastalia.Host.Cloud.Ingest;
@@ -88,6 +89,16 @@ internal static class Projectors
             if (row is null) db.CatalogSettings.Add(row = new ReplicaCatalogSettings { TenantId = e.TenantId, StoreId = e.StoreId });
             else if (row.ChangedUtc > e.OccurredUtc) return;
             (row.WhatsApp, row.ChangedUtc) = (c.WhatsApp, e.OccurredUtc);
+        },
+        // TK-280: the store's logo for its public catalog; the newest by event time wins, and a removed one is removed here too.
+        [Name<BusinessLogoChangedV1>()] = async (db, e, ct) =>
+        {
+            var l = Read<BusinessLogoChangedV1>(e);
+            var row = await db.CatalogSettings.FirstOrDefaultAsync(x => x.TenantId == e.TenantId && x.StoreId == e.StoreId, ct);
+            if (row is null) db.CatalogSettings.Add(row = new ReplicaCatalogSettings { TenantId = e.TenantId, StoreId = e.StoreId });
+            else if (row.LogoChangedUtc > e.OccurredUtc) return;
+            // Only a PNG: the page serves it as image/png, so anything else a store could send is dropped.
+            (row.Logo, row.LogoChangedUtc) = (l.Png is { Length: > 8 } png && png.AsSpan().StartsWith((ReadOnlySpan<byte>)[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) ? png : null, e.OccurredUtc);
         },
         [Name<FiscalDocumentIssuedV1>()] = async (db, e, ct) =>
         {

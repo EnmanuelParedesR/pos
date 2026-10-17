@@ -44,6 +44,24 @@ public sealed class EscPosTests
     }
 
     [Fact]
+    public void TK280_the_logo_goes_first_as_a_centered_GS_v_0_raster_and_a_bad_one_is_left_out()
+    {
+        var bits = Enumerable.Range(0, 48 / 8 * 4).Select(i => (byte)i).ToArray();
+        var bytes = EscPos.EscPos.Render(Sample with { Logo = new ReceiptLogo(48, 4, bits) }, 48, openDrawer: false);
+        // Right after the init: centered, GS v 0 normal, 6 bytes a row, 4 rows, then the bits; the business name follows.
+        bytes[5..21].ShouldBe(new byte[] { 0x1B, 0x61, 0x01, 0x1D, 0x76, 0x30, 0x00, 0x06, 0x00, 0x04, 0x00, 0, 1, 2, 3, 4 });
+        Contains(bytes, [0x1D, 0x76, 0x30, 0x00, 0x06, 0x00, 0x04, 0x00, .. bits]).ShouldBeTrue();
+        EscPos.EscPos.Text(Sample with { Logo = new ReceiptLogo(48, 4, bits) }, 48).Split('\n')[0].Trim().ShouldBe("[Logo 48x4]");
+
+        var without = EscPos.EscPos.Render(Sample, 48, openDrawer: false);
+        Contains(without, [0x1D, 0x76, 0x30]).ShouldBeFalse();
+        // Bits that do not add up, or wider than the 58 mm paper: printed without it, never a garbled receipt.
+        EscPos.EscPos.Render(Sample with { Logo = new ReceiptLogo(48, 4, bits[..5]) }, 48, openDrawer: false).ShouldBe(without);
+        EscPos.EscPos.Render(Sample with { Logo = new ReceiptLogo(576, 1, new byte[72]) }, 32, openDrawer: false)
+            .ShouldBe(EscPos.EscPos.Render(Sample, 32, openDrawer: false));
+    }
+
+    [Fact]
     public void The_qr_is_model_2_with_the_receipt_url_then_the_paper_is_cut()
     {
         var bytes = EscPos.EscPos.Render(Sample, 48, openDrawer: false);

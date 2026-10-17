@@ -167,6 +167,7 @@ Se firman con el mismo método el e-CF, el RFCE, el ANECF, el ACECF, el ARECF y 
 - La RI de un e-CF que la DGII no ha recibido o rechazó **no sirve para crédito fiscal**.
 - **Contingencia:** la RI lleva la leyenda "e-CF emitido en modalidad de Contingencia, el cual podrá ser consultado para su validez fiscal, a partir de las setenta y dos (72) horas."
 - La DGII publica modelos ilustrativos (PDF), incluida la 32 en **papel continuo**, que es el caso del rollo térmico.
+- **Logo del negocio (TK-280):** los modelos ilustrativos dejan el logo del emisor arriba a la izquierda, sobre sus datos. Abastalia lo pone ahí en la RI A4 (máx. 60 × 20 mm) y arriba y al centro en el rollo térmico, antes del nombre. No reemplaza ni mueve ningún campo obligatorio ni el QR. Es el logo de hoy, no el del día de la emisión: la RI se arma con el XML firmado, y el logo no va en el XML.
 
 ---
 
