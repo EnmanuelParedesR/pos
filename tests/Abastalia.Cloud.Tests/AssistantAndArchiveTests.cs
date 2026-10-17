@@ -52,10 +52,11 @@ public sealed class AssistantTests(AssistantApp app) : IClassFixture<AssistantAp
         r.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await r.Json()).GetProperty("answer").GetString().ShouldBe("Hoy vendiste RD$ 750.00.");
         var last = app.Model.Calls[^1];
-        last[0].Role.ShouldBe("system");
-        last[0].Content!.ShouldContain("Carnicería A");
-        last[0].Content!.ShouldNotContain("Carnicería B");
-        last.Select(m => m.Role).ShouldBe(["system", "user", "assistant", "user", "assistant", "tool"]);
+        // TK-348: the rules first, the same for everyone (cached by Azure); the day and this tenant's stores after them.
+        last[0].Content.ShouldBe(OwnerAssistant.Rules);
+        last[1].Content!.ShouldContain("Carnicería A");
+        last[1].Content!.ShouldNotContain("Carnicería B");
+        last.Select(m => m.Role).ShouldBe(["system", "system", "user", "assistant", "user", "assistant", "tool"]);
         var day = JsonDocument.Parse(last[^1].Content!).RootElement.EnumerateArray().ShouldHaveSingleItem();
         day.GetProperty("total").GetDecimal().ShouldBe(750);
         day.GetProperty("count").GetInt32().ShouldBe(1);

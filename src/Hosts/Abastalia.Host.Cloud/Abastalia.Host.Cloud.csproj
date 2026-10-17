@@ -18,6 +18,10 @@
     <PackageReference Include="Azure.Communication.Email" />
   </ItemGroup>
   <ItemGroup>
+    <!-- TK-347: Talia's knowledge base, compiled in (files starting with _ are notes, not articles). -->
+    <EmbeddedResource Include="Assistant\Knowledge\*.md" Exclude="Assistant\Knowledge\_*.md" LogicalName="Abastalia.Talia.Knowledge.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- TK-152: the DGII XSDs of the receiver (acknowledgement, approval) and of the e-CF types, from the store's module (linked, not copied; TK-246: the store signs those too). -->
     <EmbeddedResource Include="..\..\Modules\Fiscal\Abastalia.Fiscal\Schemas\e-CF 3*.xsd;..\..\Modules\Fiscal\Abastalia.Fiscal\Schemas\A?ECF*.xsd" LogicalName="Abastalia.Fe.Schemas.%(Filename)%(Extension)" Link="Fe\Schemas\%(Filename)%(Extension)" />
   </ItemGroup>

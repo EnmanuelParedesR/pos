@@ -92,8 +92,10 @@ var archivePerNodeMinute = config.GetValue("Archive:UploadsPerMinutePerNode", 12
 var backupsPerNodeHour = config.GetValue("CloudBackup:UploadsPerHourPerNode", 4);
 var backupDownloadsPerUserHour = config.GetValue("CloudBackup:DownloadsPerHourPerUser", 10); // R12 #6
 // The e-CF receiver's limits (R9 #2) are the global limiter, set by AddFe.
+var talia = config.GetSection(TaliaOptions.Section).Get<TaliaOptions>() ?? new TaliaOptions();
 builder.Services.AddRateLimiter(o =>
 {
+    o.AddPublicAssistantRateLimit(talia.PublicPerMinutePerIp); // TK-315: the site's Talia, per IP
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     // TK-248: say when the window reopens, so the store's uploads wait that long instead of retrying blind.
     o.OnRejected = (rejected, _) =>
@@ -142,6 +144,10 @@ builder.Services.AddFe(config, builder.Environment);
 builder.Services.AddBilling(config, builder.Environment); // TK-249: off until Billing:Paddle is set
 
 var openAi = config.GetSection(AzureOpenAIOptions.Section).Get<AzureOpenAIOptions>() ?? new AzureOpenAIOptions();
+// TK-348/TK-315: how each Talia calls the model, and the site's daily budget.
+builder.Services.AddSingleton(talia);
+builder.Services.AddSingleton<PublicAssistantBudget>();
+builder.Services.AddTaliaUpdates(config); // TK-350: the base from Blob Storage, live prices, the DGII pages watcher
 if (openAi.IsConfigured)
 {
     builder.Services.AddSingleton(openAi);
@@ -218,6 +224,7 @@ app.MapNodeUpdates();
 app.MapIngest();
 app.MapPanel();
 app.MapAssistant();
+app.MapPublicAssistant();
 app.MapSupplierInvoiceReader();
 app.MapEcfArchive();
 app.MapColdArchive();
