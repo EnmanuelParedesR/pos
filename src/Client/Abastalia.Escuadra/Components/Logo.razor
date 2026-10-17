@@ -1,8 +1,8 @@
 @* The Abastalia tag (TK-273): a price tag turned 45° with its hanging hole and the two-storey "a". Colors come from escuadra.css (.esc-logo):
-   blue tag and white "a"; on the dark frame (OnFrame) and in the dark back office, white tag and blue "a". The word follows the text color. *@
+   berenjena tag and white "a" (TK-356); on the dark frame (OnFrame) and in the dark back office, white tag and berenjena "a". The word follows the text color. *@
 <span class="esc-logo@(OnFrame ? " esc-logo--on-dark" : "")" style="font-size:@(Size * 7 / 10)px; color:@(OnFrame ? "var(--frame-text)" : "var(--text)")">
     <svg role="img" aria-label="Abastalia" width="@Size" height="@Size" viewBox="0 0 120 120">
-        <path class="esc-logo__tag" d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#0B5CAD" fill-rule="evenodd" stroke="#0B5CAD" stroke-width="6" stroke-linejoin="round"></path>
+        <path class="esc-logo__tag" d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#6B1F5E" fill-rule="evenodd" stroke="#6B1F5E" stroke-width="6" stroke-linejoin="round"></path>
         <path class="esc-logo__mark" d="M54.2 51.2 Q57.8 44 68.6 44 Q83 44 83 58.4 V92 M83 68 H67.4 Q53 68 53 80 Q53 92 67.4 92 Q78.2 92 83 82.4" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"></path>
     </svg>
     @if (WithName)

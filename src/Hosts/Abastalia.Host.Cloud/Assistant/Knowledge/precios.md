@@ -10,7 +10,7 @@ sources: [src/Cloud/panel/src/pages/site/config.ts, src/Cloud/panel/src/pages/si
 Abastalia cobra un plan mensual según el tamaño de la tienda, no por factura. Precios al mes (el monto en pesos es el que muestra /precios, a RD$61.5 por US$1):
 - Plan Esencial: US$15 al mes (RD$925). Solo la PC principal, 2 cajeros.
 - Plan Estándar: US$19 al mes (RD$1,170). PC principal + 1 caja, 4 cajeros.
-- Plan Pro: US$35 al mes (RD$2,150). PC principal + 3 cajas, 8 cajeros y soporte más rápido.
+- Plan Pro: US$35 al mes (RD$2,150). PC principal + 3 cajas, 8 cajeros y soporte más rápido (primera respuesta en 2 horas laborables).
 Todos los planes tienen todas las funciones. Se cobra en dólares con tarjeta a través de Paddle, que cobra por Abastalia; el precio publicado es el final. Estos precios son provisionales mientras el pago en línea no está activo; los precios finales siempre están en /precios.
 
 ## ¿Cuánto cuestan los adicionales? Caja adicional, cajero adicional, sucursal

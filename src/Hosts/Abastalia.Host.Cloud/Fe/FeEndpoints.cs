@@ -296,28 +296,8 @@ internal static class FeServices
         // the store recorded its own (Approval set) nothing changes. No quota meter: one decision per received document, under the panel's rate limit.
         app.MapPost("/api/panel/fe/received/{id:long}/decision", async (long id, FeDecisionRequest r, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock,
             ILoggerFactory logs, CancellationToken ct) =>
-        {
-            if (r.Approve is not { } approve) return EndpointExtensions.Problem(FeErrors.DecisionRequired);
-            var reason = approve ? null : r.Reason?.Trim();
-            if (!approve && (string.IsNullOrEmpty(reason) || reason.Length > 250)) return EndpointExtensions.Problem(FeErrors.ReasonRequired);
-            var decision = approve ? "Approved" : "Rejected";
-            var tenant = user.GetTenantId();
-            var by = FeXml.Cut(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name ?? "", 256);
-            var row = db.FeReceived.Where(d => d.Id == id && d.TenantId == tenant);
-            if (await row.Select(d => (bool?)d.SignerUnverified).SingleOrDefaultAsync(ct) is not { } unverified) return EndpointExtensions.Problem(FeErrors.NotFound);
-            if (unverified) return EndpointExtensions.Problem(FeErrors.SignerUnverified); // R11 B-High2: the store never got it
-            if (!await db.FeCertificates.AnyAsync(c => c.TenantId == tenant && c.RevokedUtc == null, ct)) return EndpointExtensions.Problem(FeErrors.ReceiverInactive);
-
-            var now = clock.GetUtcNow().UtcDateTime;
-            var taken = await row.Where(d => d.Approval == null && d.PanelDecision == null).ExecuteUpdateAsync(s => s
-                .SetProperty(d => d.PanelDecision, decision).SetProperty(d => d.PanelReason, reason).SetProperty(d => d.PanelDecidedBy, by)
-                .SetProperty(d => d.PanelDecidedUtc, now), ct) == 1;
-            var current = await row.AsNoTracking().Select(PanelItem).SingleAsync(ct);
-            if (taken)
-                logs.CreateLogger("Abastalia.Fe.Decisions").LogInformation("Commercial approval {Decision} of received {Id} decided in the panel by {By}", decision, id, by);
-            else if ((current.Approval ?? current.PanelDecision) != decision) return EndpointExtensions.Problem(FeErrors.AlreadyDecided);
-            return Results.Ok(current);
-        }).RequireAuthorization(CloudAuth.OwnerPolicy).RequireRateLimiting(Quotas.QuotaRateLimits.PanelUser).WithTags("Fe");
+            (await DecideAsync(db, user, id, r.Approve, r.Reason, clock.GetUtcNow().UtcDateTime, logs, ct)).ToHttp())
+            .RequireAuthorization(CloudAuth.OwnerPolicy).RequireRateLimiting(Quotas.QuotaRateLimits.PanelUser).WithTags("Fe");
 
         app.MapGet("/api/panel/fe/received/{id:long}/xml", async (long id, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
         {
@@ -325,6 +305,31 @@ internal static class FeServices
             var xml = await db.FeReceived.AsNoTracking().Where(d => d.Id == id && d.TenantId == tenant).Select(d => d.XmlGzip).SingleOrDefaultAsync(ct);
             return xml is null ? EndpointExtensions.Problem(FeErrors.NotFound) : Results.Ok(new { xml = FeXml.ReceivedText(xml) });
         }).RequireAuthorization(CloudAuth.PanelPolicy).WithTags("Fe");
+    }
+
+    /// <summary>The panel's decision on a received e-CF (TK-250), also Talia's received_decision (TK-341).</summary>
+    internal static async Task<Result<FePanelReceived>> DecideAsync(CloudDbContext db, ClaimsPrincipal user, long id, bool? approved, string? rejectReason,
+        DateTime now, ILoggerFactory logs, CancellationToken ct)
+    {
+        if (approved is not { } approve) return FeErrors.DecisionRequired;
+        var reason = approve ? null : rejectReason?.Trim();
+        if (!approve && (string.IsNullOrEmpty(reason) || reason.Length > 250)) return FeErrors.ReasonRequired;
+        var decision = approve ? "Approved" : "Rejected";
+        var tenant = user.GetTenantId();
+        var by = FeXml.Cut(user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name ?? "", 256);
+        var row = db.FeReceived.Where(d => d.Id == id && d.TenantId == tenant);
+        if (await row.Select(d => (bool?)d.SignerUnverified).SingleOrDefaultAsync(ct) is not { } unverified) return FeErrors.NotFound;
+        if (unverified) return FeErrors.SignerUnverified; // R11 B-High2: the store never got it
+        if (!await db.FeCertificates.AnyAsync(c => c.TenantId == tenant && c.RevokedUtc == null, ct)) return FeErrors.ReceiverInactive;
+
+        var taken = await row.Where(d => d.Approval == null && d.PanelDecision == null).ExecuteUpdateAsync(s => s
+            .SetProperty(d => d.PanelDecision, decision).SetProperty(d => d.PanelReason, reason).SetProperty(d => d.PanelDecidedBy, by)
+            .SetProperty(d => d.PanelDecidedUtc, now), ct) == 1;
+        var current = await row.AsNoTracking().Select(PanelItem).SingleAsync(ct);
+        if (taken)
+            logs.CreateLogger("Abastalia.Fe.Decisions").LogInformation("Commercial approval {Decision} of received {Id} decided in the panel by {By}", decision, id, by);
+        else if ((current.Approval ?? current.PanelDecision) != decision) return FeErrors.AlreadyDecided;
+        return current;
     }
 
     /// <summary>Withdraws the tenant's consent: marked first (the signer and the receiver stop at once), then a vault key, if any, is deleted.</summary>

@@ -33,6 +33,30 @@ function useScrollOnNavigate() {
   }, [pathname, hash]);
 }
 
+/** TK-312: sections marked .reveal ease in the first time they come on screen. Only with JavaScript and motion allowed, so the prerendered page and
+ *  "reduce motion" show everything at rest; what is already on screen when the page starts is never hidden. Opacity and transform only (no shift). */
+function useReveal() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined" || typeof matchMedia !== "function" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const seen = new IntersectionObserver(
+      (entries) =>
+        entries.forEach((e) => {
+          if (!e.isIntersecting) return;
+          e.target.classList.add("is-in");
+          seen.unobserve(e.target);
+        }),
+      { rootMargin: "0px 0px -12% 0px" },
+    );
+    document.querySelectorAll<HTMLElement>(".site .reveal:not(.is-in)").forEach((el) => {
+      if (el.getBoundingClientRect().top < window.innerHeight) return;
+      el.classList.add("is-waiting");
+      seen.observe(el);
+    });
+    return () => seen.disconnect();
+  }, [pathname]);
+}
+
 const header = ["/carniceria", "/colmado", "/deli", "/e-cf", "/precios"];
 const footer = ["/guia-e-cf", "/comparar", "/glosario", "/descargar", "/certificacion", "/novedades", "/terminos", "/privacidad"];
 
@@ -57,6 +81,7 @@ export function SiteLayout() {
   const { pathname } = useLocation();
   useHead(pageFor(pathname), pathname);
   useScrollOnNavigate();
+  useReveal();
 
   return (
     <div className="site">
@@ -103,7 +128,7 @@ export function SiteLayout() {
               </li>
             </ul>
           </nav>
-          <ThemeToggle className="btn btn--ghost btn--small" size={18} />
+          <ThemeToggle className="btn btn--ghost btn--small" size={18} lightFirst />
           <p className="muted foot__legal">La información sobre la DGII es orientativa y no sustituye la asesoría de su contador ni lo que publique la DGII.</p>
         </div>
       </footer>

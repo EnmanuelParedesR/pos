@@ -27,3 +27,6 @@ Si la DGII rechaza un comprobante del set de pruebas, el set se reinicia: se des
 
 ## ¿Y si no llego a certificarme antes del 15 de noviembre de 2026?
 Plan B para negocios de poco volumen: emitir con el Facturador Gratuito de la DGII (en la OFV) las facturas que deben ser e-CF mientras termina la certificación con Abastalia, y seguir usando Abastalia para la caja, el inventario y los cierres. Anote el e-NCF de cada factura del Facturador Gratuito junto a la venta de Abastalia para cuadrar el 607 con su contador. Confirme con la DGII o su contador si su negocio califica.
+
+## ¿Abastalia está certificado por la DGII? ¿Es un proveedor autorizado?
+La DGII certifica a cada negocio (su RNC) como emisor electrónico, no a un programa en general: usted se certifica una vez, con su propio certificado digital, usando Abastalia. Abastalia es el programa que queda en medio: arma, firma con su certificado y envía cada e-CF a la DGII, recibe la respuesta y guarda el comprobante. Por eso su factura electrónica es tan válida como la de cualquier otro programa certificado con su RNC. Abastalia no aparece hoy en la lista de proveedores de servicios de facturación electrónica de la DGII, y no hace falta para que usted emita: el emisor es su negocio.

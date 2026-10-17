@@ -69,7 +69,7 @@ public static class TaliaEval
         var calls = new List<ChatToolCall>();
         var failures = new List<string>();
         var prompt = OwnerAssistant.SystemPrompt(c.Context?.Today ?? DefaultToday,
-            c.Context?.Stores ?? new() { [DefaultStoreId] = "Carnicería La Central" });
+            c.Context?.Stores ?? new() { [DefaultStoreId] = "Carnicería La Central" }, isOwner: c.Context?.Role is not "readonly");
         string answer;
         try
         {

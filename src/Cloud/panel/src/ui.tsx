@@ -3,13 +3,13 @@ import type { ApiError, Store } from "./api";
 import { addDays, money, shortMoney, storeDay } from "./format";
 import { getTheme, nextTheme, setTheme, themeName, type ThemeChoice } from "./theme";
 
-/** The Abastalia tag (TK-273), same SVG as Escuadra's Logo.razor. Colors come from escuadra.css (.esc-logo): blue tag and white "a";
- *  `on-dark` and the dark theme turn the tag white and the "a" blue. */
+/** The Abastalia tag (TK-273), same SVG as Escuadra's Logo.razor. Colors come from escuadra.css (.esc-logo): berenjena tag and white "a" (TK-356);
+ *  `on-dark` and the dark theme turn the tag white and the "a" berenjena. */
 export function Logo({ size = 28, withName = true, variant = "default" }: { size?: number; withName?: boolean; variant?: "default" | "on-dark" }) {
   return (
     <span className={`esc-logo${variant === "on-dark" ? " esc-logo--on-dark" : ""}`} style={{ fontSize: (size * 7) / 10, color: variant === "on-dark" ? "var(--frame-text)" : "var(--text)" }}>
       <svg role="img" aria-label="Abastalia" width={size} height={size} viewBox="0 0 120 120">
-        <path className="esc-logo__tag" d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#0B5CAD" fillRule="evenodd" stroke="#0B5CAD" strokeWidth="6" strokeLinejoin="round" />
+        <path className="esc-logo__tag" d="M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z M47.5 37 A10.5 10.5 0 1 0 26.5 37 A10.5 10.5 0 1 0 47.5 37 Z" fill="#6B1F5E" fillRule="evenodd" stroke="#6B1F5E" strokeWidth="6" strokeLinejoin="round" />
         <path className="esc-logo__mark" d="M54.2 51.2 Q57.8 44 68.6 44 Q83 44 83 58.4 V92 M83 68 H67.4 Q53 68 53 80 Q53 92 67.4 92 Q78.2 92 83 82.4" fill="none" stroke="#FFFFFF" strokeWidth="12" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
       {withName && <span aria-hidden="true">abastalia</span>}
@@ -17,7 +17,7 @@ export function Logo({ size = 28, withName = true, variant = "default" }: { size
   );
 }
 
-/** TK-349: Talia v2. Same idea as TK-273 (the amber tag with a face in a blue circle), drawn to be read at the sizes she is used at: the tag
+/** TK-349: Talia v2. Same idea as TK-273 (the amber tag with a face in a berenjena circle), drawn to be read at the sizes she is used at: the tag
  *  bigger and centred, a bigger face centred in it, taller eyes. At 32 px or less (chat, ask bar) the hang hole goes (it read as a third eye) and the
  *  face grows again. Moods change only the face: attentive (default), happy (a wink: greeting, empty chat), thinking (eyes up, while she looks). */
 const taliaFace = (mood: TaliaMood, small: boolean) => {
@@ -50,14 +50,14 @@ const taliaFace = (mood: TaliaMood, small: boolean) => {
 
 export type TaliaMood = "attentive" | "happy" | "thinking";
 
-/** Talia, the owner's assistant: the tag in amber with a face, in a blue circle (TK-273, v2 in TK-349). The PNG avatars (public/og/talia*.png) are
+/** Talia, the owner's assistant: the tag in amber with a face, in a berenjena circle (TK-273, v2 in TK-349). The PNG avatars (public/og/talia*.png) are
  *  drawn from this same SVG (scripts/talia-avatar.mjs). Decorative: her name or the chat bubble next to her carries the meaning. */
 export function Talia({ size = 28, mood = "attentive" }: { size?: number; mood?: TaliaMood }) {
   const small = size <= 40; // TK-349: the 36 px dialog-header avatar too
   const hole = small ? "" : " M45 37 A8 8 0 1 0 29 37 A8 8 0 1 0 45 37 Z";
   return (
     <svg className="esc-talia" aria-hidden="true" width={size} height={size} viewBox="0 0 120 120">
-      <circle cx="60" cy="60" r="60" fill="#0B5CAD" />
+      <circle cx="60" cy="60" r="60" fill="#6B1F5E" />
       <g transform={`translate(58 58) scale(${small ? 0.84 : 0.8}) translate(-60 -60)`}>
         <path d={`M44 14 H98 Q106 14 106 22 V98 Q106 106 98 106 H22 Q14 106 14 98 V44 Z${hole}`} fill="#FFC233" fillRule="evenodd" stroke="#FFC233" strokeWidth="6" strokeLinejoin="round" />
         <g fill="#14181D" stroke="#14181D">{taliaFace(mood, small)}</g>
@@ -119,11 +119,14 @@ export function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
 }
 
 /** Theme switch (TK-183): automático → claro → oscuro, remembered on this device. */
-export function ThemeToggle({ className = "esc-side__item", showLabel = true, size = 20 }: { className?: string; showLabel?: boolean; size?: number }) {
+/** `lightFirst` (TK-312, the public site): only claro and oscuro, "automático" counts as claro (the site is light unless dark is picked). */
+export function ThemeToggle({ className = "esc-side__item", showLabel = true, size = 20, lightFirst = false }: { className?: string; showLabel?: boolean; size?: number; lightFirst?: boolean }) {
   // R12 #12: "system" on the first render, as the prerendered HTML says; the saved choice comes after hydration (no mismatch).
-  const [theme, setChoice] = useState<ThemeChoice>("system");
+  const [saved, setChoice] = useState<ThemeChoice>("system");
   useEffect(() => setChoice(getTheme()), []);
-  const label = `Tema: ${themeName(theme)}. Cambiar a ${themeName(nextTheme(theme))}`;
+  const theme: ThemeChoice = lightFirst && saved !== "dark" ? "light" : saved;
+  const next: ThemeChoice = lightFirst ? (theme === "dark" ? "light" : "dark") : nextTheme(theme);
+  const label = `Tema: ${themeName(theme)}. Cambiar a ${themeName(next)}`;
   return (
     <button
       type="button"
@@ -131,7 +134,6 @@ export function ThemeToggle({ className = "esc-side__item", showLabel = true, si
       title={label}
       aria-label={label}
       onClick={() => {
-        const next = nextTheme(theme);
         setTheme(next);
         setChoice(next);
       }}

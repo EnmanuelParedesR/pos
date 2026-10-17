@@ -1,6 +1,7 @@
 import { Children, isValidElement, type ReactNode } from "react";
 import { Link } from "react-router";
 import { Hero } from "./SiteParts";
+import { fairUseEcf } from "./livePrices";
 
 /** TK-302: terms and privacy, drafts for the lawyer. Every fact here must match the product (docs/cobro-paddle.md, licencias.md,
  * despliegue-azure.md, cuotas.md, ecf-propio.md). The bracketed fields are for the owner or the lawyer to fill. */
@@ -92,7 +93,7 @@ function Terms() {
           <strong>Renovación y cancelación:</strong> la suscripción se renueva sola cada mes o cada año. Puede cancelarla cuando quiera desde "Plan y facturación".
         </li>
         <li>
-          <strong>Reembolsos:</strong> se piden a Paddle y siguen su política. Abastalia no reembolsa desde su panel.
+          <strong>Reembolsos:</strong> la prueba de 14 días es gratis y sin tarjeta. Al cancelar no se cobra el período siguiente y el plan sigue activo hasta el final del ya pagado; lo ya pagado no se devuelve, salvo el pago anual pedido en los primeros 14 días, un cobro duplicado o por error, o una falla de Abastalia de más de 72 horas seguidas (se acredita la parte proporcional). La visita de instalación y el acompañamiento no se reembolsan una vez hechos; con 24 horas de aviso se reprograman o se devuelven. Paddle procesa el reembolso; se pide por WhatsApp.
         </li>
         <li>Mientras el pago en línea no esté disponible, el plan se acuerda con nosotros directamente.</li>
       </ul>
@@ -119,7 +120,7 @@ function Terms() {
         <li>Use Abastalia solo para su negocio y de acuerdo con la ley.</li>
         <li>No lo use para evadir impuestos, emitir comprobantes falsos ni engañar a la DGII o a sus clientes.</li>
         <li>No intente entrar a datos de otros negocios, saltar las licencias o las cuotas, ni sobrecargar el servicio.</li>
-        <li>Cada plan tiene cuotas (por ejemplo, preguntas a Talia o facturas leídas). Al llegar al límite, ese servicio se detiene hasta el mes siguiente o hasta que compre un adicional. Los acuses de recibo de e-CF nunca se niegan.</li>
+        <li>Cada plan tiene cuotas (por ejemplo, preguntas a Talia o facturas leídas). Al llegar al límite, ese servicio se detiene hasta el mes siguiente o hasta que compre un adicional. Los acuses de recibo de e-CF nunca se niegan, y la emisión de e-CF no tiene cuota (vea el uso justo en la sección 6).</li>
       </ul>
       <p>Si incumple estos términos, podemos suspender o bloquear el negocio, con aviso y un motivo registrado.</p>
 
@@ -128,6 +129,9 @@ function Terms() {
         <li>Usted es el emisor ante la DGII: responde por los datos de cada venta, su certificado digital, sus secuencias y sus declaraciones.</li>
         <li>Abastalia firma cada e-CF en su tienda con su certificado y lo envía directo a la DGII. Su certificado no sale de la PC principal.</li>
         <li>Guardamos una copia de cada e-CF firmado durante 10 años, el plazo que exige la ley.</li>
+        <li id="uso-justo">
+          <strong>e-CF ilimitados, con uso justo.</strong> Todos los planes incluyen los e-CF de las ventas reales de su negocio, sin cupo y sin cobro por documento. El uso justo es de {fairUseEcf.toLocaleString("en-US")} e-CF al mes por negocio, sumando todas sus tiendas. Si su negocio pasa de esa cifra, le contactamos para revisar su plan con usted. No hay cobro automático, y pasar de esa cifra no detiene la emisión de e-CF.
+        </li>
         <li>La información sobre la DGII en este sitio, en el panel y en las respuestas de Talia es orientativa: no sustituye a su contador ni lo que publique la DGII.</li>
       </ul>
 
@@ -176,7 +180,7 @@ function Privacy() {
         {company}, RNC {rnc}, República Dominicana, es responsable de los datos de las cuentas de Abastalia. Contacto: {contact}.
       </p>
       <p>
-        Los datos de los clientes y empleados de su tienda (por ejemplo, quién le debe en el fiado) son del negocio: usted es el responsable y Abastalia los trata por cuenta suya.
+        Los datos de los clientes y empleados de su tienda (por ejemplo, quién le debe en las ventas a crédito) son del negocio: usted es el responsable y Abastalia los trata por cuenta suya.
       </p>
 
       <H2>2. Qué datos guardamos y para qué</H2>
@@ -185,7 +189,7 @@ function Privacy() {
           <strong>Su cuenta:</strong> correo, contraseña (guardada de forma que nadie puede leerla) y, si la activa, la verificación en dos pasos. Para que entre al panel y le escribamos sobre su cuenta.
         </li>
         <li>
-          <strong>Lo que su tienda sube a la nube:</strong> ventas, pagos, devoluciones, turnos y cuadres, compras, movimientos de inventario, cambios de precio, nombres de cajeros y cajas, y clientes del fiado (nombre y saldo). Para mostrarle sus reportes en el panel.
+          <strong>Lo que su tienda sube a la nube:</strong> ventas, pagos, devoluciones, turnos y cuadres, compras, movimientos de inventario, cambios de precio, nombres de cajeros y cajas, y clientes con crédito (nombre y saldo). Para mostrarle sus reportes en el panel.
         </li>
         <li>
           <strong>e-CF:</strong> cada comprobante firmado, su resumen y la respuesta de la DGII, y los e-CF que le envían sus suplidores. Para cumplir con la conservación que exige la ley y para que los busque en el panel.

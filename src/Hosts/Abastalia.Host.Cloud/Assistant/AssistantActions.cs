@@ -67,7 +67,7 @@ public sealed record ActionContext(ClaimsPrincipal User, CloudDbContext Db, ISer
 }
 
 /// <summary>TK-338: a write Talia may propose. The model only gets <see cref="Tool"/> (a closed schema); the server validates, writes the summary from
-/// real data and, after the user's click, checks the target endpoint's policies again and executes. TK-341 adds the real list.</summary>
+/// real data and, after the user's click, checks the target endpoint's policies again and executes. TK-341's are in PanelActions.cs.</summary>
 public abstract class AssistantActionType
 {
     /// <summary>Stable code, stored in <see cref="AssistantAction.Type"/>; the model's tool is <c>propose_&lt;Type&gt;</c>.</summary>
@@ -77,6 +77,9 @@ public abstract class AssistantActionType
     public abstract JsonObject Parameters { get; }
     /// <summary>The authorization policies of the endpoint this action stands for, checked when offered and again on confirm.</summary>
     public abstract IReadOnlyList<string> Policies { get; }
+
+    /// <summary>The isolation of the confirmation's transaction when the endpoint's own code needs one (TK-341: a member's role, SERIALIZABLE).</summary>
+    public virtual System.Data.IsolationLevel? Isolation => null;
 
     public ChatTool Tool => new("propose_" + Type, Description, Parameters);
 
@@ -115,7 +118,11 @@ public abstract class AssistantActionType
 /// <summary>TK-338: the actions Talia can propose. DI registers each (tests add their own); the evaluation harness reads this list.</summary>
 public static class AssistantActionTypes
 {
-    public static readonly IReadOnlyList<AssistantActionType> Builtin = [new Alerts.AlertPreferenceAction()];
+    public static readonly IReadOnlyList<AssistantActionType> Builtin =
+    [
+        new Alerts.AlertPreferenceAction(), new InviteMemberAction(), new CancelInviteAction(), new MemberRoleAction(), new MemberCostsAction(),
+        new CreateStoreAction(), new ConnectionCodeAction(), new ReceivedDecisionAction(),
+    ];
 }
 
 /// <summary>TK-338: proposals (from the ask) and the user's click: <c>POST /api/assistant/actions/{id}/confirm</c> and <c>/cancel</c>.</summary>
@@ -205,7 +212,7 @@ internal static class AssistantActionEndpoints
         {
             result = await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
             {
-                await using var tx = await db.Database.BeginTransactionAsync(ct);
+                await using var tx = action.Isolation is { } level ? await db.Database.BeginTransactionAsync(level, ct) : await db.Database.BeginTransactionAsync(ct);
                 var r = await action.ExecuteAsync(ctx, JsonNode.Parse(row.Arguments)!.AsObject(), ct);
                 if (r.IsFailure) return r;
                 await FinishAsync(db, id, AssistantActionStatus.Done, JsonSerializer.Serialize(r.Value, Json.Options), null, now, ct);

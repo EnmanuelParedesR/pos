@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Abastalia.BuildingBlocks.Endpoints;
 using Abastalia.Host.Cloud.Nodes;
 using Abastalia.Host.Cloud.Persistence;
@@ -74,75 +75,19 @@ internal static class MemberEndpoints
 
         members.MapPost("/invites", async (CreateInviteRequest request, ClaimsPrincipal user, CloudDbContext db, IEmailSender email, IConfiguration config,
             TimeProvider clock, Quotas.IQuota quota, CancellationToken ct) =>
-        {
-            var tenantId = user.GetTenantId();
-            var to = request.Email?.Trim() ?? "";
-            if (to.Length is 0 or > 256 || !System.Net.Mail.MailAddress.TryCreate(to, out _))
-                return EndpointExtensions.Problem(Error.Validation("Members.InvalidEmail", "Escriba un correo válido."));
-            if (request.Role is not { } role || !Enum.IsDefined(role))
-                return EndpointExtensions.Problem(Error.Validation("Members.InvalidRole", "Elija el rol."));
-            var normalized = to.ToUpperInvariant();
-            if (await db.TenantMembers.Where(m => m.TenantId == tenantId).Join(db.Users, m => m.UserId, u => u.Id, (m, u) => u.NormalizedEmail).AnyAsync(e => e == normalized, ct))
-                return EndpointExtensions.Problem(Error.Conflict("Members.AlreadyMember", "Esa persona ya es miembro de este negocio."));
-            // TK-248: each invite is an e-mail to an address the tenant chose.
-            if (await quota.TryConsumeAsync(tenantId, Quotas.Meter.Invites, 1, ct) is { Allowed: false } noInvite) return noInvite.Problem();
-            if (await quota.TryConsumeAsync(tenantId, Quotas.Meter.Emails, 1, ct) is { Allowed: false } noEmail)
-            {
-                await quota.AddAsync(tenantId, Quotas.Meter.Invites, -1, ct);
-                return noEmail.Problem();
-            }
-
-            var now = clock.GetUtcNow().UtcDateTime;
-            var token = Base64Url(RandomNumberGenerator.GetBytes(32));
-            var invite = new TenantInvite
-            {
-                Id = Guid.CreateVersion7(), TenantId = tenantId, Email = to, Role = role, TokenHash = Hash(token),
-                InvitedBy = user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name ?? "", CreatedUtc = now, ExpiresUtc = now + InviteLifetime,
-                LinkShown = !email.Delivers,
-            };
-            db.TenantInvites.Add(invite);
-            await db.SaveChangesAsync(ct);
-
-            // R8 #12: the token goes after "#", which browsers never send to a server, so no request log (panel host, API) keeps it.
-            var link = $"{PanelUrl(config)}/invite#{token}";
-            var tenantName = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.Name).SingleAsync(ct);
-            await email.SendAsync(to, $"Le invitaron al panel de {tenantName} en Abastalia",
-                $"{invite.InvitedBy} le invitó a ver el panel de {tenantName}. Abra este enlace antes de 7 días (sirve una sola vez): {link}", ct);
-            return Results.Ok(new CreatedInviteResponse(ToResponse(invite), invite.LinkShown ? link : null));
-        });
+            await InviteAsync(user, db, email, config, clock, quota, request.Email, request.Role, ct) is var (result, exceeded) && exceeded is not null
+                ? exceeded.Problem()
+                : result.ToHttp());
 
         members.MapDelete("/invites/{id:guid}", async (Guid id, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
-        {
-            var tenantId = user.GetTenantId();
-            var now = clock.GetUtcNow().UtcDateTime;
-            return await db.TenantInvites.Where(i => i.Id == id && i.TenantId == tenantId && i.AcceptedUtc == null && i.RevokedUtc == null)
-                    .ExecuteUpdateAsync(s => s.SetProperty(i => i.RevokedUtc, now), ct) == 0
-                ? EndpointExtensions.Problem(Error.NotFound("Members.InviteNotFound", "No encontramos esa invitación pendiente."))
-                : Results.NoContent();
-        });
+            NoContent(await CancelInviteAsync(db, user.GetTenantId(), id, clock.GetUtcNow().UtcDateTime, ct)));
 
         members.MapPut("/{userId}/role", async (string userId, ChangeRoleRequest request, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
-        {
-            if (request.Role is not { } role || !Enum.IsDefined(role))
-                return EndpointExtensions.Problem(Error.Validation("Members.InvalidRole", "Elija el rol."));
-            var tenantId = user.GetTenantId();
-            if (!await db.TenantMembers.AnyAsync(m => m.TenantId == tenantId && m.UserId == userId, ct)) return MemberNotFound();
-            var changed = await SerializedAsync(db, () => KeepingAnOwner(db, tenantId, userId, keeps: role == MemberRole.Owner)
-                .ExecuteUpdateAsync(s => s.SetProperty(m => m.Role, role), ct), ct);
-            return changed == 0 ? LastOwner() : Results.NoContent();
-        });
+            NoContent(await ChangeRoleAsync(db, user.GetTenantId(), userId, request.Role, ct)));
 
         // TK-201: an Owner lets a ReadOnly member (an accountant) see cost and profit. Owners always see them, so the flag only matters for ReadOnly.
         members.MapPut("/{userId}/costs", async (string userId, ChangeCostsRequest request, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
-        {
-            if (request.CanViewCosts is not { } allowed)
-                return EndpointExtensions.Problem(Error.Validation("Members.InvalidCosts", "Indique si puede ver costos y ganancias."));
-            var tenantId = user.GetTenantId();
-            return await db.TenantMembers.Where(m => m.TenantId == tenantId && m.UserId == userId)
-                    .ExecuteUpdateAsync(s => s.SetProperty(m => m.CanViewCosts, allowed), ct) == 0
-                ? MemberNotFound()
-                : Results.NoContent();
-        });
+            NoContent(await ChangeCostsAsync(db, user.GetTenantId(), userId, request.CanViewCosts, ct)));
 
         members.MapDelete("/{userId}", async (string userId, ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
         {
@@ -235,7 +180,81 @@ internal static class MemberEndpoints
         }).RequireAuthorization();
     }
 
-    private static IQueryable<TenantInvite> PendingInvites(CloudDbContext db, Guid tenantId, DateTime now) =>
+    /// <summary>POST /api/members/invites and Talia's invite (TK-341): same checks, quotas and e-mail. <c>Exceeded</c> is set when a quota refused it.</summary>
+    internal static async Task<(Result<CreatedInviteResponse> Result, Quotas.QuotaResult? Exceeded)> InviteAsync(ClaimsPrincipal user, CloudDbContext db,
+        IEmailSender email, IConfiguration config, TimeProvider clock, Quotas.IQuota quota, string? address, MemberRole? requestedRole, CancellationToken ct)
+    {
+        var tenantId = user.GetTenantId();
+        var to = address?.Trim() ?? "";
+        if (InviteError(to, requestedRole) is { } invalid) return (invalid, null);
+        var role = requestedRole!.Value;
+        if (await IsMemberAsync(db, tenantId, to, ct)) return (AlreadyMemberError, null);
+        // TK-248: each invite is an e-mail to an address the tenant chose.
+        if (await quota.TryConsumeAsync(tenantId, Quotas.Meter.Invites, 1, ct) is { Allowed: false } noInvite) return (Quotas.Quota.Refusal(noInvite), noInvite);
+        if (await quota.TryConsumeAsync(tenantId, Quotas.Meter.Emails, 1, ct) is { Allowed: false } noEmail)
+        {
+            await quota.AddAsync(tenantId, Quotas.Meter.Invites, -1, ct);
+            return (Quotas.Quota.Refusal(noEmail), noEmail);
+        }
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        var token = Base64Url(RandomNumberGenerator.GetBytes(32));
+        var invite = new TenantInvite
+        {
+            Id = Guid.CreateVersion7(), TenantId = tenantId, Email = to, Role = role, TokenHash = Hash(token),
+            InvitedBy = user.FindFirstValue(ClaimTypes.Email) ?? user.Identity?.Name ?? "", CreatedUtc = now, ExpiresUtc = now + InviteLifetime,
+            LinkShown = !email.Delivers,
+        };
+        db.TenantInvites.Add(invite);
+        await db.SaveChangesAsync(ct);
+
+        // R8 #12: the token goes after "#", which browsers never send to a server, so no request log (panel host, API) keeps it.
+        var link = $"{PanelUrl(config)}/invite#{token}";
+        var tenantName = await db.Tenants.Where(t => t.Id == tenantId).Select(t => t.Name).SingleAsync(ct);
+        await email.SendAsync(to, $"Le invitaron al panel de {tenantName} en Abastalia",
+            $"{invite.InvitedBy} le invitó a ver el panel de {tenantName}. Abra este enlace antes de 7 días (sirve una sola vez): {link}", ct);
+        return (new CreatedInviteResponse(ToResponse(invite), invite.LinkShown ? link : null), null);
+    }
+
+    internal static Error? InviteError(string to, MemberRole? role) =>
+        to.Length is 0 or > 256 || !System.Net.Mail.MailAddress.TryCreate(to, out _) ? Error.Validation("Members.InvalidEmail", "Escriba un correo válido.")
+        : role is not { } r || !Enum.IsDefined(r) ? InvalidRoleError
+        : null;
+
+    internal static readonly Error AlreadyMemberError = Error.Conflict("Members.AlreadyMember", "Esa persona ya es miembro de este negocio.");
+
+    internal static Task<bool> IsMemberAsync(CloudDbContext db, Guid tenantId, string email, CancellationToken ct)
+    {
+        var normalized = email.ToUpperInvariant();
+        return db.TenantMembers.Where(m => m.TenantId == tenantId).Join(db.Users, m => m.UserId, u => u.Id, (m, u) => u.NormalizedEmail).AnyAsync(e => e == normalized, ct);
+    }
+
+    internal static async Task<Result> CancelInviteAsync(CloudDbContext db, Guid tenantId, Guid id, DateTime now, CancellationToken ct) =>
+        await db.TenantInvites.Where(i => i.Id == id && i.TenantId == tenantId && i.AcceptedUtc == null && i.RevokedUtc == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(i => i.RevokedUtc, now), ct) == 0
+            ? Error.NotFound("Members.InviteNotFound", "No encontramos esa invitación pendiente.")
+            : Result.Success();
+
+    /// <remarks>Inside a transaction (Talia's confirmation) it must be SERIALIZABLE (<see cref="SerializedAsync"/>).</remarks>
+    internal static async Task<Result> ChangeRoleAsync(CloudDbContext db, Guid tenantId, string userId, MemberRole? requestedRole, CancellationToken ct)
+    {
+        if (requestedRole is not { } role || !Enum.IsDefined(role)) return InvalidRoleError;
+        if (!await db.TenantMembers.AnyAsync(m => m.TenantId == tenantId && m.UserId == userId, ct)) return MemberNotFoundError;
+        var changed = await SerializedAsync(db, () => KeepingAnOwner(db, tenantId, userId, keeps: role == MemberRole.Owner)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.Role, role), ct), ct);
+        return changed == 0 ? LastOwnerError : Result.Success();
+    }
+
+    internal static async Task<Result> ChangeCostsAsync(CloudDbContext db, Guid tenantId, string userId, bool? canViewCosts, CancellationToken ct)
+    {
+        if (canViewCosts is not { } allowed) return Error.Validation("Members.InvalidCosts", "Indique si puede ver costos y ganancias.");
+        return await db.TenantMembers.Where(m => m.TenantId == tenantId && m.UserId == userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.CanViewCosts, allowed), ct) == 0
+            ? MemberNotFoundError
+            : Result.Success();
+    }
+
+    internal static IQueryable<TenantInvite> PendingInvites(CloudDbContext db, Guid tenantId, DateTime now) =>
         db.TenantInvites.AsNoTracking().Where(i => i.TenantId == tenantId && i.AcceptedUtc == null && i.RevokedUtc == null && i.ExpiresUtc > now);
 
     private static async Task<TenantInvite?> FindAsync(CloudDbContext db, string? token, TimeProvider clock, CancellationToken ct, bool tracked = false)
@@ -258,9 +277,14 @@ internal static class MemberEndpoints
     /// <summary>The "another Owner exists" check and the write in one SERIALIZABLE transaction. Under READ_COMMITTED_SNAPSHOT (Azure SQL's default)
     /// the check read a snapshot, so two Owners demoting or removing each other at once could both pass and leave none. Serializable reads lock
     /// what they read: the second request waits and then sees no other Owner, or SQL Server picks it as a deadlock victim and the execution strategy
-    /// runs it again, with the same result. Sqlite takes the write lock when the transaction begins (BEGIN IMMEDIATE), so writers queue.</summary>
+    /// runs it again, with the same result. Sqlite takes the write lock when the transaction begins (BEGIN IMMEDIATE), so writers queue.
+    /// TK-341: inside Talia's confirmation, which opens its own transaction, that one must be SERIALIZABLE already.</summary>
     private static Task<int> SerializedAsync(CloudDbContext db, Func<Task<int>> write, CancellationToken ct) =>
-        db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        db.Database.CurrentTransaction is { } current
+            ? current.GetDbTransaction().IsolationLevel == System.Data.IsolationLevel.Serializable
+                ? write()
+                : throw new InvalidOperationException("A member's role changes only in a SERIALIZABLE transaction.")
+            : db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
             await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct);
             var changed = await write();
@@ -281,8 +305,13 @@ internal static class MemberEndpoints
     private static IResult InvalidInvite() =>
         EndpointExtensions.Problem(Error.NotFound("Invites.Invalid", "La invitación no es válida, ya se usó o venció. Pida una nueva al dueño."));
 
-    private static IResult MemberNotFound() => EndpointExtensions.Problem(Error.NotFound("Members.NotFound", "No encontramos ese miembro."));
+    private static readonly Error InvalidRoleError = Error.Validation("Members.InvalidRole", "Elija el rol.");
+    internal static readonly Error MemberNotFoundError =Error.NotFound("Members.NotFound", "No encontramos ese miembro.");
+    private static readonly Error LastOwnerError = Error.Conflict("Members.LastOwner", "El negocio necesita al menos un dueño. Nombre a otro dueño primero.");
 
-    private static IResult LastOwner() =>
-        EndpointExtensions.Problem(Error.Conflict("Members.LastOwner", "El negocio necesita al menos un dueño. Nombre a otro dueño primero."));
+    private static IResult MemberNotFound() => EndpointExtensions.Problem(MemberNotFoundError);
+
+    private static IResult LastOwner() => EndpointExtensions.Problem(LastOwnerError);
+
+    private static IResult NoContent(Result r) => r.IsSuccess ? Results.NoContent() : EndpointExtensions.Problem(r.Error!);
 }

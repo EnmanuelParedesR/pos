@@ -48,3 +48,15 @@ export function sitePrice(price: CatalogPrice): SitePrice {
   const dollars = usd.toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(usd) ? 0 : 2, maximumFractionDigits: 2 });
   return { label: `RD$${(Math.round(dop / step) * step).toLocaleString("en-US")}${per}`, charged: `Se cobra US$${dollars} con tarjeta. Precio final.` };
 }
+
+/** TK-316: e-CF a month per business before we call the owner (fair use in /terminos#uso-justo, docs/cuotas.md). Counted, never charged. */
+export const fairUseEcf = 50_000;
+/** TK-316: what systems that charge per invoice ask in RD, in RD$ (rounded public rates, October 2026; no brand). Confirm before changing the copy. */
+export const perInvoiceDop = { low: 1, high: 2 };
+export const maxCalculatorInvoices = 1_000_000;
+
+/** TK-316: the calculator's month as typed: a whole number from 0 to `maxCalculatorInvoices` (empty, negative or not a number = 0). */
+export function invoiceCost(typed: string) {
+  const n = Math.min(maxCalculatorInvoices, Math.max(0, Math.floor(Number(typed) || 0)));
+  return { invoices: n, low: n * perInvoiceDop.low, high: n * perInvoiceDop.high };
+}

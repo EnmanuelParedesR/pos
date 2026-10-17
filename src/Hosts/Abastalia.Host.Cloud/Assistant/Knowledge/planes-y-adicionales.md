@@ -10,7 +10,7 @@ sources: [src/Cloud/panel/src/pages/site/SitePages.tsx, src/Hosts/Abastalia.Host
 Abastalia tiene tres planes que cambian en tamaño, no en funciones:
 - Esencial: para empezar con un solo punto de cobro. Solo la PC principal, 2 cajeros, 2 usuarios del panel, 100 preguntas al asistente al mes.
 - Estándar: la PC principal y una caja más. 4 cajeros, 3 usuarios del panel, 300 preguntas al mes.
-- Pro: para la tienda con fila. PC principal + 3 cajas, 8 cajeros, 5 usuarios del panel, 600 preguntas al mes y soporte más rápido.
+- Pro: para la tienda con fila. PC principal + 3 cajas, 8 cajeros, 5 usuarios del panel, 600 preguntas al mes y soporte más rápido (primera respuesta en 2 horas laborables).
 Todos incluyen balanza, carnicería, mayoreo, e-CF sin cupo, inventario, cuadre ciego y cierre Z, clientes y cuentas por cobrar, reportes 606/607/608, permisos, respaldo en la nube y 20 facturas de suplidor leídas con IA al mes. Precios en /precios.
 
 ## ¿Qué plan me conviene?
