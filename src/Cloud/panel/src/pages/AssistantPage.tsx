@@ -3,9 +3,11 @@ import { Link, useLocation, useNavigate } from "react-router";
 import { api, ApiError } from "../api";
 import { Icon, Notice, PageHead, Talia } from "../ui";
 import assistantRoutes from "./assistantRoutes.json";
+import { ProposalCard, type Proposal } from "./ProposalCard";
 
-/** TK-339: `navigation` is a route Talia suggests opening; the server only sends one of assistantRoutes.json. */
-interface Turn { role: "user" | "assistant"; content: string; navigation?: string | null }
+/** TK-339: `navigation` is a route Talia suggests opening; the server only sends one of assistantRoutes.json.
+ *  TK-340: `proposal` is the confirmation card's; like `navigation`, it never goes back to the server in the history. */
+interface Turn { role: "user" | "assistant"; content: string; navigation?: string | null; proposal?: Proposal | null }
 
 /** The button's label for a route Talia suggested; anything outside the shared list gets no button. */
 export const routeLabel = (route?: string | null) => assistantRoutes.find((r) => r.route === route)?.label;
@@ -67,11 +69,11 @@ export function AssistantChat({ pending, inputId = "question", inPopup = false, 
     setQuestion("");
     setHistory((h) => [...h, { role: "user", content: q }]);
     try {
-      const { answer, navigation } = await api<{ answer: string; navigation?: string | null }>("/api/assistant/ask", "POST", {
+      const { answer, navigation, proposal } = await api<{ answer: string; navigation?: string | null; proposal?: Proposal | null }>("/api/assistant/ask", "POST", {
         question: q,
         history: history.map(({ role, content }) => ({ role, content })),
       });
-      setHistory((h) => [...h, { role: "assistant", content: answer, navigation }]);
+      setHistory((h) => [...h, { role: "assistant", content: answer, navigation, proposal }]);
     } catch (err) {
       setError(err as ApiError);
       setQuestion(q);
@@ -129,6 +131,7 @@ export function AssistantChat({ pending, inputId = "question", inPopup = false, 
                   Ir a {label} <Icon name="chevron-right" size={18} />
                 </Link>
               )}
+              {t.role === "assistant" && t.proposal && <ProposalCard proposal={t.proposal} />}
             </Fragment>
           );
         })}
