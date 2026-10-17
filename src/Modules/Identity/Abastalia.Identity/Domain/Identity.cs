@@ -17,6 +17,8 @@ internal sealed class Role
     public static readonly Guid AccountantId = new("0199e000-0000-7000-8000-000000000006");
 
     public Guid Id { get; set; }
+    /// <summary>TK-319: a property, not a shadow one, because EF seeds skip shadow properties; set on save.</summary>
+    public Guid TenantId { get; set; }
     public string Name { get; set; } = "";
     public List<string> Permissions { get; set; } = [];
 

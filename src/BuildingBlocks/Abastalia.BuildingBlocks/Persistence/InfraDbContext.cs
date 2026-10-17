@@ -47,6 +47,8 @@ public sealed class AuditRecord
 public sealed class AuditHead
 {
     public int Id { get; set; }
+    /// <summary>TK-319: a property, not a shadow one, because EF seeds skip shadow properties; set on save.</summary>
+    public Guid TenantId { get; set; }
     public long Sequence { get; set; }
     public byte[] Hash { get; set; } = [];
 

@@ -107,7 +107,8 @@ internal sealed class EcfVoid
 }
 
 /// <summary>A row of the DGII taxpayer registry (DGII_RNC.TXT), to fill the buyer's name from an RNC or cédula.</summary>
-internal sealed class Taxpayer
+/// <remarks>TK-319: public data, the same for every business: one copy in the Lite database.</remarks>
+internal sealed class Taxpayer : Abastalia.BuildingBlocks.Persistence.ISharedAcrossTenants
 {
     public string Rnc { get; set; } = "";
     public string Name { get; set; } = "";

@@ -47,6 +47,9 @@ namespace Abastalia.Customers.Persistence.Migrations
                     b.Property<Guid>("ReferenceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -103,6 +106,9 @@ namespace Abastalia.Customers.Persistence.Migrations
                         .HasMaxLength(11)
                         .HasColumnType("nvarchar(11)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("Version")
                         .HasColumnType("int");
 
@@ -110,7 +116,7 @@ namespace Abastalia.Customers.Persistence.Migrations
 
                     b.HasIndex("Name");
 
-                    b.HasIndex("TaxId")
+                    b.HasIndex("TenantId", "TaxId")
                         .IsUnique()
                         .HasFilter("[TaxId] IS NOT NULL");
 
@@ -155,6 +161,9 @@ namespace Abastalia.Customers.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("UserId")
                         .HasColumnType("uniqueidentifier");
 
@@ -183,6 +192,9 @@ namespace Abastalia.Customers.Persistence.Migrations
                     b.Property<decimal>("Amount")
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.HasKey("CustomerPaymentId", "ChargeId");
 
@@ -220,6 +232,9 @@ namespace Abastalia.Customers.Persistence.Migrations
                         .HasColumnType("decimal(19,4)");
 
                     b.Property<Guid>("SaleId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("TenantId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("VoidedUtc")

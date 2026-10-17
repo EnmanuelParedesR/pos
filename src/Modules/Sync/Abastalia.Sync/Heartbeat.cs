@@ -95,9 +95,9 @@ internal static class PullLicense
         if (!response.IsSuccessStatusCode) return false;
         var answer = await response.Content.ReadFromJsonAsync<Answer>(ct);
         // R12 #3: before installing, so the license is judged by the corrected clock.
-        if (answer?.Time is { Length: > 0 } time) license.CorrectTime(time, connection.TenantId, nonce);
+        if (answer?.Time is { Length: > 0 } time) license.CorrectTime(time, connection.CloudTenantId, nonce);
         // TK-276: a business that came recommended. R12 (security B3): only the cloud-signed grant counts, never a bare number.
-        if (answer?.Trial is { Length: > 0 } trial) await license.ExtendTrialAsync(trial, connection.TenantId, ct);
+        if (answer?.Trial is { Length: > 0 } trial) await license.ExtendTrialAsync(trial, connection.CloudTenantId, ct);
         return answer?.License is { Length: > 0 } jws && await license.InstallFromCloudAsync(jws, ct);
     }
 
