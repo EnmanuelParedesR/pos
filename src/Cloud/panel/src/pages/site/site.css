@@ -288,6 +288,19 @@
   .site .table-wrap--fit td:last-child { white-space: nowrap; font-weight: 600; }
 }
 
+/* TK-314: requirement and device tables; on a phone each row is a card (labels from data-label), no sideways scroll. */
+.site .reqs { margin-top: 24px; }
+.site .reqs caption { caption-side: top; text-align: left; font-size: 20px; font-weight: 700; padding: 0 0 8px; }
+.site .reqs th[scope="row"] { width: 22%; }
+@media (max-width: 719px) {
+  .site .reqs table { min-width: 0; }
+  .site .reqs thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .site .reqs tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 16px; border-bottom: 1px solid var(--line); padding: 8px 0; }
+  .site .reqs th[scope="row"], .site .reqs td[colspan] { grid-column: 1 / -1; }
+  .site .reqs th[scope="row"], .site .reqs td { display: block; width: auto; border: 0; padding: 4px 0; background: none; }
+  .site .reqs td::before { content: attr(data-label); display: block; font-size: 13px; font-weight: 600; color: var(--muted); }
+}
+
 /* TK-294: carousel of cards (native scroll-snap). One card and the edge of the next on a phone, two from 560px, three from 960px. */
 .site .carousel__head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; margin-bottom: 20px; }
 .site .carousel__head h2 { margin: 0 0 4px; }

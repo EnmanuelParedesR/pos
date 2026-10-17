@@ -101,6 +101,18 @@ it("TK-242: /descargar shows both roles and the installer placeholder until it i
   expect(screen.getByRole("link", { name: "Descargar Abastalia" }).getAttribute("href")).toBe("/descargar");
 });
 
+it("TK-314: /descargar lists minimum and recommended requirements per PC, the network, the devices and the certificate", () => {
+  renderAt("/descargar");
+  const main = screen.getByRole("table", { name: "PC principal" });
+  expect(within(main).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Componente", "Mínimo", "Recomendado"]);
+  expect(within(main).getByRole("rowheader", { name: "Memoria" }).parentElement?.textContent).toContain("8 GB");
+  expect(within(main).getByText(/versión 1809/)).toBeTruthy(); // the installer's MinVersion 10.0.17763
+  expect(screen.getByRole("table", { name: "Cada caja" })).toBeTruthy();
+  expect(screen.getByText("Privada")).toBeTruthy(); // TK-292: registers do not reach a main PC on a Public network
+  expect(screen.getByRole("rowheader", { name: "Balanza" }).parentElement?.textContent).toContain("Mettler Toledo 8217");
+  expect(screen.getByRole("link", { name: "Cómo certificarse con Abastalia" }).getAttribute("href")).toBe("/certificacion");
+});
+
 it("TK-228: an unknown address shows the site's 404", () => {
   renderAt("/no-existe");
   expect(screen.getByRole("heading", { name: "No encontramos esa página." })).toBeTruthy();
