@@ -67,7 +67,7 @@ internal sealed class CloudBackupWorker(IServiceScopeFactory scopes, IConfigurat
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         if (!config.GetValue("Sync:Enabled", true)) return;
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(config.GetValue("Backup:CloudCheckMinutes", 15)), clock);
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(config.GetValue("Backup:CloudCheckMinutes", 15d)), clock); // a fraction in a test (TK-309)
         var retry = TimeSpan.FromMinutes(config.GetValue("Backup:CloudRetryMinutes", 60));
         (string? File, DateTimeOffset Until) wait = (null, DateTimeOffset.MinValue);
         while (await timer.WaitForNextTickAsync(stoppingToken))
