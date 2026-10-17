@@ -8,8 +8,10 @@ Venta, caja y cuadre ciego; inventario, compras y 606/607/608; clientes y fiado;
 ## 2. V1 con código pendiente (los hace el equipo ahora)
 | Ticket | Qué falta |
 |---|---|
+| TK-291 | Instalador: telemetría de SQL Express apagada y descarga con tiempo límite |
+| TK-292 | Caja en una segunda PC y actualización por canal |
+| TK-293 a TK-301 | Pedidos del dueño del 17/10: precios en el sitio, comparación deslizable, ejemplo del login, video, crear cuenta, 2FA, menú móvil, Talia en ventana y afinada |
 | TK-160 | Probar el instalador y el servicio en la VM de Azure |
-| TK-288 | Logo del negocio en el cierre Z y el estado de cuenta |
 
 ## 3. V1 bloqueado por terceros o por el dueño (el código está; falta validar)
 | Ticket | Bloqueo |
