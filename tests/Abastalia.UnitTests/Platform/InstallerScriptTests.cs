@@ -48,6 +48,26 @@ public sealed class InstallerScriptTests
         Code.Split("procedure CurStepChanged")[1].ShouldContain("SqlTelemetryOff;");
     }
 
+    [Fact]
+    public void TK310_a_cut_off_sql_install_is_removed_and_installed_again()
+    {
+        // A cut-off setup.exe leaves ABASTALIA in Instance Names: the retry skipped SQL and failed on the service. Ready = the engine configured.
+        var ready = Code.Split("function AbastaliaInstanceReady")[1].Split("\nend;")[0];
+        ready.ShouldContain("'SQL_Engine_Core_Inst', State) and (State = 1)");
+        Code.ShouldContain("if IsServerRole and not AbastaliaInstanceReady then begin DownloadPage.Add('{#SqlExpressUrl}'");
+        // Removed first: by id (cut off before its configuration it has no name yet), then by name; never with the store's database in it.
+        var sql = Code.Split("procedure SqlNotInstalled")[1].Split("function PrepareToInstall")[0];
+        var byId = sql.IndexOf("/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCEID=ABASTALIA", StringComparison.Ordinal);
+        var byName = sql.IndexOf("/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=ABASTALIA", StringComparison.Ordinal);
+        var install = sql.IndexOf("/ACTION=Install /FEATURES=SQLEngine", StringComparison.Ordinal);
+        byId.ShouldBeGreaterThan(0);
+        byName.ShouldBeGreaterThan(byId);
+        install.ShouldBeGreaterThan(byName);
+        sql.ShouldContain("and HalfInstanceHasStoreData then");
+        // The VM test lowers the time limit at build time only: a release keeps 60 minutes.
+        File.ReadAllText(Repo(@"deploy\installer\abastalia.iss")).ReplaceLineEndings("\n").ShouldContain("#ifndef SqlSetupMinutes\n  #define SqlSetupMinutes 60\n#endif");
+    }
+
     [Fact, Trait("Category", "Windows")]
     public void TK305_remove_data_deletes_the_database_named_in_the_installed_connection_string()
     {

@@ -20,6 +20,10 @@
 ; Microsoft links. The SQL Server 2025 Express SSEI (17.0) was checked on a clean VM (TK-160, docs/prueba-vm-2026-10-17.md); WebView2 was already there.
 #define WebView2Url "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
 #define SqlExpressUrl "https://go.microsoft.com/fwlink/p/?linkid=2216019"
+; TK-310: SQL Server setup's time limit. Only the VM test lowers it (ISCC /DSqlSetupMinutes=3) to cut an install off; releases keep 60.
+#ifndef SqlSetupMinutes
+  #define SqlSetupMinutes 60
+#endif
 
 [Setup]
 AppId={{6E4C2B1A-5F0B-4C55-9C1E-7A0D2B9F4E21}
@@ -113,6 +117,29 @@ var
   Instance: String;
 begin
   Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL', 'ABASTALIA', Instance);
+end;
+
+{ TK-310 (VM test): a SQL Server setup cut off by its time limit (or a power cut) leaves ABASTALIA in Instance Names with its files but
+  no service, and ConfigurationState SQL_Engine_Core_Inst = 0. Setup writes 1 there only when the engine is configured. Such an instance
+  is not ready: the setup removes it and installs SQL Express again, instead of skipping SQL and failing on the service. }
+function AbastaliaInstanceReady: Boolean;
+var
+  Id: String;
+  State: Cardinal;
+begin
+  Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL', 'ABASTALIA', Id) and
+    RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\' + Id + '\ConfigurationState', 'SQL_Engine_Core_Inst', State) and (State = 1);
+end;
+
+{ TK-310: a store's database in the half-installed instance (its default folder; the setup always names it Abastalia). Then the instance
+  is never removed by the setup: that is the technician's call. }
+function HalfInstanceHasStoreData: Boolean;
+var
+  Id, Dir: String;
+begin
+  Result := RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\Instance Names\SQL', 'ABASTALIA', Id) and
+    RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\Microsoft SQL Server\' + Id + '\Setup', 'SqlProgramDir', Dir) and
+    FileExists(AddBackslash(Dir) + Id + '\MSSQL\DATA\Abastalia.mdf');
 end;
 
 { TK-305: SQL Server's usage and error reports off too, not only its telemetry service: CustomerFeedback and EnableErrorReporting = 0 under
@@ -271,10 +298,17 @@ begin
     SuppressibleMsgBox('Windows tiene la red de esta PC como Pública, así que las cajas de otras PCs no se van a poder conectar a ella.' + #13#10 + #13#10 +
       'Si la tienda tiene más de una caja, cambie la red a Privada: Configuración de Windows → Red e Internet → Ethernet o Wi-Fi (su red) → ' +
       'Tipo de perfil de red → Red privada. Hágalo solo en la red de la tienda.', mbInformation, MB_OK, IDOK);
+  if IsServerRole and HasAbastaliaInstance and not AbastaliaInstanceReady and HalfInstanceHasStoreData then
+  begin
+    SuppressibleMsgBox('SQL Server Express (instancia ABASTALIA) está dañado y tiene la base de datos de la tienda, así que el instalador no lo toca.' + #13#10 +
+      'Llame al técnico.', mbCriticalError, MB_OK, IDOK);
+    Result := False;
+    exit;
+  end;
   DownloadPage.Clear;
   Missing := 0;
   if not HasWebView2 then begin DownloadPage.Add('{#WebView2Url}', 'MicrosoftEdgeWebview2Setup.exe', ''); Missing := Missing + 1; end;
-  if IsServerRole and not HasAbastaliaInstance then begin DownloadPage.Add('{#SqlExpressUrl}', 'SQLServerExpressSetup.exe', ''); Missing := Missing + 1; end;
+  if IsServerRole and not AbastaliaInstanceReady then begin DownloadPage.Add('{#SqlExpressUrl}', 'SQLServerExpressSetup.exe', ''); Missing := Missing + 1; end;
   if Missing = 0 then exit;
   DownloadPage.Show;
   try
@@ -316,12 +350,34 @@ begin
       Result := False;
       exit;
     end;
+    { TK-310: a half-installed ABASTALIA (an earlier setup cut off) is removed first, with the same setup.exe. Cut off before its
+      configuration (as on the VM) it has no instance name yet, only its id: /INSTANCENAME says it does not exist and /INSTANCEID
+      removes it. Cut off later it has its name. }
+    if HasAbastaliaInstance then
+    begin
+      WizardForm.StatusLabel.Caption := 'Quitando una instalación de SQL Server Express que quedó a medias...';
+      Log('SQL Server: ABASTALIA is half-installed, uninstalling it');
+      if not ExecWithTimeout(Media + '\setup\setup.exe', '/Q /ACTION=Uninstall /FEATURES=SQLEngine /INSTANCEID=ABASTALIA /ENU', {#SqlSetupMinutes}, Code) then Code := -1;
+      Log('SQL Server uninstall by id: code ' + IntToStr(Code));
+      if HasAbastaliaInstance then
+      begin
+        if not ExecWithTimeout(Media + '\setup\setup.exe', '/Q /ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=ABASTALIA /ENU', {#SqlSetupMinutes}, Code) then Code := -1;
+        Log('SQL Server uninstall by name: code ' + IntToStr(Code));
+      end;
+      if HasAbastaliaInstance then
+      begin
+        SuppressibleMsgBox('Una instalación anterior de SQL Server Express quedó a medias y no se pudo quitar (código ' + IntToStr(Code) + ').' + #13#10 +
+          'Reinicie la PC y vuelva a abrir el instalador de Abastalia; si se repite, llame al técnico.', mbCriticalError, MB_OK, IDOK);
+        Result := False;
+        exit;
+      end;
+    end;
     { Express only, its own instance ABASTALIA, listening on this PC only (no TCP, no named pipes), Windows logins only,
       sysadmin = the PC's administrators (R11 C1: never the current user, who would become SYSTEM through SQL Server),
       no telemetry service (TK-291: SQLTELEMETRY$ABASTALIA disabled). TK-305: with a time limit too (a slow PC takes 10-20 minutes). }
     if not ExecWithTimeout(Media + '\setup\setup.exe',
       '/Q /ACTION=Install /FEATURES=SQLEngine /IACCEPTSQLSERVERLICENSETERMS /ENU /UPDATEENABLED=0 /SQLSVCSTARTUPTYPE=Automatic ' +
-      '/INSTANCENAME=ABASTALIA /TCPENABLED=0 /NPENABLED=0 /SQLTELSVCSTARTUPTYPE=Disabled /ADDCURRENTUSERASSQLADMIN=False /SQLSYSADMINACCOUNTS="' + AdministratorsGroup + '"', 60, Code)
+      '/INSTANCENAME=ABASTALIA /TCPENABLED=0 /NPENABLED=0 /SQLTELSVCSTARTUPTYPE=Disabled /ADDCURRENTUSERASSQLADMIN=False /SQLSYSADMINACCOUNTS="' + AdministratorsGroup + '"', {#SqlSetupMinutes}, Code)
       or ((Code <> 0) and (Code <> 3010)) then
     begin
       { TK-292 (VM test): with a restart pending (Windows Update, another uninstall) SQL Server setup refuses to start: facility 1214,
@@ -330,7 +386,7 @@ begin
         SuppressibleMsgBox('Windows pide reiniciar la PC antes de instalar SQL Server Express.' + #13#10 +
           'Reinicie la PC y vuelva a abrir el instalador de Abastalia.', mbCriticalError, MB_OK, IDOK)
       else if Code = 1460 then
-        SuppressibleMsgBox('SQL Server Express no se instaló: la instalación no terminó en 60 minutos.' + #13#10 +
+        SuppressibleMsgBox('SQL Server Express no se instaló: la instalación no terminó en {#SqlSetupMinutes} minutos.' + #13#10 +
           'Reinicie la PC y vuelva a abrir el instalador de Abastalia; si se repite, llame al técnico.', mbCriticalError, MB_OK, IDOK)
       else
         SqlNotInstalled(IntToStr(Code));
