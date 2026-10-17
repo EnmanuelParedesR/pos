@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { site } from "./config";
 import { usePlanPrices } from "./livePrices";
 import { useReferralLink } from "../../referral";
-import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, Icon, IconTiles, ProductArt, Render, Section, Steps, Tbd, Trial } from "./SiteParts";
+import { BusinessArt, BusinessCards, Contact, CtaBand, EcfFlow, Faq, Hero, HowItWorks, Icon, IconTiles, LoopVideo, ProductArt, Section, Steps, Tbd, Trial } from "./SiteParts";
 
 /** The public site (TK-197, TK-198, TK-226, TK-228; TK-245: less text, more product). `title` and `description` go in <head> (SiteLayout on the client, the prerender at build). */
 export interface SitePage {
@@ -53,6 +53,21 @@ function Home() {
           ]}
         />
       </Section>
+      <Section className="scene">
+        <div className="scene__grid">
+          <figure className="scene__media">
+            <LoopVideo name="pesando" poster="/media/pesando-portada.webp" label="Un comerciante pesa un producto en su tienda" />
+          </figure>
+          <div className="scene__text">
+            <h2>Hecho para el mostrador</h2>
+            <ul className="checks">
+              <li>Por libra y por unidad en la misma venta.</li>
+              <li>El fiado y el cuadre, sin cuaderno.</li>
+              <li>El e-CF sale solo, con o sin internet.</li>
+            </ul>
+          </div>
+        </div>
+      </Section>
       <Section>
         <h2>Se adapta a su negocio</h2>
         <BusinessCards />
@@ -64,15 +79,11 @@ function Home() {
       </EcfFlow>
       <Section>
         <h2>Empiece hoy, en 3 pasos</h2>
-        <div className="counter-render">
-          <Render name="counter" />
-        </div>
-        <Steps
-          round
+        <HowItWorks
           items={[
-            ["Descargue Abastalia", <>En la PC de la tienda. <Link to="/descargar">Descargar</Link></>],
-            ["Cargue sus productos", "O empiece con los de ejemplo."],
-            ["Venda", "Y vea el día desde el celular."],
+            { title: "Instale Abastalia", text: <>En la PC de la tienda: su nombre, su negocio y listo. <Link to="/descargar">Descargar</Link></>, time: "10 minutos", shot: "paso-1-instalar", alt: "Pantalla de Abastalia para configurar la PC principal de una tienda nueva" },
+            { title: "Cargue sus productos", text: "Con precio por libra o por unidad. O empiece con los de ejemplo.", time: "El mismo día", shot: "paso-2-productos", alt: "Lista de productos de Abastalia con precio, ITBIS y existencia" },
+            { title: "Venda", text: "Escanee o pese, cobre con F12 y vea el día desde el celular.", time: "Desde la primera venta", shot: "paso-3-vender", alt: "Pantalla de venta de Abastalia con tres productos, el peso de la balanza y el total" },
           ]}
         />
       </Section>
@@ -99,7 +110,7 @@ function Butcher() {
       <Faq
         items={[
           ["¿Qué pasa si se va el internet?", "Las cajas siguen vendiendo contra la PC principal, que firma cada e-CF. Al volver la conexión los envía a la DGII, que da 72 horas."],
-          ["¿Funciona con mi balanza?", "Lee las etiquetas EAN-13 con peso o precio de las balanzas etiquetadoras. La conexión directa de la balanza a la caja está en desarrollo; mientras tanto, el peso se puede escribir. Antes de instalar revisamos su modelo."],
+          ["¿Funciona con mi balanza?", "Se conecta por puerto COM (o USB) con balanzas compatibles con CAS, Mettler Toledo y A&D, y lee las etiquetas EAN-13 con peso o precio de las balanzas etiquetadoras. Si no hay balanza, el peso se escribe. Antes de instalar revisamos su modelo."],
           ["¿Puedo vender con tres decimales?", "Sí. Las libras se guardan con tres decimales y el total se redondea al centavo."],
           [
             "¿Sirve para el e-CF?",
