@@ -33,7 +33,8 @@ public static class FiscalModule
         services.AddScoped<IFiscalReports, FiscalReports>();
         services.AddScoped<ITaxpayerRegistry, Features.TaxpayerNames>();
         var signer = config["Fiscal:Signer"] ?? "Simulated";
-        if (signer is not ("Simulated" or "Certificate")) throw new InvalidOperationException($"Unknown Fiscal:Signer '{signer}': use Simulated or Certificate.");
+        // TK-323: Device = the Lite host. Each business's own device signs (DeviceSigned); the server holds no certificate.
+        if (signer is not ("Simulated" or "Certificate" or "Device")) throw new InvalidOperationException($"Unknown Fiscal:Signer '{signer}': use Simulated, Certificate or Device.");
         var configured = (config["Fiscal:Provider"] ?? "Simulated") switch
         {
             "Simulated" => FiscalEnvironment.Simulated,
@@ -45,6 +46,8 @@ public static class FiscalModule
         // TK-238: the environment chosen on screen (FiscalMode) wins over these settings, without a restart.
         services.AddSingleton<FiscalMode>();
         services.AddScoped<FiscalModeChecks>();
+        services.AddScoped<DeviceSigning>();
+        if (signer == "Device") services.AddHostedService<DeviceSignedArchiveWorker>();
         services.AddHostedService<FiscalModeLoader>(); // before the workers: they read it
         services.AddSingleton(sp => new CertificateEcfSigner(sp.GetRequiredService<EcfCertificate>()));
         services.AddSingleton<IEcfSigner>(sp => new ModeEcfSigner(sp.GetRequiredService<FiscalMode>(),
@@ -135,7 +138,7 @@ internal sealed class FiscalConfiguration : IEntityTypeConfiguration<NcfSequence
         b.HasIndex(d => d.ArchivedUtc);
         b.Property(d => d.Type).HasConversion<int>();
         // R8 #2: the queue and a void never both win; the loser of a race fails instead of overwriting the other's status.
-        b.Property(d => d.Status).HasConversion<string>().HasMaxLength(20).IsConcurrencyToken();
+        b.Property(d => d.Status).HasConversion<string>().HasMaxLength(30).IsConcurrencyToken();
         b.Property(d => d.SecurityCode).HasMaxLength(6);
         b.Ignore(d => d.AwaitingSignature);
         b.Property(d => d.ModifiedENcf).HasMaxLength(13);
@@ -155,7 +158,7 @@ internal sealed class FiscalConfiguration : IEntityTypeConfiguration<NcfSequence
         b.ToTable("EcfVoids");
         b.Property(v => v.Type).HasConversion<int>();
         b.Property(v => v.Environment).HasConversion<string>().HasMaxLength(10);
-        b.Property(v => v.Status).HasConversion<string>().HasMaxLength(20);
+        b.Property(v => v.Status).HasConversion<string>().HasMaxLength(30);
         b.Property(v => v.SignedXml).HasMaxLength(ModuleDbContext.LongText);
         b.Property(v => v.Message).HasMaxLength(2000);
     }
@@ -207,15 +210,20 @@ internal static class EcfQr
 }
 
 internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries settings, IEcfSigner signer, IEcfProvider provider, IOutbox outbox, TimeProvider clock,
-    DgiiClock dgiiClock) : IFiscalDocuments
+    DgiiClock dgiiClock, DeviceSigning device) : IFiscalDocuments
 {
     public static readonly TimeSpan SubmitDeadline = TimeSpan.FromHours(72);
 
     /// <summary>A document still unsent this long after signing means the queue cannot reach the DGII.</summary>
     public static readonly TimeSpan ContingencyAfter = TimeSpan.FromMinutes(5);
 
-    /// <summary>Where this store's documents go now. Simulated when either the signer or the provider is the stand-in.</summary>
-    public FiscalEnvironment Environment => signer.IsSimulated || provider.IsSimulated ? FiscalEnvironment.Simulated : provider.Environment;
+    /// <summary>Where this store's documents go now. Simulated when either the signer or the provider is the stand-in.
+    /// TK-323: in the Lite host, the business's own choice (<see cref="DeviceSigning.Environment"/>).</summary>
+    public FiscalEnvironment Environment => device.Enabled ? device.Environment
+        : signer.IsSimulated || provider.IsSimulated ? FiscalEnvironment.Simulated : provider.Environment;
+
+    /// <summary>TK-323: this business's device signs its documents (the Lite host, out of Simulated): they are stored unsigned.</summary>
+    internal bool DeviceSigns => device.Enabled && Environment != FiscalEnvironment.Simulated;
 
     /// <summary>TK-157: why the store cannot sign an e-CF now (no certificate, or an expired one), or null when it can.</summary>
     public string? CannotSign() => signer.CannotSign(clock.GetUtcNow().UtcDateTime);
@@ -237,7 +245,7 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
             return await db.Set<EcfContingency>().AnyAsync(c => c.EndedUtc == null, ct)
                 ? await Features.PaperContingency.IssueAsync(db, doc, clock.GetUtcNow().UtcDateTime, ct)
                 : OperationsErrors.CannotSign(why);
-        if (!signer.IsSimulated && string.IsNullOrWhiteSpace(business.Address)) return FiscalErrors.MissingIssuerAddress;
+        if ((!signer.IsSimulated || DeviceSigns) && string.IsNullOrWhiteSpace(business.Address)) return FiscalErrors.MissingIssuerAddress;
 
         DateOnly? modifiedIssuedOn = null;
         if (doc.ModifiedENcf is not null)
@@ -339,19 +347,22 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
     internal async Task<Result<IssuedDocument>> SignAndStoreAsync(FiscalDocument d, XDocument unsigned, BusinessProfile business, DateTime now, CancellationToken ct)
     {
         d.Channel = d.Type == EcfType.Consumer32 && d.Total < EcfLimits.IdentifiedConsumer ? EcfChannel.Rfce : EcfChannel.Ecf;
-        if (!signer.IsSimulated && EcfXml.ValidateUnsigned(unsigned, d.Type) is [var first, ..]) return FiscalErrors.InvalidXml(first);
+        var byDevice = DeviceSigns;
+        if ((!signer.IsSimulated || byDevice) && EcfXml.ValidateUnsigned(unsigned, d.Type) is [var first, ..]) return FiscalErrors.InvalidXml(first);
         var waiting = ClockProblem is not null;
-        if (waiting) d.SignedXml = EcfSubmissionQueue.Zip(unsigned.ToString(SaveOptions.DisableFormatting));
+        // TK-323: the device signs exactly these bytes (DeviceSigned checks the signature covers them, unchanged).
+        if (waiting || byDevice) d.SignedXml = EcfSubmissionQueue.Zip(unsigned.ToString(SaveOptions.DisableFormatting));
         else if (Sign(d, unsigned) is { } error) return error;
 
         d.Environment = Environment;
         d.Contingency = waiting || (d.Environment != FiscalEnvironment.Simulated && await db.Documents.AnyAsync(p => p.Status == SubmissionStatus.Pending
             && (p.Attempts > 0 || p.SignedUtc < now - ContingencyAfter), ct));
         (d.SignedUtc, d.SubmitDeadlineUtc) = (now, now + SubmitDeadline);
-        d.Status = signer.IsSimulated ? SubmissionStatus.Simulated : SubmissionStatus.Pending;
+        d.Status = byDevice ? SubmissionStatus.AwaitingDeviceSignature : signer.IsSimulated ? SubmissionStatus.Simulated : SubmissionStatus.Pending;
         db.Documents.Add(d);
         outbox.Add(new FiscalDocumentIssuedV1(d.Id, d.ENcf, d.Type, d.ReferenceId, d.Total, d.Itbis));
-        var qr = waiting ? "" : Qr(d, business, unsigned);
+        // Without a signature there is no security code: the sale gets it and its QR from FiscalDocumentSignedV1.
+        var qr = waiting || byDevice ? "" : Qr(d, business, unsigned);
         // Printed on 31 and 33 only (the 32 and 34 do not carry it).
         var expiry = d.Type is EcfType.FiscalCredit31 or EcfType.DebitNote33 ? d.SequenceExpiresOn : null;
         return new IssuedDocument(d.Id, d.ENcf, d.SecurityCode, now, qr, expiry, d.Contingency);
@@ -371,7 +382,7 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
         return null;
     }
 
-    private static string Qr(FiscalDocument d, BusinessProfile business, XDocument xml) =>
+    internal static string Qr(FiscalDocument d, BusinessProfile business, XDocument xml) =>
         EcfQr.Url(d.Environment, d.Channel, business.Rnc, d.BuyerRnc, d.ENcf, d.Total, EcfXml.IssuedOn(xml), d.SignedUtc, d.SecurityCode);
 
     /// <summary>TK-156: once the clock is right again, signs the e-CF that waited for it (<c>FechaHoraFirma</c> = now; the issue date stays the

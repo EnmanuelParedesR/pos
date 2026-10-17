@@ -65,4 +65,14 @@ public sealed class SequencesTests(AbastaliaApp app) : IClassFixture<AbastaliaAp
             .Where(d => d.ENcf == "E340000000001").Select(d => d.ModifiedENcf).SingleAsync());
         modified.ShouldBe("E320000000011");
     }
+
+    [Fact]
+    public async Task The_store_signs_its_own_e_CF_so_the_device_routes_do_not_exist()
+    {
+        // TK-323: only the Lite host (Fiscal:Signer = Device) leaves documents for a device.
+        var admin = app.Client(await app.AdminAsync());
+        (await admin.GetAsync("/api/fiscal/device/documents")).StatusCode.ShouldBe(System.Net.HttpStatusCode.NotFound);
+        (await admin.PostAsJsonAsync($"/api/fiscal/device/documents/{Guid.NewGuid()}", new { SignedXml = "<ECF/>" })).StatusCode
+            .ShouldBe(System.Net.HttpStatusCode.NotFound);
+    }
 }

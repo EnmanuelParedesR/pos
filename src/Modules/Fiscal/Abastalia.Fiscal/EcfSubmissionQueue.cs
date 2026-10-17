@@ -135,7 +135,7 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
             : await dgii.SendEcfAsync(rnc, d.ENcf, Unzip(d.SignedXml), ct);
     }
 
-    private static void Apply(FiscalDocument d, DgiiAnswer a, DateTime now)
+    internal static void Apply(FiscalDocument d, DgiiAnswer a, DateTime now)
     {
         d.LastError = null;
         if (a.State == DgiiState.Simulated)
@@ -178,7 +178,7 @@ internal sealed class EcfSubmissionQueue(FiscalDbContext db, IEcfProvider provid
 
     /// <summary>Uploads final documents to the cloud archive (10-year copy outside the store). Best effort: a store not connected to the
     /// cloud, or a cloud that is down, never holds up the DGII queue; the next pass tries again.</summary>
-    private async Task ArchiveAsync(CancellationToken ct)
+    internal async Task ArchiveAsync(CancellationToken ct)
     {
         var final = new[] { SubmissionStatus.Accepted, SubmissionStatus.AcceptedConditional, SubmissionStatus.Rejected };
         var now = clock.GetUtcNow().UtcDateTime;

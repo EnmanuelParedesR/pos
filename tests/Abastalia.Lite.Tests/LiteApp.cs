@@ -183,6 +183,7 @@ public sealed class FakeCloud : HttpMessageHandler
         {
             "/api/nodes/register" => Json(new { tenantId = Guid.NewGuid(), storeId = Guid.NewGuid(), nodeId = Nodes.GetOrAdd(body.GetProperty("code").GetString()!, _ => Guid.NewGuid()) }),
             "/ingest/v1/events" => Json(new { accepted = body.GetProperty("events").EnumerateArray().Select(e => e.GetProperty("id").GetGuid()).ToList() }),
+            "/fiscal/v1/archive" => new HttpResponseMessage(HttpStatusCode.OK),
             _ => new HttpResponseMessage(HttpStatusCode.NotFound),
         };
     }

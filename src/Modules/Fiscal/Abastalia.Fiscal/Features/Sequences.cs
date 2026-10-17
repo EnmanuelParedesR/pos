@@ -125,8 +125,10 @@ internal static class QueueStatus
                     var now = clock.GetUtcNow().UtcDateTime;
                     var byStatus = await db.Documents.GroupBy(d => d.Status).Select(g => new { g.Key, Count = g.Count() })
                         .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
-                    var pending = db.Documents.Where(d => d.Status == SubmissionStatus.Pending);
-                    return Results.Ok(new Response(documents.Environment, byStatus.GetValueOrDefault(SubmissionStatus.Pending),
+                    // TK-323: one waiting for its device's signature is not sent either.
+                    var pending = db.Documents.Where(d => d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.AwaitingDeviceSignature);
+                    return Results.Ok(new Response(documents.Environment,
+                        byStatus.GetValueOrDefault(SubmissionStatus.Pending) + byStatus.GetValueOrDefault(SubmissionStatus.AwaitingDeviceSignature),
                         byStatus.GetValueOrDefault(SubmissionStatus.Sent),
                         await pending.CountAsync(d => d.SubmitDeadlineUtc < now, ct),
                         await pending.MinAsync(d => (DateTime?)d.SubmitDeadlineUtc, ct),
@@ -153,7 +155,8 @@ internal static class ListDocuments
                     FiscalDbContext db, CancellationToken ct) =>
                 {
                     var q = db.Documents.AsNoTracking();
-                    if (pendingOnly == true) q = q.Where(d => d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.Sent);
+                    if (pendingOnly == true) q = q.Where(d => d.Status == SubmissionStatus.Pending || d.Status == SubmissionStatus.Sent
+                        || d.Status == SubmissionStatus.AwaitingDeviceSignature);
                     if (rejectedOnly == true) q = q.Where(d => d.Status == SubmissionStatus.Rejected && d.ReplacedByENcf == null);
                     if (conditionalOnly == true) q = q.Where(d => d.Status == SubmissionStatus.AcceptedConditional);
                     if (environment is { } env) q = q.Where(d => d.Environment == env);
