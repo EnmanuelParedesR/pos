@@ -14,6 +14,9 @@ internal static class DeviceCertificates
 
     public static bool IsOptional(PathString path) => Optional.Any(p => path.Equals(p, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>TK-359: the largest body read without a client certificate (pairing, setup: the CSR is at most 4,000 characters). Larger is 413.</summary>
+    public const long MaxAnonymousBody = 16 * 1024;
+
     /// <summary>What people compare when pairing: the first 64 bits of the SHA-256, as the register shows it ("AB12 CD34 EF56 7890").</summary>
     public static string Fingerprint(X509Certificate2 certificate)
     {
