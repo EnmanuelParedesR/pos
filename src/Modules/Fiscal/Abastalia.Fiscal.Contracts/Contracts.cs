@@ -43,6 +43,13 @@ public sealed record IssuedDocument(Guid DocumentId, string ENcf, string Securit
 /// (or a number Abastalia does not know).</summary>
 public enum IssuedIn { Simulated, Test, Production }
 
+/// <summary>TK-279: the DGII's own time at its last answer (HTTP Date, TK-156), a time that surely passed whatever this PC's clock says; null
+/// until the DGII answers once. The license clock never runs behind it.</summary>
+public interface IDgiiTime
+{
+    DateTime? LastDgiiUtc { get; }
+}
+
 /// <summary>Issues e-CF inside the caller's transaction: reserves the next e-NCF (no gaps), signs locally and queues it for the 72-hour submission.</summary>
 public interface IFiscalDocuments
 {
@@ -219,6 +226,11 @@ public sealed record FiscalDocumentIssuedV1(Guid DocumentId, string ENcf, EcfTyp
 /// with the rejected number now points to the new one, so its receipt and the 607 use the valid e-CF.</summary>
 public sealed record FiscalDocumentReplacedV1(Guid DocumentId, string RejectedENcf, string ENcf, EcfType Type, Guid ReferenceId, string SecurityCode,
     string QrUrl, DateTime SignedUtc, DateOnly? SequenceExpiresOn) : IntegrationEvent(DocumentId);
+
+/// <summary>TK-156: an e-CF issued while the store's clock was off (unsigned, receipt without security code nor QR) was signed once the clock was
+/// fixed. The sale with that e-NCF takes the code, the QR and the signing time, so a reprint shows them.</summary>
+public sealed record FiscalDocumentSignedV1(Guid DocumentId, string ENcf, Guid ReferenceId, string SecurityCode, string QrUrl, DateTime SignedUtc)
+    : IntegrationEvent(DocumentId);
 
 /// <summary>TK-246: the store signed (and tried to send) its commercial approval or rejection of a received e-CF. The cloud only shows it.</summary>
 /// <param name="CloudId">The received document's id in the cloud.</param>

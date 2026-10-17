@@ -526,7 +526,8 @@ export interface Referrals {
   pending: number;
   applied: number;
   reward: ReferralReward | null;
-  nextDiscount: (ReferralReward & { fromUtc: string | null }) | null;
+  /** TK-276: `count` > 1 = an annual plan's rewards joined on the renewal (the amount is one reward's). */
+  nextDiscount: (ReferralReward & { fromUtc: string | null; count?: number }) | null;
 }
 export type ReferralStatus = "Pending" | "Applied" | "Reverted" | "Rejected";
 export interface ReferralRow {

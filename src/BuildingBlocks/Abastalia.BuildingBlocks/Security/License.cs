@@ -9,7 +9,8 @@ namespace Abastalia.BuildingBlocks.Security;
 /// add-on of invoice reading with AI: every plan reads a few a month without it; the cloud counts and enforces the month (docs/cuotas.md).</summary>
 public enum Feature { ButcherModule, WholesaleModule, CloudBackup, AiAssistant, SupplierInvoiceReading }
 
-public enum Limit { Registers }
+/// <summary><see cref="Cashiers"/> (TK-277): active users who can sell or open a shift; the Administrador is not counted.</summary>
+public enum Limit { Registers, Cashiers }
 
 /// <summary>Trial: no license installed, 14 days from the first sale with everything on (TK-196). Grace: expired less than 15 days ago
 /// (offline stores keep everything). Restricted: the trial ended or the license expired longer ago: paid functions off and one register

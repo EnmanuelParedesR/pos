@@ -90,6 +90,9 @@ namespace Abastalia.Settings.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
 
+                    b.Property<int?>("TrialDays")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("TrialStartedUtc")
                         .HasColumnType("datetime2");
 

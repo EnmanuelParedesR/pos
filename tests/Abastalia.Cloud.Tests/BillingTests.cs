@@ -17,7 +17,7 @@ namespace Abastalia.Cloud.Tests;
 public sealed class FakePaddle : HttpMessageHandler
 {
     public const string Basic = "pri_basic_month", BasicYear = "pri_basic_year", Registers = "pri_registers_month", Invoices = "pri_invoices_month",
-        ExtraRegister = "pri_register_month", ExtraStore = "pri_store_month";
+        ExtraRegister = "pri_register_month", ExtraStore = "pri_store_month", ExtraCashier = "pri_cashier_month";
 
     public List<(HttpMethod Method, string Path, string? Authorization, JsonElement Body)> Requests { get; } = [];
 
@@ -65,6 +65,12 @@ public sealed class FakePaddle : HttpMessageHandler
             id = "pro_store", name = "Sucursal adicional", status = "active",
             custom_data = new { abastalia = new { addOn = "ExtraStore", stores = 1 } },
             prices = new[] { Price(ExtraStore, "month", "2500") },
+        },
+        new
+        {
+            id = "pro_cashier", name = "Cajero adicional", status = "active",
+            custom_data = new { abastalia = new { addOn = "ExtraCashier", cashiers = 1 } },
+            prices = new[] { Price(ExtraCashier, "month", "200"), Price("pri_cashier_year", "year", "2000") },
         },
         new { id = "pro_other", name = "Otra cosa", status = "active", custom_data = (object?)null, prices = new[] { Price("pri_other", "month", "1") } },
     ];
@@ -124,7 +130,7 @@ public sealed class BillingApp : CloudApp
 {
     public const string Secret = "pdl_ntfset_01test_secret";
     public const string Basic = FakePaddle.Basic, BasicYear = FakePaddle.BasicYear, Registers = FakePaddle.Registers, Invoices = FakePaddle.Invoices,
-        ExtraRegister = FakePaddle.ExtraRegister, ExtraStore = FakePaddle.ExtraStore;
+        ExtraRegister = FakePaddle.ExtraRegister, ExtraStore = FakePaddle.ExtraStore, ExtraCashier = FakePaddle.ExtraCashier;
 
     public ECDsa LicenseKey { get; } = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     public FakePaddle Paddle { get; } = new();
@@ -140,7 +146,10 @@ public sealed class BillingApp : CloudApp
         builder.UseSetting("Billing:Paddle:ClientToken", "test_client_token");
         builder.UseSetting("Billing:Paddle:SyncInBackground", "false");
         builder.UseSetting("Billing:License:PrivateKey", LicenseKey.ExportPkcs8PrivateKeyPem());
-        builder.UseSetting("Billing:Referrals:QualifyingPlans:0", "MultiRegister"); // TK-255
+        builder.UseSetting("Billing:Referrals:QualifyingPlans:0", "MultiRegister"); // TK-255; appsettings' other two (Essential, Default) blanked
+        builder.UseSetting("Billing:Referrals:QualifyingPlans:1", "");
+        builder.UseSetting("Billing:Referrals:QualifyingPlans:2", "");
+        builder.UseSetting("Billing:Referrals:DiscountType", "percentage");
         builder.UseSetting("Billing:Referrals:Amount", "10");
         builder.UseSetting("Billing:Referrals:MonthlyLimitPerReferrer", "3");
         builder.UseSetting("Billing:Referrals:LookupsPerMinute", "5");
@@ -360,6 +369,14 @@ public sealed class BillingTests(BillingApp app) : IClassFixture<BillingApp>, IA
             BillingApp.Registers, BillingApp.ExtraRegister, BillingApp.ExtraRegister, BillingApp.ExtraStore))).EnsureSuccessStatusCode();
         (await LicenseAsync(second.Client, app.LicenseKey))!.Store.ShouldBe("Colmado Norte");
 
+        // TK-277: cashiers: the plan's 8 (appsettings) + 2 per extra register + 4 per extra store + 1 per "Cajero adicional" (Paddle's custom_data).
+        (await LicenseAsync(first.Client, app.LicenseKey))!.Limits["Cashiers"].ShouldBe(8 + 2 * 2 + 4);
+        (await app.SendAsync(Subscription(Id(), "subscription.updated", owner.TenantId, "active", Now.AddMinutes(2), PeriodEnd, BillingApp.Registers,
+            BillingApp.ExtraRegister, BillingApp.ExtraRegister, BillingApp.ExtraStore, BillingApp.ExtraCashier, BillingApp.ExtraCashier, BillingApp.ExtraCashier)))
+            .EnsureSuccessStatusCode();
+        (await BillingAsync(owner)).GetProperty("addOns").EnumerateArray().Count(a => a.GetString() == "ExtraCashier").ShouldBe(3);
+        (await LicenseAsync(first.Client, app.LicenseKey))!.Limits["Cashiers"].ShouldBe(8 + 2 * 2 + 4 + 3);
+
         // Subscribed: changing the quantity sends it to Paddle.
         (await owner.Client.PostAsJsonAsync("/api/billing/checkout", new { addOns = new[] { "ExtraRegister", "ExtraRegister", "ExtraRegister" } })).EnsureSuccessStatusCode();
         app.Paddle.Requests.Last(r => r.Method == HttpMethod.Patch).Body.GetProperty("items").EnumerateArray()
@@ -404,9 +421,9 @@ public sealed class BillingCatalogTests(BillingApp app) : IClassFixture<BillingA
     [Fact]
     public async Task The_catalog_syncs_every_page_from_Paddle_and_the_public_prices_show_it()
     {
-        (await app.SyncCatalogAsync()).ShouldBe(6); // Abastalia's six products; "Otra cosa" has no custom_data.abastalia
+        (await app.SyncCatalogAsync()).ShouldBe(7); // Abastalia's seven products; "Otra cosa" has no custom_data.abastalia
         app.Paddle.Requests.Where(r => r.Path == "/products").Select(r => r.Authorization).ShouldAllBe(a => a == "Bearer pdl_sdbx_apikey_test");
-        (await app.InDbAsync(db => db.PaddleProducts.CountAsync())).ShouldBe(7); // both pages stored
+        (await app.InDbAsync(db => db.PaddleProducts.CountAsync())).ShouldBe(8); // both pages stored
 
         var prices = await app.CreateClient().GetFromJsonAsync<JsonElement>("/api/public/prices"); // no account
         prices.GetProperty("enabled").GetBoolean().ShouldBeTrue();

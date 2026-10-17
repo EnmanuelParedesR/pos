@@ -25,6 +25,10 @@ public sealed class ReferralOptions
     public int MonthlyLimitPerReferrer { get; set; } = 5;
     /// <summary>Public code lookups per IP per minute (guessing codes).</summary>
     public int LookupsPerMinute { get; set; } = 20;
+    /// <summary>TK-276: the store trial of a business that came with a code (the store's own is 14 days), sent down with the node's license.</summary>
+    public int ReferredTrialDays { get; set; } = 30;
+    /// <summary>TK-276: an annual referrer's rewards go together on its renewal, at most this percent of its plan's price.</summary>
+    public int AnnualCapPercent { get; set; } = 50;
 
     public bool IsOn => DiscountType is "percentage" or "flat"
                         && decimal.TryParse(Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount) && amount > 0;
@@ -166,42 +170,60 @@ internal sealed class ReferralRewards(CloudDbContext db, PaddleApi api, Referral
 
     /// <summary>The referrer's oldest pending reward goes on its next payment: a custom Paddle discount (one use, not recurring) set on the
     /// subscription from the next billing period, after a preview. Waits while the subscription is not active, already has a discount
-    /// (also ours for this cycle) or Paddle fails. Never throws: the webhook already answered for its own event.</summary>
+    /// (also ours for this cycle) or Paddle fails. TK-276: an annual referrer's rewards go together on its renewal instead: each new one
+    /// replaces the discount already set for that renewal with one for all of them, up to <see cref="ReferralOptions.AnnualCapPercent"/> of
+    /// its plan's price (the rest wait for the next renewal). Never throws: the webhook already answered for its own event.</summary>
     public async Task TryApplyAsync(Guid referrerTenantId, CancellationToken ct)
     {
         if (!options.IsOn) return;
         await Gate.WaitAsync(ct);
         try
         {
-            var referral = await db.Referrals.Where(r => r.ReferrerTenantId == referrerTenantId && r.Status == ReferralStatus.Pending)
-                .OrderBy(r => r.CreatedUtc).ThenBy(r => r.Id).FirstOrDefaultAsync(ct);
-            if (referral is null) return;
+            var pending = await db.Referrals.Where(r => r.ReferrerTenantId == referrerTenantId && r.Status == ReferralStatus.Pending)
+                .OrderBy(r => r.CreatedUtc).ThenBy(r => r.Id).ToListAsync(ct);
+            if (pending.Count == 0) return;
             var s = await db.TenantSubscriptions.AsNoTracking().SingleOrDefaultAsync(x => x.TenantId == referrerTenantId, ct);
             if (s is not { PaddleSubscriptionId: { } subscriptionId, NextBilledUtc: { } nextBilled, Status: SubscriptionStatus.Active or SubscriptionStatus.Trialing })
                 return; // past due, paused, canceled or never paid: queued
-            if (await db.Referrals.AnyAsync(r => r.ReferrerTenantId == referrerTenantId && r.Status == ReferralStatus.Applied && r.DiscountFromUtc >= nextBilled, ct))
-                return; // one per cycle: this payment already has one
-            if (await api.SubscriptionAsync(subscriptionId, ct) is not { } paddle || Text(paddle, "status") is not ("active" or "trialing")
-                || paddle.TryGetProperty("discount", out var current) && current.ValueKind == JsonValueKind.Object)
-                return; // Paddle's view: not active, or a discount is already on it
+            var annual = s.Interval == BillingInterval.Annual;
+            var scheduled = await db.Referrals.Where(r => r.ReferrerTenantId == referrerTenantId && r.Status == ReferralStatus.Applied && r.DiscountFromUtc >= nextBilled)
+                .OrderBy(r => r.CreatedUtc).ThenBy(r => r.Id).ToListAsync(ct);
+            if (scheduled.Count > 0 && !annual) return; // one per cycle: this payment already has one
+            if (await api.SubscriptionAsync(subscriptionId, ct) is not { } paddle || Text(paddle, "status") is not ("active" or "trialing")) return;
+            if (paddle.TryGetProperty("discount", out var current) && current.ValueKind == JsonValueKind.Object
+                && (scheduled.Count == 0 || Text(current, "id") != scheduled[0].PaddleDiscountId))
+                return; // a discount that is not this renewal's rewards (a promotion, or ours not used up yet) is on it
 
-            referral.PaddleDiscountId ??= await api.CreateDiscountAsync(new Dictionary<string, object?>
+            var planPrices = PlanPrices(paddle);
+            var (batch, amount) = annual
+                ? Combine(scheduled, pending, PlanTotal(planPrices), options.AnnualCapPercent)
+                : ([pending[0]], pending[0].DiscountAmount);
+            if (batch.Count == scheduled.Count) return; // nothing new fits under the cap: waits for the next renewal
+            var first = batch[0];
+            var discountId = batch is [{ PaddleDiscountId: { } made }] ? made : await api.CreateDiscountAsync(new Dictionary<string, object?>
             {
-                ["amount"] = referral.DiscountAmount, ["type"] = referral.DiscountType, ["description"] = "Abastalia: recomendación",
+                ["amount"] = amount, ["type"] = first.DiscountType,
+                ["description"] = batch.Count == 1 ? "Abastalia: recomendación" : $"Abastalia: {batch.Count} recomendaciones",
                 ["enabled_for_checkout"] = false, ["recur"] = false, ["usage_limit"] = 1, ["mode"] = "custom",
-                ["currency_code"] = referral.DiscountType == "flat" ? referral.Currency : null,
-                ["restrict_to"] = PlanPrices(paddle) is { Count: > 0 } prices ? prices : null,
-                ["custom_data"] = new { abastalia_referral_id = referral.Id.ToString() },
+                ["currency_code"] = first.DiscountType == "flat" ? first.Currency : null,
+                ["restrict_to"] = planPrices is { Count: > 0 } ? planPrices : null,
+                ["custom_data"] = new { abastalia_referral_id = first.Id.ToString(), abastalia_referral_ids = batch.Select(r => r.Id.ToString()).ToArray() },
             }, ct);
-            if (referral.PaddleDiscountId is null) return;
-            await db.SaveChangesAsync(ct); // the discount is made once even if what follows fails
-            if (!await api.PreviewDiscountAsync(subscriptionId, referral.PaddleDiscountId, ct) || !await api.SetDiscountAsync(subscriptionId, referral.PaddleDiscountId, ct))
+            if (discountId is null) return;
+            if (batch.Count == 1)
             {
-                log.LogWarning("Paddle did not take referral {ReferralId}'s discount; it stays pending", referral.Id);
+                first.PaddleDiscountId = discountId;
+                await db.SaveChangesAsync(ct); // the discount is made once even if what follows fails
+            }
+            // shortcut: a combined discount Paddle did not take is made again on the next try (the unused one stays, usage_limit 1); fine at 3 a month.
+            if (!await api.PreviewDiscountAsync(subscriptionId, discountId, ct) || !await api.SetDiscountAsync(subscriptionId, discountId, ct))
+            {
+                log.LogWarning("Paddle did not take referral {ReferralId}'s discount; it stays pending", first.Id);
                 return;
             }
-            (referral.Status, referral.PaddleSubscriptionId, referral.DiscountFromUtc, referral.AppliedUtc) =
-                (ReferralStatus.Applied, subscriptionId, nextBilled, clock.GetUtcNow().UtcDateTime);
+            var now = clock.GetUtcNow().UtcDateTime;
+            foreach (var r in batch)
+                (r.Status, r.PaddleDiscountId, r.PaddleSubscriptionId, r.DiscountFromUtc, r.AppliedUtc) = (ReferralStatus.Applied, discountId, subscriptionId, nextBilled, r.AppliedUtc ?? now);
             await db.SaveChangesAsync(ct);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or DbUpdateException or JsonException && !ct.IsCancellationRequested)
@@ -213,6 +235,44 @@ internal sealed class ReferralRewards(CloudDbContext db, PaddleApi api, Referral
             Gate.Release();
         }
     }
+
+    /// <summary>TK-276: the annual renewal's rewards: those already set for it, then pending ones in order while the sum stays within
+    /// <paramref name="capPercent"/> % of the plan (of <paramref name="planTotal"/>, in the currency's smallest unit, for flat discounts). The first
+    /// reward always goes, cut to the cap. Without a known plan price a flat reward goes alone.</summary>
+    internal static (List<Referral> Batch, string Amount) Combine(IReadOnlyList<Referral> scheduled, IReadOnlyList<Referral> pending, decimal? planTotal, int capPercent)
+    {
+        var first = scheduled.Concat(pending).First();
+        var cap = first.DiscountType == "percentage" ? capPercent : planTotal * capPercent / 100;
+        var batch = scheduled.ToList();
+        var total = batch.Sum(AmountOf);
+        foreach (var r in pending)
+        {
+            if (r.DiscountType != first.DiscountType || r.Currency != first.Currency || batch.Count > 0 && (cap is null || total + AmountOf(r) > cap)) break;
+            batch.Add(r);
+            total += AmountOf(r);
+        }
+        if (cap is { } max) total = Math.Min(total, max);
+        return (batch, (first.DiscountType == "flat" ? Math.Floor(total) : total).ToString("0.##", CultureInfo.InvariantCulture));
+    }
+
+    private static decimal AmountOf(Referral r) => decimal.TryParse(r.DiscountAmount, NumberStyles.Number, CultureInfo.InvariantCulture, out var a) ? a : 0;
+
+    /// <summary>What the plan's prices cost per cycle (the catalog's amounts), or null when one is unknown.</summary>
+    private decimal? PlanTotal(IEnumerable<string> priceIds)
+    {
+        decimal total = 0;
+        foreach (var id in priceIds)
+        {
+            if (catalog.Entries.SelectMany(e => e.Prices).FirstOrDefault(p => p.PriceId == id) is not { } price
+                || !decimal.TryParse(price.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var amount)) return null;
+            total += amount;
+        }
+        return total > 0 ? total : null;
+    }
+
+    /// <summary>TK-276: the referrer whose other rewards went back to pending when a combined annual discount came off (<see cref="RevertAsync"/>);
+    /// the caller applies them again once it saved.</summary>
+    public Guid? Requeued { get; private set; }
 
     /// <summary><c>adjustment.created|updated</c>: an approved refund or chargeback of a referred business's first payment reverts its reward.
     /// False = Paddle could not take the discount off; the webhook answers 503 and Paddle retries.</summary>
@@ -241,6 +301,13 @@ internal sealed class ReferralRewards(CloudDbContext db, PaddleApi api, Referral
             if (!billed && await api.SubscriptionAsync(subscriptionId, ct) is { } paddle && paddle.TryGetProperty("discount", out var d)
                 && d.ValueKind == JsonValueKind.Object && Text(d, "id") == discountId && !await api.SetDiscountAsync(subscriptionId, null, ct))
                 return false;
+            if (!billed)
+            {
+                // TK-276: the others of a combined annual discount wait again, to be combined without this one.
+                foreach (var other in await db.Referrals.Where(r => r.PaddleDiscountId == discountId && r.Id != referral.Id && r.Status == ReferralStatus.Applied).ToListAsync(ct))
+                    (other.Status, other.PaddleDiscountId, other.PaddleSubscriptionId, other.DiscountFromUtc, other.AppliedUtc, Requeued) =
+                        (ReferralStatus.Pending, null, null, null, null, referral.ReferrerTenantId);
+            }
         }
         (referral.Status, referral.Reason, referral.RevertedUtc) = (ReferralStatus.Reverted, reason, clock.GetUtcNow().UtcDateTime);
         return true;

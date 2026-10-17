@@ -33,6 +33,7 @@ internal static class VoidSequence
             if (to < from || to > s.To) return FiscalErrors.InvalidVoidRange;
             var business = await settings.GetBusinessProfileAsync(ct);
             if (!Rnc.IsValid(business.Rnc)) return FiscalErrors.MissingIssuerRnc;
+            if (documents.ClockProblem is { } clockOff) return OperationsErrors.ClockOff(clockOff); // TK-156: the ANECF carries the signing time
 
             // Moves the range past the voided numbers; a sale that took the next number meanwhile makes this fail instead of voiding a used one.
             if (await db.Sequences.Where(x => x.Id == s.Id && x.Next == from).ExecuteUpdateAsync(x => x.SetProperty(q => q.Next, to + 1), ct) != 1)
@@ -75,13 +76,14 @@ internal static class VoidDocument
 {
     public sealed record Command(Guid DocumentId) : ICommand<VoidSequence.Response>;
 
-    internal sealed class Handler(FiscalDbContext db, ISettingsQueries settings, IEcfSigner signer, IEcfProvider provider, IAuditLog audit, TimeProvider clock)
-        : ICommandHandler<Command, VoidSequence.Response>
+    internal sealed class Handler(FiscalDbContext db, FiscalDocuments documents, ISettingsQueries settings, IEcfSigner signer, IEcfProvider provider,
+        IAuditLog audit, TimeProvider clock) : ICommandHandler<Command, VoidSequence.Response>
     {
         public async Task<Result<VoidSequence.Response>> Handle(Command c, CancellationToken ct)
         {
             var d = await db.Documents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == c.DocumentId, ct);
             if (d is null) return FiscalErrors.NotFound;
+            if (d.Status != SubmissionStatus.Simulated && documents.ClockProblem is { } clockOff) return OperationsErrors.ClockOff(clockOff);
             if (d.Status is not (SubmissionStatus.Pending or SubmissionStatus.Simulated) || d.SentUtc is not null || d.TrackId is not null) return FiscalErrors.AlreadySent;
             if (await db.Documents.AnyAsync(x => x.Environment == d.Environment && x.ModifiedENcf == d.ENcf && x.Status != SubmissionStatus.Voided, ct)) return FiscalErrors.HasNotes;
             var business = await settings.GetBusinessProfileAsync(ct);

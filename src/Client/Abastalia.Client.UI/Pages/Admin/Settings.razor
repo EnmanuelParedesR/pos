@@ -294,16 +294,26 @@
 
         case Section.Users:
             <section class="esc-card esc-setting">
-                <div class="esc-setting__about"><h2>Usuarios</h2><p>Quién puede entrar y qué puede hacer. Cada persona entra con su código y su PIN.</p></div>
+                <div class="esc-setting__about"><h2>Usuarios</h2><p>Quién puede entrar y qué puede hacer. Cada persona entra con su código y su PIN.</p>
+                    @if (_seats is { Limit: { } limit } seats)
+                    {
+                        @* TK-277: the license's cashiers, before the owner hits the limit. *@
+                        <p><b>Cajeros activos: @seats.Used de @limit</b> que incluye su plan. El dueño no cuenta; desactivar a alguien libera su lugar.</p>
+                    }</div>
                 <div class="esc-setting__body">
                     <div class="esc-table-wrap">
                         <table class="esc-table">
-                            <thead><tr><th>Nombre</th><th>Código</th><th>Rol</th><th>Estado</th></tr></thead>
+                            <thead><tr><th>Nombre</th><th>Código</th><th>Rol</th><th>Estado</th><th></th></tr></thead>
                             <tbody>
                                 @foreach (var u in _users)
                                 {
                                     <tr><td><span class="esc-person"><span class="esc-avatar" aria-hidden="true">@Names.Initials(u.Name)</span><span style="font-weight:600">@u.Name</span></span></td><td class="esc-muted">@u.Code</td><td>@u.Role</td>
-                                        <td><span class="esc-pill @(!u.IsActive ? "esc-pill--neutral" : u.IsLocked ? "esc-pill--warning" : "esc-pill--success")">@(!u.IsActive ? "Inactivo" : u.IsLocked ? "Bloqueado" : "Activo")</span></td></tr>
+                                        <td><span class="esc-pill @(!u.IsActive ? "esc-pill--neutral" : u.IsLocked ? "esc-pill--warning" : "esc-pill--success")">@(!u.IsActive ? "Inactivo" : u.IsLocked ? "Bloqueado" : "Activo")</span></td>
+                                        @* TK-277: disabling frees a cashier seat and keeps the person's history; nobody disables themselves. *@
+                                        <td class="esc-num">@if (u.Id != Session.UserId)
+                                        {
+                                            <Button class="esc-button esc-button--small" aria-label="@($"{(u.IsActive ? "Desactivar" : "Activar")} a {u.Name}")" OnClick="() => ToggleUserAsync(u)">@(u.IsActive ? "Desactivar" : "Activar")</Button>
+                                        }</td></tr>
                                 }
                             </tbody>
                         </table>
@@ -546,6 +556,7 @@
     private PairingCode? _pairingCode;
     private Guid? _revoking;
     private List<User> _users = [];
+    private CashierSeats? _seats;
     private List<Role> _roles = [];
     private Guid _userRole;
     private List<BackupFile> _backups = [];
@@ -563,11 +574,13 @@
 
     protected override Task OnInitializedAsync() => GoAsync(Requested switch
     {
+        "registers" when Sections.Contains(Section.Registers) => Section.Registers, // TK-281: "Crear una caja" from Abrir caja on the first day
         "fiscal" when Sections.Contains(Section.FiscalSequences) => Section.FiscalSequences,
         "health" when Sections.Contains(Section.Health) => Section.Health,
         "updates" when Sections.Contains(Section.Updates) => Section.Updates,
         "backups" when Sections.Contains(Section.Backups) => Section.Backups,
         "business" when Sections.Contains(Section.Business) => Section.Business,
+        "users" when Sections.Contains(Section.Users) => Section.Users, // TK-277: the Resumen's shared-PIN warning
         "license" => Section.License, // the Resumen's "Comprar licencia" and "Quitar ejemplos" (TK-196/220)
         "cloud" when Sections.Contains(Section.Cloud) => Section.Cloud, // TK-233: "Solicitar acompañamiento" needs the cloud
         _ => Sections[0],
@@ -596,7 +609,8 @@
             case Section.Hardware: _hardware = HardwareForm.From(Peripherals.Settings); break;
             case Section.Users:
                 _users = (await Api.GetAsync<List<User>>("/api/identity/users")).Value ?? [];
-                _roles = [.. (await Api.GetAsync<RoleList>("/api/identity/roles")).Value?.Roles ?? []];
+                _seats = (await Api.GetAsync<CashierSeats>("/api/identity/cashier-seats")).Value;
+                _roles =[.. (await Api.GetAsync<RoleList>("/api/identity/roles")).Value?.Roles ?? []];
                 _userRole = _roles.Find(r => r.Name == "Cajero")?.Id ?? _roles.FirstOrDefault()?.Id ?? Guid.Empty;
                 break;
             case Section.Backups: _backups = (await Api.GetAsync<List<BackupFile>>("/api/backups")).Value ?? []; break;
@@ -736,7 +750,9 @@
         ShowResult(r.Problem, "Datos de ejemplo quitados.");
     }
 
-    private void ShowResult(Problem? p, string success) => (_messageKind, _message) = p is null ? (Notice.Kinds.Success, success) : (p.Kind, p.Message);
+    // TK-277: the plan's cashier limit is a limit to act on, not a failure.
+    private void ShowResult(Problem? p, string success) => (_messageKind, _message) = p is null ? (Notice.Kinds.Success, success)
+        : (p.Code == "Identity.CashierLimitReached" ? Notice.Kinds.Warning : p.Kind, p.Message);
 
     private async Task SaveBusinessAsync()
     {
@@ -892,6 +908,13 @@
         var r = await Api.PostAsync<Empty>($"/api/identity/devices/{d.Id}/revoke");
         await GoAsync(Section.Devices);
         ShowResult(r.Problem?.Code == "Identity.CannotRevokeOwnDevice" ? r.Problem with { Message = "No puede revocar el equipo que está usando." } : r.Problem, $"{d.Name} ya no puede entrar.");
+    }
+
+    private async Task ToggleUserAsync(User u)
+    {
+        var r = await Api.PutAsync<Empty>($"/api/identity/users/{u.Id}", new { u.Name, u.RoleId, IsActive = !u.IsActive, Pin = (string?)null });
+        await GoAsync(Section.Users);
+        ShowResult(r.Problem, u.IsActive ? $"{u.Name} ya no puede entrar. Sus ventas y turnos se guardan." : $"{u.Name} puede entrar otra vez con su código y PIN.");
     }
 
     private async Task CreateUserAsync()

@@ -11,21 +11,23 @@ Una licencia es un **JWS compacto** (`encabezado.cuerpo.firma`, base64url) firma
 | `store` | Nombre de la tienda (como sale en el contrato) |
 | `plan` | Nombre del plan (`Esencial`, `Estándar`, `Pro`; antes `Varias sucursales`). `limits.Registers` 0 = solo la PC principal (Esencial) |
 | `features` | Funciones pagas: `ButcherModule`, `WholesaleModule`, `CloudBackup`, `AiAssistant`, `SupplierInvoiceReading` (servicio adicional de lectura de facturas con IA, ver `docs/cuotas.md`) |
-| `limits` | Límites por nombre: hoy solo `Registers` (cajas además de la PC principal) |
+| `limits` | Límites por nombre: `Registers` (cajas además de la PC principal) y, desde TK-277, `Cashiers` (cajeros habilitados: usuarios activos que pueden vender o abrir turno; el Administrador no cuenta). Sin `Cashiers`, la tienda no limita los cajeros |
 | `issuedUtc`, `expiresUtc` | Emisión y vencimiento, en UTC |
 | `tenantId` | Opcional. Id del negocio en la nube (consola de la plataforma). La tienda no lo mira; la nube solo deja que la licencia active el lector de facturas con IA de ese negocio (R11 B-Low8, TK-268). Sin él, la licencia no cuenta en la nube (el negocio usa su suscripción o la prueba) |
 
 Ejemplo de cuerpo:
 
 ```json
-{"store":"Carnicería La Esquina","plan":"Pro","features":["ButcherModule","CloudBackup"],"limits":{"Registers":3},"issuedUtc":"2026-10-16T00:00:00Z","expiresUtc":"2027-10-16T00:00:00Z"}
+{"store":"Carnicería La Esquina","plan":"Pro","features":["ButcherModule","CloudBackup"],"limits":{"Registers":3,"Cashiers":8},"issuedUtc":"2026-10-16T00:00:00Z","expiresUtc":"2027-10-16T00:00:00Z"}
 ```
+
+**Cajeros (TK-277):** `Cashiers` = los del plan (Esencial 2, Estándar 4, Pro 8; Varias sucursales 12) + 1 por cada cajero adicional + 2 por cada caja adicional + 4 por cada sucursal adicional. La tienda solo impide **habilitar** a uno más (crear, activar, darle un rol que vende); nunca entrar, vender ni el e-CF. En la prueba no hay tope; en Restringido, 2.
 
 La tienda solo tiene **llaves públicas** (dentro de `LicenseService`): la del dueño (licencias fuera de línea) y, desde TK-249, la de la nube (`AbastaliaCloudPublicKey`, licencias de una suscripción pagada con Paddle; vacía hasta crear la llave en Key Vault, ver `docs/cobro-paddle.md`). Acepta una licencia firmada por cualquiera de las dos y en producción no acepta otra. Las llaves privadas **nunca** entran al repositorio ni al producto.
 
 ## Estados
 
-- **Prueba:** sin licencia, 14 días desde la primera venta, todo encendido.
+- **Prueba:** sin licencia, 14 días desde la primera venta, todo encendido. 30 días si la nube dice que el negocio llegó recomendado (TK-276; la tienda lo guarda en `settings.Business.TrialDays`).
 - **Activa:** licencia válida y sin vencer.
 - **Gracia:** venció hace menos de 15 días; todo sigue igual (tiendas sin internet).
 - **Restringido:** terminó la prueba o la gracia: funciones pagas apagadas y una caja además de la PC principal. Vender, e-CF, exportar y respaldar **nunca** se detienen y no se pierden datos.
@@ -34,8 +36,8 @@ La tienda solo tiene **llaves públicas** (dentro de `LicenseService`): la del d
 
 La llave privada y el script están **fuera del repositorio**, en la PC del dueño: `%USERPROFILE%\Abastalia-licencias\` con `issue-license.ps1`. Solo el dueño (o quien él autorice en esa PC) emite licencias.
 
-1. Confirmar el pago y los datos: nombre de la tienda, plan, funciones, número de cajas y fecha de vencimiento; si el negocio está conectado a la nube, su id (`tenantId`).
-2. Ejecutar `issue-license.ps1` en esa carpeta con esos datos (ver la ayuda del propio script). Produce un archivo `.jws` (o el texto de la licencia).
+1. Confirmar el pago y los datos: nombre de la tienda, plan, funciones, número de cajas, número de cajeros y fecha de vencimiento; si el negocio está conectado a la nube, su id (`tenantId`).
+2. Ejecutar `issue-license.ps1` en esa carpeta con esos datos (ver la ayuda del propio script). Produce un archivo `.jws` (o el texto de la licencia). **TK-277:** el script necesita el parámetro **`-Cashiers <n>`**, que va a `limits.Cashiers` (como `-Registers` va a `limits.Registers`); el script vive fuera del repositorio y el dueño lo actualiza. Sin él la licencia no limita los cajeros.
 3. Enviar a la tienda el archivo o el texto por el canal acordado (correo o WhatsApp). La licencia no es secreta: solo sirve para la tienda que nombra y no se puede cambiar sin invalidar la firma.
 4. Anotar la licencia emitida (tienda, plan, vencimiento) en el registro de ventas.
 5. En la consola de la plataforma (cliente → **Plan y consumo**), poner el mismo plan y los servicios adicionales (`SupplierInvoiceReading`): las cuotas mensuales de la nube salen de ahí, no de la licencia (`docs/cuotas.md`).

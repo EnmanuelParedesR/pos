@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Abastalia.Settings.Persistence.Migrations
 {
     [DbContext(typeof(SettingsDbContext))]
-    [Migration("20261016224454_LicenseClock")]
+    [Migration("20261017003923_LicenseClock")]
     partial class LicenseClock
     {
         /// <inheritdoc />
@@ -92,6 +92,9 @@ namespace Abastalia.Settings.Persistence.Migrations
                     b.Property<string>("SupervisorApprovals")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
+
+                    b.Property<int?>("TrialDays")
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("TrialStartedUtc")
                         .HasColumnType("datetime2");

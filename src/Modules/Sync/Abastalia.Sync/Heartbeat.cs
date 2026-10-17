@@ -90,10 +90,12 @@ internal static class PullLicense
         if (await cloud.ConnectionAsync(ct) is not { } connection) return false;
         using var response = await cloud.SendAsync(connection, Path, new StringContent(""), ct);
         if (!response.IsSuccessStatusCode) return false;
-        return (await response.Content.ReadFromJsonAsync<Answer>(ct))?.License is { Length: > 0 } jws && await license.InstallFromCloudAsync(jws, ct);
+        var answer = await response.Content.ReadFromJsonAsync<Answer>(ct);
+        if (answer?.TrialDays is { } days) await license.ExtendTrialAsync(days, ct); // TK-276: a business that came recommended
+        return answer?.License is { Length: > 0 } jws && await license.InstallFromCloudAsync(jws, ct);
     }
 
-    private sealed record Answer(string? License);
+    private sealed record Answer(string? License, int? TrialDays);
 }
 
 /// <summary>TK-254: asks the cloud which version this store may install on its channel (staged rollout from the platform console) and keeps the

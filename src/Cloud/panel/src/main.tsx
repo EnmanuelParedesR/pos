@@ -10,6 +10,8 @@ import { App } from "./App";
 import { startTheme } from "./theme";
 
 startTheme();
+// TK-278: a tab opened before a deploy asks for a lazy chunk that no longer exists; reloading gets the new build.
+window.addEventListener("vite:preloadError", () => location.reload());
 
 const root = document.getElementById("root")!;
 const app = (

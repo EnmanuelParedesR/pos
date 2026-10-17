@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Abastalia.Host.Cloud.Persistence.Migrations
 {
     [DbContext(typeof(CloudDbContext))]
-    [Migration("20261016224650_BusinessBlock")]
+    [Migration("20261017003928_BusinessBlock")]
     partial class BusinessBlock
     {
         /// <inheritdoc />

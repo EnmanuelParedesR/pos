@@ -1,7 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Identity;
-using P = Abastalia.BuildingBlocks.Security.Permissions;
+using Microsoft.EntityFrameworkCore;
+using P =Abastalia.BuildingBlocks.Security.Permissions;
 using Abastalia.SharedKernel;
 
 namespace Abastalia.Identity.Domain;
@@ -56,6 +57,30 @@ internal sealed class Role
             Permissions = [P.ProductsManage, P.InventoryView, P.InventoryAdjust, P.InventoryCount, P.InventoryTransfer, P.PurchasingManage],
         };
         yield return new Role { Id = AccountantId, Name = "Contador", Permissions = [P.ReportsView, P.FiscalReports, P.CostsView, P.ShiftsView] };
+    }
+}
+
+/// <summary>TK-277: the license's <c>Cashiers</c> counts active users whose role can sell or open a shift (they sign in at a register with
+/// their PIN); the Administrador (the owner) is not counted. Disabling a user frees the seat and keeps its history.</summary>
+internal static class CashierSeats
+{
+    public static bool Counts(Role role) => role.Id != Role.AdministratorId && role.Permissions.Any(p => p is P.SalesCreate or P.RegisterOpen);
+
+    public static async Task<int> CountAsync(Persistence.IdentityDbContext db, CancellationToken ct)
+    {
+        var roles = (await db.Roles.AsNoTracking().ToListAsync(ct)).Where(Counts).Select(r => r.Id).ToList();
+        return await db.Users.CountAsync(u => u.IsActive && roles.Contains(u.RoleId), ct);
+    }
+
+    /// <summary>Null when <paramref name="adding"/> more cashiers fit; the error otherwise.</summary>
+    public static async Task<Error?> RoomForAsync(Persistence.IdentityDbContext db, Abastalia.BuildingBlocks.Security.IFeatureService license, int adding,
+        CancellationToken ct)
+    {
+        var limit = license.LimitOf(Abastalia.BuildingBlocks.Security.Limit.Cashiers);
+        if (adding <= 0 || limit == int.MaxValue) return null;
+        return await CountAsync(db, ct) + adding > limit
+            ? IdentityErrors.CashierLimitReached(limit, license.Status == Abastalia.BuildingBlocks.Security.LicenseStatus.Restricted)
+            : null;
     }
 }
 
@@ -248,6 +273,12 @@ internal static class IdentityErrors
     public static readonly Error RegisterNotLicensed = Error.Forbidden("Identity.RegisterNotLicensed",
         "Abastalia está en modo Restringido: venden la PC principal y una caja. Para usar esta caja, compre la licencia en Configuración → Licencia. Sus datos están completos. " +
         "Si esta caja tiene un turno abierto, un supervisor lo cierra desde la PC principal en Turnos y cuadres.");
+    /// <summary>TK-277: one more cashier than the license allows. Only enabling one is stopped; signing in and selling never are.</summary>
+    public static Error CashierLimitReached(int limit, bool restricted) => Error.Forbidden("Identity.CashierLimitReached", restricted
+        ? $"Sin licencia vigente, Abastalia permite {limit} cajeros activos y ya los tiene. Desactive a uno que no trabaje aquí (su historial se guarda) " +
+          "o renueve la licencia en Configuración → Licencia."
+        : $"Su plan incluye {limit} cajeros activos y ya los tiene. Desactive a uno que no trabaje aquí (su historial se guarda) " +
+          "o agregue un cajero adicional en el panel de Abastalia, en Plan y facturación.");
     public static readonly Error RoleInUse =Error.Conflict("Identity.RoleInUse", "Ese rol tiene usuarios. Cámbieles el rol antes de borrarlo.");
 
     /// <summary>TK-215: nobody gives a permission they do not have (a role with it, or a user with that role).</summary>

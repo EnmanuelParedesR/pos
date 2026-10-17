@@ -8,7 +8,7 @@ public sealed record EcfHealthItem(string Level, string Code, string Title, stri
 public sealed record EcfHealth(string Environment, DateTime? OldestPendingUtc, DateTime? LastDgiiContactUtc, DateTime? CertificateExpiresUtc, bool CanSign,
     bool ContingencyActive, List<EcfHealthItem> Items);
 
-/// <summary><c>POST /api/fiscal/dgii-status</c>. <c>State</c>: Simulated, Up or Down.</summary>
+/// <summary><c>POST /api/fiscal/dgii-status</c>. <c>State</c>: Simulated, Up, Down (a DGII problem) or Unreachable (no DGII host answers: this store's internet).</summary>
 public sealed record DgiiStatus(string State, string Message, DateTime CheckedUtc);
 
 public sealed record PaperRange(Guid Id, string Type, string From, string To, string Next, long Available, DateOnly? ExpiresOn);
@@ -16,7 +16,7 @@ public sealed record PaperPending(Guid Id, string Ncf, string Type, DateTime Iss
 
 /// <summary><c>GET /api/fiscal/contingency</c>: series B in use (any signed-in user reads it: the register shows it).</summary>
 public sealed record EcfContingencyStatus(bool Active, DateTime? StartedUtc, string? Reason, int? Day, int MaxDays, DateTime? LastEndedUtc, DateOnly? RegularizeBy,
-    bool CanSign, string? CannotSignReason, List<PaperRange> Ranges, List<PaperPending> ToRegularize, int Regularized);
+    bool CanSign, string? CannotSignReason, List<PaperRange> Ranges, List<PaperPending> ToRegularize, int Regularized, string? ClockProblem = null);
 
 /// <param name="Manual">R9 #11: B03 and B04 that are not regularized automatically.</param>
 public sealed record PaperRegularized(int Regularized, int Manual = 0);

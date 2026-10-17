@@ -38,6 +38,11 @@
                 {
                     <span class="esc-offline" role="status">Contingencia: se facturan comprobantes serie B en papel</span>
                 }
+                @* TK-156 (D17): amber, the sale goes on (its e-CF waits unsigned until the time is fixed). *@
+                @if (_contingency?.ClockProblem is { } clock)
+                {
+                    <span class="esc-offline" role="status">@clock</span>
+                }
                 @if (_queue is { } q)
                 {
                     @* An e-CF waiting more than 24 h is amber (it must reach the DGII within 72 h); never red: principle 3. *@

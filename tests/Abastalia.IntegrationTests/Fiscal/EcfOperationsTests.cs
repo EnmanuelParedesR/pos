@@ -217,7 +217,7 @@ public sealed class EcfHealthTests(DgiiAbastaliaApp app) : IClassFixture<DgiiAba
         app.Clock.Advance(TimeSpan.FromHours(36));
         admin = await Owner();
         (await admin.HealthAsync()).Items().ShouldContain(i => i.Code == "queue" && i.Level == "error");
-        (await (await admin.PostAsync("/api/fiscal/dgii-status", null)).Json()).GetProperty("state").GetString().ShouldBe("Down");
+        (await (await admin.PostAsync("/api/fiscal/dgii-status", null)).Json()).GetProperty("state").GetString().ShouldBe("Unreachable"); // no DGII host answers
 
         app.Dgii.Down = false;
         (await (await admin.PostAsync("/api/fiscal/dgii-status", null)).Json()).GetProperty("state").GetString().ShouldBe("Up");

@@ -24,8 +24,9 @@ namespace Abastalia.Settings;
 /// <summary>The installed license, read from <c>License:File</c> (C:\ProgramData\Abastalia\license.jws). The status follows the clock:
 /// Active until it expires, then 15 days of Grace, then Restricted, then Blocked (TK-279) once <see cref="LicenseData.BlockAfterDays"/> (30) have
 /// passed since it expired, or at once when the license says Abastalia blocked the business. Without a license the store runs as Trial for 14 days
-/// from its first sale (TK-196), then Restricted (TK-220), then Blocked 30 days after the trial ended. Installing a license lifts any of them at
-/// once, without reinstalling and keeping every sale. The clock is <see cref="LicenseClock"/>: turning the PC's time back does not stretch it.</summary>
+/// from its first sale (TK-196; 30 when the cloud says the business came recommended, TK-276), then Restricted (TK-220), then Blocked 30 days after
+/// the trial ended. Installing a license lifts any of them at once, without reinstalling and keeping every sale. The clock is <see cref="LicenseClock"/>:
+/// turning the PC's time back does not stretch it.</summary>
 internal sealed class LicenseService : IFeatureService
 {
     public static readonly TimeSpan GracePeriod = TimeSpan.FromDays(15);
@@ -55,15 +56,17 @@ internal sealed class LicenseService : IFeatureService
     private readonly TimeProvider _clock;
     private readonly IServiceScopeFactory _scopes;
     private readonly ServiceKeys _secrets;
+    private readonly IDgiiTime? _dgii;
     private readonly ECDsa[] _keys;
     private readonly Lock _gate = new();
     private bool _trialLoaded;
     private DateTime? _trialStartedUtc;
+    private int? _trialDays;
     private LicenseClock? _time;
 
-    public LicenseService(IConfiguration config, IHostEnvironment environment, TimeProvider clock, IServiceScopeFactory scopes, ServiceKeys secrets)
+    public LicenseService(IConfiguration config, IHostEnvironment environment, TimeProvider clock, IServiceScopeFactory scopes, ServiceKeys secrets, IDgiiTime? dgii = null)
     {
-        (_clock, _scopes, _secrets) = (clock, scopes, secrets);
+        (_clock, _scopes, _secrets, _dgii) = (clock, scopes, secrets, dgii);
         // Only test and development hosts may trust other keys; a store (Production) always checks against Abastalia's.
         var test = !environment.IsProduction();
         _keys = [.. new[]
@@ -96,14 +99,27 @@ internal sealed class LicenseService : IFeatureService
     {
         get
         {
-            lock (_gate)
-            {
-                if (_trialLoaded) return _trialStartedUtc;
-                _trialStartedUtc = Read(sp => sp.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => b.TrialStartedUtc).SingleOrDefault());
-                _trialLoaded = true;
-                return _trialStartedUtc;
-            }
+            lock (_gate) return LoadTrial()._trialStartedUtc;
         }
+    }
+
+    /// <summary>TK-276: how long the trial lasts: 14 days, or what the cloud said for a business that came recommended (30).</summary>
+    public TimeSpan TrialLength
+    {
+        get
+        {
+            lock (_gate) return LoadTrial()._trialDays is { } days ? TimeSpan.FromDays(days) : TrialPeriod;
+        }
+    }
+
+    /// <summary>Reads the trial's start and length once per process.</summary>
+    private LicenseService LoadTrial()
+    {
+        if (_trialLoaded) return this;
+        var trial = Read(sp => sp.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => new { b.TrialStartedUtc, b.TrialDays }).SingleOrDefault());
+        (_trialStartedUtc, _trialDays) = (trial?.TrialStartedUtc, trial?.TrialDays);
+        _trialLoaded = true;
+        return this;
     }
 
     /// <summary>TK-279: loaded once from the latest time this store saw: the sealed copy in settings.Business (ignored when its seal does not
@@ -154,21 +170,36 @@ internal sealed class LicenseService : IFeatureService
 
     public void TrialStarted(DateTime utc)
     {
-        lock (_gate) (_trialStartedUtc, _trialLoaded) = (utc, true);
+        lock (_gate) LoadTrial()._trialStartedUtc = utc;
     }
 
-    public DateTime? TrialEndsUtc => TrialStartedUtc + TrialPeriod;
+    public void TrialLengthChanged(int days)
+    {
+        lock (_gate) LoadTrial()._trialDays = days;
+    }
+
+    public DateTime? TrialEndsUtc => TrialStartedUtc + TrialLength;
 
     public DateTime? EndsUtc => Data?.ExpiresUtc ?? TrialEndsUtc;
 
     /// <summary>TK-279: when the store goes Blocked by date: 30 days (or what the license says) after it expired or the trial ended.</summary>
     public DateTime? BlocksUtc => Data is { } d ? d.ExpiresUtc.AddDays(d.BlockAfterDays ?? DefaultBlockAfterDays) : TrialEndsUtc?.AddDays(DefaultBlockAfterDays);
 
+    /// <summary>The license clock, never behind the DGII's time at its last answer (TK-156).</summary>
+    private DateTime Now
+    {
+        get
+        {
+            if (_dgii?.LastDgiiUtc is { } dgii) Time.Observe(dgii);
+            return Time.UtcNow;
+        }
+    }
+
     public LicenseStatus Status
     {
         get
         {
-            var now = Time.UtcNow;
+            var now = Now;
             if (Data is { Blocked: true } || now > BlocksUtc) return LicenseStatus.Blocked;
             if (Data is null) return TrialEndsUtc is { } end && now > end ? LicenseStatus.Restricted : LicenseStatus.Trial;
             return now <= Data.ExpiresUtc ? LicenseStatus.Active : now <= Data.ExpiresUtc + GracePeriod ? LicenseStatus.Grace : LicenseStatus.Restricted;
@@ -176,7 +207,7 @@ internal sealed class LicenseService : IFeatureService
     }
 
     /// <summary>Days left of the trial (the day in course counts), or null outside the trial or before its first sale.</summary>
-    public int? TrialDaysLeft => Status == LicenseStatus.Trial && TrialEndsUtc is { } end ? (int)Math.Ceiling((end - Time.UtcNow).TotalDays) : null;
+    public int? TrialDaysLeft => Status == LicenseStatus.Trial && TrialEndsUtc is { } end ? (int)Math.Ceiling((end - Now).TotalDays) : null;
 
     /// <summary>TK-220: "Soon" from day 10 of the trial (5 days left), "Last" from day 13 (2 left), "Ended" once Restricted; TK-279: "Blocked".</summary>
     public string? Warning => Status switch
@@ -193,11 +224,14 @@ internal sealed class LicenseService : IFeatureService
         _ => false,
     };
 
+    /// <summary>TK-277: cashiers in Restricted mode: the smallest plan's (Esencial). The trial, and a license that does not say, have no limit.</summary>
+    public const int RestrictedCashiers = 2;
+
     public int LimitOf(Limit limit) => Status switch
     {
         LicenseStatus.Active or LicenseStatus.Grace when Data!.Limits.TryGetValue(limit.ToString(), out var n) => n,
-        LicenseStatus.Restricted or LicenseStatus.Blocked => limit switch { Limit.Registers => RestrictedRegisters, _ => 0 },
-        _ => limit switch { Limit.Registers => TrialRegisters, _ => 0 },
+        LicenseStatus.Restricted or LicenseStatus.Blocked => limit switch { Limit.Registers => RestrictedRegisters, _ => RestrictedCashiers },
+        _ => limit switch { Limit.Registers => TrialRegisters, _ => int.MaxValue },
     };
 
     public Result<LicenseData> Verify(string jws) => Jws.Verify(jws, _keys);
@@ -304,8 +338,17 @@ internal sealed class LicenseClockKeeper(LicenseService license, ILogger<License
 
 /// <summary>TK-249: installs the license the cloud issued for a paid subscription (Sync brings it down). Only a valid one, and only when it was
 /// issued after the installed one: an older copy never replaces a newer license, whoever signed it.</summary>
-internal sealed class StoreLicense(LicenseService license, ICommandHandler<InstallLicense.Command, Ok> install) : IStoreLicense
+internal sealed class StoreLicense(LicenseService license, ICommandHandler<InstallLicense.Command, Ok> install, SettingsDbContext db) : IStoreLicense
 {
+    /// <summary>TK-276: a longer trial (a business that came recommended); never a shorter one, and 90 days at most. Saved with the business.</summary>
+    public async Task<bool> ExtendTrialAsync(int days, CancellationToken ct)
+    {
+        if (days <= license.TrialLength.TotalDays || days > 90) return false;
+        await db.Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialDays, days), ct);
+        license.TrialLengthChanged(days);
+        return true;
+    }
+
     public async Task<bool> InstallFromCloudAsync(string jws, CancellationToken ct)
     {
         if (jws.Trim() == license.Current || license.Verify(jws) is not { IsSuccess: true } verified) return false;

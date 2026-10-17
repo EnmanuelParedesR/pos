@@ -59,8 +59,9 @@ internal static class ContingencyStatus
 
     /// <param name="Day">Calendar day of the active contingency (1 the first day); the DGII allows <see cref="EcfContingency.MaxDays"/>.</param>
     /// <param name="RegularizeBy">Last day to replace the B receipts with e-CF: 30 calendar days after the contingency ended.</param>
+    /// <param name="ClockProblem">TK-156: the main PC's clock is off from the DGII's (the register shows it; sales go on, their e-CF wait).</param>
     public sealed record Response(bool Active, DateTime? StartedUtc, string? Reason, int? Day, int MaxDays, DateTime? LastEndedUtc, DateOnly? RegularizeBy,
-        bool CanSign, string? CannotSignReason, IReadOnlyList<Range> Ranges, IReadOnlyList<Pending> ToRegularize, int Regularized);
+        bool CanSign, string? CannotSignReason, IReadOnlyList<Range> Ranges, IReadOnlyList<Pending> ToRegularize, int Regularized, string? ClockProblem = null);
 
     public static async Task<Response> GetAsync(FiscalDbContext db, FiscalDocuments documents, DateTime now, CancellationToken ct)
     {
@@ -76,7 +77,7 @@ internal static class ContingencyStatus
         var why = documents.CannotSign();
         return new Response(active is not null, active?.StartedUtc, active?.Reason, active is null ? null : PaperContingency.Days(active.StartedUtc, now) + 1,
             EcfContingency.MaxDays, ended, ended is { } e && pending.Count > 0 ? BusinessDay.Of(e).AddDays(EcfContingency.RegularizeDays) : null,
-            why is null, why, ranges, pending, regularized);
+            why is null, why, ranges, pending, regularized, documents.ClockProblem);
     }
 
     internal sealed class Endpoint : IEndpoint
@@ -210,6 +211,7 @@ internal static class RegularizePaper
         {
             if (await db.Set<EcfContingency>().AnyAsync(x => x.EndedUtc == null, ct)) return OperationsErrors.StillActive;
             if (documents.CannotSign() is { } why) return OperationsErrors.CannotSign(why);
+            if (documents.ClockProblem is { } clockOff) return OperationsErrors.ClockOff(clockOff);
             var business = await settings.GetBusinessProfileAsync(ct);
             var all = await db.Set<PaperDocument>().Where(d => d.RegularizedByENcf == null).OrderBy(d => d.IssuedUtc).ToListAsync(ct);
             var pending = all.Where(d => !IsManual(d.Type)).ToList();

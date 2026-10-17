@@ -66,7 +66,7 @@
             <details>
                 <summary style="cursor:pointer;font-weight:600;min-height:44px;display:flex;align-items:center">Nuevo cliente</summary>
                 <form class="esc-col" style="gap:12px;padding-top:8px" @onsubmit="CreateAsync">
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px">
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px, 100%), 1fr));gap:12px">
                         <label class="esc-field"><span>Nombre</span><input class="esc-input" maxlength="150" @bind="_newName" /></label>
                         <label class="esc-field"><span>RNC o cédula</span><input class="esc-input" inputmode="numeric" maxlength="11" @bind="_newTaxId" @bind:after="LookupNewAsync" /></label>
                         <label class="esc-field"><span>Teléfono</span><input class="esc-input" inputmode="tel" maxlength="30" @bind="_newPhone" /></label>

@@ -39,6 +39,10 @@ public sealed record BusinessProfile(string Name, string? Rnc, string? Address, 
 public sealed record LicenseFeatures(string Status, string? Plan, DateTime? ExpiresUtc, string[] Enabled, int Registers,
     DateTime? TrialEndsUtc = null, int? TrialDaysLeft = null, string? Warning = null, DateTime? BlocksUtc = null, bool ClockBehind = false);
 /// <summary>TK-196: "datos de ejemplo" still showing.</summary>
+/// <summary>TK-277: cashiers enabled and the license's limit (null = no limit).</summary>
+public sealed record CashierSeats(int Used, int? Limit);
+/// <summary>TK-277: someone who used one PIN at two registers at once (<c>/api/identity/shared-pins</c>).</summary>
+public sealed record SharedPin(Guid UserId, string Name, int Times, DateTime LastUtc);
 public sealed record SampleDataStatus(int Products, int Categories);
 /// <summary>One action the store may free from the supervisor's PIN (TK-210); the list comes in screen order.</summary>
 public sealed record ApprovalRule(string Permission, bool Required);

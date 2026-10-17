@@ -12,7 +12,6 @@ Venta, caja y cuadre ciego; inventario, compras y 606/607/608; clientes y fiado;
 | TK-277 | Cobro por cajero (`ExtraCashier`) y tope en la licencia |
 | TK-278 | Separar el panel del sitio (LCP del inicio < 2.5 s) |
 | TK-238 | Copia del respaldo a la nube (hoy solo diseñada) y el latido con el modo DGII real |
-| TK-156 | Umbral del reloj para firmar (2 min, D17) y estatus real de los servicios de la DGII |
 | TK-248 | Medidor de firmas del receptor (TK-246) y la subida de facturas respetando el 429 |
 
 ## 3. V1 bloqueado por terceros o por el dueño (el código está; falta validar)
@@ -21,6 +20,7 @@ Venta, caja y cuadre ciego; inventario, compras y 606/607/608; clientes y fiado;
 | TK-141, TK-158, TK-237, TK-144–150, TK-152–155, TK-177 | Acceso a TesteCF/CerteCF, certificado de prueba y respuestas de la DGII |
 | TK-117, TK-118, TK-114, TK-093 | Probar con balanza, impresora y PC de caja reales |
 | TK-160, TK-242, TK-196 | VM limpia, Inno Setup en una PC, certificado de firma de código, alojar el instalador |
+| TK-156 | Llave de la API de estatus de la DGII (`statusecf.dgii.gov.do`, §11 #6) y revisión de la guía de contingencia por el dueño (D15); el reloj (D17) ya está |
 | TK-249 | Token del cliente y secreto del webhook de Paddle; cuenta en vivo |
 | TK-262, TK-264 | Cuentas de Google/Bing del dueño |
 | TK-161, TK-172 | Contador; entrevistas con dueños (piloto) |
