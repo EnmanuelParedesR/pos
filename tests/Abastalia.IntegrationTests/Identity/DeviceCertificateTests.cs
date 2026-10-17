@@ -141,6 +141,11 @@ public sealed class DeviceCertificateTests
         denied.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         (await denied.ErrorCode()).ShouldBe("Identity.DeviceNotPaired");
 
+        // TK-359 (ADR-0016): without a certificate the server reads no large body: pairing is a code and a CSR.
+        var big = await anonymous.PostAsJsonAsync("/api/identity/devices/pair", new { Code = "12345678", CertificateRequest = new string('A', 64 * 1024) });
+        big.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
+        (await (await anonymous.PostAsJsonAsync("/api/identity/devices/pair", new { Code = "12345678" })).ErrorCode()).ShouldBe("Identity.InvalidPairingCode"); // a small one is read
+
         // A client certificate the store CA did not issue: the server ends the handshake (TLS 1.3 may let the client notice only on reading).
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var request = new CertificateRequest("CN=Abastalia Caja", key, HashAlgorithmName.SHA256);

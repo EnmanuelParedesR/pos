@@ -58,6 +58,9 @@ public interface IFiscalDocuments
     /// <summary>R9 #12: where a receipt number was issued (the trial starts only with a real sale).</summary>
     Task<IssuedIn> IssuedInAsync(string ncf, CancellationToken ct);
 
+    /// <summary>TK-368: whether this store ever issued a real receipt (an e-CF of the eCF environment or a paper B one): its RNC is then fixed.</summary>
+    Task<bool> HasIssuedInProductionAsync(CancellationToken ct);
+
     /// <summary>e-NCF of documents issued in a DGII test environment (TesteCF, CerteCF) in the period: the 606/607 leave them out.</summary>
     Task<IReadOnlySet<string>> TestENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct);
 

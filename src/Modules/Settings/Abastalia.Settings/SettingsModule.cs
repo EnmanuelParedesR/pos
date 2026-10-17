@@ -135,10 +135,10 @@ internal sealed class BusinessConfiguration : IEntityTypeConfiguration<Business>
     }
 }
 
-internal sealed class SettingsQueries(SettingsDbContext db) : ISettingsQueries
+internal sealed class SettingsQueries(SettingsDbContext db, LicenseService license) : ISettingsQueries
 {
     public async Task<BusinessProfile> GetBusinessProfileAsync(CancellationToken ct) =>
-        (await db.Business.AsNoTracking().SingleAsync(ct)).ToProfile();
+        (await db.Business.AsNoTracking().SingleAsync(ct)).ToProfile() with { LicensedRnc = license.LicensedRnc };
 
     public async Task<byte[]?> GetLogoAsync(CancellationToken ct) => await db.Business.AsNoTracking().Select(b => b.Logo).SingleAsync(ct);
 }
@@ -173,7 +173,15 @@ internal static class UpdateBusinessProfile
         }
     }
 
-    internal sealed class Handler(SettingsDbContext db, IAuditLog audit, IEcfCertificateHolder certificate) : ICommandHandler<Command, Ok>
+    /// <summary>TK-368: the RNC is tied to the license (or to the e-CF already issued); only support changes it, with a new license.</summary>
+    public static Error RncBoundToLicense(string rnc) => Error.Conflict("Settings.RncBound",
+        $"El RNC {rnc} está atado a la licencia de este negocio. Para cambiarlo, escríbale a soporte de Abastalia: le envían una licencia nueva con el RNC correcto.");
+
+    public static readonly Error RncInUse = Error.Conflict("Settings.RncInUse",
+        "Este negocio ya emitió comprobantes fiscales con su RNC, así que no se puede cambiar aquí. Si el RNC está mal, escríbale a soporte de Abastalia.");
+
+    internal sealed class Handler(SettingsDbContext db, IAuditLog audit, IEcfCertificateHolder certificate, LicenseService license, IFiscalDocuments fiscal)
+        : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
@@ -183,6 +191,12 @@ internal static class UpdateBusinessProfile
                 return Error.Validation("Settings.CertificateWrongRnc",
                     $"El certificado digital instalado es de {taxId}: con el RNC {rnc} la DGII rechazaría todo lo firmado. Revise el RNC o importe el certificado de este negocio.");
             var b = await db.Business.SingleAsync(ct);
+            if (rnc != b.Rnc)
+            {
+                // TK-368: once a license names the RNC it stays (setting it to that RNC is fine); without one, once a real e-CF carries it.
+                if (license.LicensedRnc is { } bound && rnc != bound) return RncBoundToLicense(bound);
+                if (license.LicensedRnc is null && b.Rnc is not null && await fiscal.HasIssuedInProductionAsync(ct)) return RncInUse;
+            }
             b.Name = c.Name.Trim();
             b.Rnc = rnc;
             b.Address = c.Address?.Trim();

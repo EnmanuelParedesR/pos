@@ -32,8 +32,9 @@ public sealed record Role(Guid Id, string Name, string[] Permissions);
 public sealed record RoleList(Role[] Roles, string[] AvailablePermissions);
 
 // Settings
+/// <param name="LicensedRnc">TK-368: the RNC the installed license names; the RNC field is then fixed (only support changes it).</param>
 public sealed record BusinessProfile(string Name, string? Rnc, string? Address, string? Phone, string? ReceiptFooter, decimal DiscountCapPercent,
-    bool RequirePaymentReference = true, string? LogoVersion = null);
+    bool RequirePaymentReference = true, string? LogoVersion = null, string? LicensedRnc = null);
 /// <param name="TrialEndsUtc">TK-196: null until the first sale starts the 14 days (and once a license is installed).</param>
 /// <param name="Warning">TK-220: null, "Soon" (trial day 10 on), "Last" (day 13 on), "Ended" (Restricted) or "Blocked" (TK-279).</param>
 /// <param name="BlocksUtc">TK-279: when it goes Blocked by date. <paramref name="ClockBehind"/>: the PC clock is behind the latest time the store saw.</param>

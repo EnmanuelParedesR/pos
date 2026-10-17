@@ -87,7 +87,8 @@ internal sealed class LicenseService : IFeatureService
             })];
         FilePath = config["License:File"] ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Abastalia", "license.jws");
         if (tenant != StoreTenant.Id) FilePath = Path.Combine(Path.GetDirectoryName(FilePath)!, "tenants", $"{tenant:N}.jws");
-        if (File.Exists(FilePath) && Jws.Verify(File.ReadAllText(FilePath), _keys) is { IsSuccess: true } saved) (_data, _current) = (saved.Value, File.ReadAllText(FilePath).Trim());
+        if (File.Exists(FilePath) && Jws.Verify(File.ReadAllText(FilePath), _keys) is { IsSuccess: true } saved)
+            (_data, _current, _installedRnc) = (saved.Value, File.ReadAllText(FilePath).Trim(), Rnc.Normalize(saved.Value.Rnc));
     }
 
     public static readonly Error Older = Error.Conflict("License.Older", "Esta licencia es más antigua que la última instalada. Pídale a Abastalia la licencia vigente.");
@@ -97,6 +98,11 @@ internal sealed class LicenseService : IFeatureService
     private LicenseData? _data;
     private string? _current;
     private volatile bool _rncChecked;
+    private volatile string? _installedRnc;
+
+    /// <summary>TK-368: the RNC (digits) the license installed on this PC names, also when that license is ignored because the business RNC is
+    /// another one; null without a license or for one issued before R12. The business RNC cannot move away from it, and no e-CF is issued for another.</summary>
+    public string? LicensedRnc => _installedRnc;
 
     /// <summary>The installed license as signed (JWS), or null.</summary>
     public string? Current => Data is null ? null : _current;
@@ -143,15 +149,32 @@ internal sealed class LicenseService : IFeatureService
         }
     }
 
-    /// <summary>Reads the trial's start and length once per process.</summary>
+    /// <summary>Reads the trial's start and length once per process. TK-369: they have a sealed twin in the keys folder (<see cref="TrialFile"/>),
+    /// so clearing the start in the database (or setting it later, or giving it more days) does not restart or stretch the trial: the earlier start
+    /// wins and the length is the sealed one. Without the twin (a store before TK-369, a backup restored on a new PC) the database's values are
+    /// taken, the days at most <see cref="MaxTrialDays"/>, and sealed.</summary>
     private LicenseService LoadTrial()
     {
         if (_trialLoaded) return this;
         var trial = Read(sp => sp.GetRequiredService<SettingsDbContext>().Business.AsNoTracking().Select(b => new { b.TrialStartedUtc, b.TrialDays }).SingleOrDefault());
-        (_trialStartedUtc, _trialDays) = (trial?.TrialStartedUtc, trial?.TrialDays);
+        if (ReadSealed(TrialFile)?.Split('|') is [var start, var days])
+        {
+            DateTime? sealedStart = long.TryParse(start, out var t) ? new DateTime(t, DateTimeKind.Utc) : null;
+            _trialStartedUtc = new[] { trial?.TrialStartedUtc, sealedStart }.Where(d => d is not null).Min();
+            _trialDays = int.TryParse(days, out var d) ? d : null;
+        }
+        else (_trialStartedUtc, _trialDays) = (trial?.TrialStartedUtc, trial?.TrialDays is { } d ? Math.Min(d, MaxTrialDays) : null);
+        SealTrial();
         _trialLoaded = true;
         return this;
     }
+
+    /// <summary>TK-276: the longest trial a signed grant may give (and the most a pre-TK-369 database is believed).</summary>
+    public const int MaxTrialDays = 90;
+
+    internal const string TrialFile = "license-trial.seen";
+
+    private void SealTrial() => WriteSealed(TrialFile, $"{_trialStartedUtc?.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture)}|{_trialDays}");
 
     /// <summary>TK-279: loaded once from the latest time this store saw: the sealed copy in settings.Business (ignored when its seal does not
     /// match, e.g. edited by hand), R12 B1 its sealed twin in the keys folder (so wiping the database's copy or its seal gains nothing), the newest
@@ -252,12 +275,20 @@ internal sealed class LicenseService : IFeatureService
 
     public void TrialStarted(DateTime utc)
     {
-        lock (_gate) LoadTrial()._trialStartedUtc = utc;
+        lock (_gate)
+        {
+            LoadTrial()._trialStartedUtc = utc;
+            SealTrial();
+        }
     }
 
     public void TrialLengthChanged(int days)
     {
-        lock (_gate) LoadTrial()._trialDays = days;
+        lock (_gate)
+        {
+            LoadTrial()._trialDays = days;
+            SealTrial();
+        }
     }
 
     public DateTime? TrialEndsUtc => TrialStartedUtc + TrialLength;
@@ -340,18 +371,26 @@ internal sealed class LicenseService : IFeatureService
 
     public Result<ServerTime> VerifyTime(string jws) => Jws.Verify<ServerTime>(jws, Jws.TimeType, _keys);
 
-    public Result<LicenseData> Install(string jws)
+    /// <param name="newRnc">TK-368: the RNC the business moves to (support changed it); the caller saves it in its own transaction.</param>
+    public Result<LicenseData> Install(string jws, out string? newRnc)
     {
+        newRnc = null;
         var verified = Verify(jws);
         if (verified.IsFailure) return verified.Error!;
         var v = verified.Value;
-        if (v.Rnc is { } rnc && !SameRnc(rnc, BusinessRnc())) return OtherBusiness;
+        var business = BusinessRnc();
+        // TK-368: a license for another RNC only fits when support moved this business's RNC to it (ReplacesRnc = the RNC it has now).
+        var moves = v.Rnc is { } rnc && !SameRnc(rnc, business);
+        if (moves && !(v.ReplacesRnc is { } old && SameRnc(old, business))) return OtherBusiness;
         if (Newest is { } newest && v.IssuedUtc < newest.IssuedUtc) return Older; // R12 (security M2): never undoes a newer one, e.g. a block
+        // shortcut: if the caller's transaction then fails, the file names the new RNC and the database the old one: the license is ignored at the
+        // next start until it is installed again (it still fits: it replaces the RNC the business has).
+        if (moves) newRnc = Rnc.Normalize(v.Rnc);
         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
         File.WriteAllText(FilePath, jws.Trim());
         WriteSealed(IssuedFile, $"{v.IssuedUtc.Ticks}|{(v.Blocked ? 1 : 0)}");
         lock (_gate) (_newest, _newestLoaded) = ((v.IssuedUtc, v.Blocked), true);
-        (_data, _current, _rncChecked) = (v, jws.Trim(), true);
+        (_data, _current, _rncChecked, _installedRnc) = (v, jws.Trim(), true, Rnc.Normalize(v.Rnc));
         Time.Observe(v.IssuedUtc);
         return v;
     }
@@ -470,7 +509,7 @@ internal sealed class StoreLicense(LicenseService license, ICommandHandler<Insta
     {
         if (license.VerifyTrial(grant) is not { IsSuccess: true } verified || verified.Value.TenantId != tenantId) return false;
         var days = verified.Value.Days;
-        if (days <= license.TrialLength.TotalDays || days > 90) return false;
+        if (days <= license.TrialLength.TotalDays || days > LicenseService.MaxTrialDays) return false;
         await db.Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialDays, days), ct);
         license.TrialLengthChanged(days);
         return true;
@@ -496,7 +535,8 @@ internal sealed class StoreLicense(LicenseService license, ICommandHandler<Insta
 
 /// <summary>TK-196: the trial's 14 days start with the store's first sale, not with the installation. Runs again harmlessly (the first one wins).
 /// R9 #12: only a real sale counts: not one of the DGII certification or test environments, nor a simulated one with the sample products.</summary>
-/// <remarks>shortcut: the date lives in the store's own database; an owner who edits it by hand gets more days. A cloud copy (heartbeat) is the check if it matters.</remarks>
+/// <remarks>TK-369: the date also has a sealed twin in the keys folder (<see cref="LicenseService.TrialFile"/>), so editing the database alone gains
+/// nothing. shortcut: uninstalling with "borrar datos" deletes both and a new install starts a new trial; a cloud copy by RNC would close it.</remarks>
 internal sealed class StartTrialOnFirstSale(SettingsDbContext db, LicenseService license, IFiscalDocuments fiscal, ICatalogQueries catalog)
     : IEventHandler<SaleRecordedV2>
 {
@@ -525,14 +565,15 @@ internal static class InstallLicense
         public Validator() => RuleFor(c => c.License).NotEmpty().MaximumLength(10_000);
     }
 
-    internal sealed class Handler(LicenseService license, IAuditLog audit) : ICommandHandler<Command, Ok>
+    internal sealed class Handler(LicenseService license, IAuditLog audit, SettingsDbContext db) : ICommandHandler<Command, Ok>
     {
         public async Task<Result<Ok>> Handle(Command c, CancellationToken ct)
         {
-            var installed = license.Install(c.License);
+            var installed = license.Install(c.License, out var newRnc);
             if (installed.IsFailure) return installed.Error!;
+            if (newRnc is not null) await db.Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.Rnc, newRnc), ct); // TK-368: support moved the RNC
             await audit.RecordAsync("settings.license", "License", Guid.Empty,
-                new { installed.Value.Plan, installed.Value.ExpiresUtc, installed.Value.Features, installed.Value.Limits }, ct);
+                new { installed.Value.Plan, installed.Value.ExpiresUtc, installed.Value.Features, installed.Value.Limits, installed.Value.Rnc, installed.Value.ReplacesRnc }, ct);
             return Ok.Value;
         }
     }

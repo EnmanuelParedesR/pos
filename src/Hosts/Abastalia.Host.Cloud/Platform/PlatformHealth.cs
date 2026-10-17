@@ -16,7 +16,11 @@ public sealed record WatchQuota(Guid TenantId, string TenantName, Meter Meter, i
 /// <param name="QueueHours">How long the oldest e-CF has waited for the DGII, by the newest heartbeat; null when nothing waits.</param>
 public sealed record WatchStore(Guid TenantId, string TenantName, Guid StoreId, string StoreName, DateTime LastHeartbeatUtc, double? QueueHours);
 public sealed record PlatformWatchReport(int Days, DateTime SinceUtc, WatchThresholds Thresholds, IReadOnlyList<WatchReason> Reasons, IReadOnlyList<WatchIp> Ips,
-    IReadOnlyList<WatchQuota> Quotas, IReadOnlyList<WatchStore> SilentStores, IReadOnlyList<WatchStore> EcfQueues);
+    IReadOnlyList<WatchQuota> Quotas, IReadOnlyList<WatchStore> SilentStores, IReadOnlyList<WatchStore> EcfQueues, IReadOnlyList<WatchRnc> Rncs);
+
+/// <summary>TK-368: an RNC to look at. <paramref name="ReportedRnc"/>: the store sent this one, not the RNC its license names (<paramref name="Rnc"/>),
+/// e.g. one license used for another business; null when the business has stores with different RNCs (several companies on one account).</summary>
+public sealed record WatchRnc(Guid TenantId, string TenantName, Guid StoreId, string StoreName, string? Rnc, string? ReportedRnc);
 
 /// <summary>TK-311: "Salud de la plataforma" for Abastalia staff, and what the alerts need from the database (silent stores), logged while it
 /// is awake anyway. Bounded reads: rows of the window by their index, one heartbeat per node, this month's usage.</summary>
@@ -65,7 +69,17 @@ public sealed class PlatformHealth(CloudDbContext db, LimitWatch watch, PlanLimi
         var silentAfter = TimeSpan.FromHours(thresholds.SilentStoreHours);
         return new PlatformWatchReport(days, since, thresholds, [.. reasons.OrderByDescending(r => r.Count)], ips, await QuotasAsync(thresholds, ct),
             [.. stores.Where(s => now - s.LastHeartbeatUtc > silentAfter && now - s.LastHeartbeatUtc < TimeSpan.FromDays(30)).OrderBy(s => s.LastHeartbeatUtc).Take(TopRows)],
-            [.. stores.Where(s => s.QueueHours is not null).OrderByDescending(s => s.QueueHours).Take(TopRows)]);
+            [.. stores.Where(s => s.QueueHours is not null).OrderByDescending(s => s.QueueHours).Take(TopRows)], await RncsAsync(ct));
+    }
+
+    /// <summary>TK-368: stores that sent another RNC than the one signed in their license, and businesses whose stores carry different RNCs.</summary>
+    private async Task<List<WatchRnc>> RncsAsync(CancellationToken ct)
+    {
+        var mixed = db.Stores.Where(s => s.Rnc != null).GroupBy(s => s.TenantId).Where(g => g.Select(s => s.Rnc).Distinct().Count() > 1).Select(g => g.Key);
+        var rows = await db.Stores.AsNoTracking().Where(s => s.ReportedRnc != null || (s.Rnc != null && mixed.Contains(s.TenantId)))
+            .Join(db.Tenants.Where(t => t.DisabledUtc == null), s => s.TenantId, t => t.Id, (s, t) => new { TenantId = t.Id, Tenant = t.Name, s.Id, s.Name, s.Rnc, s.ReportedRnc })
+            .OrderBy(r => r.Tenant).ThenBy(r => r.Name).Take(TopRows).ToListAsync(ct);
+        return [.. rows.Select(r => new WatchRnc(r.TenantId, r.Tenant, r.Id, r.Name, r.Rnc, r.ReportedRnc))];
     }
 
     /// <summary>This month's meters at <see cref="WatchThresholds.QuotaNearPercent"/> of the limit or past it (TK-248); receiver signatures

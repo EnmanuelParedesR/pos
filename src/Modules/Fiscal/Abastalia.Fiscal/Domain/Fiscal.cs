@@ -132,6 +132,10 @@ internal static class FiscalErrors
 
     public static readonly Error OverlappingRange = Error.Conflict("Fiscal.OverlappingRange", "Ese rango se cruza con otro ya cargado.");
     public static readonly Error MissingIssuerRnc = Error.Conflict("Fiscal.MissingIssuerRnc", "Configure el RNC del negocio antes de emitir comprobantes.");
+
+    /// <summary>TK-368: one license, one business: no receipt goes out under an RNC the installed license does not name.</summary>
+    public static Error RncNotLicensed(string licensed) => Error.Conflict("Fiscal.RncNotLicensed",
+        $"La licencia de esta PC es del RNC {licensed}, no del RNC del negocio. No se emiten comprobantes con otro RNC: escríbale a soporte de Abastalia.");
     public static readonly Error ReferenceRequired = Error.Validation("Fiscal.ReferenceRequired", "Una nota de crédito necesita el e-NCF que modifica.");
     public static readonly Error ReferenceNotFound = Error.Validation("Fiscal.ReferenceNotFound", "El e-NCF que modifica la nota no existe en este negocio.");
     public static readonly Error MissingIssuerAddress = Error.Conflict("Fiscal.MissingIssuerAddress", "Configure la dirección del negocio antes de emitir comprobantes electrónicos.");

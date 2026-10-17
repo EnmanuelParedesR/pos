@@ -8,7 +8,7 @@
      with only SeChangeNotifyPrivilege (R11 C7).
   3. Runs `Abastalia.Host.Local prepare-service`: C:\ProgramData\Abastalia for logs, backups, keys and the license, and the SQL Server login of the
      service in the instance of the connection string (.\ABASTALIA, which the setup installs; R11 C1).
-  4. Opens TCP 5443 (HTTPS) in the firewall for private networks only, and starts the service.
+  4. Opens TCP 5443 (HTTPS) in the firewall for private networks only and for the server's program only, and starts the service.
   Publish first:  dotnet publish src/Hosts/Abastalia.Host.Local -c Release -r win-x64 --self-contained -o publish
 .EXAMPLE
   .\deploy\install.ps1 -Source .\publish
@@ -41,8 +41,11 @@ if ($LASTEXITCODE -ne 0) { throw "sc.exe privs falló ($LASTEXITCODE)" }
 & $exe prepare-service $account
 if ($LASTEXITCODE -ne 0) { throw "prepare-service falló ($LASTEXITCODE)" }
 
-if (-not (Get-NetFirewallRule -DisplayName 'Abastalia HTTPS' -ErrorAction SilentlyContinue)) {
-    New-NetFirewallRule -DisplayName 'Abastalia HTTPS' -Direction Inbound -Protocol TCP -LocalPort 5443 -Action Allow -Profile Private | Out-Null
+# TK-359 (ADR-0016): only the server's own program may take 5443; a rule left by an older install is rewritten the same way.
+if (Get-NetFirewallRule -DisplayName 'Abastalia HTTPS' -ErrorAction SilentlyContinue) {
+    Set-NetFirewallRule -DisplayName 'Abastalia HTTPS' -Direction Inbound -Protocol TCP -LocalPort 5443 -Action Allow -Profile Private -Program $exe
+} else {
+    New-NetFirewallRule -DisplayName 'Abastalia HTTPS' -Direction Inbound -Protocol TCP -LocalPort 5443 -Action Allow -Profile Private -Program $exe | Out-Null
 }
 
 Start-Service $Service

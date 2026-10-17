@@ -102,6 +102,17 @@ public sealed class InstallerScriptTests
         }
     }
 
+    [Fact]
+    public void TK359_the_firewall_opens_5443_only_to_the_server_on_private_networks_and_fixes_an_older_rule()
+    {
+        // ADR-0016: any program could take 5443 with the old rule, and a reinstall kept it as it was.
+        var install = File.ReadAllText(Repo(@"deploy\install.ps1"));
+        var rules = install.Split('\n').Where(l => l.Contains("NetFirewallRule -DisplayName 'Abastalia HTTPS' -Direction", StringComparison.Ordinal)).ToList();
+        rules.Select(l => l.Trim().Split(' ')[0]).ShouldBe(["Set-NetFirewallRule", "New-NetFirewallRule"]);
+        rules.ShouldAllBe(l => l.Contains("-Protocol TCP -LocalPort 5443 -Action Allow -Profile Private -Program $exe"));
+        install.ShouldContain("$exe = Join-Path $Destination 'Abastalia.Host.Local.exe'");
+    }
+
     private static string Repo(string relative)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Scalar.AspNetCore;
 using Serilog;
@@ -127,9 +128,14 @@ app.UseSerilogRequestLogging(RequestLogs.Configure);
 if (https)
 {
     // Over the LAN every API call comes from a paired register's certificate; only what comes before pairing goes without one.
-    app.Use((context, next) => context.Connection.ClientCertificate is not null || DeviceCertificates.IsOptional(context.Request.Path)
-        ? next(context)
-        : EndpointExtensions.Problem(DeviceCertificates.Missing).ExecuteAsync(context));
+    app.Use((context, next) =>
+    {
+        if (context.Connection.ClientCertificate is not null) return next(context);
+        if (!DeviceCertificates.IsOptional(context.Request.Path)) return EndpointExtensions.Problem(DeviceCertificates.Missing).ExecuteAsync(context);
+        // TK-359 (ADR-0016): what comes before pairing is a code, a name and a CSR; anyone on the store's Wi-Fi gets no more than that read.
+        if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } limit) limit.MaxRequestBodySize = DeviceCertificates.MaxAnonymousBody;
+        return next(context);
+    });
     var ca = app.Services.GetRequiredService<StoreCertificateAuthority>();
     app.Logger.LogInformation("Huella del servidor para unir cajas: {Fingerprint}", DeviceCertificates.Fingerprint(ca.ServerCertificate));
 }

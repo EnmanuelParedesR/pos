@@ -257,6 +257,7 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
             return FiscalErrors.ReferenceRequired;
         var business = await settings.GetBusinessProfileAsync(ct);
         if (!Rnc.IsValid(business.Rnc)) return FiscalErrors.MissingIssuerRnc;
+        if (business.LicensedRnc is { } licensed && licensed != business.Rnc) return FiscalErrors.RncNotLicensed(licensed);
         // TK-157: series B only while the store cannot sign and the contingency is declared; never while it can sign.
         if (CannotSign() is { } why)
             return await db.Set<EcfContingency>().AnyAsync(c => c.EndedUtc == null, ct)
@@ -350,6 +351,9 @@ internal sealed class FiscalDocuments(FiscalDbContext db, ISettingsQueries setti
             _ => IssuedIn.Simulated,
         };
     }
+
+    public async Task<bool> HasIssuedInProductionAsync(CancellationToken ct) =>
+        await db.Documents.AnyAsync(d => d.Environment == FiscalEnvironment.eCF, ct) || await db.Set<PaperDocument>().AnyAsync(ct);
 
     public async Task<IReadOnlySet<string>> TestENcfsAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct) =>
         (await db.Documents.Where(d => d.SignedUtc >= fromUtc && d.SignedUtc < toUtc

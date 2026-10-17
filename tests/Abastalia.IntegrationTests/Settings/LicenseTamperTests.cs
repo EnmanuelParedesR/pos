@@ -107,6 +107,38 @@ public sealed class TrialClockTests(AbastaliaApp app) : IClassFixture<AbastaliaA
     }
 }
 
+/// <summary>TK-369: the trial's start and length have a sealed twin in the keys folder. Own app: it sells and edits the trial in the database.</summary>
+public sealed class TrialSealTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
+{
+    [Fact]
+    public async Task Clearing_or_stretching_the_trial_in_the_database_does_not_restart_it()
+    {
+        var cashier = await app.CashierWithShiftAsync();
+        var admin = app.Client(await app.AdminAsync());
+        var soda = await admin.ProductAsync(await admin.CategoryAsync(), "Refresco", 59m, stock: 10);
+        (await cashier.SellAsync(Store.Sale(cashier.ShiftId, 59m, 59m, Store.Line(soda, 1)))).EnsureSuccessStatusCode();
+        await app.InScopeAsync(sp => sp.GetRequiredService<Abastalia.BuildingBlocks.Messaging.OutboxProcessor>().ProcessAsync(CancellationToken.None));
+        var started = app.Services.GetRequiredService<LicenseService>().TrialStartedUtc;
+        started.ShouldNotBeNull();
+
+        // Reinstalling over the same data folder with a wiped (or restored older) database, or editing it by hand: the trial goes on.
+        await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.ExecuteUpdateAsync(s => s
+            .SetProperty(b => b.TrialStartedUtc, (DateTime?)null).SetProperty(b => b.TrialDays, 90)));
+        var restarted = app.Restarted(Licenses.TempFile());
+        (restarted.TrialStartedUtc, restarted.TrialLength).ShouldBe((started, LicenseService.TrialPeriod));
+        await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.ExecuteUpdateAsync(s => s
+            .SetProperty(b => b.TrialStartedUtc, started!.Value.AddDays(20))));
+        app.Restarted(Licenses.TempFile()).TrialStartedUtc.ShouldBe(started); // the earlier start wins
+
+        // Without the twin (a store from before TK-369), the database is believed, its days at most 90, and sealed from then on.
+        File.Delete(Path.Combine(app.Services.GetRequiredService<ServiceKeys>().Folder, LicenseService.TrialFile));
+        await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialDays, 400)));
+        app.Restarted(Licenses.TempFile()).TrialLength.ShouldBe(TimeSpan.FromDays(LicenseService.MaxTrialDays));
+        await app.InScopeAsync(sp => sp.GetRequiredService<SettingsDbContext>().Business.ExecuteUpdateAsync(s => s.SetProperty(b => b.TrialDays, (int?)null)));
+        app.Restarted(Licenses.TempFile()).TrialLength.ShouldBe(TimeSpan.FromDays(LicenseService.MaxTrialDays));
+    }
+}
+
 /// <summary>R12 (security B1): the clock's sealed copy in the keys folder. Own app: it moves the time the store saw.</summary>
 public sealed class LicenseClockCopyTests(AbastaliaApp app) : IClassFixture<AbastaliaApp>
 {

@@ -519,7 +519,10 @@ export interface PlatformWatch {
   quotas: { tenantId: string; tenantName: string; meter: Meter; used: number; limit: number }[];
   silentStores: WatchStore[];
   ecfQueues: WatchStore[];
+  /** TK-368: `reportedRnc` = the store sent another RNC than its license's; null = the business has stores with different RNCs. */
+  rncs?: WatchRnc[];
 }
+export interface WatchRnc { tenantId: string; tenantName: string; storeId: string; storeName: string; rnc: string | null; reportedRnc: string | null }
 /** TK-249: Paddle Billing. `enabled` false = not set up yet (the page shows the plan and how to ask Abastalia). */
 export type SubscriptionStatus = "None" | "Trialing" | "Active" | "PastDue" | "Paused" | "Canceled";
 export type BillingInterval = "Monthly" | "Annual";
@@ -647,6 +650,11 @@ export interface PlatformStoreDetail {
   nodes: PlatformNode[];
   days: { day: string; sales: number; amount: number; reportedSales: number | null; activeCashiers: number | null; voids: number | null }[];
   certification: CertificationProgress | null;
+  /** TK-368: the RNC its license names; `reportedRnc`: another one the store sent (an alert); the last change by support. */
+  rnc?: string | null;
+  reportedRnc?: string | null;
+  previousRnc?: string | null;
+  rncNote?: string | null;
 }
 export interface MetricsOverview {
   today: string;
