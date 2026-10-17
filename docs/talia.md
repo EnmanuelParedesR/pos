@@ -149,7 +149,7 @@ Búsqueda (determinista, en CI): recall@3 = 96.1 % (98/102). Las que fallan: «�
 
 Preguntas que la gente hará y que el repositorio todavía no contesta (Talia dirá «no lo sé con seguridad» y ofrecerá contacto):
 
-- Horario de soporte y qué significa «soporte más rápido» del Pro. (El canal ya está: WhatsApp 849-631-3513, 17/10/2026.)
+- Hecho el 17/10/2026 (dueño): WhatsApp 849-631-3513; horario lunes a viernes 8:00–18:00 y sábados 8:00–13:00; Pro, primera respuesta en 2 horas laborables (los demás, 1 día laborable); política de reembolsos en el artículo de términos y en /terminos; certificación: la DGII certifica a cada negocio y Abastalia es el programa en medio (dicho al final, sin destacarlo).
 - La URL del instalador (`/descargar`, TK-303) y si se publica la zona de visitas y el precio de la sesión remota extra.
 - Razón social y RNC de Abastalia, plazo de borrado de datos (borradores legales).
 - Si la suscripción da NCF / crédito fiscal y si se puede pagar en pesos o por transferencia.

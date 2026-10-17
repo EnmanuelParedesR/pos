@@ -92,7 +92,7 @@ function Terms() {
           <strong>Renovación y cancelación:</strong> la suscripción se renueva sola cada mes o cada año. Puede cancelarla cuando quiera desde "Plan y facturación".
         </li>
         <li>
-          <strong>Reembolsos:</strong> se piden a Paddle y siguen su política. Abastalia no reembolsa desde su panel.
+          <strong>Reembolsos:</strong> la prueba de 14 días es gratis y sin tarjeta. Al cancelar no se cobra el período siguiente y el plan sigue activo hasta el final del ya pagado; lo ya pagado no se devuelve, salvo el pago anual pedido en los primeros 14 días, un cobro duplicado o por error, o una falla de Abastalia de más de 72 horas seguidas (se acredita la parte proporcional). La visita de instalación y el acompañamiento no se reembolsan una vez hechos; con 24 horas de aviso se reprograman o se devuelven. Paddle procesa el reembolso; se pide por WhatsApp.
         </li>
         <li>Mientras el pago en línea no esté disponible, el plan se acuerda con nosotros directamente.</li>
       </ul>
