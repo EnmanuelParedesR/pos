@@ -203,7 +203,7 @@ public sealed class EscuadraComponentTests : IDisposable
         using var _ = ctx;
         var sale = ctx.Render<Sale>();
 
-        sale.Find("input.sale__scanner").GetAttribute("aria-label").ShouldBe("Código de barras o PLU");
+        sale.Find("input.sale__scanner").GetAttribute("aria-label").ShouldBe("Código de barras o PLU, o nombre del producto");
         sale.Find("ol.sale__lines").GetAttribute("aria-label").ShouldBe("Líneas");
         var keys = sale.Find("nav.esc-key-bar");
         keys.GetAttribute("aria-label").ShouldBe("Teclas");

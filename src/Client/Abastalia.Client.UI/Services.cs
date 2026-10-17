@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Abastalia.Client.UI.Api;
 using Abastalia.Client.UI.State;
 using Abastalia.Hardware;
@@ -24,6 +25,7 @@ public static class Services
         services.AddScoped<Cart>();
         services.AddScoped<BackOffice>();
         services.AddScoped<BusinessLogo>();
+        services.TryAddSingleton(TimeProvider.System);
         return services;
     }
 

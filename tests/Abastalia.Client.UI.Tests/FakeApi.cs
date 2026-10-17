@@ -72,7 +72,10 @@ internal static class ScreenContext
     public static readonly CurrentShift Shift = new(Guid.NewGuid(), Guid.NewGuid(), "Caja 1", 500m, DateTime.UtcNow);
 
     /// <summary>A bUnit context with the register's services on a fake API, a paired device and a logged-in cashier.</summary>
-    public static (BunitContext Ctx, FakeApi Api) Create(params string[] permissions)
+    public static (BunitContext Ctx, FakeApi Api) Create(params string[] permissions) => Create(_ => { }, permissions);
+
+    /// <param name="services">Services a test adds before anything is resolved (an app updater).</param>
+    public static (BunitContext Ctx, FakeApi Api) Create(Action<IServiceCollection> services, params string[] permissions)
     {
         var ctx = new BunitContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
@@ -83,6 +86,7 @@ internal static class ScreenContext
         var hardware = new TestDrivers();
         ctx.Services.AddSingleton(hardware);
         ctx.Services.AddAbastaliaHardware(hardware);
+        services(ctx.Services);
         var session = ctx.Services.GetRequiredService<Session>();
         session.PairAsync(null, "device").GetAwaiter().GetResult();
         session.Open(new OpenedSession("token", Guid.NewGuid(), "Yudelka M.", DateTime.UtcNow.AddHours(12)), new Me(Guid.NewGuid(), "Yudelka M.", Guid.NewGuid(), permissions));

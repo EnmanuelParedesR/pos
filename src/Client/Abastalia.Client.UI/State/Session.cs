@@ -192,6 +192,16 @@ public sealed class Session(ILocalStore store, NodeCertificatePin pin, ServerAdd
         Changed?.Invoke();
     }
 
+    /// <summary>Ends this user's session on the server and here. False, with nothing done, while the cart has a sale: the caller asks to hold
+    /// or void it first, or the next user would find it in their register (R7 #26).</summary>
+    public async Task<bool> SignOutAsync(AbastaliaApi api, Cart cart)
+    {
+        if (!cart.IsEmpty) return false;
+        await api.DeleteAsync<Empty>("/api/identity/sessions/current");
+        Close();
+        return true;
+    }
+
     public void Close()
     {
         (Token, UserId, Name, _permissions, Shift) = (null, Guid.Empty, null, [], null);

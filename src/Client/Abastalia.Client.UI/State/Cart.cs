@@ -118,6 +118,40 @@ public sealed class Cart
         SaleId = Guid.CreateVersion7();
     }
 
+    public enum HandOverResult { Kept, SetAside, Restored }
+
+    private readonly Dictionary<Guid, (SavedCart Cart, Guid SaleId, bool Uncertain)> _setAside = [];
+    private (Guid Id, string Name)? _owner;
+
+    /// <summary>The cashier whose sale was set aside at the last sign-in (for the register's message).</summary>
+    public string? SetAsideFor { get; private set; }
+    /// <summary>What the last sign-in did with the cart; the register shows it once.</summary>
+    public HandOverResult? LastHandOver { get; set; }
+
+    /// <summary>A sign-in (TK-304): a sale left on the screen when a session expired is the cashier's who rang it up, never the next user's.
+    /// It waits on this PC for its cashier, who finds it back when they sign in again (memory only: closing the app loses it, like the cart).
+    /// An uncertain checkout waits too, with its SaleId: only its cashier (or whoever sees all sales) can ask the server whether it was saved;
+    /// anyone else would get "not found" and could charge it twice.</summary>
+    public HandOverResult HandOver(Guid userId, string name) => (LastHandOver = Hand(userId, name)).Value;
+
+    private HandOverResult Hand(Guid userId, string name)
+    {
+        var previous = _owner;
+        _owner = (userId, name);
+        SetAsideFor = null;
+        if (previous is { } p && p.Id != userId && !IsEmpty)
+        {
+            _setAside[p.Id] = (Save(), SaleId, CheckoutUncertain);
+            Clear();
+            SetAsideFor = p.Name;
+        }
+        else if (previous?.Id == userId) return HandOverResult.Kept;
+        if (!IsEmpty || !_setAside.Remove(userId, out var mine)) return SetAsideFor is null ? HandOverResult.Kept : HandOverResult.SetAside;
+        Restore(mine.Cart);
+        (SaleId, CheckoutUncertain) = (mine.SaleId, mine.Uncertain);
+        return HandOverResult.Restored;
+    }
+
     /// <summary>The server already used this id for a different sale (Sales.DuplicateId): this cart needs its own.</summary>
     public void NewSaleId() => SaleId = Guid.CreateVersion7();
 

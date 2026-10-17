@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @using Microsoft.Extensions.DependencyInjection
+@using Microsoft.JSInterop
 @implements IDisposable
 @inject Session Session
 @inject AbastaliaApi Api
@@ -7,6 +8,8 @@
 @inject Peripherals Peripherals
 @inject Cart Cart
 @inject IServiceProvider Services
+@inject TimeProvider Clock
+@inject IJSRuntime JS
 
 @if (_ready)
 {
@@ -168,15 +171,8 @@
 
     private async Task SignOutAsync()
     {
-        if (!Cart.IsEmpty)
-        {
-            _leaving = true; // the next user must not inherit the sale (R7 #26)
-            return;
-        }
-        _leaving = false;
-        await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
-        Session.Close();
-        Nav.NavigateTo("sign-in");
+        _leaving = !await Session.SignOutAsync(Api, Cart);
+        if (!_leaving) Nav.NavigateTo("sign-in");
     }
 
     /// <summary>The back office's "Ayuda" button opens the same panel (Admin gets this Frame as a cascading value).</summary>
@@ -190,7 +186,7 @@
     {
         if (e.Key == "F1") _help = !_help;
     }
-    private Timer? _clock;
+    private ITimer? _clock;
     private ErrorBoundary? _boundary;
     private FiscalQueue? _queue;
     private EcfContingencyStatus? _contingency;
@@ -212,18 +208,20 @@
         Guard();
         _ready = true;
         // Every 15 s: the clock and whether the store server answers (AbastaliaApi keeps Session.Online; amber, never red: principle 3).
-        _clock = new Timer(_ => InvokeAsync(CheckAsync), null, TimeSpan.Zero, TimeSpan.FromSeconds(15));
+        _clock = Clock.CreateTimer(_ => InvokeAsync(CheckAsync), null, TimeSpan.Zero, TimeSpan.FromSeconds(15));
     }
 
     private async Task CheckAsync()
     {
+        // TK-305: the license first, shown at once: a blocked register shows its screen without waiting for the other checks.
+        _license = Session.IsOpen && !IsBackOffice ? (await Api.PollAsync<LicenseFeatures>("/api/settings/features")).Value ?? _license : null;
+        StateHasChanged();
         await Api.PollAsync<Empty>("/health");
         if (Session.IsOpen) await Peripherals.ReportAsync(Api); // TK-190: at sign-in and after the scale or printer change
         // The e-CF send queue, only for whoever may manage it (the endpoint needs fiscal.manage); hidden for everyone else.
         _queue = Session.Can("fiscal.manage") && !IsBackOffice ? (await Api.PollAsync<FiscalQueue>("/api/fiscal/queue")).Value ?? _queue : null;
         _contingency = Session.IsOpen && !IsBackOffice ? (await Api.PollAsync<EcfContingencyStatus>("/api/fiscal/contingency")).Value ?? _contingency : null;
         _backup = Session.Can("backups.manage") && !IsBackOffice ? (await Api.PollAsync<BackupWarning>("/api/backups/warning")).Value ?? _backup : null;
-        _license = Session.IsOpen && !IsBackOffice ?(await Api.PollAsync<LicenseFeatures>("/api/settings/features")).Value ?? _license : null;
         await ReportVersionAsync();
         StateHasChanged();
     }
@@ -248,8 +246,12 @@
             _lastPolicy = (a.Channel, a.AllowedVersion);
             _updater.Follow(a.Channel, a.AllowedVersion);
         }
-        if (a.RestartRequested && a.PendingVersion is not null && Cart.IsEmpty) _updater.CloseToUpdate();
+        if (a.RestartRequested && a.PendingVersion is not null && await IdleAsync()) _updater.CloseToUpdate();
     }
+
+    /// <summary>TK-304: closing to update loses nothing: no sale, a screen without a form in progress, and no dialog open (a payment, a count).</summary>
+    private async Task<bool> IdleAsync() =>
+        Cart.IsEmpty && Route is "sale" or "sign-in" or "admin" && !await JS.InvokeAsync<bool>("escuadra.hasDialog");
 
     private void OnLocationChanged(object? _, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => InvokeAsync(async () =>
     {

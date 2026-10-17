@@ -150,14 +150,8 @@
 
     private async Task SignOutAsync()
     {
-        if (!Cart.IsEmpty)
-        {
-            _leaving = true; // the next user must not inherit the sale (R7 #26)
-            return;
-        }
-        await Api.DeleteAsync<Empty>("/api/identity/sessions/current");
-        Session.Close();
-        Nav.NavigateTo("sign-in");
+        _leaving = !await Session.SignOutAsync(Api, Cart);
+        if (!_leaving) Nav.NavigateTo("sign-in");
     }
 
     public void Dispose() => Session.Changed -= OnSessionChanged;

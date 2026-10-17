@@ -13,8 +13,8 @@
         <form class="esc-row" style="flex-wrap:nowrap" @onsubmit="ScanAsync">
             <label class="esc-card sale__scan-frame">
                 <Icon Name="barcode" />
-                <input @ref="_scanner" class="sale__scanner" data-scanner placeholder="Escanee o escriba el código o PLU" aria-label="Código de barras o PLU"
-                       autocomplete="off" @bind="_code" @bind:event="oninput" />
+                <input @ref="_scanner" class="sale__scanner" data-scanner placeholder="Escanee el código o escriba el PLU o el nombre" aria-label="Código de barras o PLU, o nombre del producto"
+                       autocomplete="off" @bind="_code" @bind:event="oninput" @bind:after="TypingAsync" />
                 <Keycap>F2</Keycap>
             </label>
             <Button Type="submit" Shortcut="Enter">Agregar</Button>
@@ -31,9 +31,17 @@
         <div class="esc-row" role="group" aria-label="Categorías">
             @foreach (var c in _categories)
             {
-                <button type="button" class="esc-chip" aria-pressed="@(c.Id == _category ? "true" : "false")" @onclick="() => CategoryAsync(c.Id)">@c.Name</button>
+                <button type="button" class="esc-chip" aria-pressed="@(_search is null && c.Id == _category ? "true" : "false")" @onclick="() => CategoryAsync(c.Id)">@c.Name</button>
             }
         </div>
+
+        @if (_search is { } s)
+        {
+            <div class="esc-row" style="justify-content:space-between;align-items:center">
+                <span role="status" style="font-weight:600">@(_products.Count == 0 ? $"Nada coincide con “{s}”." : $"Productos con “{s}”")</span>
+                <Button Variant="Button.Variants.Ghost" OnClick="BackToCategoryAsync"><Icon Name="x" /> Volver a las categorías</Button>
+            </div>
+        }
 
         <div class="sale__tiles">
             @foreach (var p in _products)
@@ -45,13 +53,13 @@
             }
             @if (_products.Count == 0)
             {
-                <div class="esc-muted">@(_categories.Count == 0 ? "No hay productos todavía. Agréguelos en Administración → Productos." : "Esta categoría no tiene productos.")</div>
+                <div class="esc-muted">@(_search is not null ? "Pruebe con otra palabra o escanee el código." : _categories.Count == 0 ? "No hay productos todavía. Agréguelos en Administración → Productos." : "Esta categoría no tiene productos.")</div>
+            }
+            @if (_products.Count == _page * PageSize)
+            {
+                <button type="button" class="esc-tile" @onclick="MoreAsync"><span class="esc-tile__name">Ver más productos</span></button>
             }
         </div>
-        @if (_products.Count >= TilesPerCategory)
-        {
-            <div class="esc-subtitle">Se muestran los primeros @TilesPerCategory de esta categoría. Los demás, por código o PLU.</div>
-        }
     </section>
 
     <section class="sale__cart esc-card" aria-label="Venta actual">
@@ -186,15 +194,20 @@
     private enum Panel { None, Checkout, Quantity, Price, Discount, Weight, Scale, Customer, Hold, Register, Receipt, Void, Orders }
     private sealed record SaleNotice(Notice.Kinds Kind, string Title, string? Detail = null);
     /// <summary>The API's page size for products.</summary>
-    // shortcut: one page of tiles per category; add "Ver más" (page=2) when a category grows past 50 products.
-    private const int TilesPerCategory = 50;
+    private const int PageSize = 50;
 
     private Panel _panel;
     private string? _code;
     private SaleNotice? _notice;
     private List<Category> _categories = [];
     private Guid? _category;
+    /// <summary>TK-304: the name the tiles show results for; null shows the category.</summary>
+    private string? _search;
     private List<ProductSummary> _products = [];
+    private int _page = 1;
+    /// <summary>TK-304: a slower answer for an earlier tap or search never replaces the latest one.</summary>
+    private int _load;
+    private CancellationTokenSource? _typing;
     private ProductByCode? _pending;
     private SaleRegistered? _last;
     private ElementReference _scanner;
@@ -213,10 +226,22 @@
             Nav.NavigateTo("open-register");
             return;
         }
+        _notice = HandOverNotice();
+        Cart.LastHandOver = null;
         _categories = (await Api.GetAsync<List<Category>>("/api/inventory/categories")).Value?.Where(c => c.IsActive).ToList() ?? [];
         if (_categories.Count > 0) await CategoryAsync(_categories[0].Id);
         await UpcomingAsync();
     }
+
+    /// <summary>TK-304: what the sign-in did with a sale left on the screen by an expired session.</summary>
+    private SaleNotice? HandOverNotice() => (Cart.LastHandOver, Cart.SetAsideFor) switch
+    {
+        (Cart.HandOverResult.Restored, null) => new(Notice.Kinds.Info, "Su venta sin cobrar sigue aquí.", "Siga donde la dejó."),
+        (Cart.HandOverResult.Restored, { } other) => new(Notice.Kinds.Info, "Su venta sin cobrar sigue aquí.", $"La de {other} quedó guardada para cuando vuelva a entrar."),
+        (Cart.HandOverResult.SetAside, { } other) => new(Notice.Kinds.Info, $"La venta sin cobrar de {other} quedó guardada.",
+            $"Le aparecerá a {other} cuando vuelva a entrar con su PIN. Usted empieza con la caja vacía."),
+        _ => null,
+    };
 
     /// <summary>Open orders for today and tomorrow (TK-193's reminder). Only shown to whoever may take orders.</summary>
     private async Task UpcomingAsync()
@@ -254,9 +279,44 @@
 
     private async Task CategoryAsync(Guid id)
     {
-        _category = id;
-        _products = (await Api.GetAsync<List<ProductSummary>>($"/api/inventory/products?categoryId={id}")).Value ?? [];
+        (_category, _search, _focusScanner) = (id, null, true);
+        _typing?.Cancel();
+        await LoadAsync(1);
+    }
+
+    private async Task BackToCategoryAsync()
+    {
+        if (_category is { } id) await CategoryAsync(id);
+        else (_search, _products, _focusScanner) = (null, [], true);
+    }
+
+    private async Task MoreAsync()
+    {
         _focusScanner = true;
+        await LoadAsync(_page + 1);
+    }
+
+    /// <returns>False when a later load replaced this one.</returns>
+    private async Task<bool> LoadAsync(int page)
+    {
+        var load = ++_load;
+        var filter = _search is { } s ? $"search={Uri.EscapeDataString(s)}" : $"categoryId={_category}";
+        var found = (await Api.GetAsync<List<ProductSummary>>($"/api/inventory/products?{filter}{(page > 1 ? $"&page={page}" : "")}")).Value ?? [];
+        if (load != _load) return false;
+        (_products, _page) = (page == 1 ? found : [.. _products, .. found], page);
+        return true;
+    }
+
+    /// <summary>TK-304: products without a barcode are found by name while typing. A scanner types digits only (and ends with Enter), so it never searches.</summary>
+    private async Task TypingAsync()
+    {
+        var text = _code?.Trim() ?? "";
+        if (text.Length < 2 || !text.Any(char.IsLetter)) return;
+        _typing?.Cancel();
+        var typing = _typing = new CancellationTokenSource();
+        try { await Task.Delay(250, typing.Token); } catch (TaskCanceledException) { return; }
+        _search = text;
+        await LoadAsync(1);
     }
 
     /// <summary>False while the last checkout's outcome is unknown and the server still cannot tell: the cart must not change,
@@ -291,12 +351,20 @@
             RepeatedLabel();
             return;
         }
+        _typing?.Cancel();
         var r = await Api.GetAsync<ProductByCode>($"/api/inventory/products/by-code/{Uri.EscapeDataString(code)}");
+        if (r.Problem?.Code == "Inventory.CodeNotFound" && code.Any(char.IsLetter))
+        {
+            // Not a code: a name. One match goes in at once (keyboard only); several stay on the tiles to choose.
+            _search = code;
+            if (await LoadAsync(1) && _products.Count == 1) AddTile(_products[0]);
+            return;
+        }
         if (r.Value is not { } p)
         {
             _notice = r.Problem!.Code switch
             {
-                "Inventory.CodeNotFound" => new(Notice.Kinds.Error, $"No se encontró el código {code}.", "Búsquelo en las categorías o escriba su PLU."),
+                "Inventory.CodeNotFound" => new(Notice.Kinds.Error, $"No se encontró el código {code}.", "Escriba su nombre o búsquelo en las categorías."),
                 "Inventory.LabelMisread" => new(Notice.Kinds.Error, "La etiqueta se leyó mal.", "Vuelva a escanearla o escriba el PLU."),
                 "Inventory.ProductInactive" => new(Notice.Kinds.Warning, "Ese producto está desactivado.", "Un supervisor puede activarlo en Productos."),
                 _ => new(r.Problem.Kind, r.Problem.Message),
@@ -334,9 +402,13 @@
 
     private async Task TapAsync(ProductSummary p)
     {
+        _code = ""; // a name typed to find it goes, or the next scan would land after it
         if (!await EditableAsync()) return;
-        Add(new ProductByCode(p.Id, null, p.Name, p.Unit, p.ItbisRate, p.Price, p.WholesalePrice, 1m, null, null, [], p.Stock), null);
+        AddTile(p);
     }
+
+    private void AddTile(ProductSummary p) =>
+        Add(new ProductByCode(p.Id, null, p.Name, p.Unit, p.ItbisRate, p.Price, p.WholesalePrice, 1m, null, null, [], p.Stock), null);
 
     private void AddWeighed(CartLine l)
     {
@@ -498,5 +570,9 @@
         }
     }
 
-    public void Dispose() => Session.Changed -= OnSessionChanged;
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+        _typing?.Cancel();
+    }
 }

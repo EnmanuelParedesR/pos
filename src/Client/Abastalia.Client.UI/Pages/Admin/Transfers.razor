@@ -102,6 +102,8 @@
     private readonly List<Line> _lines = [];
     private string? _source, _destination, _error, _done, _warehouseName, _warehouseError;
     private bool _sending, _newWarehouse;
+    /// <summary>TK-304: kept while the server has not answered, so a retry moves the stock once; a new one after an answer.</summary>
+    private Guid? _transferId;
 
     protected override Task OnInitializedAsync() => LoadAsync();
 
@@ -131,8 +133,9 @@
         if (_lines.Any(l => l.Error is not null) || !Guid.TryParse(_source, out var source) || !Guid.TryParse(_destination, out var destination)) return;
         _sending = true;
         var r = await Api.PostAsync<TransferRecorded>("/api/inventory/transfers",
-            new TransferStock(source, destination, [.. _lines.Select(l => new TransferLine(l.Product.Id, Format.ParseNumber(l.Quantity)!.Value))]));
+            new TransferStock(source, destination, [.. _lines.Select(l => new TransferLine(l.Product.Id, Format.ParseNumber(l.Quantity)!.Value))], _transferId ??= Guid.CreateVersion7()));
         _sending = false;
+        if (r.Problem is not { IsUncertain: true }) _transferId = null;
         if (r.Problem is { } p)
         {
             _error = p.Code == "Inventory.OutOfStock" ? $"{p.Message} Revise las cantidades: no puede salir más de lo que hay en {Name(_source)}." : p.Message;
