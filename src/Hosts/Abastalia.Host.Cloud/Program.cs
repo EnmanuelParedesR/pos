@@ -175,6 +175,13 @@ if (args is [PlatformCli.Grant or PlatformCli.Revoke or PlatformCli.ResetTwoFact
     return;
 }
 
+// TK-337: Talia's cases against the configured Azure OpenAI deployment (costs tokens; never in CI): talia-eval [folder] [--only text] [--record folder]
+if (args is [TaliaEval.Command, .. var evalArgs])
+{
+    Environment.ExitCode = await TaliaEval.CliAsync(app.Services.GetService<IChatModel>(), evalArgs, Console.Out, CancellationToken.None);
+    return;
+}
+
 // TK-307: a moved clock (E2E) moves the Date header too: the store sets its cloud skew by it (SyncModule) and would undo the move.
 if (app.Services.GetRequiredService<TimeProvider>() is Abastalia.BuildingBlocks.ShiftedClock shifted)
     app.Use((context, next) =>

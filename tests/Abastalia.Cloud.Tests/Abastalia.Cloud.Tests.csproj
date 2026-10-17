@@ -10,6 +10,10 @@
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
   </ItemGroup>
   <ItemGroup>
+    <!-- TK-337: Talia's evaluation cases; talia-eval reads the same files from the source folder -->
+    <None Include="TaliaEvals\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Hosts\Abastalia.Host.Cloud\Abastalia.Host.Cloud.csproj" />
     <!-- An event type the cloud does not project yet -->
     <ProjectReference Include="..\..\src\Modules\Purchasing\Abastalia.Purchasing.Contracts\Abastalia.Purchasing.Contracts.csproj" />

@@ -132,7 +132,7 @@ public static class PanelRoutes
 public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool showCosts = true, bool isOwner = true)
 {
     public const int MaxDays = 92;
-    private const int MaxRounds = 5;
+    public const int MaxRounds = 5;
     private const int MaxHistory = 20;
 
     public static readonly IReadOnlyList<ChatTool> Tools =
@@ -196,7 +196,14 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
     public async Task<string> AskAsync(Guid tenantId, string question, IReadOnlyList<AssistantTurn> history, CancellationToken ct)
     {
         var stores = await queries.StoreNamesAsync(tenantId, ct);
-        var messages = new List<ChatMessage> { new("system", SystemPrompt(queries.Today, stores)) };
+        return await ConverseAsync(SystemPrompt(queries.Today, stores), question, history, call => RunToolAsync(tenantId, call, ct), ct);
+    }
+
+    /// <summary>The rounds of one question. TK-337: the evaluation harness (<see cref="TaliaEval"/>) runs it on each case's own tool data.</summary>
+    public async Task<string> ConverseAsync(string systemPrompt, string question, IReadOnlyList<AssistantTurn> history,
+        Func<ChatToolCall, Task<string>> runTool, CancellationToken ct)
+    {
+        var messages = new List<ChatMessage> { new("system", systemPrompt) };
         messages.AddRange(history.Where(h => h.Role is "user" or "assistant" && !string.IsNullOrWhiteSpace(h.Content)).TakeLast(MaxHistory)
             .Select(h => new ChatMessage(h.Role!, h.Content!.Length > 2000 ? h.Content[..2000] : h.Content)));
         messages.Add(new("user", question));
@@ -207,7 +214,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
             TokensUsed += reply.Tokens;
             if (reply.ToolCalls is not { Count: > 0 }) return string.IsNullOrWhiteSpace(reply.Content) ? "No tengo una respuesta para eso." : reply.Content.Trim();
             messages.Add(reply);
-            foreach (var call in reply.ToolCalls) messages.Add(new("tool", await RunToolAsync(tenantId, call, ct), ToolCallId: call.Id));
+            foreach (var call in reply.ToolCalls) messages.Add(new("tool", await runTool(call), ToolCallId: call.Id));
         }
         return "No pude completar la respuesta. Intenta con una pregunta más concreta.";
     }
@@ -255,7 +262,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
         };
     }
 
-    private static string SystemPrompt(DateOnly today, Dictionary<Guid, string> stores)
+    public static string SystemPrompt(DateOnly today, Dictionary<Guid, string> stores)
     {
         var es = CultureInfo.GetCultureInfo("es-DO");
         var list = stores.Count == 0 ? "(todavía no hay tiendas)" : string.Join("; ", stores.Select(s => $"{s.Value} (storeId {s.Key})"));
@@ -298,7 +305,7 @@ public sealed class OwnerAssistant(IChatModel model, PanelQueries queries, bool 
 
     private static string Serialize<T>(T value) => JsonSerializer.Serialize(value, ToolJson);
 
-    private static string Failure(string message) => JsonSerializer.Serialize(new { error = message });
+    internal static string Failure(string message) => JsonSerializer.Serialize(new { error = message });
 }
 
 internal static class AssistantEndpoints
