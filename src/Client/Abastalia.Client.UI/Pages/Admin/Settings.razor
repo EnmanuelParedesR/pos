@@ -275,6 +275,10 @@
             <form class="esc-card esc-setting" @onsubmit="CreatePairingCodeAsync">
                 <div class="esc-setting__about"><h2>Unir un equipo nuevo</h2><p>Genere un código y escríbalo en el equipo nuevo, en “Unir a una tienda”. Vale 10 minutos y sirve una vez.</p></div>
                 <div class="esc-setting__body">
+                    @* TK-373 (ADR-0016 D): anyone on the store's Wi-Fi can reach the main PC's port, and many stores share it with customers. *@
+                    <Notice Kind="Notice.Kinds.Info" Title="Las cajas, en una red aparte de los clientes">
+                        <ChildContent>Si sus clientes usan el Wi-Fi de la tienda, conecte las cajas a otra red. La mayoría de los routers tienen una red de invitados: désela a los clientes.</ChildContent>
+                    </Notice>
                     <div class="esc-row" style="align-items:flex-end">
                         <Field Label="Nombre del equipo"><input class="esc-input" style="width:240px" placeholder="Caja 2" maxlength="100" @bind="_newDevice" /></Field>
                         <Button Type="submit" Variant="Button.Variants.Primary">Generar código</Button>
