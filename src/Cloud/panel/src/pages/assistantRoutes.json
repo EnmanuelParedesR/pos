@@ -6,6 +6,7 @@
   { "route": "/app/received", "label": "Recibidos" },
   { "route": "/app/notifications", "label": "Avisos" },
   { "route": "/app/security", "label": "Seguridad" },
+  { "route": "/app/businesses", "label": "Mis negocios" },
   { "route": "/app/members", "label": "Equipo", "ownerOnly": true },
   { "route": "/app/billing", "label": "Plan y facturación", "ownerOnly": true },
   { "route": "/precios", "label": "Precios" },

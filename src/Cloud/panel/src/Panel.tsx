@@ -16,6 +16,7 @@ import { TaliaPopup } from "./TaliaPopup";
 import { BillingPage } from "./pages/BillingPage";
 import { PlatformAccompanimentPage, PlatformDelegationsPage, PlatformMetricsPage, PlatformReleasesPage, PlatformStorePage, PlatformTenantPage, PlatformTenantsPage, PlatformWatchPage } from "./pages/PlatformPages";
 import { SecurityPage } from "./pages/SecurityPage";
+import { BusinessesPage } from "./pages/BusinessesPage";
 import { MembersPage } from "./pages/MembersPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { ReceivedPage } from "./pages/ReceivedPage";
@@ -52,6 +53,7 @@ export function Panel() {
         <Route path="received" element={<ReceivedPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="security" element={<SecurityPage />} />
+        <Route path="businesses" element={<BusinessesPage me={me} onMe={setMe} />} />
         {me.role === "Owner" && <Route path="members" element={<MembersPage me={me} />} />}
         {me.role === "Owner" && <Route path="billing" element={<BillingPage />} />}
         {/* Abastalia staff only (TK-189); the API checks the role on every call anyway. */}
@@ -156,6 +158,9 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
               ))}
             </select>
           )}
+          <NavLink to="/app/businesses" className="esc-side__store-link">
+            {me.tenants.length > 1 ? "Mis negocios" : "Agregar negocio"}
+          </NavLink>
         </div>
         <nav className="esc-side__nav" aria-label="Secciones">
           {nav.map((s) => (
@@ -189,7 +194,10 @@ function Shell({ me, onMe }: { me: Me; onMe: (me: Me) => void }) {
 
       <header className="esc-topbar">
         <Logo size={26} />
-        <span className="esc-topbar__store">{me.tenantName}</span>
+        <NavLink to="/app/businesses" className="esc-topbar__store" aria-label={`${me.tenantName}: mis negocios`}>
+          <span className="esc-topbar__store-name">{me.tenantName}</span>
+          <Icon name="chevron-right" size={14} />
+        </NavLink>
         <ThemeToggle className="esc-button esc-button--ghost esc-button--small" showLabel={false} size={18} />
         <NavLink to="/app/security" className="esc-button esc-button--ghost esc-button--small" aria-label="Seguridad">
           <Icon name="shield" size={18} />

@@ -193,6 +193,7 @@ public sealed record MyTenant(Guid TenantId, string Name, MemberRole Role);
 public sealed record MeResponse(string? Email, Guid TenantId, string TenantName, bool IsPlatformAdmin, MemberRole Role, IReadOnlyList<MyTenant> Tenants,
     bool CanViewCosts, bool EmailConfirmed);
 public sealed record SwitchTenantRequest(Guid TenantId);
+public sealed record CreateTenantRequest(string? Name);
 
 internal static class StoreEndpoints
 {
@@ -229,6 +230,16 @@ internal static class StoreEndpoints
             return Results.NoContent();
         });
 
+        // TK-379: the account opens another business of its own and moves to it (the panel then renews its token, as when switching). Any
+        // member may: it is the account's, not the current business's. Each business keeps its own subscription, plan, quotas and license.
+        api.MapPost("/tenants", async (CreateTenantRequest request, ClaimsPrincipal user, UserManager<CloudUser> users, CloudDbContext db, TimeProvider clock,
+            CancellationToken ct) =>
+        {
+            var account = await users.GetUserAsync(user);
+            if (account is null) return Results.Unauthorized();
+            return (await CreateTenantAsync(db, account, request.Name, clock.GetUtcNow().UtcDateTime, ct)).ToHttp(t => Results.Created("/api/me", t));
+        });
+
         api.MapGet("/stores", async (ClaimsPrincipal user, CloudDbContext db, CancellationToken ct) =>
         {
             var tenantId = user.GetTenantId();
@@ -248,6 +259,28 @@ internal static class StoreEndpoints
         api.MapPost("/stores/{id:guid}/connection-codes", async (Guid id, ClaimsPrincipal user, CloudDbContext db, TimeProvider clock, CancellationToken ct) =>
             (await NewCodeAsync(db, user.GetTenantId(), id, clock.GetUtcNow().UtcDateTime, ct)).ToHttp())
             .RequireAuthorization(CloudAuth.OwnerPolicy);
+    }
+
+    /// <summary>TK-379: how many businesses one account may own, and open in an hour (so nobody mints businesses, and their trials, in bulk).</summary>
+    public const int MaxOwnedTenants = 10, MaxNewTenantsPerHour = 3;
+
+    internal static async Task<Result<MyTenant>> CreateTenantAsync(CloudDbContext db, CloudUser account, string? requestedName, DateTime now, CancellationToken ct)
+    {
+        var name = requestedName?.Trim() ?? "";
+        if (name.Length is 0 or > 100) return Error.Validation("Tenants.InvalidName", "Escriba el nombre del negocio (hasta 100 letras).");
+        var owned = await db.TenantMembers.Where(m => m.UserId == account.Id && m.Role == MemberRole.Owner)
+            .Join(db.Tenants.Where(t => t.DisabledUtc == null), m => m.TenantId, t => t.Id, (m, _) => m.JoinedUtc).ToListAsync(ct);
+        if (owned.Count >= MaxOwnedTenants)
+            return Error.Conflict("Tenants.Limit", $"Una cuenta puede tener hasta {MaxOwnedTenants} negocios. Escríbanos si necesita más.");
+        if (owned.Count(j => j > now.AddHours(-1)) >= MaxNewTenantsPerHour)
+            return Error.Conflict("Tenants.TooFast", "Ya abrió varios negocios en la última hora. Intente de nuevo más tarde.");
+
+        var tenant = new Tenant { Id = Guid.CreateVersion7(), Name = name, CreatedUtc = now };
+        db.Tenants.Add(tenant);
+        db.TenantMembers.Add(new TenantMember { TenantId = tenant.Id, UserId = account.Id, Role = MemberRole.Owner, JoinedUtc = now });
+        account.TenantId = tenant.Id;
+        await db.SaveChangesAsync(ct);
+        return new MyTenant(tenant.Id, tenant.Name, MemberRole.Owner);
     }
 
     /// <summary>POST /api/stores and Talia's create_store (TK-341).</summary>

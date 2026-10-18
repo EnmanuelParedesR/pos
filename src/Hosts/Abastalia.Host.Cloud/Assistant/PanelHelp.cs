@@ -28,6 +28,8 @@ public static class PanelHelp
             new("Recibidos", "Comprobantes electrónicos que le enviaron sus suplidores y su acuse.", "/app/received", "Todos"),
             new("Avisos", "Qué correos de aviso quiere recibir (e-CF rechazados o sin enviar, certificado por vencer, avance de la certificación).", "/app/notifications", "Todos"),
             new("Seguridad", "Verificación en dos pasos (código del teléfono al entrar) y sus códigos de respaldo.", "/app/security", "Todos"),
+            new("Mis negocios", "Cambiar de negocio o abrir otro con la misma cuenta (otro RNC). Cada negocio tiene su propia suscripción, su prueba " +
+                "de 14 días, su plan y su licencia; usted queda como Dueño del nuevo. En la computadora está bajo el nombre del negocio, en el celular tocando el nombre arriba.", "/app/businesses", "Todos"),
             new("Equipo", "Invitar personas al panel como Dueño o Solo lectura, permitir ver costos y quitar acceso. Las invitaciones del mes dependen del plan.", "/app/members", "Dueño"),
             new("Plan y facturación (Facturación)", "Ver su plan y su estado, elegir o cambiar el plan, agregar adicionales por cantidad, administrar el pago " +
                 "(tarjeta, facturas, cancelar) y la tarjeta Recomiende Abastalia. Ver el tema planes.", "/app/billing", "Dueño"),
